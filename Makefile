@@ -44,20 +44,20 @@ build-mock:
 	go build -o bin/mock-logger ./cmd/mock-logger
 
 # Development: run full demo (panel + collector + mock logger)
-# Runs all components in background and shows logs
-dev: build build-mock
+dev: build build-mock dev-stop
 	@echo "Starting tracer demo..."
 	@mkdir -p /tmp/tracer-data
 	@rm -f /tmp/tracer-mock.log
 	@touch /tmp/tracer-mock.log
 	@echo "Starting panel on :8080..."
-	@./bin/tracer-panel -config dev.panel.toml &
+	@./bin/tracer-panel -config dev.panel.toml > /tmp/tracer-panel.log 2>&1 & echo $$! > /tmp/tracer-panel.pid
 	@sleep 1
 	@echo "Starting mock logger..."
-	@./bin/mock-logger -output /tmp/tracer-mock.log -interval 1s &
+	@./bin/mock-logger -output /tmp/tracer-mock.log -interval 1s > /tmp/tracer-mock-logger.log 2>&1 & echo $$! > /tmp/tracer-mock.pid
 	@sleep 1
 	@echo "Starting collector..."
-	@./bin/tracer-collector -config dev.collector.toml &
+	@./bin/tracer-collector -config dev.collector.toml > /tmp/tracer-collector.log 2>&1 & echo $$! > /tmp/tracer-collector.pid
+	@sleep 1
 	@echo ""
 	@echo "====================================="
 	@echo "Tracer demo is running!"
@@ -65,13 +65,21 @@ dev: build build-mock
 	@echo "  Mock logs: /tmp/tracer-mock.log"
 	@echo "====================================="
 	@echo ""
-	@echo "Press Ctrl+C to stop all components"
-	@trap 'pkill -f tracer-panel; pkill -f tracer-collector; pkill -f mock-logger; exit 0' INT; \
-	tail -f /tmp/tracer-mock.log
+	@echo "Run 'make dev-stop' to stop all components"
+	@echo "Tailing mock logs (Ctrl+C to stop tailing, services keep running)..."
+	@echo ""
+	@tail -f /tmp/tracer-mock.log
 
 # Stop all dev components
 dev-stop:
-	@pkill -f tracer-panel || true
-	@pkill -f tracer-collector || true
-	@pkill -f mock-logger || true
-	@echo "All components stopped"
+	@if [ -f /tmp/tracer-panel.pid ]; then kill $$(cat /tmp/tracer-panel.pid) 2>/dev/null || true; rm -f /tmp/tracer-panel.pid; fi
+	@if [ -f /tmp/tracer-collector.pid ]; then kill $$(cat /tmp/tracer-collector.pid) 2>/dev/null || true; rm -f /tmp/tracer-collector.pid; fi
+	@if [ -f /tmp/tracer-mock.pid ]; then kill $$(cat /tmp/tracer-mock.pid) 2>/dev/null || true; rm -f /tmp/tracer-mock.pid; fi
+	@pkill -x tracer-panel 2>/dev/null || true
+	@pkill -x tracer-collector 2>/dev/null || true
+	@pkill -x mock-logger 2>/dev/null || true
+	@echo "All dev components stopped"
+
+# View panel logs
+dev-logs:
+	@tail -f /tmp/tracer-panel.log
