@@ -15,17 +15,17 @@ import (
 func Run(port string, dbManager *dbmanager.Manager, sampleRate float64, alertChan chan<- alerter.Alert) *http.Server {
 	mux := http.NewServeMux()
 
+	// Root redirects to analytics dashboard (must be registered first with exact path)
+	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/analytics/", http.StatusTemporaryRedirect)
+	})
+
 	// API routes (WebSocket ingest)
 	mux.Handle("/api/", http.StripPrefix("/api", api.InitMux(dbManager, sampleRate, alertChan)))
 
 	// UI routes
 	mux.Handle("/logs/", http.StripPrefix("/logs", logs.InitMux(dbManager)))
 	mux.Handle("/analytics/", http.StripPrefix("/analytics", analytics.InitMux(dbManager)))
-
-	// Root redirects to analytics dashboard
-	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, "/analytics/", http.StatusTemporaryRedirect)
-	})
 
 	// Apply middleware
 	handler := loggingMiddleware(mux)
