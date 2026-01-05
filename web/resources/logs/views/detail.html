@@ -1,0 +1,109 @@
+{{define "log-page"}}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Log Detail - {{.AppName}}</title>
+    <script src="https://unpkg.com/htmx.org@2.0.0"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #e2e8f0; line-height: 1.6; }
+        .container { max-width: 1000px; margin: 0 auto; padding: 2rem; }
+        .header { margin-bottom: 2rem; }
+        .header h1 { font-size: 1.5rem; }
+        .nav { display: flex; gap: 1rem; margin-top: 1rem; }
+        .nav a { color: #60a5fa; text-decoration: none; }
+        .log-detail { background: #1e293b; border-radius: 0.5rem; overflow: hidden; }
+        .log-header { padding: 1rem; border-bottom: 1px solid #334155; display: flex; justify-content: space-between; align-items: center; }
+        .level { padding: 0.25rem 0.75rem; border-radius: 0.25rem; font-size: 0.875rem; font-weight: 600; text-transform: uppercase; }
+        .level-error { background: #7f1d1d; color: #fecaca; }
+        .level-warn { background: #78350f; color: #fef3c7; }
+        .level-info { background: #1e3a5f; color: #bfdbfe; }
+        .level-debug { background: #1f2937; color: #9ca3af; }
+        .log-body { padding: 1rem; }
+        .field { margin-bottom: 1rem; }
+        .field-label { font-size: 0.75rem; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.25rem; }
+        .field-value { font-family: monospace; }
+        .field-value.message { white-space: pre-wrap; word-break: break-all; background: #0f172a; padding: 1rem; border-radius: 0.25rem; }
+        .field-value.raw { white-space: pre-wrap; word-break: break-all; background: #0f172a; padding: 1rem; border-radius: 0.25rem; font-size: 0.875rem; color: #94a3b8; max-height: 300px; overflow-y: auto; }
+        .trace-link { color: #60a5fa; text-decoration: none; }
+        .trace-link:hover { text-decoration: underline; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        {{template "log-detail" .}}
+    </div>
+</body>
+</html>
+{{end}}
+
+{{define "log-detail"}}
+<div class="header">
+    <h1>Log Detail</h1>
+    <nav class="nav">
+        <a href="/">Dashboard</a>
+        <a href="/logs/{{.AppName}}">Back to Logs</a>
+        {{if .Log.TraceID}}
+        <a href="/logs/{{.AppName}}/trace/{{.Log.TraceID}}">View Full Trace</a>
+        {{end}}
+    </nav>
+</div>
+
+<div class="log-detail">
+    <div class="log-header">
+        <span class="level {{levelClass .Log.Level}}">{{.Log.Level}}</span>
+        <span>{{formatDateTime .Log.CreatedAt}}</span>
+    </div>
+    <div class="log-body">
+        <div class="field">
+            <div class="field-label">Message</div>
+            <div class="field-value message">{{.Log.Message}}</div>
+        </div>
+        
+        {{if .Log.TraceID}}
+        <div class="field">
+            <div class="field-label">Trace ID</div>
+            <div class="field-value">
+                <a href="/logs/{{.AppName}}/trace/{{.Log.TraceID}}" class="trace-link">{{.Log.TraceID}}</a>
+            </div>
+        </div>
+        {{end}}
+        
+        <div class="field">
+            <div class="field-label">Source</div>
+            <div class="field-value">{{.Log.Source}}</div>
+        </div>
+        
+        {{if and .Log.Context (ne .Log.Context "{}")}}
+        <div class="field">
+            <div class="field-label">Context</div>
+            <div class="field-value raw">{{.Log.Context}}</div>
+        </div>
+        {{end}}
+        
+        <div class="field">
+            <div class="field-label">Raw Log</div>
+            <div class="field-value raw">{{.Log.Raw}}</div>
+        </div>
+    </div>
+</div>
+{{end}}
+
+{{define "stats-panel"}}
+<div class="stats-panel">
+    <div class="stat">
+        <span class="count">{{.Stats.Errors}}</span>
+        <span class="label">Errors</span>
+    </div>
+    <div class="stat">
+        <span class="count">{{.Stats.Warnings}}</span>
+        <span class="label">Warnings</span>
+    </div>
+    <div class="stat">
+        <span class="count">{{.Stats.Infos}}</span>
+        <span class="label">Info</span>
+    </div>
+</div>
+{{end}}

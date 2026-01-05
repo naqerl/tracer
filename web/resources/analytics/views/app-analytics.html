@@ -1,0 +1,91 @@
+{{define "app-analytics"}}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Analytics - {{.AppName}}</title>
+    <script src="https://unpkg.com/htmx.org@2.0.0"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #e2e8f0; line-height: 1.6; }
+        .container { max-width: 1200px; margin: 0 auto; padding: 2rem; }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; }
+        .header h1 { font-size: 1.5rem; }
+        .nav { display: flex; gap: 1rem; }
+        .nav a { color: #60a5fa; text-decoration: none; }
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 2rem; }
+        .stat-card { background: #1e293b; padding: 1.5rem; border-radius: 0.5rem; text-align: center; }
+        .stat-card.error { border-left: 4px solid #f87171; }
+        .stat-card.warn { border-left: 4px solid #fbbf24; }
+        .stat-card.info { border-left: 4px solid #60a5fa; }
+        .stat-card .count { font-size: 2.5rem; font-weight: bold; display: block; }
+        .stat-card .label { color: #94a3b8; }
+        .chart-container { background: #1e293b; padding: 1.5rem; border-radius: 0.5rem; }
+        table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+        th, td { padding: 0.75rem; text-align: left; border-bottom: 1px solid #334155; }
+        th { color: #94a3b8; font-weight: 500; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        {{template "app-analytics-content" .}}
+    </div>
+</body>
+</html>
+{{end}}
+
+{{define "app-analytics-content"}}
+<div class="header">
+    <h1>Analytics: {{.AppName}}</h1>
+    <nav class="nav">
+        <a href="/">Dashboard</a>
+        <a href="/logs/{{.AppName}}">Logs</a>
+    </nav>
+</div>
+
+<div class="stats-grid" hx-get="/analytics/{{.AppName}}" hx-trigger="every 30s" hx-select=".stats-grid" hx-swap="outerHTML">
+    <div class="stat-card error">
+        <span class="count">{{.Stats.Errors}}</span>
+        <span class="label">Errors (24h)</span>
+    </div>
+    <div class="stat-card warn">
+        <span class="count">{{.Stats.Warnings}}</span>
+        <span class="label">Warnings (24h)</span>
+    </div>
+    <div class="stat-card info">
+        <span class="count">{{.Stats.Infos}}</span>
+        <span class="label">Info (24h)</span>
+    </div>
+    <div class="stat-card">
+        <span class="count">{{.Stats.Total}}</span>
+        <span class="label">Total (24h)</span>
+    </div>
+</div>
+
+<div class="chart-container">
+    <h2>Hourly Distribution</h2>
+    {{template "chart" .}}
+</div>
+{{end}}
+
+{{define "chart"}}
+<table>
+    <thead>
+        <tr>
+            <th>Hour</th>
+            <th>Level</th>
+            <th>Count</th>
+        </tr>
+    </thead>
+    <tbody>
+        {{range .Hourly}}
+        <tr>
+            <td>{{.Hour}}</td>
+            <td>{{.Level}}</td>
+            <td>{{.Count}}</td>
+        </tr>
+        {{end}}
+    </tbody>
+</table>
+{{end}}

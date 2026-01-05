@@ -1,0 +1,76 @@
+{{define "dashboard"}}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{.Title}}</title>
+    <script src="https://unpkg.com/htmx.org@2.0.0"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #e2e8f0; line-height: 1.6; }
+        .container { max-width: 1200px; margin: 0 auto; padding: 2rem; }
+        h1 { margin-bottom: 2rem; font-size: 2rem; }
+        .apps-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1.5rem; }
+        .app-card { background: #1e293b; border-radius: 0.5rem; padding: 1.5rem; transition: transform 0.2s; }
+        .app-card:hover { transform: translateY(-2px); }
+        .app-card h2 { font-size: 1.25rem; margin-bottom: 0.5rem; }
+        .app-card a { color: #60a5fa; text-decoration: none; }
+        .app-card a:hover { text-decoration: underline; }
+        .app-links { display: flex; gap: 1rem; margin-top: 1rem; }
+        .empty-state { text-align: center; padding: 4rem; color: #94a3b8; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        {{template "dashboard-content" .}}
+    </div>
+</body>
+</html>
+{{end}}
+
+{{define "dashboard-content"}}
+<h1>{{.Title}}</h1>
+{{if .Apps}}
+<div class="apps-grid">
+    {{range .Apps}}
+    <div class="app-card">
+        <h2>{{.}}</h2>
+        <div class="app-links">
+            <a href="/logs/{{.}}">Logs</a>
+            <a href="/analytics/{{.}}">Analytics</a>
+        </div>
+    </div>
+    {{end}}
+</div>
+{{else}}
+<div class="empty-state">
+    <p>No applications yet. Start a collector to begin receiving logs.</p>
+</div>
+{{end}}
+{{end}}
+
+{{define "error"}}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{.Title}}</title>
+    <style>
+        body { font-family: sans-serif; background: #0f172a; color: #e2e8f0; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+        .error { text-align: center; }
+        .error h1 { font-size: 4rem; color: #f87171; }
+        .error p { margin-top: 1rem; color: #94a3b8; }
+        .error a { color: #60a5fa; }
+    </style>
+</head>
+<body>
+    <div class="error">
+        <h1>{{.Status}}</h1>
+        <p>{{.Message}}</p>
+        <p><a href="/">Back to Dashboard</a></p>
+    </div>
+</body>
+</html>
+{{end}}

@@ -1,0 +1,71 @@
+{{define "trace-page"}}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trace {{.TraceID}} - {{.AppName}}</title>
+    <script src="https://unpkg.com/htmx.org@2.0.0"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #e2e8f0; line-height: 1.6; }
+        .container { max-width: 1200px; margin: 0 auto; padding: 2rem; }
+        .header { margin-bottom: 2rem; }
+        .header h1 { font-size: 1.5rem; margin-bottom: 0.5rem; }
+        .header .trace-id { font-family: monospace; color: #60a5fa; font-size: 1rem; }
+        .nav { display: flex; gap: 1rem; margin-top: 1rem; }
+        .nav a { color: #60a5fa; text-decoration: none; }
+        .timeline { position: relative; }
+        .timeline::before { content: ''; position: absolute; left: 1rem; top: 0; bottom: 0; width: 2px; background: #334155; }
+        .log-entry { position: relative; margin-left: 3rem; margin-bottom: 1rem; padding: 1rem; background: #1e293b; border-radius: 0.5rem; }
+        .log-entry::before { content: ''; position: absolute; left: -2rem; top: 1.25rem; width: 12px; height: 12px; border-radius: 50%; background: #334155; }
+        .log-entry.error::before { background: #f87171; }
+        .log-entry.warn::before { background: #fbbf24; }
+        .log-entry.info::before { background: #60a5fa; }
+        .log-meta { display: flex; gap: 1rem; margin-bottom: 0.5rem; font-size: 0.875rem; color: #94a3b8; }
+        .level { padding: 0.125rem 0.5rem; border-radius: 0.25rem; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; }
+        .level-error { background: #7f1d1d; color: #fecaca; }
+        .level-warn { background: #78350f; color: #fef3c7; }
+        .level-info { background: #1e3a5f; color: #bfdbfe; }
+        .level-debug { background: #1f2937; color: #9ca3af; }
+        .log-message { font-family: monospace; white-space: pre-wrap; word-break: break-all; }
+        .log-context { margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid #334155; font-size: 0.875rem; color: #94a3b8; }
+        .log-context pre { background: #0f172a; padding: 0.5rem; border-radius: 0.25rem; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        {{template "trace-content" .}}
+    </div>
+</body>
+</html>
+{{end}}
+
+{{define "trace-content"}}
+<div class="header">
+    <h1>Trace View</h1>
+    <div class="trace-id">{{.TraceID}}</div>
+    <nav class="nav">
+        <a href="/">Dashboard</a>
+        <a href="/logs/{{.AppName}}">Back to Logs</a>
+    </nav>
+</div>
+
+<div class="timeline">
+    {{range .Logs}}
+    <div class="log-entry {{.Level}}">
+        <div class="log-meta">
+            <span class="level {{levelClass .Level}}">{{.Level}}</span>
+            <span>{{formatDateTime .CreatedAt}}</span>
+            <span>{{.Source}}</span>
+        </div>
+        <div class="log-message">{{.Message}}</div>
+        {{if and .Context (ne .Context "{}")}}
+        <div class="log-context">
+            <pre>{{.Context}}</pre>
+        </div>
+        {{end}}
+    </div>
+    {{end}}
+</div>
+{{end}}
