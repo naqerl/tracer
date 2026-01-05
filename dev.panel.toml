@@ -1,0 +1,10 @@
+# Development panel config for mock testing
+
+port = "8080"
+data_dir = "/tmp/tracer-data"
+sample_rate = 0.5
+retention_days = 7
+
+[telegram]
+token = ""
+chat_id = 0

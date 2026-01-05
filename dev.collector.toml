@@ -1,0 +1,12 @@
+# Development collector config for mock testing
+
+app_name = "mock-app"
+panel_endpoint = "ws://localhost:8080/api/ws/ingest"
+
+[[log_files]]
+path = "/tmp/tracer-mock.log"
+format = "json"
+timestamp_field = "timestamp"
+level_field = "level"
+trace_id_field = "trace_id"
+message_field = "message"
