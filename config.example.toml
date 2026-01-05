@@ -1,0 +1,32 @@
+# Tracer Collector Configuration
+# Copy to /etc/tracer/config.toml
+
+app_name = "my-app"
+panel_endpoint = "ws://localhost:8080/ws/ingest"
+
+# JSON log file example
+[[log_files]]
+path = "/var/log/my-app/app.log"
+format = "json"
+# Optional: customize field names (defaults shown)
+# timestamp_field = "timestamp"
+# level_field = "level"
+# trace_id_field = "trace_id"
+# message_field = "message"
+
+# Regex log file example (nginx access log)
+[[log_files]]
+path = "/var/log/nginx/access.log"
+format = "regex"
+pattern = '^(?P<ip>\S+) \S+ \S+ \[(?P<timestamp>[^\]]+)\] "(?P<method>\S+) (?P<path>\S+) \S+" (?P<status>\d+) (?P<bytes>\d+) "(?P<referer>[^"]*)" "(?P<user_agent>[^"]*)"'
+timestamp_field = "timestamp"
+level_field = "status"
+message_field = "path"
+
+# Regex log file example (syslog)
+[[log_files]]
+path = "/var/log/syslog"
+format = "regex"
+pattern = '^(?P<timestamp>\w+ \d+ \d+:\d+:\d+) (?P<host>\S+) (?P<process>[^:]+): (?P<message>.*)$'
+timestamp_field = "timestamp"
+message_field = "message"
