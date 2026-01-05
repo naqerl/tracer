@@ -1,6 +1,7 @@
 package templates
 
 import (
+	"database/sql"
 	"html/template"
 	"io/fs"
 	"log/slog"
@@ -18,6 +19,8 @@ func New(fsys fs.FS) Templates {
 		"formatDateTime": formatDateTime,
 		"levelClass":     levelClass,
 		"truncate":       truncate,
+		"nullStr":        nullStr,
+		"hasContext":     hasContext,
 	}
 
 	views := template.Must(template.New("").Funcs(funcMap).ParseFS(fsys, "views/*.html"))
@@ -47,12 +50,32 @@ func (t Templates) RenderError(w http.ResponseWriter, r *http.Request, title, me
 	}
 }
 
-func formatDate(t time.Time) string {
-	return t.Format("2006-01-02")
+func formatDate(t any) string {
+	switch v := t.(type) {
+	case time.Time:
+		return v.Format("2006-01-02")
+	case sql.NullTime:
+		if v.Valid {
+			return v.Time.Format("2006-01-02")
+		}
+		return ""
+	default:
+		return ""
+	}
 }
 
-func formatDateTime(t time.Time) string {
-	return t.Format("2006-01-02 15:04:05")
+func formatDateTime(t any) string {
+	switch v := t.(type) {
+	case time.Time:
+		return v.Format("2006-01-02 15:04:05")
+	case sql.NullTime:
+		if v.Valid {
+			return v.Time.Format("2006-01-02 15:04:05")
+		}
+		return ""
+	default:
+		return ""
+	}
 }
 
 func levelClass(level string) string {
@@ -75,4 +98,29 @@ func truncate(s string, maxLen int) string {
 		return s
 	}
 	return s[:maxLen] + "..."
+}
+
+func nullStr(v any) string {
+	switch s := v.(type) {
+	case string:
+		return s
+	case sql.NullString:
+		if s.Valid {
+			return s.String
+		}
+		return ""
+	default:
+		return ""
+	}
+}
+
+func hasContext(v any) bool {
+	switch s := v.(type) {
+	case string:
+		return s != "" && s != "{}"
+	case sql.NullString:
+		return s.Valid && s.String != "" && s.String != "{}"
+	default:
+		return false
+	}
 }

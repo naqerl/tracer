@@ -60,9 +60,9 @@
             <span>{{.Source}}</span>
         </div>
         <div class="log-message">{{.Message}}</div>
-        {{if and .Context (ne .Context "{}")}}
+        {{if hasContext .Context}}
         <div class="log-context">
-            <pre>{{.Context}}</pre>
+            <pre>{{nullStr .Context}}</pre>
         </div>
         {{end}}
     </div>
