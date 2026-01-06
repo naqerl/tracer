@@ -2,38 +2,11 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    {{template "head"}}
     <title>Trace {{.TraceID}} - {{.AppName}}</title>
-    <script src="https://unpkg.com/htmx.org@2.0.0"></script>
-    <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #e2e8f0; line-height: 1.6; }
-        .container { max-width: 1200px; margin: 0 auto; padding: 2rem; }
-        {{template "navbar-styles"}}
-        .trace-id { font-family: monospace; color: #60a5fa; font-size: 1rem; margin-bottom: 1rem; }
-        .back-link { color: #60a5fa; text-decoration: none; margin-bottom: 1.5rem; display: inline-block; }
-        .back-link:hover { text-decoration: underline; }
-        .timeline { position: relative; }
-        .timeline::before { content: ''; position: absolute; left: 1rem; top: 0; bottom: 0; width: 2px; background: #334155; }
-        .log-entry { position: relative; margin-left: 3rem; margin-bottom: 1rem; padding: 1rem; background: #1e293b; border-radius: 0.5rem; }
-        .log-entry::before { content: ''; position: absolute; left: -2rem; top: 1.25rem; width: 12px; height: 12px; border-radius: 50%; background: #334155; }
-        .log-entry.error::before { background: #f87171; }
-        .log-entry.warn::before { background: #fbbf24; }
-        .log-entry.info::before { background: #60a5fa; }
-        .log-meta { display: flex; gap: 1rem; margin-bottom: 0.5rem; font-size: 0.875rem; color: #94a3b8; }
-        .level { padding: 0.125rem 0.5rem; border-radius: 0.25rem; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; }
-        .level-error { background: #7f1d1d; color: #fecaca; }
-        .level-warn { background: #78350f; color: #fef3c7; }
-        .level-info { background: #1e3a5f; color: #bfdbfe; }
-        .level-debug { background: #1f2937; color: #9ca3af; }
-        .log-message { font-family: monospace; white-space: pre-wrap; word-break: break-all; }
-        .log-context { margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid #334155; font-size: 0.875rem; color: #94a3b8; }
-        .log-context pre { background: #0f172a; padding: 0.5rem; border-radius: 0.25rem; overflow-x: auto; }
-    </style>
 </head>
 <body>
-    <div class="container">
+    <div class="max-w-5xl mx-auto p-6">
         {{template "navbar" .Nav}}
         {{template "trace-content" .}}
     </div>
@@ -42,21 +15,22 @@
 {{end}}
 
 {{define "trace-content"}}
-<a href="/logs/{{.AppName}}" class="back-link">&larr; Back to Logs</a>
-<div class="trace-id">Trace ID: {{.TraceID}}</div>
+<a href="/logs/{{.AppName}}" class="text-accent hover:underline text-sm mb-4 inline-block">&larr; Back to Logs</a>
+<div class="font-mono text-accent text-sm mb-6">Trace ID: {{.TraceID}}</div>
 
-<div class="timeline">
+<div class="relative pl-6 border-l-2 border-bg-secondary space-y-4">
     {{range .Logs}}
-    <div class="log-entry {{.Level}}">
-        <div class="log-meta">
-            <span class="level {{levelClass .Level}}">{{.Level}}</span>
-            <span>{{formatDateTime .CreatedAt}}</span>
-            <span>{{.Source}}</span>
+    <div class="relative bg-bg-secondary p-4">
+        <div class="absolute -left-[1.65rem] top-4 w-3 h-3 rounded-full {{if eq .Level "error"}}bg-red-400{{else if eq .Level "warn"}}bg-yellow-400{{else if eq .Level "info"}}bg-blue-400{{else}}bg-fg-secondary{{end}}"></div>
+        <div class="flex items-center gap-3 mb-2 text-sm">
+            {{template "level-badge" .Level}}
+            <span class="text-fg-secondary">{{formatDateTime .CreatedAt}}</span>
+            <span class="text-fg-secondary">{{.Source}}</span>
         </div>
-        <div class="log-message">{{.Message}}</div>
+        <div class="font-mono whitespace-pre-wrap break-all">{{.Message}}</div>
         {{if hasContext .Context}}
-        <div class="log-context">
-            <pre>{{nullStr .Context}}</pre>
+        <div class="mt-3 pt-3 border-t border-bg">
+            <pre class="bg-bg p-2 text-sm text-fg-secondary overflow-x-auto">{{nullStr .Context}}</pre>
         </div>
         {{end}}
     </div>

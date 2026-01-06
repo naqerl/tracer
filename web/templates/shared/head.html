@@ -1,0 +1,33 @@
+{{define "head"}}
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<script src="https://unpkg.com/htmx.org@2.0.0"></script>
+<script src="https://cdn.tailwindcss.com?plugins=forms"></script>
+<script>
+tailwind.config = {
+    theme: {
+        extend: {
+            colors: {
+                bg: {
+                    DEFAULT: '#0A0A0A',
+                    secondary: '#1E1E1E',
+                },
+                fg: {
+                    DEFAULT: '#EEEEEE',
+                    secondary: '#808080',
+                },
+                accent: '#5C9CF5',
+                secondary: '#F5A742',
+            }
+        }
+    }
+}
+</script>
+<style type="text/tailwindcss">
+@layer base {
+    body {
+        @apply bg-bg text-fg font-sans antialiased;
+    }
+}
+</style>
+{{end}}

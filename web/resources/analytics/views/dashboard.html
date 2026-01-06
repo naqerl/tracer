@@ -2,35 +2,15 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    {{template "head"}}
     <title>{{.Title}}</title>
-    <script src="https://unpkg.com/htmx.org@2.0.0"></script>
     <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #e2e8f0; line-height: 1.6; }
-        .container { max-width: 1200px; margin: 0 auto; padding: 2rem; }
-        {{template "navbar-styles"}}
-        .section-title { font-size: 1rem; color: #94a3b8; margin-bottom: 1rem; text-transform: uppercase; letter-spacing: 0.05em; }
-        .collectors-section { margin-bottom: 2rem; }
-        .collectors-list { display: flex; flex-wrap: wrap; gap: 1rem; }
-        .collector-item { display: flex; align-items: center; gap: 0.5rem; background: #1e293b; padding: 0.5rem 1rem; border-radius: 0.375rem; font-size: 0.875rem; }
-        .collector-dot { width: 8px; height: 8px; border-radius: 50%; }
-        .collector-dot.connected { background: #22c55e; animation: pulse 2s infinite; }
-        .collector-dot.disconnected { background: #64748b; }
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
-        .collector-name { color: #e2e8f0; }
-        .collector-apps { color: #64748b; font-size: 0.75rem; margin-left: 0.25rem; }
-        .apps-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1.5rem; }
-        .app-card { background: #1e293b; border-radius: 0.5rem; padding: 1.5rem; transition: transform 0.2s; display: block; color: #e2e8f0; text-decoration: none; }
-        .app-card:hover { transform: translateY(-2px); background: #334155; }
-        .app-card h2 { font-size: 1.25rem; margin-bottom: 0.5rem; }
-        .app-links { display: flex; gap: 1rem; margin-top: 1rem; }
-        .empty-state { text-align: center; padding: 4rem; color: #94a3b8; }
+        .animate-pulse { animation: pulse 2s infinite; }
     </style>
 </head>
 <body>
-    <div class="container">
+    <div class="max-w-5xl mx-auto p-6">
         {{template "dashboard-content" .}}
     </div>
 </body>
@@ -41,42 +21,42 @@
 {{template "navbar" .Nav}}
 
 <!-- Collectors Section -->
-<div class="collectors-section">
-    <h3 class="section-title">Collectors</h3>
+<div class="mb-8">
+    <h3 class="text-xs text-fg-secondary uppercase tracking-wide mb-3">Collectors</h3>
     {{template "collectors-list" .}}
 </div>
 
 <!-- Apps Section -->
 {{if .Apps}}
-<h3 class="section-title">Applications</h3>
-<div class="apps-grid">
+<h3 class="text-xs text-fg-secondary uppercase tracking-wide mb-3">Applications</h3>
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
     {{range .Apps}}
-    <a href="/analytics/{{.}}" class="app-card">
-        <h2>{{.}}</h2>
+    <a href="/analytics/{{.}}" class="block bg-bg-secondary hover:bg-bg-secondary/80 p-5 transition-all hover:-translate-y-0.5">
+        <h2 class="text-lg font-medium">{{.}}</h2>
     </a>
     {{end}}
 </div>
 {{else}}
-<div class="empty-state">
+<div class="text-center text-fg-secondary py-12">
     <p>No applications yet. Start a collector to begin receiving logs.</p>
 </div>
 {{end}}
 {{end}}
 
 {{define "collectors-list"}}
-<div class="collectors-list" hx-get="/analytics/collectors" hx-trigger="every 5s" hx-swap="innerHTML">
+<div class="flex flex-wrap gap-3" hx-get="/analytics/collectors" hx-trigger="every 5s" hx-swap="innerHTML">
     {{if .Collectors}}
     {{range .Collectors}}
-    <div class="collector-item">
-        <span class="collector-dot {{if .IsConnected}}connected{{else}}disconnected{{end}}"></span>
-        <span class="collector-name">{{.Name}}</span>
-        <span class="collector-apps">({{len .Apps}} apps)</span>
+    <div class="flex items-center gap-2 bg-bg-secondary px-3 py-2 text-sm">
+        <span class="w-2 h-2 rounded-full {{if .IsConnected}}bg-green-500 animate-pulse{{else}}bg-fg-secondary{{end}}"></span>
+        <span>{{.Name}}</span>
+        <span class="text-fg-secondary text-xs">({{len .Apps}} apps)</span>
     </div>
     {{end}}
     {{else}}
-    <div class="collector-item">
-        <span class="collector-dot disconnected"></span>
-        <span class="collector-name" style="color: #64748b;">No collectors connected</span>
+    <div class="flex items-center gap-2 bg-bg-secondary px-3 py-2 text-sm">
+        <span class="w-2 h-2 rounded-full bg-fg-secondary"></span>
+        <span class="text-fg-secondary">No collectors connected</span>
     </div>
     {{end}}
 </div>
@@ -86,22 +66,14 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    {{template "head"}}
     <title>{{.Title}}</title>
-    <style>
-        body { font-family: sans-serif; background: #0f172a; color: #e2e8f0; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
-        .error { text-align: center; }
-        .error h1 { font-size: 4rem; color: #f87171; }
-        .error p { margin-top: 1rem; color: #94a3b8; }
-        .error a { color: #60a5fa; }
-    </style>
 </head>
-<body>
-    <div class="error">
-        <h1>{{.Status}}</h1>
-        <p>{{.Message}}</p>
-        <p><a href="/">Back to Dashboard</a></p>
+<body class="min-h-screen flex items-center justify-center">
+    <div class="text-center">
+        <h1 class="text-6xl font-bold text-red-400 mb-4">{{.Status}}</h1>
+        <p class="text-fg-secondary mb-4">{{.Message}}</p>
+        <a href="/" class="text-accent hover:underline">Back to Dashboard</a>
     </div>
 </body>
 </html>

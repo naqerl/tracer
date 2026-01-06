@@ -2,168 +2,45 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    {{template "head"}}
     <title>{{.Title}}</title>
-    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
-    <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { 
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
-            background: #0f172a; 
-            color: #e2e8f0; 
-            line-height: 1.6;
-            min-height: 100vh;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-        }
-        .setup-container {
-            background: #1e293b;
-            padding: 2rem;
-            border-radius: 0.5rem;
-            width: 100%;
-            max-width: 500px;
-            margin: 1rem;
-        }
-        h1 { 
-            font-size: 1.5rem; 
-            margin-bottom: 0.5rem;
-            text-align: center;
-        }
-        .subtitle {
-            text-align: center;
-            color: #94a3b8;
-            margin-bottom: 1.5rem;
-            font-size: 0.875rem;
-        }
-        .form-group {
-            margin-bottom: 1rem;
-        }
-        label {
-            display: block;
-            margin-bottom: 0.5rem;
-            color: #94a3b8;
-            font-size: 0.875rem;
-        }
-        input[type="text"],
-        input[type="password"] {
-            width: 100%;
-            padding: 0.75rem;
-            border: 1px solid #334155;
-            border-radius: 0.375rem;
-            background: #0f172a;
-            color: #e2e8f0;
-            font-size: 1rem;
-        }
-        input[type="text"]:focus,
-        input[type="password"]:focus {
-            outline: none;
-            border-color: #3b82f6;
-        }
-        button {
-            width: 100%;
-            padding: 0.75rem;
-            background: #3b82f6;
-            color: white;
-            border: none;
-            border-radius: 0.375rem;
-            font-size: 1rem;
-            cursor: pointer;
-            margin-top: 1rem;
-        }
-        button:hover {
-            background: #2563eb;
-        }
-        button:disabled {
-            background: #475569;
-            cursor: not-allowed;
-        }
-        .error {
-            background: #7f1d1d;
-            color: #fca5a5;
-            padding: 0.75rem;
-            border-radius: 0.375rem;
-            margin-bottom: 1rem;
-            font-size: 0.875rem;
-        }
-        .logo {
-            text-align: center;
-            margin-bottom: 1rem;
-            font-size: 2rem;
-        }
-        .api-key-section {
-            background: #0f172a;
-            border: 1px solid #334155;
-            border-radius: 0.375rem;
-            padding: 1rem;
-            margin-bottom: 1.5rem;
-        }
-        .api-key-section h3 {
-            font-size: 0.875rem;
-            color: #94a3b8;
-            margin-bottom: 0.5rem;
-        }
-        .api-key {
-            font-family: monospace;
-            background: #1e293b;
-            padding: 0.5rem;
-            border-radius: 0.25rem;
-            word-break: break-all;
-            font-size: 0.875rem;
-            color: #22c55e;
-        }
-        .api-key-note {
-            font-size: 0.75rem;
-            color: #94a3b8;
-            margin-top: 0.5rem;
-        }
-        .divider {
-            height: 1px;
-            background: #334155;
-            margin: 1.5rem 0;
-        }
-        #form-error:empty {
-            display: none;
-        }
-        .htmx-request button {
-            background: #475569;
-        }
-        .htmx-request button::after {
-            content: "...";
-        }
-    </style>
 </head>
-<body>
-    <div class="setup-container">
-        <div class="logo">Tracer</div>
-        <h1>Initial Setup</h1>
-        <p class="subtitle">Create your admin account to get started</p>
-
-        <div class="api-key-section">
-            <h3>API Key for Collectors</h3>
-            <div class="api-key">{{.APIKey}}</div>
-            <p class="api-key-note">Save this key! Use it in your collector configuration to authenticate with the panel.</p>
+<body class="min-h-screen flex items-center justify-center p-4">
+    <div class="bg-bg-secondary p-8 w-full max-w-md">
+        <div class="text-center mb-6">
+            <h1 class="text-2xl font-semibold mb-1">Tracer</h1>
+            <p class="text-fg-secondary text-sm">Create your admin account to get started</p>
         </div>
 
-        <div class="divider"></div>
+        <div class="bg-bg border border-bg-secondary p-4 mb-6">
+            <h3 class="text-fg-secondary text-sm mb-2">API Key for Collectors</h3>
+            <div class="font-mono text-green-400 break-all text-sm mb-2">{{.APIKey}}</div>
+            <p class="text-xs text-fg-secondary">Save this key! Use it in your collector configuration.</p>
+        </div>
 
-        <div id="form-error"></div>
+        <div class="border-t border-bg mb-6"></div>
 
-        <form hx-post="/setup" hx-target="#form-error" hx-swap="innerHTML" hx-indicator="button">
-            <div class="form-group">
-                <label for="username">Admin Username</label>
-                <input type="text" id="username" name="username" required autofocus>
+        <div id="form-error" class="empty:hidden bg-red-900/50 text-red-300 p-3 mb-4 text-sm"></div>
+
+        <form hx-post="/setup" hx-target="#form-error" hx-swap="innerHTML">
+            <div class="mb-4">
+                <label for="username" class="block text-fg-secondary text-sm mb-1.5">Admin Username</label>
+                <input type="text" id="username" name="username" required autofocus
+                    class="w-full px-3 py-2 bg-bg border border-bg-secondary focus:border-accent focus:outline-none text-fg">
             </div>
-            <div class="form-group">
-                <label for="password">Password</label>
-                <input type="password" id="password" name="password" required>
+            <div class="mb-4">
+                <label for="password" class="block text-fg-secondary text-sm mb-1.5">Password</label>
+                <input type="password" id="password" name="password" required
+                    class="w-full px-3 py-2 bg-bg border border-bg-secondary focus:border-accent focus:outline-none text-fg">
             </div>
-            <div class="form-group">
-                <label for="confirm_password">Confirm Password</label>
-                <input type="password" id="confirm_password" name="confirm_password" required>
+            <div class="mb-6">
+                <label for="confirm_password" class="block text-fg-secondary text-sm mb-1.5">Confirm Password</label>
+                <input type="password" id="confirm_password" name="confirm_password" required
+                    class="w-full px-3 py-2 bg-bg border border-bg-secondary focus:border-accent focus:outline-none text-fg">
             </div>
-            <button type="submit">Create Admin Account</button>
+            <button type="submit" class="w-full py-2.5 bg-accent hover:bg-accent/80 text-fg font-medium transition-colors">
+                Create Admin Account
+            </button>
         </form>
     </div>
 </body>

@@ -1,32 +1,19 @@
 {{define "navbar"}}
-<nav class="navbar">
-    <div class="navbar-left">
-        <a href="/analytics/" {{if eq .ActivePage "analytics"}}class="active"{{end}}>Analytics</a>
-        <a href="/settings/" {{if eq .ActivePage "settings"}}class="active"{{end}}>Settings</a>
+<nav class="flex justify-between items-center mb-6 pb-4 border-b border-bg-secondary">
+    <div class="flex gap-2">
+        <a href="/analytics/" class="px-3 py-1.5 text-fg-secondary hover:text-fg transition-colors {{if eq .ActivePage "analytics"}}text-accent{{end}}">Analytics</a>
+        <a href="/settings/" class="px-3 py-1.5 text-fg-secondary hover:text-fg transition-colors {{if eq .ActivePage "settings"}}text-accent{{end}}">Settings</a>
     </div>
-    <div class="navbar-right">
-        <span class="navbar-user">{{.Username}}</span>
-        <form action="/logout" method="POST" class="navbar-logout">
-            <button type="submit" class="navbar-logout-btn" title="Logout">
+    <div class="flex gap-3 items-center">
+        <span class="text-fg-secondary text-sm">{{.Username}}</span>
+        <form action="/logout" method="POST">
+            <button type="submit" class="p-1.5 hover:bg-bg-secondary transition-colors text-fg-secondary hover:text-fg" title="Logout">
                 {{template "icon-logout"}}
             </button>
         </form>
     </div>
 </nav>
-{{if .Title}}<h1 class="page-title">{{.Title}}</h1>{{end}}
+{{if .Title}}<h1 class="mb-6 text-2xl font-semibold">{{.Title}}</h1>{{end}}
 {{end}}
 
-{{define "navbar-styles"}}
-.navbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; padding-bottom: 1rem; border-bottom: 1px solid #334155; }
-.navbar-left, .navbar-right { display: flex; gap: 1rem; align-items: center; }
-.navbar a { color: #94a3b8; text-decoration: none; padding: 0.5rem 1rem; border-radius: 0.375rem; }
-.navbar a:hover { background: #334155; color: #e2e8f0; }
-.navbar a.active { background: #3b82f6; color: white; }
-.navbar-user { color: #94a3b8; font-size: 0.875rem; }
-.navbar-logout { display: inline; }
-.navbar-logout-btn { background: transparent; border: none; cursor: pointer; padding: 0.5rem; border-radius: 0.375rem; display: flex; align-items: center; justify-content: center; }
-.navbar-logout-btn:hover { background: #334155; }
-.navbar-logout-btn svg { width: 1.25rem; height: 1.25rem; color: #94a3b8; }
-.navbar-logout-btn:hover svg { color: #e2e8f0; }
-.page-title { margin-bottom: 2rem; font-size: 2rem; }
-{{end}}
+{{define "navbar-styles"}}{{end}}

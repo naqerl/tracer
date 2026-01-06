@@ -2,34 +2,11 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    {{template "head"}}
     <title>{{.Title}}</title>
-    <script src="https://unpkg.com/htmx.org@2.0.0"></script>
-    <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #e2e8f0; line-height: 1.6; }
-        .container { max-width: 800px; margin: 0 auto; padding: 2rem; }
-        {{template "navbar-styles"}}
-        .back-link { color: #60a5fa; text-decoration: none; display: inline-block; margin-bottom: 1.5rem; }
-        .back-link:hover { text-decoration: underline; }
-        .subtitle { color: #94a3b8; margin-bottom: 2rem; }
-        .section { background: #1e293b; border-radius: 0.5rem; padding: 1.5rem; }
-        .apps-list { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 1.5rem; }
-        .app-item { display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem; background: #0f172a; border-radius: 0.375rem; }
-        .app-item label { cursor: pointer; flex: 1; }
-        .app-item input[type="checkbox"] { width: 1.25rem; height: 1.25rem; }
-        .btn { padding: 0.75rem 1.5rem; border: none; border-radius: 0.375rem; cursor: pointer; font-size: 1rem; text-decoration: none; display: inline-block; }
-        .btn-primary { background: #3b82f6; color: white; }
-        .btn-primary:hover { background: #2563eb; }
-        .btn-secondary { background: #334155; color: #e2e8f0; }
-        .btn-secondary:hover { background: #475569; }
-        .actions { display: flex; gap: 1rem; margin-top: 1rem; }
-        .empty-state { text-align: center; padding: 2rem; color: #94a3b8; }
-    </style>
 </head>
 <body>
-    <div class="container">
+    <div class="max-w-2xl mx-auto p-6">
         {{template "navbar" .Nav}}
         {{template "user-apps-content" .}}
     </div>
@@ -38,29 +15,29 @@
 {{end}}
 
 {{define "user-apps-content"}}
-<a href="/settings/" class="back-link">&larr; Back to Settings</a>
-<p class="subtitle">User: <strong>{{.User.Username}}</strong></p>
+<a href="/settings/" class="text-accent hover:underline text-sm mb-4 inline-block">&larr; Back to Settings</a>
+<p class="text-fg-secondary mb-6">User: <strong class="text-fg">{{.User.Username}}</strong></p>
 
-<div class="section">
+<div class="bg-bg-secondary p-5">
     {{if .HasNoApps}}
-    <div class="empty-state">
+    <div class="text-center text-fg-secondary py-8">
         <p>No applications available yet.</p>
-        <p style="font-size: 0.875rem; margin-top: 0.5rem;">Start a collector to begin receiving logs and create applications.</p>
+        <p class="text-sm mt-2">Start a collector to begin receiving logs and create applications.</p>
     </div>
     {{else}}
     <form action="/settings/users/{{.User.ID}}/apps" method="POST">
-        <p style="color: #94a3b8; margin-bottom: 1rem; font-size: 0.875rem;">Select the applications this user can access:</p>
-        <div class="apps-list">
+        <p class="text-fg-secondary text-sm mb-4">Select the applications this user can access:</p>
+        <div class="space-y-2 mb-6">
             {{range .AllApps}}
-            <div class="app-item">
-                <input type="checkbox" id="app-{{.}}" name="apps" value="{{.}}" {{if index $.UserApps .}}checked{{end}}>
-                <label for="app-{{.}}">{{.}}</label>
-            </div>
+            <label class="flex items-center gap-3 p-3 bg-bg cursor-pointer hover:bg-bg/80 transition-colors">
+                <input type="checkbox" name="apps" value="{{.}}" {{if index $.UserApps .}}checked{{end}} class="w-5 h-5">
+                <span>{{.}}</span>
+            </label>
             {{end}}
         </div>
-        <div class="actions">
-            <button type="submit" class="btn btn-primary">Save Changes</button>
-            <a href="/settings/" class="btn btn-secondary">Cancel</a>
+        <div class="flex gap-3">
+            <button type="submit" class="px-5 py-2.5 bg-accent hover:bg-accent/80 text-fg transition-colors">Save Changes</button>
+            <a href="/settings/" class="px-5 py-2.5 bg-bg hover:bg-bg/80 text-fg-secondary hover:text-fg transition-colors">Cancel</a>
         </div>
     </form>
     {{end}}
