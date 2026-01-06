@@ -151,7 +151,7 @@ create_configs() {
 # Documentation: https://github.com/ai-shift/tracer
 
 app_name = "my-app"
-panel_endpoint = "ws://localhost:8080/ws/ingest"
+panel_endpoint = "ws://localhost:8080/api/ws/ingest"
 
 # Example: JSON application logs
 # [[log_files]]
