@@ -9,6 +9,7 @@ import (
 
 	"github.com/gorilla/websocket"
 
+	"github.com/ai-shift/tracer/core/services/filewatcher"
 	"github.com/ai-shift/tracer/core/services/logparser"
 )
 
@@ -20,23 +21,25 @@ const (
 )
 
 type Message struct {
+	Type    string             `json:"type"` // "register" or "log"
 	AppName string             `json:"app_name"`
-	Entry   logparser.LogEntry `json:"entry"`
+	Apps    []string           `json:"apps,omitempty"` // for registration
+	Entry   logparser.LogEntry `json:"entry,omitempty"`
 }
 
 type Service struct {
 	endpoint string
-	appName  string
-	logChan  <-chan logparser.LogEntry
+	appNames []string
+	logChan  <-chan filewatcher.AppLogEntry
 
 	conn   *websocket.Conn
 	connMu sync.Mutex
 }
 
-func New(endpoint, appName string, logChan <-chan logparser.LogEntry) *Service {
+func New(endpoint string, appNames []string, logChan <-chan filewatcher.AppLogEntry) *Service {
 	return &Service{
 		endpoint: endpoint,
-		appName:  appName,
+		appNames: appNames,
 		logChan:  logChan,
 	}
 }
@@ -67,6 +70,9 @@ func (s *Service) maintainConnection(ctx context.Context) {
 		// Reset backoff on successful connection
 		reconnectWait = reconnectDelay
 		slog.Info("Connected to panel", "endpoint", s.endpoint)
+
+		// Send registration message
+		s.sendRegistration()
 
 		// Keep connection alive with pings
 		s.pingLoop(ctx)
@@ -131,10 +137,36 @@ func (s *Service) processLogs(ctx context.Context) {
 	}
 }
 
-func (s *Service) sendLog(entry logparser.LogEntry) {
+func (s *Service) sendRegistration() {
 	msg := Message{
-		AppName: s.appName,
-		Entry:   entry,
+		Type: "register",
+		Apps: s.appNames,
+	}
+
+	data, err := json.Marshal(msg)
+	if err != nil {
+		slog.Error("Failed to marshal registration", "error", err)
+		return
+	}
+
+	s.connMu.Lock()
+	defer s.connMu.Unlock()
+
+	if s.conn == nil {
+		return
+	}
+
+	s.conn.SetWriteDeadline(time.Now().Add(writeTimeout))
+	if err := s.conn.WriteMessage(websocket.TextMessage, data); err != nil {
+		slog.Warn("Failed to send registration", "error", err)
+	}
+}
+
+func (s *Service) sendLog(appLog filewatcher.AppLogEntry) {
+	msg := Message{
+		Type:    "log",
+		AppName: appLog.AppName,
+		Entry:   appLog.Entry,
 	}
 
 	data, err := json.Marshal(msg)

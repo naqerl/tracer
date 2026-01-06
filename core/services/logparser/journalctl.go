@@ -32,7 +32,7 @@ var journalctlPriorityToLevel = map[string]string{
 	"7": "DEBUG",
 }
 
-func newJournalctlParser(cfg config.LogFile) (*journalctlParser, error) {
+func newJournalctlParser(cfg config.App) (*journalctlParser, error) {
 	return &journalctlParser{
 		source:       cfg.Path,
 		unit:         cfg.Unit,

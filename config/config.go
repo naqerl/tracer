@@ -13,12 +13,12 @@ const (
 )
 
 type Collector struct {
-	AppName       string    `toml:"app_name"`
-	PanelEndpoint string    `toml:"panel_endpoint"`
-	LogFiles      []LogFile `toml:"log_files"`
+	PanelEndpoint string `toml:"panel_endpoint"`
+	Apps          []App  `toml:"apps"`
 }
 
-type LogFile struct {
+type App struct {
+	Name    string `toml:"name"`
 	Path    string `toml:"path"`
 	Format  string `toml:"format"` // "json", "regex", or "journalctl"
 	Pattern string `toml:"pattern,omitempty"`
@@ -54,28 +54,28 @@ func LoadCollector(path string) (*Collector, error) {
 }
 
 func (c *Collector) validate() error {
-	if c.AppName == "" {
-		return fmt.Errorf("app_name is required")
-	}
 	if c.PanelEndpoint == "" {
 		return fmt.Errorf("panel_endpoint is required")
 	}
-	if len(c.LogFiles) == 0 {
-		return fmt.Errorf("at least one log_files entry is required")
+	if len(c.Apps) == 0 {
+		return fmt.Errorf("at least one apps entry is required")
 	}
 
-	for i, lf := range c.LogFiles {
-		if lf.Format != "journalctl" && lf.Path == "" {
-			return fmt.Errorf("log_files[%d].path is required", i)
+	for i, app := range c.Apps {
+		if app.Name == "" {
+			return fmt.Errorf("apps[%d].name is required", i)
 		}
-		if lf.Format != "json" && lf.Format != "regex" && lf.Format != "journalctl" {
-			return fmt.Errorf("log_files[%d].format must be 'json', 'regex', or 'journalctl'", i)
+		if app.Format != "journalctl" && app.Path == "" {
+			return fmt.Errorf("apps[%d].path is required", i)
 		}
-		if lf.Format == "regex" && lf.Pattern == "" {
-			return fmt.Errorf("log_files[%d].pattern is required for regex format", i)
+		if app.Format != "json" && app.Format != "regex" && app.Format != "journalctl" {
+			return fmt.Errorf("apps[%d].format must be 'json', 'regex', or 'journalctl'", i)
 		}
-		if lf.Format == "journalctl" && lf.Unit == "" {
-			return fmt.Errorf("log_files[%d].unit is required for journalctl format", i)
+		if app.Format == "regex" && app.Pattern == "" {
+			return fmt.Errorf("apps[%d].pattern is required for regex format", i)
+		}
+		if app.Format == "journalctl" && app.Unit == "" {
+			return fmt.Errorf("apps[%d].unit is required for journalctl format", i)
 		}
 	}
 

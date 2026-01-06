@@ -19,7 +19,7 @@ type regexParser struct {
 
 var _ Parser = (*regexParser)(nil)
 
-func newRegexParser(cfg config.LogFile) (*regexParser, error) {
+func newRegexParser(cfg config.App) (*regexParser, error) {
 	pattern, err := regexp.Compile(cfg.Pattern)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrInvalidPattern, err)

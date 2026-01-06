@@ -30,9 +30,8 @@ func main() {
 	}
 
 	slog.Info("Starting collector",
-		"app_name", cfg.AppName,
 		"panel_endpoint", cfg.PanelEndpoint,
-		"log_files", len(cfg.LogFiles),
+		"apps", len(cfg.Apps),
 	)
 
 	// Setup context with cancellation
@@ -49,14 +48,14 @@ func main() {
 	}()
 
 	// Initialize file watcher
-	watcher, err := filewatcher.New(cfg.LogFiles)
+	watcher, err := filewatcher.New(cfg.Apps)
 	if err != nil {
 		slog.Error("Failed to create file watcher", "error", err)
 		os.Exit(1)
 	}
 
 	// Initialize WebSocket client
-	wsClient := wsclient.New(cfg.PanelEndpoint, cfg.AppName, watcher.LogChan)
+	wsClient := wsclient.New(cfg.PanelEndpoint, watcher.GetAppNames(), watcher.LogChan)
 
 	// Start services
 	go watcher.Start(ctx)

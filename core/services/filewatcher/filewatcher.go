@@ -26,8 +26,14 @@ const (
 	sourceTypeJournalctl
 )
 
+type AppLogEntry struct {
+	AppName string
+	Entry   logparser.LogEntry
+}
+
 type watchedSource struct {
 	sourceType sourceType
+	appName    string
 	path       string
 	unit       string // for journalctl
 	file       *os.File
@@ -40,40 +46,49 @@ type watchedSource struct {
 }
 
 type Service struct {
-	LogChan chan logparser.LogEntry
+	LogChan chan AppLogEntry
 	sources []*watchedSource
 	mu      sync.Mutex
 }
 
-func New(cfgFiles []config.LogFile) (*Service, error) {
+func New(apps []config.App) (*Service, error) {
 	s := &Service{
-		LogChan: make(chan logparser.LogEntry, 1000),
-		sources: make([]*watchedSource, 0, len(cfgFiles)),
+		LogChan: make(chan AppLogEntry, 1000),
+		sources: make([]*watchedSource, 0, len(apps)),
 	}
 
-	for _, cfg := range cfgFiles {
-		parser, err := logparser.New(cfg)
+	for _, app := range apps {
+		parser, err := logparser.New(app)
 		if err != nil {
 			return nil, err
 		}
 
 		ws := &watchedSource{
-			parser: parser,
+			appName: app.Name,
+			parser:  parser,
 		}
 
-		if cfg.Format == "journalctl" {
+		if app.Format == "journalctl" {
 			ws.sourceType = sourceTypeJournalctl
-			ws.unit = cfg.Unit
-			ws.path = "journalctl:" + cfg.Unit
+			ws.unit = app.Unit
+			ws.path = "journalctl:" + app.Unit
 		} else {
 			ws.sourceType = sourceTypeFile
-			ws.path = cfg.Path
+			ws.path = app.Path
 		}
 
 		s.sources = append(s.sources, ws)
 	}
 
 	return s, nil
+}
+
+func (s *Service) GetAppNames() []string {
+	names := make([]string, 0, len(s.sources))
+	for _, ws := range s.sources {
+		names = append(names, ws.appName)
+	}
+	return names
 }
 
 func (s *Service) Start(ctx context.Context) {
@@ -177,7 +192,7 @@ func (s *Service) readJournalctl(ctx context.Context, ws *watchedSource) {
 		}
 
 		select {
-		case s.LogChan <- *entry:
+		case s.LogChan <- AppLogEntry{AppName: ws.appName, Entry: *entry}:
 		case <-ctx.Done():
 			return
 		default:
@@ -244,7 +259,7 @@ func (s *Service) readNewLines(ctx context.Context, ws *watchedSource) {
 		}
 
 		select {
-		case s.LogChan <- *entry:
+		case s.LogChan <- AppLogEntry{AppName: ws.appName, Entry: *entry}:
 		default:
 			slog.Warn("Log channel full, dropping entry")
 		}

@@ -18,7 +18,7 @@ type jsonParser struct {
 
 var _ Parser = (*jsonParser)(nil)
 
-func newJSONParser(cfg config.LogFile) (*jsonParser, error) {
+func newJSONParser(cfg config.App) (*jsonParser, error) {
 	return &jsonParser{
 		source:         cfg.Path,
 		timestampField: withDefault(cfg.TimestampField, "timestamp"),

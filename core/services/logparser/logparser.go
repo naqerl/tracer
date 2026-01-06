@@ -22,8 +22,8 @@ type Parser interface {
 	Parse(line string) (*LogEntry, error)
 }
 
-// New creates a parser based on the log file configuration
-func New(cfg config.LogFile) (Parser, error) {
+// New creates a parser based on the app configuration
+func New(cfg config.App) (Parser, error) {
 	switch cfg.Format {
 	case "json":
 		return newJSONParser(cfg)
