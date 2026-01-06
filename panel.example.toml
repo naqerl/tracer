@@ -10,12 +10,10 @@ sample_rate = 0.1
 # Days to keep logs before automatic cleanup
 retention_days = 90
 
-# Telegram alerts (optional)
-[telegram]
-token = ""
-chat_id = 0
-
 # Authentication settings
 [auth]
 # Session duration (default: 24h)
 session_duration = "24h"
+
+# Note: Telegram and other notification channels are now configured
+# via the web UI at /settings/ instead of this config file.

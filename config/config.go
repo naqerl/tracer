@@ -85,23 +85,15 @@ func (c *Collector) validate() error {
 
 // Panel configuration
 type Panel struct {
-	Port           string   `toml:"port"`
-	DataDir        string   `toml:"data_dir"`
-	SampleRate     float64  `toml:"sample_rate"`
-	RetentionDays  int      `toml:"retention_days"`
-	TelegramToken  string   `toml:"telegram_token"`
-	TelegramChatID int64    `toml:"telegram_chat_id"`
-	Telegram       Telegram `toml:"telegram"`
-	Auth           Auth     `toml:"auth"`
+	Port          string  `toml:"port"`
+	DataDir       string  `toml:"data_dir"`
+	SampleRate    float64 `toml:"sample_rate"`
+	RetentionDays int     `toml:"retention_days"`
+	Auth          Auth    `toml:"auth"`
 }
 
 type Auth struct {
 	SessionDuration string `toml:"session_duration"`
-}
-
-type Telegram struct {
-	Token  string `toml:"token"`
-	ChatID int64  `toml:"chat_id"`
 }
 
 const (
@@ -134,12 +126,6 @@ func LoadPanel(path string) (*Panel, error) {
 	}
 	if cfg.RetentionDays == 0 {
 		cfg.RetentionDays = 90 // 3 months default
-	}
-
-	// Support both nested and flat telegram config
-	if cfg.Telegram.Token != "" {
-		cfg.TelegramToken = cfg.Telegram.Token
-		cfg.TelegramChatID = cfg.Telegram.ChatID
 	}
 
 	// Default session duration
