@@ -1,4 +1,4 @@
-.PHONY: build build-collector build-panel clean test lint generate
+.PHONY: build build-collector build-panel build-release clean test lint generate
 
 # Build all binaries
 build: build-collector build-panel
@@ -10,6 +10,15 @@ build-collector:
 # Build panel
 build-panel:
 	go build -o bin/tracer-panel ./cmd/panel
+
+# Build release binaries (static, stripped)
+build-release: build-release-collector build-release-panel
+
+build-release-collector:
+	CGO_ENABLED=0 go build -ldflags="-s -w" -o bin/tracer-collector ./cmd/collector
+
+build-release-panel:
+	CGO_ENABLED=0 go build -ldflags="-s -w" -o bin/tracer-panel ./cmd/panel
 
 # Clean build artifacts
 clean:
