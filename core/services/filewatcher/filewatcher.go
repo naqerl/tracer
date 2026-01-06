@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"os/exec"
 	"sync"
 	"time"
 
@@ -18,23 +19,36 @@ const (
 	maxBatchSize = 100
 )
 
-type watchedFile struct {
-	path   string
-	file   *os.File
-	parser logparser.Parser
-	offset int64
+type sourceType int
+
+const (
+	sourceTypeFile sourceType = iota
+	sourceTypeJournalctl
+)
+
+type watchedSource struct {
+	sourceType sourceType
+	path       string
+	unit       string // for journalctl
+	file       *os.File
+	parser     logparser.Parser
+	offset     int64
+
+	// journalctl specific
+	cmd    *exec.Cmd
+	stdout io.ReadCloser
 }
 
 type Service struct {
 	LogChan chan logparser.LogEntry
-	files   []*watchedFile
+	sources []*watchedSource
 	mu      sync.Mutex
 }
 
 func New(cfgFiles []config.LogFile) (*Service, error) {
 	s := &Service{
 		LogChan: make(chan logparser.LogEntry, 1000),
-		files:   make([]*watchedFile, 0, len(cfgFiles)),
+		sources: make([]*watchedSource, 0, len(cfgFiles)),
 	}
 
 	for _, cfg := range cfgFiles {
@@ -43,21 +57,37 @@ func New(cfgFiles []config.LogFile) (*Service, error) {
 			return nil, err
 		}
 
-		wf := &watchedFile{
-			path:   cfg.Path,
+		ws := &watchedSource{
 			parser: parser,
 		}
-		s.files = append(s.files, wf)
+
+		if cfg.Format == "journalctl" {
+			ws.sourceType = sourceTypeJournalctl
+			ws.unit = cfg.Unit
+			ws.path = "journalctl:" + cfg.Unit
+		} else {
+			ws.sourceType = sourceTypeFile
+			ws.path = cfg.Path
+		}
+
+		s.sources = append(s.sources, ws)
 	}
 
 	return s, nil
 }
 
 func (s *Service) Start(ctx context.Context) {
-	// Open all files
-	for _, wf := range s.files {
-		if err := s.openFile(wf); err != nil {
-			slog.Error("Failed to open file", "path", wf.path, "error", err)
+	// Start all sources
+	for _, ws := range s.sources {
+		switch ws.sourceType {
+		case sourceTypeFile:
+			if err := s.openFile(ws); err != nil {
+				slog.Error("Failed to open file", "path", ws.path, "error", err)
+			}
+		case sourceTypeJournalctl:
+			if err := s.startJournalctl(ctx, ws); err != nil {
+				slog.Error("Failed to start journalctl", "unit", ws.unit, "error", err)
+			}
 		}
 	}
 
@@ -75,8 +105,8 @@ func (s *Service) Start(ctx context.Context) {
 	}
 }
 
-func (s *Service) openFile(wf *watchedFile) error {
-	file, err := os.Open(wf.path)
+func (s *Service) openFile(ws *watchedSource) error {
+	file, err := os.Open(ws.path)
 	if err != nil {
 		return err
 	}
@@ -88,42 +118,113 @@ func (s *Service) openFile(wf *watchedFile) error {
 		return err
 	}
 
-	wf.file = file
-	wf.offset = offset
-	slog.Info("Watching file", "path", wf.path, "offset", offset)
+	ws.file = file
+	ws.offset = offset
+	slog.Info("Watching file", "path", ws.path, "offset", offset)
 	return nil
 }
 
-func (s *Service) pollAll(ctx context.Context) {
-	for _, wf := range s.files {
-		if wf.file == nil {
-			// Try to reopen
-			if err := s.openFile(wf); err != nil {
-				continue
-			}
+func (s *Service) startJournalctl(ctx context.Context, ws *watchedSource) error {
+	// Start journalctl in follow mode with JSON output
+	// --since "now" ensures we only get new entries
+	cmd := exec.CommandContext(ctx, "journalctl",
+		"-u", ws.unit,
+		"-f",         // follow mode
+		"-o", "json", // JSON output
+		"--since", "now",
+	)
+
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return err
+	}
+
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+
+	ws.cmd = cmd
+	ws.stdout = stdout
+
+	slog.Info("Watching journalctl", "unit", ws.unit)
+
+	// Start a goroutine to read from journalctl
+	go s.readJournalctl(ctx, ws)
+
+	return nil
+}
+
+func (s *Service) readJournalctl(ctx context.Context, ws *watchedSource) {
+	scanner := bufio.NewScanner(ws.stdout)
+	// Increase buffer size for potentially large log lines
+	buf := make([]byte, 0, 64*1024)
+	scanner.Buffer(buf, 1024*1024)
+
+	for scanner.Scan() {
+		if ctx.Err() != nil {
+			return
 		}
-		s.readNewLines(ctx, wf)
+
+		line := scanner.Text()
+		if line == "" {
+			continue
+		}
+
+		entry, err := ws.parser.Parse(line)
+		if err != nil {
+			slog.Debug("Failed to parse journalctl line", "error", err, "unit", ws.unit)
+			continue
+		}
+
+		select {
+		case s.LogChan <- *entry:
+		case <-ctx.Done():
+			return
+		default:
+			slog.Warn("Log channel full, dropping entry")
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		slog.Warn("Journalctl scanner error", "unit", ws.unit, "error", err)
 	}
 }
 
-func (s *Service) readNewLines(ctx context.Context, wf *watchedFile) {
+func (s *Service) pollAll(ctx context.Context) {
+	for _, ws := range s.sources {
+		// Only poll file sources; journalctl is handled by goroutine
+		if ws.sourceType != sourceTypeFile {
+			continue
+		}
+
+		if ws.file == nil {
+			// Try to reopen
+			if err := s.openFile(ws); err != nil {
+				continue
+			}
+		}
+		s.readNewLines(ctx, ws)
+	}
+}
+
+func (s *Service) readNewLines(ctx context.Context, ws *watchedSource) {
 	// Check if file was truncated or rotated
-	info, err := wf.file.Stat()
+	info, err := ws.file.Stat()
 	if err != nil {
-		slog.Warn("Failed to stat file", "path", wf.path, "error", err)
-		s.reopenFile(wf)
+		slog.Warn("Failed to stat file", "path", ws.path, "error", err)
+		s.reopenFile(ws)
 		return
 	}
 
-	if info.Size() < wf.offset {
+	if info.Size() < ws.offset {
 		// File was truncated, reopen
-		slog.Info("File truncated, reopening", "path", wf.path)
-		s.reopenFile(wf)
+		slog.Info("File truncated, reopening", "path", ws.path)
+		s.reopenFile(ws)
 		return
 	}
 
 	// Read new lines
-	scanner := bufio.NewScanner(wf.file)
+	scanner := bufio.NewScanner(ws.file)
 	count := 0
 
 	for scanner.Scan() {
@@ -136,7 +237,7 @@ func (s *Service) readNewLines(ctx context.Context, wf *watchedFile) {
 			continue
 		}
 
-		entry, err := wf.parser.Parse(line)
+		entry, err := ws.parser.Parse(line)
 		if err != nil {
 			slog.Debug("Failed to parse line", "error", err, "line", line)
 			continue
@@ -155,35 +256,45 @@ func (s *Service) readNewLines(ctx context.Context, wf *watchedFile) {
 	}
 
 	if err := scanner.Err(); err != nil {
-		slog.Warn("Scanner error", "path", wf.path, "error", err)
+		slog.Warn("Scanner error", "path", ws.path, "error", err)
 	}
 
 	// Update offset
-	newOffset, _ := wf.file.Seek(0, io.SeekCurrent)
-	wf.offset = newOffset
+	newOffset, _ := ws.file.Seek(0, io.SeekCurrent)
+	ws.offset = newOffset
 }
 
-func (s *Service) reopenFile(wf *watchedFile) {
-	if wf.file != nil {
-		wf.file.Close()
-		wf.file = nil
+func (s *Service) reopenFile(ws *watchedSource) {
+	if ws.file != nil {
+		ws.file.Close()
+		ws.file = nil
 	}
 
-	file, err := os.Open(wf.path)
+	file, err := os.Open(ws.path)
 	if err != nil {
-		slog.Warn("Failed to reopen file", "path", wf.path, "error", err)
+		slog.Warn("Failed to reopen file", "path", ws.path, "error", err)
 		return
 	}
 
-	wf.file = file
-	wf.offset = 0
+	ws.file = file
+	ws.offset = 0
 }
 
 func (s *Service) closeAll() {
-	for _, wf := range s.files {
-		if wf.file != nil {
-			wf.file.Close()
-			wf.file = nil
+	for _, ws := range s.sources {
+		switch ws.sourceType {
+		case sourceTypeFile:
+			if ws.file != nil {
+				ws.file.Close()
+				ws.file = nil
+			}
+		case sourceTypeJournalctl:
+			if ws.cmd != nil && ws.cmd.Process != nil {
+				ws.cmd.Process.Kill()
+			}
+			if ws.stdout != nil {
+				ws.stdout.Close()
+			}
 		}
 	}
 	close(s.LogChan)
