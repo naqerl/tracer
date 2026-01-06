@@ -20,7 +20,7 @@ type Collector struct {
 
 type LogFile struct {
 	Path    string `toml:"path"`
-	Format  string `toml:"format"` // "json" or "regex"
+	Format  string `toml:"format"` // "json", "regex", or "journalctl"
 	Pattern string `toml:"pattern,omitempty"`
 
 	// Field mappings for regex named groups or JSON fields
@@ -28,6 +28,9 @@ type LogFile struct {
 	LevelField     string `toml:"level_field"`
 	TraceIDField   string `toml:"trace_id_field"`
 	MessageField   string `toml:"message_field"`
+
+	// Journalctl-specific settings
+	Unit string `toml:"unit,omitempty"` // systemd unit name for journalctl format
 }
 
 func LoadCollector(path string) (*Collector, error) {
@@ -62,14 +65,17 @@ func (c *Collector) validate() error {
 	}
 
 	for i, lf := range c.LogFiles {
-		if lf.Path == "" {
+		if lf.Format != "journalctl" && lf.Path == "" {
 			return fmt.Errorf("log_files[%d].path is required", i)
 		}
-		if lf.Format != "json" && lf.Format != "regex" {
-			return fmt.Errorf("log_files[%d].format must be 'json' or 'regex'", i)
+		if lf.Format != "json" && lf.Format != "regex" && lf.Format != "journalctl" {
+			return fmt.Errorf("log_files[%d].format must be 'json', 'regex', or 'journalctl'", i)
 		}
 		if lf.Format == "regex" && lf.Pattern == "" {
 			return fmt.Errorf("log_files[%d].pattern is required for regex format", i)
+		}
+		if lf.Format == "journalctl" && lf.Unit == "" {
+			return fmt.Errorf("log_files[%d].unit is required for journalctl format", i)
 		}
 	}
 
