@@ -11,23 +11,35 @@ import (
 )
 
 type Querier interface {
+	AddNotifierApp(ctx context.Context, arg AddNotifierAppParams) error
 	AddUserApp(ctx context.Context, arg AddUserAppParams) error
 	CountByLevel(ctx context.Context, createdAt sql.NullTime) ([]CountByLevelRow, error)
 	CountByLevelAndHour(ctx context.Context, createdAt sql.NullTime) ([]CountByLevelAndHourRow, error)
 	CountUsers(ctx context.Context) (int64, error)
+	// Notifier queries
+	CreateNotifier(ctx context.Context, arg CreateNotifierParams) (Notifier, error)
 	// Session queries
 	CreateSession(ctx context.Context, arg CreateSessionParams) error
 	// User queries
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
 	DeleteExpiredSessions(ctx context.Context, expiresAt time.Time) error
+	DeleteNotifier(ctx context.Context, id int64) error
 	DeleteOldLogs(ctx context.Context, createdAt sql.NullTime) error
 	DeleteSession(ctx context.Context, id string) error
 	DeleteUser(ctx context.Context, id int64) error
 	DeleteUserSessions(ctx context.Context, userID int64) error
+	DisableNotifier(ctx context.Context, id int64) error
+	EnableNotifier(ctx context.Context, id int64) error
 	FindLogsByTraceID(ctx context.Context, traceID string) ([]Log, error)
 	// Config queries
 	GetConfig(ctx context.Context, key string) (string, error)
+	GetGlobalNotifiers(ctx context.Context) ([]Notifier, error)
 	GetLogByID(ctx context.Context, id int64) (Log, error)
+	GetNotifier(ctx context.Context, id int64) (Notifier, error)
+	// Notifier app mapping queries
+	GetNotifierApps(ctx context.Context, notifierID int64) ([]string, error)
+	GetNotifierByName(ctx context.Context, name string) (Notifier, error)
+	GetNotifiersForApp(ctx context.Context, appName string) ([]Notifier, error)
 	GetPercentiles(ctx context.Context, createdAt sql.NullTime) (GetPercentilesRow, error)
 	GetSession(ctx context.Context, id string) (Session, error)
 	// User app access queries
@@ -35,13 +47,19 @@ type Querier interface {
 	GetUserByID(ctx context.Context, id int64) (User, error)
 	GetUserByUsername(ctx context.Context, username string) (User, error)
 	InsertLog(ctx context.Context, arg InsertLogParams) (Log, error)
+	ListEnabledNotifiers(ctx context.Context) ([]Notifier, error)
 	ListLogsByLevel(ctx context.Context, arg ListLogsByLevelParams) ([]Log, error)
+	ListNotifiers(ctx context.Context) ([]Notifier, error)
+	ListNotifiersByUser(ctx context.Context, userID int64) ([]Notifier, error)
 	ListRecentLogs(ctx context.Context, limit int64) ([]Log, error)
 	ListUsers(ctx context.Context) ([]User, error)
+	RemoveAllNotifierApps(ctx context.Context, notifierID int64) error
 	RemoveAllUserApps(ctx context.Context, userID int64) error
+	RemoveNotifierApp(ctx context.Context, arg RemoveNotifierAppParams) error
 	RemoveUserApp(ctx context.Context, arg RemoveUserAppParams) error
 	SearchLogs(ctx context.Context, arg SearchLogsParams) ([]Log, error)
 	SetConfig(ctx context.Context, arg SetConfigParams) error
+	UpdateNotifier(ctx context.Context, arg UpdateNotifierParams) error
 }
 
 var _ Querier = (*Queries)(nil)

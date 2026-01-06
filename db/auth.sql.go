@@ -10,6 +10,21 @@ import (
 	"time"
 )
 
+const addNotifierApp = `-- name: AddNotifierApp :exec
+INSERT OR IGNORE INTO notifier_app (notifier_id, app_name)
+VALUES (?, ?)
+`
+
+type AddNotifierAppParams struct {
+	NotifierID int64
+	AppName    string
+}
+
+func (q *Queries) AddNotifierApp(ctx context.Context, arg AddNotifierAppParams) error {
+	_, err := q.db.ExecContext(ctx, addNotifierApp, arg.NotifierID, arg.AppName)
+	return err
+}
+
 const addUserApp = `-- name: AddUserApp :exec
 INSERT OR IGNORE INTO user_app (user_id, app_name)
 VALUES (?, ?)
@@ -34,6 +49,43 @@ func (q *Queries) CountUsers(ctx context.Context) (int64, error) {
 	var count int64
 	err := row.Scan(&count)
 	return count, err
+}
+
+const createNotifier = `-- name: CreateNotifier :one
+
+INSERT INTO notifier (user_id, name, type, config, enabled)
+VALUES (?, ?, ?, ?, ?)
+RETURNING id, user_id, name, type, config, enabled, created_at
+`
+
+type CreateNotifierParams struct {
+	UserID  int64
+	Name    string
+	Type    string
+	Config  string
+	Enabled int64
+}
+
+// Notifier queries
+func (q *Queries) CreateNotifier(ctx context.Context, arg CreateNotifierParams) (Notifier, error) {
+	row := q.db.QueryRowContext(ctx, createNotifier,
+		arg.UserID,
+		arg.Name,
+		arg.Type,
+		arg.Config,
+		arg.Enabled,
+	)
+	var i Notifier
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Name,
+		&i.Type,
+		&i.Config,
+		&i.Enabled,
+		&i.CreatedAt,
+	)
+	return i, err
 }
 
 const createSession = `-- name: CreateSession :exec
@@ -91,6 +143,16 @@ func (q *Queries) DeleteExpiredSessions(ctx context.Context, expiresAt time.Time
 	return err
 }
 
+const deleteNotifier = `-- name: DeleteNotifier :exec
+DELETE FROM notifier
+WHERE id = ?
+`
+
+func (q *Queries) DeleteNotifier(ctx context.Context, id int64) error {
+	_, err := q.db.ExecContext(ctx, deleteNotifier, id)
+	return err
+}
+
 const deleteSession = `-- name: DeleteSession :exec
 DELETE FROM session
 WHERE id = ?
@@ -121,6 +183,24 @@ func (q *Queries) DeleteUserSessions(ctx context.Context, userID int64) error {
 	return err
 }
 
+const disableNotifier = `-- name: DisableNotifier :exec
+UPDATE notifier SET enabled = 0 WHERE id = ?
+`
+
+func (q *Queries) DisableNotifier(ctx context.Context, id int64) error {
+	_, err := q.db.ExecContext(ctx, disableNotifier, id)
+	return err
+}
+
+const enableNotifier = `-- name: EnableNotifier :exec
+UPDATE notifier SET enabled = 1 WHERE id = ?
+`
+
+func (q *Queries) EnableNotifier(ctx context.Context, id int64) error {
+	_, err := q.db.ExecContext(ctx, enableNotifier, id)
+	return err
+}
+
 const getConfig = `-- name: GetConfig :one
 
 SELECT value FROM config
@@ -133,6 +213,151 @@ func (q *Queries) GetConfig(ctx context.Context, key string) (string, error) {
 	var value string
 	err := row.Scan(&value)
 	return value, err
+}
+
+const getGlobalNotifiers = `-- name: GetGlobalNotifiers :many
+SELECT n.id, n.user_id, n.name, n.type, n.config, n.enabled, n.created_at FROM notifier n
+JOIN notifier_app na ON n.id = na.notifier_id
+WHERE na.app_name = '*' AND n.enabled = 1
+`
+
+func (q *Queries) GetGlobalNotifiers(ctx context.Context) ([]Notifier, error) {
+	rows, err := q.db.QueryContext(ctx, getGlobalNotifiers)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Notifier
+	for rows.Next() {
+		var i Notifier
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.Name,
+			&i.Type,
+			&i.Config,
+			&i.Enabled,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getNotifier = `-- name: GetNotifier :one
+SELECT id, user_id, name, type, config, enabled, created_at FROM notifier
+WHERE id = ?
+`
+
+func (q *Queries) GetNotifier(ctx context.Context, id int64) (Notifier, error) {
+	row := q.db.QueryRowContext(ctx, getNotifier, id)
+	var i Notifier
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Name,
+		&i.Type,
+		&i.Config,
+		&i.Enabled,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const getNotifierApps = `-- name: GetNotifierApps :many
+
+SELECT app_name FROM notifier_app
+WHERE notifier_id = ?
+ORDER BY app_name
+`
+
+// Notifier app mapping queries
+func (q *Queries) GetNotifierApps(ctx context.Context, notifierID int64) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, getNotifierApps, notifierID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var app_name string
+		if err := rows.Scan(&app_name); err != nil {
+			return nil, err
+		}
+		items = append(items, app_name)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getNotifierByName = `-- name: GetNotifierByName :one
+SELECT id, user_id, name, type, config, enabled, created_at FROM notifier
+WHERE name = ?
+`
+
+func (q *Queries) GetNotifierByName(ctx context.Context, name string) (Notifier, error) {
+	row := q.db.QueryRowContext(ctx, getNotifierByName, name)
+	var i Notifier
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Name,
+		&i.Type,
+		&i.Config,
+		&i.Enabled,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const getNotifiersForApp = `-- name: GetNotifiersForApp :many
+SELECT n.id, n.user_id, n.name, n.type, n.config, n.enabled, n.created_at FROM notifier n
+JOIN notifier_app na ON n.id = na.notifier_id
+WHERE na.app_name = ? AND n.enabled = 1
+`
+
+func (q *Queries) GetNotifiersForApp(ctx context.Context, appName string) ([]Notifier, error) {
+	rows, err := q.db.QueryContext(ctx, getNotifiersForApp, appName)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Notifier
+	for rows.Next() {
+		var i Notifier
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.Name,
+			&i.Type,
+			&i.Config,
+			&i.Enabled,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const getSession = `-- name: GetSession :one
@@ -219,6 +444,116 @@ func (q *Queries) GetUserByUsername(ctx context.Context, username string) (User,
 	return i, err
 }
 
+const listEnabledNotifiers = `-- name: ListEnabledNotifiers :many
+SELECT id, user_id, name, type, config, enabled, created_at FROM notifier
+WHERE enabled = 1
+ORDER BY created_at
+`
+
+func (q *Queries) ListEnabledNotifiers(ctx context.Context) ([]Notifier, error) {
+	rows, err := q.db.QueryContext(ctx, listEnabledNotifiers)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Notifier
+	for rows.Next() {
+		var i Notifier
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.Name,
+			&i.Type,
+			&i.Config,
+			&i.Enabled,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listNotifiers = `-- name: ListNotifiers :many
+SELECT id, user_id, name, type, config, enabled, created_at FROM notifier
+ORDER BY created_at
+`
+
+func (q *Queries) ListNotifiers(ctx context.Context) ([]Notifier, error) {
+	rows, err := q.db.QueryContext(ctx, listNotifiers)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Notifier
+	for rows.Next() {
+		var i Notifier
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.Name,
+			&i.Type,
+			&i.Config,
+			&i.Enabled,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listNotifiersByUser = `-- name: ListNotifiersByUser :many
+SELECT id, user_id, name, type, config, enabled, created_at FROM notifier
+WHERE user_id = ?
+ORDER BY created_at
+`
+
+func (q *Queries) ListNotifiersByUser(ctx context.Context, userID int64) ([]Notifier, error) {
+	rows, err := q.db.QueryContext(ctx, listNotifiersByUser, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Notifier
+	for rows.Next() {
+		var i Notifier
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.Name,
+			&i.Type,
+			&i.Config,
+			&i.Enabled,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listUsers = `-- name: ListUsers :many
 SELECT id, username, password_hash, is_admin, created_at FROM user
 ORDER BY created_at
@@ -253,6 +588,16 @@ func (q *Queries) ListUsers(ctx context.Context) ([]User, error) {
 	return items, nil
 }
 
+const removeAllNotifierApps = `-- name: RemoveAllNotifierApps :exec
+DELETE FROM notifier_app
+WHERE notifier_id = ?
+`
+
+func (q *Queries) RemoveAllNotifierApps(ctx context.Context, notifierID int64) error {
+	_, err := q.db.ExecContext(ctx, removeAllNotifierApps, notifierID)
+	return err
+}
+
 const removeAllUserApps = `-- name: RemoveAllUserApps :exec
 DELETE FROM user_app
 WHERE user_id = ?
@@ -260,6 +605,21 @@ WHERE user_id = ?
 
 func (q *Queries) RemoveAllUserApps(ctx context.Context, userID int64) error {
 	_, err := q.db.ExecContext(ctx, removeAllUserApps, userID)
+	return err
+}
+
+const removeNotifierApp = `-- name: RemoveNotifierApp :exec
+DELETE FROM notifier_app
+WHERE notifier_id = ? AND app_name = ?
+`
+
+type RemoveNotifierAppParams struct {
+	NotifierID int64
+	AppName    string
+}
+
+func (q *Queries) RemoveNotifierApp(ctx context.Context, arg RemoveNotifierAppParams) error {
+	_, err := q.db.ExecContext(ctx, removeNotifierApp, arg.NotifierID, arg.AppName)
 	return err
 }
 
@@ -291,5 +651,30 @@ type SetConfigParams struct {
 
 func (q *Queries) SetConfig(ctx context.Context, arg SetConfigParams) error {
 	_, err := q.db.ExecContext(ctx, setConfig, arg.Key, arg.Value)
+	return err
+}
+
+const updateNotifier = `-- name: UpdateNotifier :exec
+UPDATE notifier
+SET name = ?, type = ?, config = ?, enabled = ?
+WHERE id = ?
+`
+
+type UpdateNotifierParams struct {
+	Name    string
+	Type    string
+	Config  string
+	Enabled int64
+	ID      int64
+}
+
+func (q *Queries) UpdateNotifier(ctx context.Context, arg UpdateNotifierParams) error {
+	_, err := q.db.ExecContext(ctx, updateNotifier,
+		arg.Name,
+		arg.Type,
+		arg.Config,
+		arg.Enabled,
+		arg.ID,
+	)
 	return err
 }

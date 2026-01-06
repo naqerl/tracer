@@ -28,7 +28,30 @@ CREATE TABLE IF NOT EXISTS config (
     value TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS notifier (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES user(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    type TEXT NOT NULL,
+    config TEXT NOT NULL,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(user_id, name)
+);
+
+CREATE INDEX IF NOT EXISTS idx_notifier_user ON notifier(user_id);
+
+CREATE TABLE IF NOT EXISTS notifier_app (
+    notifier_id INTEGER NOT NULL REFERENCES notifier(id) ON DELETE CASCADE,
+    app_name TEXT NOT NULL,
+    PRIMARY KEY (notifier_id, app_name)
+);
+
+CREATE INDEX IF NOT EXISTS idx_notifier_app_app ON notifier_app(app_name);
+
 -- +goose Down
+DROP TABLE IF EXISTS notifier_app;
+DROP TABLE IF EXISTS notifier;
 DROP TABLE IF EXISTS user_app;
 DROP TABLE IF EXISTS session;
 DROP TABLE IF EXISTS user;

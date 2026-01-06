@@ -25,6 +25,21 @@ type Log struct {
 	CreatedAt sql.NullTime
 }
 
+type Notifier struct {
+	ID        int64
+	UserID    int64
+	Name      string
+	Type      string
+	Config    string
+	Enabled   int64
+	CreatedAt sql.NullTime
+}
+
+type NotifierApp struct {
+	NotifierID int64
+	AppName    string
+}
+
 type Session struct {
 	ID        string
 	UserID    int64

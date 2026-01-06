@@ -12,9 +12,11 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/pressly/goose/v3"
 	"golang.org/x/crypto/bcrypt"
 	_ "modernc.org/sqlite"
 
+	"github.com/ai-shift/tracer/core/services/auth/migrations"
 	"github.com/ai-shift/tracer/db"
 )
 
@@ -65,38 +67,17 @@ func New(dataDir string, sessionDuration time.Duration) (*Service, error) {
 }
 
 func runMigrations(sqlDB *sql.DB) error {
-	schema := `
-	CREATE TABLE IF NOT EXISTS user (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		username TEXT UNIQUE NOT NULL,
-		password_hash TEXT NOT NULL,
-		is_admin INTEGER NOT NULL DEFAULT 0,
-		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-	);
+	gooseProvider, err := goose.NewProvider(goose.DialectSQLite3, sqlDB, migrations.Embed)
+	if err != nil {
+		return fmt.Errorf("create goose provider: %w", err)
+	}
 
-	CREATE TABLE IF NOT EXISTS session (
-		id TEXT PRIMARY KEY,
-		user_id INTEGER NOT NULL REFERENCES user(id) ON DELETE CASCADE,
-		expires_at DATETIME NOT NULL,
-		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-	);
+	_, err = gooseProvider.Up(context.Background())
+	if err != nil {
+		return fmt.Errorf("run migrations: %w", err)
+	}
 
-	CREATE INDEX IF NOT EXISTS idx_session_expires ON session(expires_at);
-	CREATE INDEX IF NOT EXISTS idx_session_user ON session(user_id);
-
-	CREATE TABLE IF NOT EXISTS user_app (
-		user_id INTEGER NOT NULL REFERENCES user(id) ON DELETE CASCADE,
-		app_name TEXT NOT NULL,
-		PRIMARY KEY (user_id, app_name)
-	);
-
-	CREATE TABLE IF NOT EXISTS config (
-		key TEXT PRIMARY KEY,
-		value TEXT NOT NULL
-	);
-	`
-	_, err := sqlDB.Exec(schema)
-	return err
+	return nil
 }
 
 func (s *Service) Close() error {
@@ -374,4 +355,125 @@ func (s *Service) ValidateAPIKey(ctx context.Context, key string) (bool, error) 
 		return false, err
 	}
 	return storedKey != "" && storedKey == key, nil
+}
+
+// Notifier management
+
+func (s *Service) CreateNotifier(ctx context.Context, userID int64, name, notifierType, config string, enabled bool) (*db.Notifier, error) {
+	var enabledInt int64
+	if enabled {
+		enabledInt = 1
+	}
+	notifier, err := s.queries.CreateNotifier(ctx, db.CreateNotifierParams{
+		UserID:  userID,
+		Name:    name,
+		Type:    notifierType,
+		Config:  config,
+		Enabled: enabledInt,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("create notifier: %w", err)
+	}
+	slog.Info("Notifier created", "name", name, "type", notifierType, "user_id", userID)
+	return &notifier, nil
+}
+
+func (s *Service) GetNotifier(ctx context.Context, id int64) (*db.Notifier, error) {
+	notifier, err := s.queries.GetNotifier(ctx, id)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, fmt.Errorf("notifier not found")
+		}
+		return nil, err
+	}
+	return &notifier, nil
+}
+
+func (s *Service) GetNotifierByName(ctx context.Context, name string) (*db.Notifier, error) {
+	notifier, err := s.queries.GetNotifierByName(ctx, name)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, fmt.Errorf("notifier not found")
+		}
+		return nil, err
+	}
+	return &notifier, nil
+}
+
+func (s *Service) ListNotifiers(ctx context.Context) ([]db.Notifier, error) {
+	return s.queries.ListNotifiers(ctx)
+}
+
+func (s *Service) ListNotifiersByUser(ctx context.Context, userID int64) ([]db.Notifier, error) {
+	return s.queries.ListNotifiersByUser(ctx, userID)
+}
+
+func (s *Service) ListEnabledNotifiers(ctx context.Context) ([]db.Notifier, error) {
+	return s.queries.ListEnabledNotifiers(ctx)
+}
+
+func (s *Service) UpdateNotifier(ctx context.Context, id int64, name, notifierType, config string, enabled bool) error {
+	var enabledInt int64
+	if enabled {
+		enabledInt = 1
+	}
+	return s.queries.UpdateNotifier(ctx, db.UpdateNotifierParams{
+		ID:      id,
+		Name:    name,
+		Type:    notifierType,
+		Config:  config,
+		Enabled: enabledInt,
+	})
+}
+
+func (s *Service) DeleteNotifier(ctx context.Context, id int64) error {
+	return s.queries.DeleteNotifier(ctx, id)
+}
+
+func (s *Service) EnableNotifier(ctx context.Context, id int64) error {
+	return s.queries.EnableNotifier(ctx, id)
+}
+
+func (s *Service) DisableNotifier(ctx context.Context, id int64) error {
+	return s.queries.DisableNotifier(ctx, id)
+}
+
+// Notifier app mappings
+
+func (s *Service) GetNotifierApps(ctx context.Context, notifierID int64) ([]string, error) {
+	return s.queries.GetNotifierApps(ctx, notifierID)
+}
+
+func (s *Service) AddNotifierApp(ctx context.Context, notifierID int64, appName string) error {
+	return s.queries.AddNotifierApp(ctx, db.AddNotifierAppParams{
+		NotifierID: notifierID,
+		AppName:    appName,
+	})
+}
+
+func (s *Service) RemoveNotifierApp(ctx context.Context, notifierID int64, appName string) error {
+	return s.queries.RemoveNotifierApp(ctx, db.RemoveNotifierAppParams{
+		NotifierID: notifierID,
+		AppName:    appName,
+	})
+}
+
+func (s *Service) SetNotifierApps(ctx context.Context, notifierID int64, apps []string) error {
+	if err := s.queries.RemoveAllNotifierApps(ctx, notifierID); err != nil {
+		return err
+	}
+	for _, app := range apps {
+		if err := s.AddNotifierApp(ctx, notifierID, app); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Service) GetNotifiersForApp(ctx context.Context, appName string) ([]db.Notifier, error) {
+	return s.queries.GetNotifiersForApp(ctx, appName)
+}
+
+func (s *Service) GetGlobalNotifiers(ctx context.Context) ([]db.Notifier, error) {
+	return s.queries.GetGlobalNotifiers(ctx)
 }
