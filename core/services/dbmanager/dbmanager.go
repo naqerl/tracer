@@ -8,26 +8,26 @@ import (
 	"path/filepath"
 	"sync"
 
-	_ "github.com/ncruces/go-sqlite3/driver"
-	_ "github.com/ncruces/go-sqlite3/embed"
+	_ "modernc.org/sqlite"
 
 	"github.com/ai-shift/tracer/db"
 )
 
 type Manager struct {
 	mu      sync.RWMutex
-	baseDir string
+	appsDir string
 	dbs     map[string]*sql.DB
 	queries map[string]*db.Queries
 }
 
 func New(baseDir string) (*Manager, error) {
-	if err := os.MkdirAll(baseDir, 0755); err != nil {
-		return nil, fmt.Errorf("create base dir: %w", err)
+	appsDir := filepath.Join(baseDir, "apps")
+	if err := os.MkdirAll(appsDir, 0755); err != nil {
+		return nil, fmt.Errorf("create apps dir: %w", err)
 	}
 
 	return &Manager{
-		baseDir: baseDir,
+		appsDir: appsDir,
 		dbs:     make(map[string]*sql.DB),
 		queries: make(map[string]*db.Queries),
 	}, nil
@@ -81,10 +81,10 @@ func (m *Manager) createDB(appName string) (*sql.DB, error) {
 		return db, nil
 	}
 
-	dbPath := filepath.Join(m.baseDir, fmt.Sprintf("%s.db", appName))
+	dbPath := filepath.Join(m.appsDir, fmt.Sprintf("%s.db", appName))
 	dsn := fmt.Sprintf("file:%s?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=synchronous(NORMAL)&_pragma=foreign_keys(ON)", dbPath)
 
-	sqlDB, err := sql.Open("sqlite3", dsn)
+	sqlDB, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("open database for app %s: %w", appName, err)
 	}
@@ -127,7 +127,7 @@ func (m *Manager) runMigrations(sqlDB *sql.DB) error {
 
 // ListApps returns all apps with databases
 func (m *Manager) ListApps() ([]string, error) {
-	entries, err := os.ReadDir(m.baseDir)
+	entries, err := os.ReadDir(m.appsDir)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return []string{}, nil
@@ -138,12 +138,9 @@ func (m *Manager) ListApps() ([]string, error) {
 	var apps []string
 	for _, entry := range entries {
 		if !entry.IsDir() && filepath.Ext(entry.Name()) == ".db" {
-			// Skip WAL and SHM files
 			name := entry.Name()
-			if filepath.Ext(name) == ".db" {
-				appName := name[:len(name)-3] // Remove .db
-				apps = append(apps, appName)
-			}
+			appName := name[:len(name)-3] // Remove .db
+			apps = append(apps, appName)
 		}
 	}
 	return apps, nil
