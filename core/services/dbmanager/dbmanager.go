@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sync"
 
+	_ "github.com/ncruces/go-sqlite3/driver"
 	_ "github.com/ncruces/go-sqlite3/embed"
 
 	"github.com/ai-shift/tracer/db"
