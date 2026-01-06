@@ -7,9 +7,11 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/ai-shift/tracer/core/services/auth"
 	"github.com/ai-shift/tracer/core/services/dbmanager"
 	"github.com/ai-shift/tracer/db"
 	"github.com/ai-shift/tracer/web/htmx"
+	"github.com/ai-shift/tracer/web/middleware"
 	"github.com/ai-shift/tracer/web/templates"
 )
 
@@ -17,15 +19,17 @@ import (
 var views embed.FS
 
 type handler struct {
-	t         templates.Templates
-	dbManager *dbmanager.Manager
+	t           templates.Templates
+	dbManager   *dbmanager.Manager
+	authService *auth.Service
 }
 
-func InitMux(dbManager *dbmanager.Manager) *http.ServeMux {
+func InitMux(dbManager *dbmanager.Manager, authService *auth.Service) *http.ServeMux {
 	m := http.NewServeMux()
 	h := handler{
-		t:         templates.New(views),
-		dbManager: dbManager,
+		t:           templates.New(views),
+		dbManager:   dbManager,
+		authService: authService,
 	}
 
 	m.HandleFunc("GET /{app}", h.listLogs)
@@ -37,8 +41,33 @@ func InitMux(dbManager *dbmanager.Manager) *http.ServeMux {
 	return m
 }
 
+func (h *handler) checkAppAccess(w http.ResponseWriter, r *http.Request, appName string) bool {
+	user := middleware.GetUser(r)
+	if user == nil {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return false
+	}
+
+	hasAccess, err := h.authService.UserHasAppAccess(r.Context(), user.ID, appName)
+	if err != nil {
+		h.t.RenderError(w, r, "Error", "Failed to check access", http.StatusInternalServerError)
+		return false
+	}
+	if !hasAccess {
+		h.t.RenderError(w, r, "Forbidden", "You don't have access to this app", http.StatusForbidden)
+		return false
+	}
+
+	return true
+}
+
 func (h *handler) listLogs(w http.ResponseWriter, r *http.Request) {
 	appName := r.PathValue("app")
+
+	if !h.checkAppAccess(w, r, appName) {
+		return
+	}
+
 	level := r.URL.Query().Get("level")
 	limitStr := r.URL.Query().Get("limit")
 
@@ -85,6 +114,11 @@ func (h *handler) listLogs(w http.ResponseWriter, r *http.Request) {
 
 func (h *handler) embedLogs(w http.ResponseWriter, r *http.Request) {
 	appName := r.PathValue("app")
+
+	if !h.checkAppAccess(w, r, appName) {
+		return
+	}
+
 	level := r.URL.Query().Get("level")
 	limit := int64(50) // Fewer logs for embed view
 
@@ -120,6 +154,11 @@ func (h *handler) embedLogs(w http.ResponseWriter, r *http.Request) {
 
 func (h *handler) showTrace(w http.ResponseWriter, r *http.Request) {
 	appName := r.PathValue("app")
+
+	if !h.checkAppAccess(w, r, appName) {
+		return
+	}
+
 	traceID := r.PathValue("traceId")
 
 	queries, err := h.dbManager.GetQueries(appName)
@@ -149,6 +188,11 @@ func (h *handler) showTrace(w http.ResponseWriter, r *http.Request) {
 
 func (h *handler) showLog(w http.ResponseWriter, r *http.Request) {
 	appName := r.PathValue("app")
+
+	if !h.checkAppAccess(w, r, appName) {
+		return
+	}
+
 	idStr := r.PathValue("id")
 
 	id, err := strconv.ParseInt(idStr, 10, 64)
@@ -183,6 +227,10 @@ func (h *handler) showLog(w http.ResponseWriter, r *http.Request) {
 
 func (h *handler) getStats(w http.ResponseWriter, r *http.Request) {
 	appName := r.PathValue("app")
+
+	if !h.checkAppAccess(w, r, appName) {
+		return
+	}
 
 	queries, err := h.dbManager.GetQueries(appName)
 	if err != nil {
