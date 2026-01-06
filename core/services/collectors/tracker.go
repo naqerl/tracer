@@ -7,19 +7,19 @@ import (
 
 // Collector represents a connected collector instance
 type Collector struct {
-	ID          string    `json:"id"`
 	Name        string    `json:"name"`
 	RemoteAddr  string    `json:"remote_addr"`
 	Apps        []string  `json:"apps"`
 	ConnectedAt time.Time `json:"connected_at"`
 	LastSeenAt  time.Time `json:"last_seen_at"`
 	IsConnected bool      `json:"is_connected"`
+	connID      string    // internal: current connection ID
 }
 
 // Tracker keeps track of connected collectors
 type Tracker struct {
 	mu         sync.RWMutex
-	collectors map[string]*Collector
+	collectors map[string]*Collector // key: collector name
 }
 
 // NewTracker creates a new collector tracker
@@ -30,21 +30,24 @@ func NewTracker() *Tracker {
 }
 
 // Register adds or updates a collector connection
-func (t *Tracker) Register(id, name, remoteAddr string, apps []string) {
+// Uses collector name as key, so reconnections update the existing entry
+func (t *Tracker) Register(connID, name, remoteAddr string, apps []string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
 	now := time.Now()
-	if c, exists := t.collectors[id]; exists {
-		// Update existing collector
-		c.Name = name
+	if c, exists := t.collectors[name]; exists {
+		// Update existing collector (reconnection)
+		c.connID = connID
+		c.RemoteAddr = remoteAddr
 		c.Apps = apps
 		c.LastSeenAt = now
 		c.IsConnected = true
+		// Keep original ConnectedAt for session tracking
 	} else {
 		// New collector
-		t.collectors[id] = &Collector{
-			ID:          id,
+		t.collectors[name] = &Collector{
+			connID:      connID,
 			Name:        name,
 			RemoteAddr:  remoteAddr,
 			Apps:        apps,
@@ -55,24 +58,31 @@ func (t *Tracker) Register(id, name, remoteAddr string, apps []string) {
 	}
 }
 
-// Disconnect marks a collector as disconnected
-func (t *Tracker) Disconnect(id string) {
+// Disconnect marks a collector as disconnected (by connection ID)
+// Only disconnects if the connID matches the current connection
+func (t *Tracker) Disconnect(connID string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
-	if c, exists := t.collectors[id]; exists {
-		c.IsConnected = false
-		c.LastSeenAt = time.Now()
+	for _, c := range t.collectors {
+		if c.connID == connID {
+			c.IsConnected = false
+			c.LastSeenAt = time.Now()
+			return
+		}
 	}
 }
 
-// UpdateLastSeen updates the last seen timestamp for a collector
-func (t *Tracker) UpdateLastSeen(id string) {
+// UpdateLastSeen updates the last seen timestamp for a collector (by connection ID)
+func (t *Tracker) UpdateLastSeen(connID string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
-	if c, exists := t.collectors[id]; exists {
-		c.LastSeenAt = time.Now()
+	for _, c := range t.collectors {
+		if c.connID == connID {
+			c.LastSeenAt = time.Now()
+			return
+		}
 	}
 }
 
@@ -108,19 +118,19 @@ func (t *Tracker) Cleanup(maxAge time.Duration) {
 	defer t.mu.Unlock()
 
 	cutoff := time.Now().Add(-maxAge)
-	for id, c := range t.collectors {
+	for name, c := range t.collectors {
 		if !c.IsConnected && c.LastSeenAt.Before(cutoff) {
-			delete(t.collectors, id)
+			delete(t.collectors, name)
 		}
 	}
 }
 
-// Get returns a specific collector by ID
-func (t *Tracker) Get(id string) (Collector, bool) {
+// Get returns a specific collector by name
+func (t *Tracker) Get(name string) (Collector, bool) {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 
-	if c, exists := t.collectors[id]; exists {
+	if c, exists := t.collectors[name]; exists {
 		return *c, true
 	}
 	return Collector{}, false
