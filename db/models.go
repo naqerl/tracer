@@ -6,7 +6,13 @@ package db
 
 import (
 	"database/sql"
+	"time"
 )
+
+type Config struct {
+	Key   string
+	Value string
+}
 
 type Log struct {
 	ID        int64
@@ -17,4 +23,24 @@ type Log struct {
 	Context   sql.NullString
 	Raw       string
 	CreatedAt sql.NullTime
+}
+
+type Session struct {
+	ID        string
+	UserID    int64
+	ExpiresAt time.Time
+	CreatedAt sql.NullTime
+}
+
+type User struct {
+	ID           int64
+	Username     string
+	PasswordHash string
+	IsAdmin      int64
+	CreatedAt    sql.NullTime
+}
+
+type UserApp struct {
+	UserID  int64
+	AppName string
 }

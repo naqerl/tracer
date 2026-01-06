@@ -6,29 +6,38 @@ import (
 	"time"
 
 	"github.com/ai-shift/tracer/core/services/alerter"
+	"github.com/ai-shift/tracer/core/services/auth"
 	"github.com/ai-shift/tracer/core/services/dbmanager"
+	"github.com/ai-shift/tracer/web/middleware"
 	"github.com/ai-shift/tracer/web/resources/analytics"
 	"github.com/ai-shift/tracer/web/resources/api"
+	authres "github.com/ai-shift/tracer/web/resources/auth"
 	"github.com/ai-shift/tracer/web/resources/logs"
+	"github.com/ai-shift/tracer/web/resources/users"
 )
 
-func Run(port string, dbManager *dbmanager.Manager, sampleRate float64, alertChan chan<- alerter.Alert) *http.Server {
+func Run(port string, dbManager *dbmanager.Manager, sampleRate float64, alertChan chan<- alerter.Alert, authService *auth.Service, sessionDurationSec int) *http.Server {
 	mux := http.NewServeMux()
 
-	// Root redirects to analytics dashboard (must be registered first with exact path)
+	// Root redirects to analytics dashboard
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/analytics/", http.StatusTemporaryRedirect)
 	})
 
-	// API routes (WebSocket ingest)
+	// Auth routes (public)
+	mux.Handle("/", authres.InitMux(authService, sessionDurationSec))
+
+	// API routes (uses API key auth via middleware)
 	mux.Handle("/api/", http.StripPrefix("/api", api.InitMux(dbManager, sampleRate, alertChan)))
 
-	// UI routes
-	mux.Handle("/logs/", http.StripPrefix("/logs", logs.InitMux(dbManager)))
-	mux.Handle("/analytics/", http.StripPrefix("/analytics", analytics.InitMux(dbManager)))
+	// UI routes (protected by auth middleware)
+	mux.Handle("/logs/", http.StripPrefix("/logs", logs.InitMux(dbManager, authService)))
+	mux.Handle("/analytics/", http.StripPrefix("/analytics", analytics.InitMux(dbManager, authService)))
+	mux.Handle("/users/", http.StripPrefix("/users", users.InitMux(authService, dbManager)))
 
-	// Apply middleware
-	handler := loggingMiddleware(mux)
+	// Apply middleware (order matters: logging runs first, then auth)
+	authMiddleware := middleware.BuildAuthMiddleware(authService)
+	handler := loggingMiddleware(authMiddleware(mux))
 
 	return &http.Server{
 		Addr:         ":" + port,

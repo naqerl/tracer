@@ -14,3 +14,8 @@ retention_days = 90
 [telegram]
 token = ""
 chat_id = 0
+
+# Authentication settings
+[auth]
+# Session duration (default: 24h)
+session_duration = "24h"

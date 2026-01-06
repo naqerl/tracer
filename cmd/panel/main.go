@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/ai-shift/tracer/config"
 	"github.com/ai-shift/tracer/core/services/alerter"
+	"github.com/ai-shift/tracer/core/services/auth"
 	"github.com/ai-shift/tracer/core/services/dbmanager"
 	"github.com/ai-shift/tracer/core/services/retention"
 	"github.com/ai-shift/tracer/web"
@@ -52,6 +54,35 @@ func main() {
 	}
 	defer dbManager.Close()
 
+	// Initialize auth service
+	sessionDuration := cfg.SessionDurationParsed()
+	authService, err := auth.New(cfg.DataDir, sessionDuration)
+	if err != nil {
+		slog.Error("Failed to create auth service", "error", err)
+		os.Exit(1)
+	}
+	defer authService.Close()
+
+	// Check if first run (no users exist)
+	hasUsers, err := authService.HasUsers(ctx)
+	if err != nil {
+		slog.Error("Failed to check users", "error", err)
+		os.Exit(1)
+	}
+
+	if !hasUsers {
+		slog.Info("No users found. Visit /setup to create the admin account.",
+			"url", fmt.Sprintf("http://localhost:%s/setup", cfg.Port))
+	} else {
+		// Ensure API key exists (only log if users exist, otherwise setup page will show it)
+		apiKey, err := authService.EnsureAPIKey(ctx)
+		if err != nil {
+			slog.Error("Failed to ensure API key", "error", err)
+			os.Exit(1)
+		}
+		slog.Info("API key ready", "key", apiKey)
+	}
+
 	// Initialize alerter service
 	alertService, err := alerter.New(cfg.TelegramToken, cfg.TelegramChatID)
 	if err != nil {
@@ -64,8 +95,25 @@ func main() {
 	retentionService := retention.New(dbManager, cfg.RetentionDays)
 	go retentionService.Start(ctx)
 
+	// Start session cleanup goroutine
+	go func() {
+		ticker := time.NewTicker(1 * time.Hour)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				if err := authService.CleanupExpiredSessions(ctx); err != nil {
+					slog.Error("Failed to cleanup sessions", "error", err)
+				}
+			}
+		}
+	}()
+
 	// Initialize HTTP server
-	server := web.Run(cfg.Port, dbManager, cfg.SampleRate, alertService.AlertChan)
+	sessionDurationSec := int(sessionDuration.Seconds())
+	server := web.Run(cfg.Port, dbManager, cfg.SampleRate, alertService.AlertChan, authService, sessionDurationSec)
 
 	// Handle shutdown signals
 	sigChan := make(chan os.Signal, 1)

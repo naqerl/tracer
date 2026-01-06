@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/BurntSushi/toml"
 )
@@ -91,6 +92,11 @@ type Panel struct {
 	TelegramToken  string   `toml:"telegram_token"`
 	TelegramChatID int64    `toml:"telegram_chat_id"`
 	Telegram       Telegram `toml:"telegram"`
+	Auth           Auth     `toml:"auth"`
+}
+
+type Auth struct {
+	SessionDuration string `toml:"session_duration"`
 }
 
 type Telegram struct {
@@ -136,5 +142,19 @@ func LoadPanel(path string) (*Panel, error) {
 		cfg.TelegramChatID = cfg.Telegram.ChatID
 	}
 
+	// Default session duration
+	if cfg.Auth.SessionDuration == "" {
+		cfg.Auth.SessionDuration = "24h"
+	}
+
 	return &cfg, nil
+}
+
+// SessionDurationParsed returns the parsed session duration
+func (p *Panel) SessionDurationParsed() time.Duration {
+	d, err := time.ParseDuration(p.Auth.SessionDuration)
+	if err != nil {
+		return 24 * time.Hour
+	}
+	return d
 }

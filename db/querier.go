@@ -7,19 +7,41 @@ package db
 import (
 	"context"
 	"database/sql"
+	"time"
 )
 
 type Querier interface {
+	AddUserApp(ctx context.Context, arg AddUserAppParams) error
 	CountByLevel(ctx context.Context, createdAt sql.NullTime) ([]CountByLevelRow, error)
 	CountByLevelAndHour(ctx context.Context, createdAt sql.NullTime) ([]CountByLevelAndHourRow, error)
+	CountUsers(ctx context.Context) (int64, error)
+	// Session queries
+	CreateSession(ctx context.Context, arg CreateSessionParams) error
+	// User queries
+	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
+	DeleteExpiredSessions(ctx context.Context, expiresAt time.Time) error
 	DeleteOldLogs(ctx context.Context, createdAt sql.NullTime) error
+	DeleteSession(ctx context.Context, id string) error
+	DeleteUser(ctx context.Context, id int64) error
+	DeleteUserSessions(ctx context.Context, userID int64) error
 	FindLogsByTraceID(ctx context.Context, traceID string) ([]Log, error)
+	// Config queries
+	GetConfig(ctx context.Context, key string) (string, error)
 	GetLogByID(ctx context.Context, id int64) (Log, error)
 	GetPercentiles(ctx context.Context, createdAt sql.NullTime) (GetPercentilesRow, error)
+	GetSession(ctx context.Context, id string) (Session, error)
+	// User app access queries
+	GetUserApps(ctx context.Context, userID int64) ([]string, error)
+	GetUserByID(ctx context.Context, id int64) (User, error)
+	GetUserByUsername(ctx context.Context, username string) (User, error)
 	InsertLog(ctx context.Context, arg InsertLogParams) (Log, error)
 	ListLogsByLevel(ctx context.Context, arg ListLogsByLevelParams) ([]Log, error)
 	ListRecentLogs(ctx context.Context, limit int64) ([]Log, error)
+	ListUsers(ctx context.Context) ([]User, error)
+	RemoveAllUserApps(ctx context.Context, userID int64) error
+	RemoveUserApp(ctx context.Context, arg RemoveUserAppParams) error
 	SearchLogs(ctx context.Context, arg SearchLogsParams) ([]Log, error)
+	SetConfig(ctx context.Context, arg SetConfigParams) error
 }
 
 var _ Querier = (*Queries)(nil)
