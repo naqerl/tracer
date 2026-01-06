@@ -87,7 +87,23 @@ func parseTimestamp(v any) time.Time {
 			}
 		}
 	case float64:
-		// Unix timestamp (seconds or milliseconds)
+		// Unix timestamp (seconds with fractional nanoseconds, or milliseconds)
+		if ts > 1e12 {
+			// Milliseconds
+			return time.UnixMilli(int64(ts))
+		}
+		// Seconds with fractional part (e.g., 1765738232.4949203 from Caddy)
+		sec := int64(ts)
+		nsec := int64((ts - float64(sec)) * 1e9)
+		return time.Unix(sec, nsec)
+	case int64:
+		// Unix timestamp in seconds or milliseconds
+		if ts > 1e12 {
+			return time.UnixMilli(ts)
+		}
+		return time.Unix(ts, 0)
+	case int:
+		// Unix timestamp in seconds or milliseconds
 		if ts > 1e12 {
 			return time.UnixMilli(int64(ts))
 		}

@@ -92,12 +92,31 @@ func parseTimestampString(ts string) time.Time {
 		time.RFC3339Nano,
 		"2006-01-02T15:04:05",
 		"2006-01-02 15:04:05",
-		"02/Jan/2006:15:04:05 -0700", // nginx
-		"Jan 02 15:04:05",            // syslog
+		"2006/01/02 15:04:05",         // Go stdlib log
+		"2006-01-02 15:04:05,000",     // Python logging
+		"02/Jan/2006:15:04:05 -0700",  // nginx access
+		"2006/01/02 15:04:05",         // nginx error
+		"Jan 02 15:04:05",             // syslog
+		"Jan  2 15:04:05",             // syslog (single digit day)
+		"2006-01-02 15:04:05.000 MST", // PostgreSQL
 	}
+
+	// Handle Python logging format with comma separator (e.g., "2026-01-06 09:50:49,370")
+	// by replacing comma with dot for parsing
+	normalizedTs := ts
+	if len(ts) >= 23 && ts[19] == ',' {
+		normalizedTs = ts[:19] + "." + ts[20:]
+	}
+
 	for _, f := range formats {
-		if t, err := time.Parse(f, ts); err == nil {
+		if t, err := time.Parse(f, normalizedTs); err == nil {
 			return t
+		}
+		// Also try original timestamp
+		if normalizedTs != ts {
+			if t, err := time.Parse(f, ts); err == nil {
+				return t
+			}
 		}
 	}
 	return time.Now()
