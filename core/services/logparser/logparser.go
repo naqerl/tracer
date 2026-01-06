@@ -29,6 +29,8 @@ func New(cfg config.LogFile) (Parser, error) {
 		return newJSONParser(cfg)
 	case "regex":
 		return newRegexParser(cfg)
+	case "journalctl":
+		return newJournalctlParser(cfg)
 	default:
 		return nil, ErrUnknownFormat
 	}
