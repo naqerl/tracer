@@ -39,7 +39,7 @@
 
 {{define "user-apps-content"}}
 <div class="nav">
-    <a href="/users/">&larr; Back to Users</a>
+    <a href="/settings/">&larr; Back to Settings</a>
 </div>
 
 <h1>Manage App Access</h1>
@@ -52,7 +52,7 @@
         <p style="font-size: 0.875rem; margin-top: 0.5rem;">Start a collector to begin receiving logs and create applications.</p>
     </div>
     {{else}}
-    <form action="/users/{{.User.ID}}/apps" method="POST">
+    <form action="/settings/users/{{.User.ID}}/apps" method="POST">
         <p style="color: #94a3b8; margin-bottom: 1rem; font-size: 0.875rem;">Select the applications this user can access:</p>
         <div class="apps-list">
             {{range .AllApps}}
@@ -64,7 +64,7 @@
         </div>
         <div class="actions">
             <button type="submit" class="btn btn-primary">Save Changes</button>
-            <a href="/users/" class="btn btn-secondary">Cancel</a>
+            <a href="/settings/" class="btn btn-secondary">Cancel</a>
         </div>
     </form>
     {{end}}
