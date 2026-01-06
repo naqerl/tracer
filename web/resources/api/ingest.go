@@ -26,8 +26,10 @@ var upgrader = websocket.Upgrader{
 
 // LogMessage is the message format from collectors
 type LogMessage struct {
+	Type    string   `json:"type"` // "register" or "log"
 	AppName string   `json:"app_name"`
-	Entry   LogEntry `json:"entry"`
+	Apps    []string `json:"apps,omitempty"` // for registration
+	Entry   LogEntry `json:"entry,omitempty"`
 }
 
 type LogEntry struct {
@@ -96,6 +98,22 @@ func (h *handler) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (h *handler) handleRegistration(ctx context.Context, apps []string) {
+	slog.Info("Received app registration", "apps", apps, "count", len(apps))
+
+	// Pre-create databases for registered apps
+	for _, appName := range apps {
+		if appName == "" {
+			continue
+		}
+		if _, err := h.dbManager.GetQueries(appName); err != nil {
+			slog.Error("Failed to register app", "app_name", appName, "error", err)
+		} else {
+			slog.Info("Registered app", "app_name", appName)
+		}
+	}
+}
+
 func (h *handler) pingLoop(conn *websocket.Conn) {
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
@@ -114,6 +132,13 @@ func (h *handler) processMessage(ctx context.Context, message []byte) {
 		return
 	}
 
+	// Handle registration messages
+	if msg.Type == "register" {
+		h.handleRegistration(ctx, msg.Apps)
+		return
+	}
+
+	// Handle log messages
 	if msg.AppName == "" {
 		slog.Warn("Received log without app_name")
 		return
