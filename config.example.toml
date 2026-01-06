@@ -4,7 +4,11 @@
 app_name = "my-app"
 panel_endpoint = "ws://localhost:8080/ws/ingest"
 
-# JSON log file example
+# =============================================================================
+# JSON LOG FORMAT
+# =============================================================================
+
+# JSON log file example (application logs)
 [[log_files]]
 path = "/var/log/my-app/app.log"
 format = "json"
@@ -14,7 +18,19 @@ format = "json"
 # trace_id_field = "trace_id"
 # message_field = "message"
 
-# Regex log file example (nginx access log)
+# Caddy JSON access logs (uses Unix timestamp with fractional seconds)
+[[log_files]]
+path = "/var/log/caddy/access.log"
+format = "json"
+timestamp_field = "ts"  # Unix timestamp as float (e.g., 1765738232.4949203)
+level_field = "level"
+message_field = "msg"
+
+# =============================================================================
+# REGEX LOG FORMAT
+# =============================================================================
+
+# Nginx access log
 [[log_files]]
 path = "/var/log/nginx/access.log"
 format = "regex"
@@ -23,10 +39,79 @@ timestamp_field = "timestamp"
 level_field = "status"
 message_field = "path"
 
-# Regex log file example (syslog)
+# Nginx error log
+[[log_files]]
+path = "/var/log/nginx/error.log"
+format = "regex"
+pattern = '^(?P<timestamp>\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}) \[(?P<level>\w+)\] (?P<pid>\d+)#(?P<tid>\d+): (?P<message>.*)$'
+timestamp_field = "timestamp"
+level_field = "level"
+message_field = "message"
+
+# PostgreSQL logs
+[[log_files]]
+path = "/var/log/postgresql/postgresql-15-main.log"
+format = "regex"
+pattern = '^(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3} \w+) \[(?P<pid>\d+)\] (?P<level>\w+):\s+(?P<message>.*)$'
+timestamp_field = "timestamp"
+level_field = "level"
+message_field = "message"
+
+# Syslog format
 [[log_files]]
 path = "/var/log/syslog"
 format = "regex"
 pattern = '^(?P<timestamp>\w+ \d+ \d+:\d+:\d+) (?P<host>\S+) (?P<process>[^:]+): (?P<message>.*)$'
 timestamp_field = "timestamp"
 message_field = "message"
+
+# Go stdlib log format (e.g., 2026/01/06 09:50:29 INFO message)
+[[log_files]]
+path = "/var/log/my-go-app/app.log"
+format = "regex"
+pattern = '^(?P<timestamp>\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}) (?P<level>\w+) (?P<message>.*)$'
+timestamp_field = "timestamp"
+level_field = "level"
+message_field = "message"
+
+# Go slog text format (time=... level=... msg=...)
+[[log_files]]
+path = "/var/log/my-slog-app/app.log"
+format = "regex"
+pattern = '^time=(?P<timestamp>\S+) level=(?P<level>\w+) msg=(?P<message>[^ ]+|"[^"]+")(?P<extra>.*)$'
+timestamp_field = "timestamp"
+level_field = "level"
+message_field = "message"
+
+# Python logging format (INFO - 2026-01-06 09:50:49,370 - logger - func - message)
+[[log_files]]
+path = "/var/log/my-python-app/app.log"
+format = "regex"
+pattern = '^(?P<level>\w+) - (?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}) - (?P<logger>[^ ]+) - (?P<function>[^ ]+) - (?P<message>.*)$'
+timestamp_field = "timestamp"
+level_field = "level"
+message_field = "message"
+
+# =============================================================================
+# JOURNALCTL FORMAT (systemd services)
+# =============================================================================
+
+# Monitor a systemd service via journalctl
+# Reads from journald directly using: journalctl -u <unit> -f -o json
+[[log_files]]
+format = "journalctl"
+unit = "my-service"  # systemd unit name (e.g., "nginx", "postgresql", "my-app")
+# path is not required for journalctl format
+# Optional: customize field names
+# level_field = "PRIORITY"   # journald uses numeric priority (0-7)
+# message_field = "MESSAGE"
+
+# Example: Monitor mimi Go service
+[[log_files]]
+format = "journalctl"
+unit = "mimi"
+
+# Example: Monitor lumicare Python service
+[[log_files]]
+format = "journalctl"
+unit = "lumicare"
