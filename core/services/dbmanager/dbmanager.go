@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"sync"
 
-	_ "github.com/mattn/go-sqlite3"
+	_ "github.com/ncruces/go-sqlite3/embed"
 
 	"github.com/ai-shift/tracer/db"
 )
