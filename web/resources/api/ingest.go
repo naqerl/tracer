@@ -11,8 +11,8 @@ import (
 
 	"github.com/gorilla/websocket"
 
-	"github.com/ai-shift/tracer/core/services/alerter"
 	"github.com/ai-shift/tracer/core/services/dbmanager"
+	"github.com/ai-shift/tracer/core/services/notify"
 	"github.com/ai-shift/tracer/db"
 )
 
@@ -42,21 +42,18 @@ type LogEntry struct {
 	Extra     map[string]string `json:"extra,omitempty"`
 }
 
-// Alert is sent to the alerter service (re-exported from alerter package)
-type Alert = alerter.Alert
-
 type handler struct {
 	dbManager  *dbmanager.Manager
 	sampleRate float64
-	alertChan  chan<- Alert
+	notifyChan notify.NotificationChan
 }
 
-func InitMux(dbManager *dbmanager.Manager, sampleRate float64, alertChan chan<- Alert) *http.ServeMux {
+func InitMux(dbManager *dbmanager.Manager, sampleRate float64, notifyChan notify.NotificationChan) *http.ServeMux {
 	m := http.NewServeMux()
 	h := &handler{
 		dbManager:  dbManager,
 		sampleRate: sampleRate,
-		alertChan:  alertChan,
+		notifyChan: notifyChan,
 	}
 
 	m.HandleFunc("GET /ws/ingest", h.handleWebSocket)
@@ -187,10 +184,11 @@ func (h *handler) processMessage(ctx context.Context, message []byte) {
 		return
 	}
 
-	// Send alert for errors
-	if isError && h.alertChan != nil {
+	// Send notification for errors
+	if isError && h.notifyChan != nil {
 		select {
-		case h.alertChan <- Alert{
+		case h.notifyChan <- notify.Notification{
+			Type:      notify.TypeAlert,
 			AppName:   msg.AppName,
 			TraceID:   msg.Entry.TraceID,
 			Level:     msg.Entry.Level,
@@ -199,7 +197,7 @@ func (h *handler) processMessage(ctx context.Context, message []byte) {
 			Timestamp: ts,
 		}:
 		default:
-			slog.Warn("Alert channel full, dropping alert")
+			slog.Warn("Notification channel full, dropping notification")
 		}
 	}
 }
