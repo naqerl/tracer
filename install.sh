@@ -150,21 +150,26 @@ create_configs() {
 # Tracer Collector Configuration
 # Documentation: https://github.com/ai-shift/tracer
 
-app_name = "my-app"
 panel_endpoint = "ws://localhost:8080/api/ws/ingest"
 
+# Each app entry creates a separate application in the panel
+# The 'name' field is the app identifier that will appear in the dashboard
+
 # Example: JSON application logs
-# [[log_files]]
+# [[apps]]
+# name = "my-app"
 # path = "/var/log/my-app/app.log"
 # format = "json"
 
 # Example: systemd service via journalctl
-# [[log_files]]
+# [[apps]]
+# name = "my-service"
 # format = "journalctl"
 # unit = "my-service"
 
 # Example: Nginx access logs
-# [[log_files]]
+# [[apps]]
+# name = "nginx"
 # path = "/var/log/nginx/access.log"
 # format = "regex"
 # pattern = '^(?P<ip>\S+) \S+ \S+ \[(?P<timestamp>[^\]]+)\] "(?P<method>\S+) (?P<path>\S+) \S+" (?P<status>\d+) (?P<bytes>\d+) "(?P<referer>[^"]*)" "(?P<user_agent>[^"]*)"'

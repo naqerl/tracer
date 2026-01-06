@@ -1,15 +1,18 @@
 # Tracer Collector Configuration
 # Copy to /etc/tracer/config.toml
 
-app_name = "my-app"
-panel_endpoint = "ws://localhost:8080/ws/ingest"
+panel_endpoint = "ws://localhost:8080/api/ws/ingest"
+
+# Each [[apps]] entry creates a separate application in the panel
+# The 'name' field is the app identifier that will appear in the dashboard
 
 # =============================================================================
 # JSON LOG FORMAT
 # =============================================================================
 
 # JSON log file example (application logs)
-[[log_files]]
+[[apps]]
+name = "my-app"
 path = "/var/log/my-app/app.log"
 format = "json"
 # Optional: customize field names (defaults shown)
@@ -19,7 +22,8 @@ format = "json"
 # message_field = "message"
 
 # Caddy JSON access logs (uses Unix timestamp with fractional seconds)
-[[log_files]]
+[[apps]]
+name = "caddy"
 path = "/var/log/caddy/access.log"
 format = "json"
 timestamp_field = "ts"  # Unix timestamp as float (e.g., 1765738232.4949203)
@@ -31,7 +35,8 @@ message_field = "msg"
 # =============================================================================
 
 # Nginx access log
-[[log_files]]
+[[apps]]
+name = "nginx-access"
 path = "/var/log/nginx/access.log"
 format = "regex"
 pattern = '^(?P<ip>\S+) \S+ \S+ \[(?P<timestamp>[^\]]+)\] "(?P<method>\S+) (?P<path>\S+) \S+" (?P<status>\d+) (?P<bytes>\d+) "(?P<referer>[^"]*)" "(?P<user_agent>[^"]*)"'
@@ -40,7 +45,8 @@ level_field = "status"
 message_field = "path"
 
 # Nginx error log
-[[log_files]]
+[[apps]]
+name = "nginx-error"
 path = "/var/log/nginx/error.log"
 format = "regex"
 pattern = '^(?P<timestamp>\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}) \[(?P<level>\w+)\] (?P<pid>\d+)#(?P<tid>\d+): (?P<message>.*)$'
@@ -49,7 +55,8 @@ level_field = "level"
 message_field = "message"
 
 # PostgreSQL logs
-[[log_files]]
+[[apps]]
+name = "postgresql"
 path = "/var/log/postgresql/postgresql-15-main.log"
 format = "regex"
 pattern = '^(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3} \w+) \[(?P<pid>\d+)\] (?P<level>\w+):\s+(?P<message>.*)$'
@@ -58,7 +65,8 @@ level_field = "level"
 message_field = "message"
 
 # Syslog format
-[[log_files]]
+[[apps]]
+name = "syslog"
 path = "/var/log/syslog"
 format = "regex"
 pattern = '^(?P<timestamp>\w+ \d+ \d+:\d+:\d+) (?P<host>\S+) (?P<process>[^:]+): (?P<message>.*)$'
@@ -66,7 +74,8 @@ timestamp_field = "timestamp"
 message_field = "message"
 
 # Go stdlib log format (e.g., 2026/01/06 09:50:29 INFO message)
-[[log_files]]
+[[apps]]
+name = "my-go-app"
 path = "/var/log/my-go-app/app.log"
 format = "regex"
 pattern = '^(?P<timestamp>\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}) (?P<level>\w+) (?P<message>.*)$'
@@ -75,7 +84,8 @@ level_field = "level"
 message_field = "message"
 
 # Go slog text format (time=... level=... msg=...)
-[[log_files]]
+[[apps]]
+name = "my-slog-app"
 path = "/var/log/my-slog-app/app.log"
 format = "regex"
 pattern = '^time=(?P<timestamp>\S+) level=(?P<level>\w+) msg=(?P<message>[^ ]+|"[^"]+")(?P<extra>.*)$'
@@ -84,7 +94,8 @@ level_field = "level"
 message_field = "message"
 
 # Python logging format (INFO - 2026-01-06 09:50:49,370 - logger - func - message)
-[[log_files]]
+[[apps]]
+name = "my-python-app"
 path = "/var/log/my-python-app/app.log"
 format = "regex"
 pattern = '^(?P<level>\w+) - (?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}) - (?P<logger>[^ ]+) - (?P<function>[^ ]+) - (?P<message>.*)$'
@@ -98,7 +109,8 @@ message_field = "message"
 
 # Monitor a systemd service via journalctl
 # Reads from journald directly using: journalctl -u <unit> -f -o json
-[[log_files]]
+[[apps]]
+name = "my-service"
 format = "journalctl"
 unit = "my-service"  # systemd unit name (e.g., "nginx", "postgresql", "my-app")
 # path is not required for journalctl format
@@ -107,11 +119,13 @@ unit = "my-service"  # systemd unit name (e.g., "nginx", "postgresql", "my-app")
 # message_field = "MESSAGE"
 
 # Example: Monitor mimi Go service
-[[log_files]]
+[[apps]]
+name = "mimi"
 format = "journalctl"
 unit = "mimi"
 
 # Example: Monitor lumicare Python service
-[[log_files]]
+[[apps]]
+name = "lumicare"
 format = "journalctl"
 unit = "lumicare"
