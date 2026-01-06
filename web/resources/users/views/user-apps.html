@@ -1,0 +1,72 @@
+{{define "user-apps"}}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{.Title}}</title>
+    <script src="https://unpkg.com/htmx.org@2.0.0"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #e2e8f0; line-height: 1.6; }
+        .container { max-width: 800px; margin: 0 auto; padding: 2rem; }
+        h1 { margin-bottom: 0.5rem; font-size: 1.5rem; }
+        .subtitle { color: #94a3b8; margin-bottom: 2rem; }
+        .nav { margin-bottom: 2rem; }
+        .nav a { color: #60a5fa; text-decoration: none; }
+        .nav a:hover { text-decoration: underline; }
+        .section { background: #1e293b; border-radius: 0.5rem; padding: 1.5rem; }
+        .apps-list { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 1.5rem; }
+        .app-item { display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem; background: #0f172a; border-radius: 0.375rem; }
+        .app-item label { cursor: pointer; flex: 1; }
+        .app-item input[type="checkbox"] { width: 1.25rem; height: 1.25rem; }
+        .btn { padding: 0.75rem 1.5rem; border: none; border-radius: 0.375rem; cursor: pointer; font-size: 1rem; text-decoration: none; display: inline-block; }
+        .btn-primary { background: #3b82f6; color: white; }
+        .btn-primary:hover { background: #2563eb; }
+        .btn-secondary { background: #334155; color: #e2e8f0; }
+        .btn-secondary:hover { background: #475569; }
+        .actions { display: flex; gap: 1rem; margin-top: 1rem; }
+        .empty-state { text-align: center; padding: 2rem; color: #94a3b8; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        {{template "user-apps-content" .}}
+    </div>
+</body>
+</html>
+{{end}}
+
+{{define "user-apps-content"}}
+<div class="nav">
+    <a href="/users/">&larr; Back to Users</a>
+</div>
+
+<h1>Manage App Access</h1>
+<p class="subtitle">User: <strong>{{.User.Username}}</strong></p>
+
+<div class="section">
+    {{if .HasNoApps}}
+    <div class="empty-state">
+        <p>No applications available yet.</p>
+        <p style="font-size: 0.875rem; margin-top: 0.5rem;">Start a collector to begin receiving logs and create applications.</p>
+    </div>
+    {{else}}
+    <form action="/users/{{.User.ID}}/apps" method="POST">
+        <p style="color: #94a3b8; margin-bottom: 1rem; font-size: 0.875rem;">Select the applications this user can access:</p>
+        <div class="apps-list">
+            {{range .AllApps}}
+            <div class="app-item">
+                <input type="checkbox" id="app-{{.}}" name="apps" value="{{.}}" {{if index $.UserApps .}}checked{{end}}>
+                <label for="app-{{.}}">{{.}}</label>
+            </div>
+            {{end}}
+        </div>
+        <div class="actions">
+            <button type="submit" class="btn btn-primary">Save Changes</button>
+            <a href="/users/" class="btn btn-secondary">Cancel</a>
+        </div>
+    </form>
+    {{end}}
+</div>
+{{end}}
