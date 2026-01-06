@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"log/slog"
+	"net"
 	"os"
 	"os/signal"
 	"syscall"
@@ -29,7 +30,14 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Determine collector name: use config name, or fall back to local IP
+	collectorName := cfg.Name
+	if collectorName == "" {
+		collectorName = getOutboundIP()
+	}
+
 	slog.Info("Starting collector",
+		"name", collectorName,
 		"panel_endpoint", cfg.PanelEndpoint,
 		"apps", len(cfg.Apps),
 	)
@@ -55,9 +63,28 @@ func main() {
 	}
 
 	// Initialize WebSocket client
-	wsClient := wsclient.New(cfg.PanelEndpoint, watcher.GetAppNames(), watcher.LogChan)
+	wsClient := wsclient.New(cfg.PanelEndpoint, collectorName, watcher.GetAppNames(), watcher.LogChan)
 
 	// Start services
 	go watcher.Start(ctx)
 	wsClient.Start(ctx)
+}
+
+// getOutboundIP returns the preferred outbound IP of this machine
+func getOutboundIP() string {
+	// Connect to a public address to determine local IP
+	// This doesn't actually establish a connection, just determines the route
+	conn, err := net.Dial("udp", "8.8.8.8:80")
+	if err != nil {
+		// Fallback to hostname if we can't determine IP
+		hostname, _ := os.Hostname()
+		if hostname != "" {
+			return hostname
+		}
+		return "unknown"
+	}
+	defer conn.Close()
+
+	localAddr := conn.LocalAddr().(*net.UDPAddr)
+	return localAddr.IP.String()
 }

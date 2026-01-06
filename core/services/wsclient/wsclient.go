@@ -21,26 +21,29 @@ const (
 )
 
 type Message struct {
-	Type    string             `json:"type"` // "register" or "log"
-	AppName string             `json:"app_name"`
-	Apps    []string           `json:"apps,omitempty"` // for registration
-	Entry   logparser.LogEntry `json:"entry,omitempty"`
+	Type          string             `json:"type"` // "register" or "log"
+	AppName       string             `json:"app_name"`
+	Apps          []string           `json:"apps,omitempty"`           // for registration
+	CollectorName string             `json:"collector_name,omitempty"` // for registration
+	Entry         logparser.LogEntry `json:"entry,omitempty"`
 }
 
 type Service struct {
-	endpoint string
-	appNames []string
-	logChan  <-chan filewatcher.AppLogEntry
+	endpoint      string
+	collectorName string
+	appNames      []string
+	logChan       <-chan filewatcher.AppLogEntry
 
 	conn   *websocket.Conn
 	connMu sync.Mutex
 }
 
-func New(endpoint string, appNames []string, logChan <-chan filewatcher.AppLogEntry) *Service {
+func New(endpoint, collectorName string, appNames []string, logChan <-chan filewatcher.AppLogEntry) *Service {
 	return &Service{
-		endpoint: endpoint,
-		appNames: appNames,
-		logChan:  logChan,
+		endpoint:      endpoint,
+		collectorName: collectorName,
+		appNames:      appNames,
+		logChan:       logChan,
 	}
 }
 
@@ -139,8 +142,9 @@ func (s *Service) processLogs(ctx context.Context) {
 
 func (s *Service) sendRegistration() {
 	msg := Message{
-		Type: "register",
-		Apps: s.appNames,
+		Type:          "register",
+		Apps:          s.appNames,
+		CollectorName: s.collectorName,
 	}
 
 	data, err := json.Marshal(msg)

@@ -14,6 +14,7 @@ const (
 )
 
 type Collector struct {
+	Name          string `toml:"name"` // Optional collector name, uses IP if not set
 	PanelEndpoint string `toml:"panel_endpoint"`
 	Apps          []App  `toml:"apps"`
 }

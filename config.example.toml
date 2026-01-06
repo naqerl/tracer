@@ -1,6 +1,10 @@
 # Tracer Collector Configuration
 # Copy to /etc/tracer/config.toml
 
+# Optional: Collector name displayed in the panel dashboard
+# If not set, uses the machine's IP address
+# name = "production-server-1"
+
 # Panel endpoint with API key for authentication
 # The API key is displayed when you first set up the panel
 # You can also find it in the Users management page
