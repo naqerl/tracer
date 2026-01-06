@@ -24,6 +24,52 @@ Also I hate to setup infrastructure for each project to get this two simple thin
 
 Any other logs may show some performance degradation or health status but in both cases do not require persistence. `tracer` uses single SQLite database to store all info about errors and only selected percent of other logs (chosen randomly)
 
+## Installation
+
+### Quick Install
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/ai-shift/tracer/main/install.sh | sudo bash
+```
+
+This installs both components:
+- **tracer-collector** - runs as root (to access any log files)
+- **tracer-panel** - runs as dedicated `tracer` user
+
+### Configuration
+
+After installation, configure your log sources:
+
+```bash
+sudo nano /etc/tracer/collector.toml
+```
+
+Example configuration:
+
+```toml
+app_name = "my-app"
+panel_endpoint = "ws://localhost:8080/ws/ingest"
+
+# JSON application logs
+[[log_files]]
+path = "/var/log/my-app/app.log"
+format = "json"
+
+# Systemd service via journalctl
+[[log_files]]
+format = "journalctl"
+unit = "my-service"
+```
+
+### Start Services
+
+```bash
+sudo systemctl enable --now tracer-panel
+sudo systemctl enable --now tracer-collector
+```
+
+Access the panel at http://localhost:8080
+
 ## Architecture
 
 ### Data isolation
