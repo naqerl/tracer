@@ -2,12 +2,16 @@ package templates
 
 import (
 	"database/sql"
+	"embed"
 	"html/template"
 	"io/fs"
 	"log/slog"
 	"net/http"
 	"time"
 )
+
+//go:embed shared/*.html
+var sharedFS embed.FS
 
 type Templates struct {
 	views *template.Template
@@ -23,7 +27,10 @@ func New(fsys fs.FS) Templates {
 		"hasContext":     hasContext,
 	}
 
-	views := template.Must(template.New("").Funcs(funcMap).ParseFS(fsys, "views/*.html"))
+	// Parse shared templates first
+	views := template.Must(template.New("").Funcs(funcMap).ParseFS(sharedFS, "shared/*.html"))
+	// Then parse feature-specific views
+	views = template.Must(views.ParseFS(fsys, "views/*.html"))
 
 	return Templates{views: views}
 }
@@ -47,6 +54,22 @@ func (t Templates) RenderError(w http.ResponseWriter, r *http.Request, title, me
 	if err := t.views.ExecuteTemplate(w, "error", data); err != nil {
 		slog.Error("Template error", "template", "error", "error", err)
 		http.Error(w, message, status)
+	}
+}
+
+// NavData holds data for the shared navbar template
+type NavData struct {
+	Title      string
+	ActivePage string
+	Username   string
+}
+
+// NewNavData creates navbar data
+func NewNavData(title, activePage, username string) NavData {
+	return NavData{
+		Title:      title,
+		ActivePage: activePage,
+		Username:   username,
 	}
 }
 

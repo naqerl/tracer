@@ -74,6 +74,7 @@ func (h *handler) settingsPage(w http.ResponseWriter, r *http.Request) {
 		"Title":       "Settings - Tracer",
 		"CurrentUser": user,
 		"IsAdmin":     isAdmin,
+		"Nav":         templates.NewNavData("Settings", "settings", user.Username),
 	}
 
 	// Admin-only data
@@ -186,7 +187,8 @@ func (h *handler) deleteUser(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) getUserApps(w http.ResponseWriter, r *http.Request) {
-	if middleware.RequireAdmin(w, r) == nil {
+	currentUser := middleware.RequireAdmin(w, r)
+	if currentUser == nil {
 		return
 	}
 
@@ -226,6 +228,7 @@ func (h *handler) getUserApps(w http.ResponseWriter, r *http.Request) {
 		"UserApps":  userAppMap,
 		"AllApps":   allApps,
 		"HasNoApps": len(allApps) == 0,
+		"Nav":       templates.NewNavData("Manage App Access", "settings", currentUser.Username),
 	}
 
 	if htmx.IsAjax(r) {
@@ -658,6 +661,7 @@ func (h *handler) getNotifierApps(w http.ResponseWriter, r *http.Request) {
 		"NotifierApps": notifierAppMap,
 		"AllApps":      allApps,
 		"IsAdmin":      user.IsAdmin == 1,
+		"Nav":          templates.NewNavData("Configure Notifier Apps", "settings", user.Username),
 	}
 
 	if htmx.IsAjax(r) {

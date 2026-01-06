@@ -63,6 +63,7 @@ func (h *handler) checkAppAccess(w http.ResponseWriter, r *http.Request, appName
 
 func (h *handler) listLogs(w http.ResponseWriter, r *http.Request) {
 	appName := r.PathValue("app")
+	user := middleware.GetUser(r)
 
 	if !h.checkAppAccess(w, r, appName) {
 		return
@@ -103,6 +104,7 @@ func (h *handler) listLogs(w http.ResponseWriter, r *http.Request) {
 		"AppName": appName,
 		"Logs":    logs,
 		"Level":   level,
+		"Nav":     templates.NewNavData("Logs: "+appName, "analytics", user.Username),
 	}
 
 	if htmx.IsAjax(r) {
@@ -154,6 +156,7 @@ func (h *handler) embedLogs(w http.ResponseWriter, r *http.Request) {
 
 func (h *handler) showTrace(w http.ResponseWriter, r *http.Request) {
 	appName := r.PathValue("app")
+	user := middleware.GetUser(r)
 
 	if !h.checkAppAccess(w, r, appName) {
 		return
@@ -177,6 +180,7 @@ func (h *handler) showTrace(w http.ResponseWriter, r *http.Request) {
 		"AppName": appName,
 		"TraceID": traceID,
 		"Logs":    logs,
+		"Nav":     templates.NewNavData("Trace View", "analytics", user.Username),
 	}
 
 	if htmx.IsAjax(r) {
@@ -188,6 +192,7 @@ func (h *handler) showTrace(w http.ResponseWriter, r *http.Request) {
 
 func (h *handler) showLog(w http.ResponseWriter, r *http.Request) {
 	appName := r.PathValue("app")
+	user := middleware.GetUser(r)
 
 	if !h.checkAppAccess(w, r, appName) {
 		return
@@ -216,6 +221,7 @@ func (h *handler) showLog(w http.ResponseWriter, r *http.Request) {
 	data := map[string]any{
 		"AppName": appName,
 		"Log":     log,
+		"Nav":     templates.NewNavData("Log Detail", "analytics", user.Username),
 	}
 
 	if htmx.IsAjax(r) {

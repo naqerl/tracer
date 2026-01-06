@@ -72,10 +72,11 @@ func (h *handler) dashboard(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := map[string]any{
-		"Title":   "Tracer Dashboard",
+		"Title":   "Analytics",
 		"Apps":    apps,
 		"User":    user,
 		"IsAdmin": user.IsAdmin == 1,
+		"Nav":     templates.NewNavData("Analytics", "analytics", user.Username),
 	}
 
 	if htmx.IsAjax(r) {
@@ -130,6 +131,7 @@ func (h *handler) appAnalytics(w http.ResponseWriter, r *http.Request) {
 		"Stats":   stats,
 		"Hourly":  hourly,
 		"IsAdmin": user.IsAdmin == 1,
+		"Nav":     templates.NewNavData(appName, "analytics", user.Username),
 	}
 
 	if htmx.IsAjax(r) {

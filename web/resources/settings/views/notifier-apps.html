@@ -10,11 +10,10 @@
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #e2e8f0; line-height: 1.6; }
         .container { max-width: 800px; margin: 0 auto; padding: 2rem; }
-        h1 { margin-bottom: 0.5rem; font-size: 1.5rem; }
+        {{template "navbar-styles"}}
+        .back-link { color: #60a5fa; text-decoration: none; display: inline-block; margin-bottom: 1.5rem; }
+        .back-link:hover { text-decoration: underline; }
         .subtitle { color: #94a3b8; margin-bottom: 2rem; }
-        .nav { margin-bottom: 2rem; }
-        .nav a { color: #60a5fa; text-decoration: none; }
-        .nav a:hover { text-decoration: underline; }
         .section { background: #1e293b; border-radius: 0.5rem; padding: 1.5rem; }
         .apps-list { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 1.5rem; }
         .app-item { display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem; background: #0f172a; border-radius: 0.375rem; }
@@ -49,6 +48,7 @@
 </head>
 <body>
     <div class="container">
+        {{template "navbar" .Nav}}
         {{template "notifier-apps-content" .}}
     </div>
 </body>
@@ -56,11 +56,7 @@
 {{end}}
 
 {{define "notifier-apps-content"}}
-<div class="nav">
-    <a href="/settings/">&larr; Back to Settings</a>
-</div>
-
-<h1>Configure Notifier Apps</h1>
+<a href="/settings/" class="back-link">&larr; Back to Settings</a>
 <p class="subtitle">Notifier: <strong>{{.Notifier.Name}}</strong> ({{.Notifier.Type}})</p>
 
 <div class="section">
