@@ -87,6 +87,46 @@
 </div>
 {{end}}
 
+{{define "logs-embed"}}
+<div class="filters">
+    <a href="#" class="btn {{if not .Level}}active{{end}}" hx-get="/logs/{{.AppName}}/embed" hx-swap="outerHTML" hx-target="closest div">All</a>
+    <a href="#" class="btn {{if eq .Level "error"}}active{{end}}" hx-get="/logs/{{.AppName}}/embed?level=error" hx-swap="outerHTML" hx-target="closest div">Errors</a>
+    <a href="#" class="btn {{if eq .Level "warn"}}active{{end}}" hx-get="/logs/{{.AppName}}/embed?level=warn" hx-swap="outerHTML" hx-target="closest div">Warnings</a>
+    <a href="#" class="btn {{if eq .Level "info"}}active{{end}}" hx-get="/logs/{{.AppName}}/embed?level=info" hx-swap="outerHTML" hx-target="closest div">Info</a>
+</div>
+
+<table>
+    <thead>
+        <tr>
+            <th>Time</th>
+            <th>Level</th>
+            <th>Message</th>
+            <th>Trace ID</th>
+            <th>Source</th>
+        </tr>
+    </thead>
+    <tbody>
+        {{range .Logs}}
+        <tr>
+            <td class="time">{{formatDateTime .CreatedAt}}</td>
+            <td><span class="level {{levelClass .Level}}">{{.Level}}</span></td>
+            <td class="message" title="{{.Message}}">{{truncate .Message 80}}</td>
+            <td>
+                {{if .TraceID}}
+                <a href="/logs/{{$.AppName}}/trace/{{.TraceID}}" class="trace-link">{{truncate .TraceID 12}}</a>
+                {{end}}
+            </td>
+            <td>{{.Source}}</td>
+        </tr>
+        {{else}}
+        <tr>
+            <td colspan="5" style="text-align: center; color: #94a3b8; padding: 2rem;">No logs available</td>
+        </tr>
+        {{end}}
+    </tbody>
+</table>
+{{end}}
+
 {{define "error"}}
 <!DOCTYPE html>
 <html lang="en">

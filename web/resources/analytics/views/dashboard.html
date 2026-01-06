@@ -12,11 +12,9 @@
         .container { max-width: 1200px; margin: 0 auto; padding: 2rem; }
         h1 { margin-bottom: 2rem; font-size: 2rem; }
         .apps-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1.5rem; }
-        .app-card { background: #1e293b; border-radius: 0.5rem; padding: 1.5rem; transition: transform 0.2s; }
-        .app-card:hover { transform: translateY(-2px); }
+        .app-card { background: #1e293b; border-radius: 0.5rem; padding: 1.5rem; transition: transform 0.2s; display: block; color: #e2e8f0; text-decoration: none; }
+        .app-card:hover { transform: translateY(-2px); background: #334155; }
         .app-card h2 { font-size: 1.25rem; margin-bottom: 0.5rem; }
-        .app-card a { color: #60a5fa; text-decoration: none; }
-        .app-card a:hover { text-decoration: underline; }
         .app-links { display: flex; gap: 1rem; margin-top: 1rem; }
         .empty-state { text-align: center; padding: 4rem; color: #94a3b8; }
     </style>
@@ -34,13 +32,9 @@
 {{if .Apps}}
 <div class="apps-grid">
     {{range .Apps}}
-    <div class="app-card">
+    <a href="/analytics/{{.}}" class="app-card">
         <h2>{{.}}</h2>
-        <div class="app-links">
-            <a href="/logs/{{.}}">Logs</a>
-            <a href="/analytics/{{.}}">Analytics</a>
-        </div>
-    </div>
+    </a>
     {{end}}
 </div>
 {{else}}

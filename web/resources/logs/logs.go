@@ -29,6 +29,7 @@ func InitMux(dbManager *dbmanager.Manager) *http.ServeMux {
 	}
 
 	m.HandleFunc("GET /{app}", h.listLogs)
+	m.HandleFunc("GET /{app}/embed", h.embedLogs)
 	m.HandleFunc("GET /{app}/trace/{traceId}", h.showTrace)
 	m.HandleFunc("GET /{app}/log/{id}", h.showLog)
 	m.HandleFunc("GET /{app}/stats", h.getStats)
@@ -80,6 +81,41 @@ func (h *handler) listLogs(w http.ResponseWriter, r *http.Request) {
 	} else {
 		h.t.RenderHTTP(w, r, "logs-page", data)
 	}
+}
+
+func (h *handler) embedLogs(w http.ResponseWriter, r *http.Request) {
+	appName := r.PathValue("app")
+	level := r.URL.Query().Get("level")
+	limit := int64(50) // Fewer logs for embed view
+
+	queries, err := h.dbManager.GetQueries(appName)
+	if err != nil {
+		w.Write([]byte("App not found"))
+		return
+	}
+
+	var logs []db.Log
+	if level != "" {
+		logs, err = queries.ListLogsByLevel(r.Context(), db.ListLogsByLevelParams{
+			Level: level,
+			Limit: limit,
+		})
+	} else {
+		logs, err = queries.ListRecentLogs(r.Context(), limit)
+	}
+
+	if err != nil {
+		w.Write([]byte("Failed to fetch logs"))
+		return
+	}
+
+	data := map[string]any{
+		"AppName": appName,
+		"Logs":    logs,
+		"Level":   level,
+	}
+
+	h.t.RenderHTTP(w, r, "logs-embed", data)
 }
 
 func (h *handler) showTrace(w http.ResponseWriter, r *http.Request) {

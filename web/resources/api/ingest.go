@@ -74,10 +74,10 @@ func (h *handler) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 
 	slog.Info("WebSocket connected", "remote", r.RemoteAddr)
 
-	// Configure connection
-	conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+	// Configure connection with generous timeout
+	conn.SetReadDeadline(time.Now().Add(5 * time.Minute))
 	conn.SetPongHandler(func(string) error {
-		conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+		conn.SetReadDeadline(time.Now().Add(5 * time.Minute))
 		return nil
 	})
 
