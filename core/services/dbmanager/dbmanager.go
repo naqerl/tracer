@@ -82,7 +82,7 @@ func (m *Manager) createDB(appName string) (*sql.DB, error) {
 	}
 
 	dbPath := filepath.Join(m.baseDir, fmt.Sprintf("%s.db", appName))
-	dsn := dbPath + "?_journal_mode=WAL&_busy_timeout=5000&_synchronous=NORMAL&_foreign_keys=ON"
+	dsn := fmt.Sprintf("file:%s?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=synchronous(NORMAL)&_pragma=foreign_keys(ON)", dbPath)
 
 	sqlDB, err := sql.Open("sqlite3", dsn)
 	if err != nil {
