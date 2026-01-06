@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/ai-shift/tracer/core/services/auth"
+	"github.com/ai-shift/tracer/core/services/collectors"
 	"github.com/ai-shift/tracer/core/services/dbmanager"
 	"github.com/ai-shift/tracer/web/htmx"
 	"github.com/ai-shift/tracer/web/middleware"
@@ -20,19 +21,22 @@ type handler struct {
 	t           templates.Templates
 	dbManager   *dbmanager.Manager
 	authService *auth.Service
+	tracker     *collectors.Tracker
 }
 
-func InitMux(dbManager *dbmanager.Manager, authService *auth.Service) *http.ServeMux {
+func InitMux(dbManager *dbmanager.Manager, authService *auth.Service, tracker *collectors.Tracker) *http.ServeMux {
 	m := http.NewServeMux()
 	h := handler{
 		t:           templates.New(views),
 		dbManager:   dbManager,
 		authService: authService,
+		tracker:     tracker,
 	}
 
 	m.HandleFunc("GET /", h.dashboard)
 	m.HandleFunc("GET /{app}", h.appAnalytics)
 	m.HandleFunc("GET /{app}/chart", h.getChart)
+	m.HandleFunc("GET /collectors", h.getCollectors)
 
 	return m
 }
@@ -72,11 +76,12 @@ func (h *handler) dashboard(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := map[string]any{
-		"Title":   "Analytics",
-		"Apps":    apps,
-		"User":    user,
-		"IsAdmin": user.IsAdmin == 1,
-		"Nav":     templates.NewNavData("Analytics", "analytics", user.Username),
+		"Title":      "Analytics",
+		"Apps":       apps,
+		"User":       user,
+		"IsAdmin":    user.IsAdmin == 1,
+		"Nav":        templates.NewNavData("Analytics", "analytics", user.Username),
+		"Collectors": h.tracker.List(),
 	}
 
 	if htmx.IsAjax(r) {
@@ -176,4 +181,18 @@ func (h *handler) getChart(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.t.RenderHTTP(w, r, "chart", data)
+}
+
+func (h *handler) getCollectors(w http.ResponseWriter, r *http.Request) {
+	user := middleware.GetUser(r)
+	if user == nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	data := map[string]any{
+		"Collectors": h.tracker.List(),
+	}
+
+	h.t.RenderHTTP(w, r, "collectors-list", data)
 }

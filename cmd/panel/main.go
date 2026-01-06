@@ -14,6 +14,7 @@ import (
 
 	"github.com/ai-shift/tracer/config"
 	"github.com/ai-shift/tracer/core/services/auth"
+	"github.com/ai-shift/tracer/core/services/collectors"
 	"github.com/ai-shift/tracer/core/services/dbmanager"
 	"github.com/ai-shift/tracer/core/services/notify"
 	"github.com/ai-shift/tracer/core/services/retention"
@@ -98,6 +99,23 @@ func main() {
 	retentionService := retention.New(dbManager, cfg.RetentionDays)
 	go retentionService.Start(ctx)
 
+	// Initialize collector tracker
+	tracker := collectors.NewTracker()
+
+	// Start collector cleanup goroutine (remove stale disconnected collectors after 1 hour)
+	go func() {
+		ticker := time.NewTicker(10 * time.Minute)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				tracker.Cleanup(1 * time.Hour)
+			}
+		}
+	}()
+
 	// Start session cleanup goroutine
 	go func() {
 		ticker := time.NewTicker(1 * time.Hour)
@@ -116,7 +134,7 @@ func main() {
 
 	// Initialize HTTP server
 	sessionDurationSec := int(sessionDuration.Seconds())
-	server := web.Run(cfg.Port, dbManager, cfg.SampleRate, notifyService, authService, sessionDurationSec)
+	server := web.Run(cfg.Port, dbManager, cfg.SampleRate, notifyService, authService, tracker, sessionDurationSec)
 
 	// Handle shutdown signals
 	sigChan := make(chan os.Signal, 1)

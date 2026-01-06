@@ -7,10 +7,13 @@ import (
 	"log/slog"
 	"math/rand"
 	"net/http"
+	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 
+	"github.com/ai-shift/tracer/core/services/collectors"
 	"github.com/ai-shift/tracer/core/services/dbmanager"
 	"github.com/ai-shift/tracer/core/services/notify"
 	"github.com/ai-shift/tracer/db"
@@ -26,10 +29,11 @@ var upgrader = websocket.Upgrader{
 
 // LogMessage is the message format from collectors
 type LogMessage struct {
-	Type    string   `json:"type"` // "register" or "log"
-	AppName string   `json:"app_name"`
-	Apps    []string `json:"apps,omitempty"` // for registration
-	Entry   LogEntry `json:"entry,omitempty"`
+	Type          string   `json:"type"` // "register" or "log"
+	AppName       string   `json:"app_name"`
+	Apps          []string `json:"apps,omitempty"`           // for registration
+	CollectorName string   `json:"collector_name,omitempty"` // for registration
+	Entry         LogEntry `json:"entry,omitempty"`
 }
 
 type LogEntry struct {
@@ -46,17 +50,20 @@ type handler struct {
 	dbManager  *dbmanager.Manager
 	sampleRate float64
 	notifyChan notify.NotificationChan
+	tracker    *collectors.Tracker
 }
 
-func InitMux(dbManager *dbmanager.Manager, sampleRate float64, notifyChan notify.NotificationChan) *http.ServeMux {
+func InitMux(dbManager *dbmanager.Manager, sampleRate float64, notifyChan notify.NotificationChan, tracker *collectors.Tracker) *http.ServeMux {
 	m := http.NewServeMux()
 	h := &handler{
 		dbManager:  dbManager,
 		sampleRate: sampleRate,
 		notifyChan: notifyChan,
+		tracker:    tracker,
 	}
 
 	m.HandleFunc("GET /ws/ingest", h.handleWebSocket)
+	m.HandleFunc("GET /collectors", h.listCollectors)
 
 	return m
 }
@@ -69,14 +76,25 @@ func (h *handler) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	}
 	defer conn.Close()
 
-	slog.Info("WebSocket connected", "remote", r.RemoteAddr)
+	// Generate unique connection ID
+	connID := uuid.New().String()
+	remoteAddr := extractIP(r.RemoteAddr)
+
+	slog.Info("WebSocket connected", "remote", remoteAddr, "conn_id", connID)
 
 	// Configure connection with generous timeout
 	conn.SetReadDeadline(time.Now().Add(5 * time.Minute))
 	conn.SetPongHandler(func(string) error {
 		conn.SetReadDeadline(time.Now().Add(5 * time.Minute))
+		h.tracker.UpdateLastSeen(connID)
 		return nil
 	})
+
+	// Mark as disconnected when connection closes
+	defer func() {
+		h.tracker.Disconnect(connID)
+		slog.Info("WebSocket disconnected", "remote", remoteAddr, "conn_id", connID)
+	}()
 
 	// Start ping ticker
 	go h.pingLoop(conn)
@@ -91,12 +109,28 @@ func (h *handler) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 
-		h.processMessage(r.Context(), message)
+		h.processMessage(r.Context(), connID, remoteAddr, message)
 	}
 }
 
-func (h *handler) handleRegistration(ctx context.Context, apps []string) {
-	slog.Info("Received app registration", "apps", apps, "count", len(apps))
+// extractIP extracts the IP address from remote address (removes port)
+func extractIP(remoteAddr string) string {
+	// Handle IPv6 addresses like [::1]:port
+	if idx := strings.LastIndex(remoteAddr, ":"); idx != -1 {
+		ip := remoteAddr[:idx]
+		// Remove brackets from IPv6
+		ip = strings.TrimPrefix(ip, "[")
+		ip = strings.TrimSuffix(ip, "]")
+		return ip
+	}
+	return remoteAddr
+}
+
+func (h *handler) handleRegistration(ctx context.Context, connID, remoteAddr, collectorName string, apps []string) {
+	slog.Info("Received app registration", "collector", collectorName, "remote", remoteAddr, "apps", apps, "count", len(apps))
+
+	// Register collector with tracker
+	h.tracker.Register(connID, collectorName, remoteAddr, apps)
 
 	// Pre-create databases for registered apps
 	for _, appName := range apps {
@@ -122,7 +156,7 @@ func (h *handler) pingLoop(conn *websocket.Conn) {
 	}
 }
 
-func (h *handler) processMessage(ctx context.Context, message []byte) {
+func (h *handler) processMessage(ctx context.Context, connID, remoteAddr string, message []byte) {
 	var msg LogMessage
 	if err := json.Unmarshal(message, &msg); err != nil {
 		slog.Error("Failed to parse log message", "error", err)
@@ -131,9 +165,12 @@ func (h *handler) processMessage(ctx context.Context, message []byte) {
 
 	// Handle registration messages
 	if msg.Type == "register" {
-		h.handleRegistration(ctx, msg.Apps)
+		h.handleRegistration(ctx, connID, remoteAddr, msg.CollectorName, msg.Apps)
 		return
 	}
+
+	// Update last seen on any message
+	h.tracker.UpdateLastSeen(connID)
 
 	// Handle log messages
 	if msg.AppName == "" {
@@ -199,5 +236,15 @@ func (h *handler) processMessage(ctx context.Context, message []byte) {
 		default:
 			slog.Warn("Notification channel full, dropping notification")
 		}
+	}
+}
+
+func (h *handler) listCollectors(w http.ResponseWriter, r *http.Request) {
+	collectors := h.tracker.List()
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(collectors); err != nil {
+		slog.Error("Failed to encode collectors", "error", err)
+		http.Error(w, "Internal error", http.StatusInternalServerError)
 	}
 }

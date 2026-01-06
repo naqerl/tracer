@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/ai-shift/tracer/core/services/auth"
+	"github.com/ai-shift/tracer/core/services/collectors"
 	"github.com/ai-shift/tracer/core/services/dbmanager"
 	"github.com/ai-shift/tracer/core/services/notify"
 	"github.com/ai-shift/tracer/web/middleware"
@@ -16,7 +17,7 @@ import (
 	"github.com/ai-shift/tracer/web/resources/settings"
 )
 
-func Run(port string, dbManager *dbmanager.Manager, sampleRate float64, notifyService *notify.Service, authService *auth.Service, sessionDurationSec int) *http.Server {
+func Run(port string, dbManager *dbmanager.Manager, sampleRate float64, notifyService *notify.Service, authService *auth.Service, tracker *collectors.Tracker, sessionDurationSec int) *http.Server {
 	mux := http.NewServeMux()
 
 	// Root redirects to analytics dashboard
@@ -28,11 +29,11 @@ func Run(port string, dbManager *dbmanager.Manager, sampleRate float64, notifySe
 	mux.Handle("/", authres.InitMux(authService, sessionDurationSec))
 
 	// API routes (uses API key auth via middleware)
-	mux.Handle("/api/", http.StripPrefix("/api", api.InitMux(dbManager, sampleRate, notifyService.Chan())))
+	mux.Handle("/api/", http.StripPrefix("/api", api.InitMux(dbManager, sampleRate, notifyService.Chan(), tracker)))
 
 	// UI routes (protected by auth middleware)
 	mux.Handle("/logs/", http.StripPrefix("/logs", logs.InitMux(dbManager, authService)))
-	mux.Handle("/analytics/", http.StripPrefix("/analytics", analytics.InitMux(dbManager, authService)))
+	mux.Handle("/analytics/", http.StripPrefix("/analytics", analytics.InitMux(dbManager, authService, tracker)))
 	mux.Handle("/settings/", http.StripPrefix("/settings", settings.InitMux(authService, dbManager, notifyService)))
 
 	// Apply middleware (order matters: logging runs first, then auth)
