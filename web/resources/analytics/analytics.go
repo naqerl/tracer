@@ -129,6 +129,7 @@ func (h *handler) appAnalytics(w http.ResponseWriter, r *http.Request) {
 		"AppName": appName,
 		"Stats":   stats,
 		"Hourly":  hourly,
+		"IsAdmin": user.IsAdmin == 1,
 	}
 
 	if htmx.IsAjax(r) {
