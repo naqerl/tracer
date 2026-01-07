@@ -2,9 +2,11 @@
 
 > Yes, exactly the one you thought about
 
+Lightweight, self-hosted log aggregation and alerting for small to mid-sized projects.
+
 ## What problem does it solve
 
-*OpenTelemetry* setup for the small to mid project is insanely expensive overkill
+*OpenTelemetry* setup for small to mid projects is insanely expensive overkill.
 
 ## How tracer helps
 
@@ -12,6 +14,8 @@ Simplicity.
 
 - Run logs collector as a single binary 
 - Self host logs and analytics panel
+- Get error alerts via Telegram
+- View logs grouped by trace ID
 
 ### Philosophy
 
@@ -20,7 +24,7 @@ In production logs I care about two main things:
 1. Get error alert from infrastructure and not the client
 2. Get all the context about the error so tests and fixes could be written right away
 
-Also I hate to setup infrastructure for each project to get this two simple things done.
+Also I hate to setup infrastructure for each project to get these two simple things done.
 
 Any other logs may show some performance degradation or health status but in both cases do not require persistence. `tracer` uses single SQLite database to store all info about errors and only selected percent of other logs (chosen randomly)
 
@@ -41,7 +45,7 @@ This installs both components:
 After installation, configure your log sources:
 
 ```bash
-sudo nano /etc/tracer/collector.toml
+sudo vim /etc/tracer/collector.toml
 ```
 
 Example configuration:
@@ -77,7 +81,7 @@ pattern = '(?P<timestamp>\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}) \[(?P<level>\w+)\]
 ### Panel Configuration
 
 ```bash
-sudo nano /etc/tracer/panel.toml
+sudo vim /etc/tracer/panel.toml
 ```
 
 ```toml
@@ -109,32 +113,44 @@ Access the panel at http://localhost:8080
   - Journalctl (systemd services)
 - **Automatic timestamp parsing** - RFC3339, ISO, Unix timestamps
 - **Field extraction** - timestamp, level, trace_id, message, context
-- **WebSocket transport** - low-latency streaming to panel
+- **WebSocket transport** - low-latency streaming to panel with ping/pong keepalive
 - **Reconnection** - automatic reconnect with exponential backoff
+- **Named collectors** - identify collectors by name or auto-detect via outbound IP
 
 ### Panel
 
 - **Authentication**
   - Session-based auth with secure cookies
+  - Configurable session duration
   - Admin and regular user roles
   - Per-app access control for non-admin users
-  - API key authentication for collectors
+  - API key authentication for collectors (regeneratable)
+
+- **User management** (admin only)
+  - Create/delete users
+  - Assign admin privileges
+  - Per-user app access control
 
 - **Log management**
   - Per-app SQLite databases (WAL mode)
-  - Configurable sample rate for non-error logs
-  - Automatic retention cleanup
-  - Trace ID grouping
+  - Configurable sample rate for non-error logs (errors always persisted at 100%)
+  - Automatic retention cleanup (configurable days)
+  - Trace ID grouping for request tracking
+  - Log detail view with raw message and context
+  - Filter logs by level
 
-- **Analytics**
+- **Analytics dashboard**
   - Error/warning/info counts (24h)
-  - Hourly distribution breakdown
-  - Real-time collector status
+  - Hourly distribution charts
+  - Real-time collector status monitoring
+  - Per-app analytics views
 
 - **Notifications**
   - Telegram alerts for errors
   - Per-user notifier configuration
   - App-specific or global (admin) notifications
+  - Enable/disable notifiers without deleting
+  - Multiple notifiers per user
 
 ## Architecture
 
@@ -199,3 +215,63 @@ unit = "my-service.service"
 ```
 
 Syslog priority levels (0-7) are converted to standard levels (EMERG/ALERT/CRIT/ERROR/WARN/NOTICE/INFO/DEBUG).
+
+## Development
+
+### Local Development
+
+```bash
+# Run full demo (panel + collector + mock logger)
+make dev
+
+# Stop all dev components
+make dev-stop
+
+# View panel logs
+make dev-logs
+```
+
+### Building
+
+```bash
+# Build all binaries
+make build
+
+# Build release binaries (static, stripped)
+make build-release
+
+# Run tests
+make test
+
+# Run linter
+make lint
+```
+
+### Deployment
+
+See `deploy/` directory for deployment scripts and systemd service files.
+
+```bash
+cd deploy
+make deploy           # Deploy both panel and collector
+make deploy-panel     # Deploy only panel
+make deploy-collector # Deploy only collector
+make restart          # Restart services
+```
+
+## Roadmap
+
+- [x] Multiple log formats (JSON, regex, journalctl)
+- [x] WebSocket transport with reconnection
+- [x] Per-app SQLite databases
+- [x] Authentication and user management
+- [x] Per-user app access control
+- [x] Telegram notifications
+- [x] Analytics dashboard with charts
+- [x] Collector status monitoring
+- [x] Trace ID grouping
+- [x] Log retention cleanup
+- [x] API key authentication
+- [ ] Slack/Discord notifications
+- [ ] Log search with full-text
+- [ ] Metrics collection (beyond logs)
