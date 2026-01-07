@@ -35,3 +35,23 @@ func New(cfg config.App) (Parser, error) {
 		return nil, ErrUnknownFormat
 	}
 }
+
+// normalizeLevel converts various level formats to uppercase standard
+func normalizeLevel(level string) string {
+	switch level {
+	case "INFO", "info":
+		return "INFO"
+	case "WARN", "warn", "WARNING", "warning":
+		return "WARN"
+	case "ERROR", "error":
+		return "ERROR"
+	case "DEBUG", "debug":
+		return "DEBUG"
+	case "TRACE", "trace":
+		return "TRACE"
+	case "FATAL", "fatal", "CRITICAL", "critical":
+		return "FATAL"
+	default:
+		return level
+	}
+}

@@ -64,7 +64,7 @@ func (p *regexParser) Parse(line string) (*LogEntry, error) {
 	}
 
 	if level, ok := groups[p.levelField]; ok {
-		entry.Level = level
+		entry.Level = normalizeLevel(level)
 		delete(groups, p.levelField)
 	}
 

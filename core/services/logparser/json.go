@@ -49,7 +49,7 @@ func (p *jsonParser) Parse(line string) (*LogEntry, error) {
 	}
 
 	if level, ok := data[p.levelField].(string); ok {
-		entry.Level = level
+		entry.Level = normalizeLevel(level)
 		delete(data, p.levelField)
 	}
 
