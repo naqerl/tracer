@@ -1,4 +1,4 @@
-.PHONY: build build-collector build-panel build-release clean test lint generate
+.PHONY: build build-collector build-panel build-release clean test vet generate
 
 # Build all binaries
 build: build-collector build-panel
@@ -28,9 +28,10 @@ clean:
 test:
 	go test ./...
 
-# Run linter
-lint:
-	golangci-lint run
+# Run vet and staticcheck
+vet:
+	go vet ./...
+	staticcheck ./...
 
 # Install dependencies
 deps:
