@@ -51,8 +51,10 @@ sudo vim /etc/tracer/collector.toml
 Example configuration:
 
 ```toml
-name = "my-server"  # optional, defaults to outbound IP
+name = "my-server"            # optional, defaults to outbound IP
 panel_endpoint = "ws://localhost:8080/api/ws/ingest?api_key=YOUR_API_KEY"
+stats_interval = "30s"        # optional, system stats collection interval (default: 30s)
+data_dir = "/var/lib/tracer"  # optional, data directory for offsets (default: /var/lib/tracer)
 
 # JSON application logs
 [[apps]]
@@ -63,12 +65,15 @@ timestamp_field = "time"
 level_field = "level"
 message_field = "msg"
 trace_id_field = "trace_id"
+startup_pattern = "Server started"  # optional, marks app restart in logs
 
 # Systemd service via journalctl
 [[apps]]
 name = "my-service"
 format = "journalctl"
 unit = "my-service"
+# optional: parse MESSAGE field content with regex
+pattern = '^(?P<level>\w+):\s+[\d.:]+\s+-\s+(?P<message>.+)$'
 
 # Custom regex pattern
 [[apps]]
@@ -86,6 +91,7 @@ sudo vim /etc/tracer/panel.toml
 
 ```toml
 port = "8080"
+panel_url = "https://tracer.example.com"  # optional, used in email/notification links
 data_dir = "/var/lib/tracer"
 sample_rate = 0.1        # persist 10% of non-error logs
 retention_days = 90      # keep logs for 3 months
@@ -110,12 +116,14 @@ Access the panel at http://localhost:8080
 - **Multiple log formats**
   - JSON with customizable field mappings
   - User-defined regex patterns
-  - Journalctl (systemd services)
+  - Journalctl (systemd services) with optional MESSAGE field parsing
 - **Automatic timestamp parsing** - RFC3339, ISO, Unix timestamps
 - **Field extraction** - timestamp, level, trace_id, message, context
 - **WebSocket transport** - low-latency streaming to panel with ping/pong keepalive
 - **Reconnection** - automatic reconnect with exponential backoff
 - **Named collectors** - identify collectors by name or auto-detect via outbound IP
+- **System stats collection** - CPU, RAM, disk usage sent to panel at configurable intervals
+- **Startup detection** - optional pattern matching to mark application restarts
 
 ### Panel
 
@@ -141,9 +149,9 @@ Access the panel at http://localhost:8080
 
 - **Analytics dashboard**
   - Error/warning/info counts (24h)
-  - Hourly distribution charts
-  - Real-time collector status monitoring
+  - Real-time collector status monitoring with system stats (CPU, RAM, disk)
   - Per-app analytics views
+  - Configurable auto-refresh interval (default: 10s)
 
 - **Notifications**
   - Telegram alerts for errors
@@ -212,9 +220,19 @@ pattern = '(?P<timestamp>...)\s+\[(?P<level>\w+)\]\s+(?P<message>.*)'
 name = "my-service"
 format = "journalctl"
 unit = "my-service.service"
+# optional: parse MESSAGE field content with regex
+pattern = '^(?P<level>\w+):\s+(?P<message>.+)$'
 ```
 
 Syslog priority levels (0-7) are converted to standard levels (EMERG/ALERT/CRIT/ERROR/WARN/NOTICE/INFO/DEBUG).
+
+**MESSAGE field parsing**: The optional `pattern` field allows extracting structured data from the MESSAGE content using named groups:
+- `(?P<level>...)` - override syslog priority with application-specific level
+- `(?P<message>...)` - extract clean message without metadata
+- `(?P<timestamp>...)` - override journal timestamp with application timestamp
+- `(?P<trace_id>...)` - extract trace ID for request correlation
+
+This is useful for applications that log structured content to journalctl (e.g., uvicorn, gunicorn).
 
 ## Development
 
@@ -259,6 +277,21 @@ make deploy-collector # Deploy only collector
 make restart          # Restart services
 ```
 
+## Collector-Only Installation
+
+You can install only the collector on servers where you don't need the panel:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/ai-shift/tracer/main/install.sh | sudo bash -s -- --collector-only
+```
+
+This is useful for:
+- Sending logs to a centralized tracer panel on another server
+- Monitoring remote servers
+- Distributed deployments
+
+Configuration remains the same, just point `panel_endpoint` to your centralized panel instance.
+
 ## Roadmap
 
 - [x] Multiple log formats (JSON, regex, journalctl)
@@ -267,11 +300,14 @@ make restart          # Restart services
 - [x] Authentication and user management
 - [x] Per-user app access control
 - [x] Telegram notifications
-- [x] Analytics dashboard with charts
-- [x] Collector status monitoring
+- [x] Analytics dashboard
+- [x] Collector status monitoring with system stats
 - [x] Trace ID grouping
 - [x] Log retention cleanup
 - [x] API key authentication
+- [x] Journalctl MESSAGE field parsing
+- [x] Configurable refresh intervals
+- [x] Startup pattern detection
 - [ ] Slack/Discord notifications
 - [ ] Log search with full-text
 - [ ] Metrics collection (beyond logs)
