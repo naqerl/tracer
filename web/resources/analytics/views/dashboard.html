@@ -32,6 +32,11 @@
     <!-- Collector Header -->
     <div class="flex items-center gap-2 mb-2">
         <h2 class="text-xl font-semibold">{{.Name}}</h2>
+        <a href="/analytics/collectors/{{.Name}}/stats" 
+           class="text-xs text-accent hover:underline"
+           title="View resource usage history">
+            📊 stats
+        </a>
         <span class="w-2.5 h-2.5 rounded-full {{if .IsConnected}}bg-green-500 animate-pulse{{else}}bg-fg-secondary{{end}}"></span>
         {{if .Stats}}
         <span class="text-fg-secondary text-xs ml-auto">{{.Stats.CreatedAt.Format "15:04:05"}}</span>
