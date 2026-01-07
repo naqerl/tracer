@@ -35,8 +35,9 @@ func InitMux(dbManager *dbmanager.Manager, authService *auth.Service, tracker *c
 	}
 
 	m.HandleFunc("GET /", h.dashboard)
-	m.HandleFunc("GET /{app}", h.appAnalytics)
+	m.HandleFunc("GET /collectors/{collector}/stats", h.collectorStats)
 	m.HandleFunc("GET /collectors", h.getCollectors)
+	m.HandleFunc("GET /{app}", h.appAnalytics)
 
 	return m
 }
@@ -172,6 +173,103 @@ func (h *handler) getCollectors(w http.ResponseWriter, r *http.Request) {
 type CollectorWithStats struct {
 	collectors.Collector
 	Stats *db.SystemStat
+}
+
+func (h *handler) collectorStats(w http.ResponseWriter, r *http.Request) {
+	user := middleware.GetUser(r)
+	if user == nil {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+
+	collectorName := r.PathValue("collector")
+	if collectorName == "" {
+		h.t.RenderError(w, r, "Error", "Collector name required", http.StatusBadRequest)
+		return
+	}
+
+	// Check if user has access to at least one app from this collector
+	if user.IsAdmin != 1 {
+		userApps, err := h.authService.GetUserApps(r.Context(), user.ID)
+		if err != nil {
+			h.t.RenderError(w, r, "Error", "Failed to get user apps", http.StatusInternalServerError)
+			return
+		}
+
+		// Get collector's apps
+		collector, exists := h.tracker.Get(collectorName)
+		if !exists {
+			h.t.RenderError(w, r, "Not Found", "Collector not found", http.StatusNotFound)
+			return
+		}
+
+		// Check if user has access to any of the collector's apps
+		userAppMap := make(map[string]bool)
+		for _, app := range userApps {
+			userAppMap[app] = true
+		}
+
+		hasAccess := false
+		for _, app := range collector.Apps {
+			if userAppMap[app] {
+				hasAccess = true
+				break
+			}
+		}
+
+		if !hasAccess {
+			h.t.RenderError(w, r, "Forbidden", "You don't have access to this collector", http.StatusForbidden)
+			return
+		}
+	}
+
+	// Parse time range parameter (default: 24h)
+	rangeParam := r.URL.Query().Get("range")
+	var since time.Time
+	var rangeLabel string
+
+	switch rangeParam {
+	case "1h":
+		since = time.Now().Add(-1 * time.Hour)
+		rangeLabel = "Last 1 Hour"
+	case "6h":
+		since = time.Now().Add(-6 * time.Hour)
+		rangeLabel = "Last 6 Hours"
+	case "7d":
+		since = time.Now().Add(-7 * 24 * time.Hour)
+		rangeLabel = "Last 7 Days"
+	case "30d":
+		since = time.Now().Add(-30 * 24 * time.Hour)
+		rangeLabel = "Last 30 Days"
+	default: // "24h" or empty
+		since = time.Now().Add(-24 * time.Hour)
+		rangeLabel = "Last 24 Hours"
+		rangeParam = "24h"
+	}
+
+	// Get stats history
+	stats, err := h.authService.GetCollectorStatsHistory(r.Context(), collectorName, since)
+	if err != nil {
+		h.t.RenderError(w, r, "Error", "Failed to get stats history", http.StatusInternalServerError)
+		return
+	}
+
+	data := map[string]any{
+		"Title":         collectorName + " Stats",
+		"CollectorName": collectorName,
+		"Stats":         stats,
+		"RangeParam":    rangeParam,
+		"RangeLabel":    rangeLabel,
+		"User":          user,
+		"IsAdmin":       user.IsAdmin == 1,
+		"Nav":           templates.NewNavData("Analytics", "analytics", user.Username),
+	}
+
+	if htmx.IsAjax(r) {
+		h.t.RenderHTTP(w, r, "collector-stats-content", data)
+	} else {
+		h.t.RenderHTTP(w, r, "collector-stats", data)
+	}
 }
 
 // getFilteredCollectors returns collectors filtered by user access
