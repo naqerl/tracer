@@ -16,10 +16,11 @@
         .range-tab { 
             padding: 0.5rem 1rem; 
             background: #1E1E1E; 
-            border: none; 
             color: #EEEEEE; 
             cursor: pointer;
             transition: all 0.2s;
+            text-decoration: none;
+            display: inline-block;
         }
         .range-tab:hover { background: #2A2A2A; }
         .range-tab.active { background: #5C9CF5; color: #0A0A0A; font-weight: 600; }
@@ -46,26 +47,16 @@
 
 <!-- Time Range Tabs -->
 <div class="range-tabs">
-    <button class="range-tab {{if eq .RangeParam "1h"}}active{{end}}" 
-            hx-get="/analytics/collectors/{{.CollectorName}}/stats?range=1h"
-            hx-target="body"
-            hx-swap="innerHTML">1 Hour</button>
-    <button class="range-tab {{if eq .RangeParam "6h"}}active{{end}}"
-            hx-get="/analytics/collectors/{{.CollectorName}}/stats?range=6h"
-            hx-target="body"
-            hx-swap="innerHTML">6 Hours</button>
-    <button class="range-tab {{if eq .RangeParam "24h"}}active{{end}}"
-            hx-get="/analytics/collectors/{{.CollectorName}}/stats?range=24h"
-            hx-target="body"
-            hx-swap="innerHTML">24 Hours</button>
-    <button class="range-tab {{if eq .RangeParam "7d"}}active{{end}}"
-            hx-get="/analytics/collectors/{{.CollectorName}}/stats?range=7d"
-            hx-target="body"
-            hx-swap="innerHTML">7 Days</button>
-    <button class="range-tab {{if eq .RangeParam "30d"}}active{{end}}"
-            hx-get="/analytics/collectors/{{.CollectorName}}/stats?range=30d"
-            hx-target="body"
-            hx-swap="innerHTML">30 Days</button>
+    <a href="/analytics/collectors/{{.CollectorName}}/stats?range=1h" 
+       class="range-tab {{if eq .RangeParam "1h"}}active{{end}}">1 Hour</a>
+    <a href="/analytics/collectors/{{.CollectorName}}/stats?range=6h"
+       class="range-tab {{if eq .RangeParam "6h"}}active{{end}}">6 Hours</a>
+    <a href="/analytics/collectors/{{.CollectorName}}/stats?range=24h"
+       class="range-tab {{if eq .RangeParam "24h"}}active{{end}}">24 Hours</a>
+    <a href="/analytics/collectors/{{.CollectorName}}/stats?range=7d"
+       class="range-tab {{if eq .RangeParam "7d"}}active{{end}}">7 Days</a>
+    <a href="/analytics/collectors/{{.CollectorName}}/stats?range=30d"
+       class="range-tab {{if eq .RangeParam "30d"}}active{{end}}">30 Days</a>
 </div>
 
 {{if .Stats}}
