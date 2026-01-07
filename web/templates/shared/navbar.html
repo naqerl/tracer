@@ -1,22 +1,32 @@
 {{define "navbar"}}
-<nav class="flex justify-between items-center mb-6 pb-4">
-    <div class="flex items-center">
-        <!-- Breadcrumb Path -->
+<nav class="flex flex-col gap-2 sm:gap-0 mb-6 pb-4">
+    <div class="flex flex-row justify-between items-center">
+    <div class="flex flex-col sm:flex-row sm:items-center">
+        {{if isSettingsPath .Breadcrumbs}}
+        {{/* Settings page: /analytics (gray) | /settings (bright) */}}
+        <a href="/analytics/" class="text-fg-secondary hover:text-fg transition-colors">/analytics</a>
+        <span class="hidden sm:inline mx-3 text-fg-secondary">|</span>
+        <div class="flex items-center flex-wrap">
         {{range $i, $seg := .Breadcrumbs}}
         {{if eq $i (sub (len $.Breadcrumbs) 1)}}
-        {{/* Last segment - active (bright) */}}
         <a href="{{$seg.URL}}" class="breadcrumb-active text-fg hover:text-accent transition-colors">/{{$seg.Text}}</a>
         {{else}}
-        {{/* Non-last segment - gray, with hover highlight for entire path */}}
         <a href="{{$seg.URL}}" class="breadcrumb-segment text-fg-secondary hover:text-fg transition-colors" data-index="{{$i}}">/{{$seg.Text}}</a>
         {{end}}
         {{end}}
-        
-        {{/* Show the other top-level link */}}
-        <span class="mx-3 text-fg-secondary">|</span>
-        {{if isSettingsPath .Breadcrumbs}}
-        <a href="/analytics/" class="text-fg-secondary hover:text-fg transition-colors">/analytics</a>
+        </div>
         {{else}}
+        {{/* Analytics pages: /analytics/... (bright) | /settings (gray) */}}
+        <div class="flex items-center flex-wrap">
+        {{range $i, $seg := .Breadcrumbs}}
+        {{if eq $i (sub (len $.Breadcrumbs) 1)}}
+        <a href="{{$seg.URL}}" class="breadcrumb-active text-fg hover:text-accent transition-colors">/{{$seg.Text}}</a>
+        {{else}}
+        <a href="{{$seg.URL}}" class="breadcrumb-segment text-fg-secondary hover:text-fg transition-colors" data-index="{{$i}}">/{{$seg.Text}}</a>
+        {{end}}
+        {{end}}
+        </div>
+        <span class="hidden sm:inline mx-3 text-fg-secondary">|</span>
         <a href="/settings/" class="text-fg-secondary hover:text-fg transition-colors">/settings</a>
         {{end}}
     </div>
@@ -27,13 +37,14 @@
             <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
             <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
         </svg>
-        <span class="text-fg-secondary" id="refresh-label">Refresh:</span>
+        <span class="text-fg-secondary">Refresh:</span>
         <div class="flex items-center">
-            <input type="text" id="refresh-interval" value="10" class="bg-transparent text-fg text-xs w-4 outline-none border-none p-0" />
+            <input type="text" id="refresh-interval" value="10" class="bg-transparent text-fg text-xs w-4 outline-none border-none p-0 refresh-input" />
             <span class="text-fg-secondary text-xs">s</span>
         </div>
     </div>
     {{end}}
+    </div>
 </nav>
 
 <script>
