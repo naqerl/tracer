@@ -25,16 +25,6 @@ FROM logs
 WHERE created_at >= ?
 GROUP BY level;
 
--- name: CountByLevelAndHour :many
-SELECT 
-    level,
-    strftime('%Y-%m-%d %H:00:00', created_at) as hour,
-    COUNT(*) as count
-FROM logs
-WHERE created_at >= ?
-GROUP BY level, hour
-ORDER BY hour;
-
 -- name: DeleteOldLogs :exec
 DELETE FROM logs
 WHERE created_at < ?;

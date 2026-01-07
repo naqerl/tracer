@@ -14,7 +14,6 @@ type Querier interface {
 	AddNotifierApp(ctx context.Context, arg AddNotifierAppParams) error
 	AddUserApp(ctx context.Context, arg AddUserAppParams) error
 	CountByLevel(ctx context.Context, createdAt sql.NullTime) ([]CountByLevelRow, error)
-	CountByLevelAndHour(ctx context.Context, createdAt sql.NullTime) ([]CountByLevelAndHourRow, error)
 	// Groups logs by message and returns counts, ordered by frequency (most frequent first)
 	CountLogsByMessage(ctx context.Context, limit int64) ([]CountLogsByMessageRow, error)
 	// Groups logs by message filtered by level, ordered by frequency

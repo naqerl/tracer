@@ -45,46 +45,6 @@ func (q *Queries) CountByLevel(ctx context.Context, createdAt sql.NullTime) ([]C
 	return items, nil
 }
 
-const countByLevelAndHour = `-- name: CountByLevelAndHour :many
-SELECT 
-    level,
-    strftime('%Y-%m-%d %H:00:00', created_at) as hour,
-    COUNT(*) as count
-FROM logs
-WHERE created_at >= ?
-GROUP BY level, hour
-ORDER BY hour
-`
-
-type CountByLevelAndHourRow struct {
-	Level string
-	Hour  interface{}
-	Count int64
-}
-
-func (q *Queries) CountByLevelAndHour(ctx context.Context, createdAt sql.NullTime) ([]CountByLevelAndHourRow, error) {
-	rows, err := q.db.QueryContext(ctx, countByLevelAndHour, createdAt)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []CountByLevelAndHourRow
-	for rows.Next() {
-		var i CountByLevelAndHourRow
-		if err := rows.Scan(&i.Level, &i.Hour, &i.Count); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const countLogsByMessage = `-- name: CountLogsByMessage :many
 SELECT 
     level,

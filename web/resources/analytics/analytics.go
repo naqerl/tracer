@@ -36,7 +36,6 @@ func InitMux(dbManager *dbmanager.Manager, authService *auth.Service, tracker *c
 
 	m.HandleFunc("GET /", h.dashboard)
 	m.HandleFunc("GET /{app}", h.appAnalytics)
-	m.HandleFunc("GET /{app}/chart", h.getChart)
 	m.HandleFunc("GET /collectors", h.getCollectors)
 
 	return m
@@ -133,16 +132,9 @@ func (h *handler) appAnalytics(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	hourly, err := queries.CountByLevelAndHour(r.Context(), since)
-	if err != nil {
-		h.t.RenderError(w, r, "Error", "Failed to get hourly stats", http.StatusInternalServerError)
-		return
-	}
-
 	data := map[string]any{
 		"AppName": appName,
 		"Stats":   stats,
-		"Hourly":  hourly,
 		"IsAdmin": user.IsAdmin == 1,
 		"Nav":     templates.NewNavData(appName, "analytics", user.Username),
 	}
@@ -152,43 +144,6 @@ func (h *handler) appAnalytics(w http.ResponseWriter, r *http.Request) {
 	} else {
 		h.t.RenderHTTP(w, r, "app-analytics", data)
 	}
-}
-
-func (h *handler) getChart(w http.ResponseWriter, r *http.Request) {
-	user := middleware.GetUser(r)
-	if user == nil {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return
-	}
-
-	appName := r.PathValue("app")
-
-	// Check app access
-	hasAccess, err := h.authService.UserHasAppAccess(r.Context(), user.ID, appName)
-	if err != nil || !hasAccess {
-		http.Error(w, "Forbidden", http.StatusForbidden)
-		return
-	}
-
-	queries, err := h.dbManager.GetQueries(appName)
-	if err != nil {
-		http.Error(w, "App not found", http.StatusNotFound)
-		return
-	}
-
-	since := sql.NullTime{Time: time.Now().Add(-24 * time.Hour), Valid: true}
-	hourly, err := queries.CountByLevelAndHour(r.Context(), since)
-	if err != nil {
-		http.Error(w, "Failed to get data", http.StatusInternalServerError)
-		return
-	}
-
-	data := map[string]any{
-		"AppName": appName,
-		"Hourly":  hourly,
-	}
-
-	h.t.RenderHTTP(w, r, "chart", data)
 }
 
 func (h *handler) getCollectors(w http.ResponseWriter, r *http.Request) {
