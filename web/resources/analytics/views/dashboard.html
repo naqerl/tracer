@@ -37,7 +37,7 @@
         <span class="text-fg-secondary text-xl mx-1">[</span>
         <span class="text-xl {{if .IsConnected}}text-green-500 animate-pulse{{else}}text-fg-secondary{{end}}">●</span>
         <span class="text-fg-secondary text-xl ml-1">]</span>
-        <div class="flex-1 mx-4 border-b border-bg-secondary self-center" style="margin-bottom: 0.2rem;"></div>
+        <hr class="flex-1 mx-4 border-bg-secondary" />
         {{if .Stats}}
         <span class="text-fg-secondary text-xs mr-1">[</span>
         <span class="text-fg-secondary text-xs">{{.Stats.CreatedAt.Format "15:04:05"}}</span>
