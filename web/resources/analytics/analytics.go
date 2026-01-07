@@ -209,8 +209,8 @@ func (h *handler) getCollectors(w http.ResponseWriter, r *http.Request) {
 		"Collectors": collectorsWithStats,
 	}
 
-	// Render only the inner items for HTMX requests (hx-swap="innerHTML")
-	h.t.RenderHTTP(w, r, "collectors-items", data)
+	// Render collector sections for HTMX refresh
+	h.t.RenderHTTP(w, r, "collectors-sections", data)
 }
 
 // CollectorWithStats combines collector info with latest system stats

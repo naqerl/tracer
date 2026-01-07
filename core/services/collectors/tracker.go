@@ -1,6 +1,7 @@
 package collectors
 
 import (
+	"sort"
 	"sync"
 	"time"
 )
@@ -87,6 +88,7 @@ func (t *Tracker) UpdateLastSeen(connID string) {
 }
 
 // List returns all collectors (both connected and recently disconnected)
+// Sorted by name for consistent ordering
 func (t *Tracker) List() []Collector {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
@@ -95,6 +97,9 @@ func (t *Tracker) List() []Collector {
 	for _, c := range t.collectors {
 		result = append(result, *c)
 	}
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].Name < result[j].Name
+	})
 	return result
 }
 
