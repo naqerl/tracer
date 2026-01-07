@@ -43,12 +43,12 @@ func (t *TelegramNotifier) Notify(n Notification) error {
 	if n.Level == "STARTUP" {
 		// Startup notification - compact and informative
 		text = fmt.Sprintf(
-			"🚀 **App Started**\n\n"+
-				"**App:** `%s`\n",
+			"🚀 **App Started**\n"+
+				"**App:** `%s`",
 			n.AppName,
 		)
 		if n.Message != "" {
-			text += fmt.Sprintf("\n**Message:**\n```\n%s\n```", n.Message)
+			text += fmt.Sprintf("\n**Message:** ```%s```", n.Message)
 		}
 	} else {
 		// Error/Alert notification - full details
@@ -63,20 +63,20 @@ func (t *TelegramNotifier) Notify(n Notification) error {
 		}
 
 		text = fmt.Sprintf(
-			"%s **%s**\n\n"+
-				"**App:** `%s`\n",
+			"%s **%s**\n"+
+				"**App:** `%s`",
 			emoji,
 			string(n.Type),
 			n.AppName,
 		)
 
-		text += fmt.Sprintf("\n**Message:**\n```\n%s\n```", n.Message)
+		text += fmt.Sprintf("\n**Message:** ```%s```", n.Message)
 	}
 
 	// Add link to panel if panel URL is configured
 	if n.PanelURL != "" {
 		detailsURL := fmt.Sprintf("%s/logs/%s", n.PanelURL, n.AppName)
-		text += fmt.Sprintf("\n\n[details](%s)", detailsURL)
+		text += fmt.Sprintf("\n[details](%s)", detailsURL)
 	}
 
 	// Use tgmd to convert standard markdown to Telegram MarkdownV2 format
