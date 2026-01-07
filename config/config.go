@@ -33,6 +33,10 @@ type App struct {
 
 	// Journalctl-specific settings
 	Unit string `toml:"unit,omitempty"` // systemd unit name for journalctl format
+
+	// Optional: regex pattern to detect app startup
+	// When a log line matches this pattern, a startup notification is sent
+	StartupPattern string `toml:"startup_pattern,omitempty"`
 }
 
 func LoadCollector(path string) (*Collector, error) {

@@ -22,7 +22,7 @@ const (
 )
 
 type Message struct {
-	Type          string             `json:"type"` // "register" or "log"
+	Type          string             `json:"type"` // "register", "log", or "startup"
 	AppName       string             `json:"app_name"`
 	Apps          []string           `json:"apps,omitempty"`           // for registration
 	CollectorName string             `json:"collector_name,omitempty"` // for registration
@@ -216,8 +216,14 @@ func (s *Service) sendRegistration() {
 }
 
 func (s *Service) sendLog(appLog filewatcher.AppLogEntry) {
+	// Determine message type based on whether this is a startup entry
+	msgType := "log"
+	if appLog.IsStartup {
+		msgType = "startup"
+	}
+
 	msg := Message{
-		Type:    "log",
+		Type:    msgType,
 		AppName: appLog.AppName,
 		Entry:   appLog.Entry,
 	}

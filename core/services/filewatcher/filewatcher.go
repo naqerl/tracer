@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
+	"regexp"
 	"sync"
 	"time"
 
@@ -27,8 +28,9 @@ const (
 )
 
 type AppLogEntry struct {
-	AppName string
-	Entry   logparser.LogEntry
+	AppName   string
+	Entry     logparser.LogEntry
+	IsStartup bool // true if this entry matches the startup pattern
 }
 
 type watchedSource struct {
@@ -39,6 +41,9 @@ type watchedSource struct {
 	file       *os.File
 	parser     logparser.Parser
 	offset     int64
+
+	// startup detection
+	startupRegex *regexp.Regexp
 
 	// journalctl specific
 	cmd    *exec.Cmd
@@ -66,6 +71,17 @@ func New(apps []config.App) (*Service, error) {
 		ws := &watchedSource{
 			appName: app.Name,
 			parser:  parser,
+		}
+
+		// Compile startup pattern if specified
+		if app.StartupPattern != "" {
+			re, err := regexp.Compile(app.StartupPattern)
+			if err != nil {
+				slog.Warn("Invalid startup pattern, ignoring", "app", app.Name, "pattern", app.StartupPattern, "error", err)
+			} else {
+				ws.startupRegex = re
+				slog.Info("Startup detection enabled", "app", app.Name, "pattern", app.StartupPattern)
+			}
 		}
 
 		if app.Format == "journalctl" {
@@ -191,8 +207,14 @@ func (s *Service) readJournalctl(ctx context.Context, ws *watchedSource) {
 			continue
 		}
 
+		// Check if this is a startup message
+		isStartup := ws.isStartupEntry(entry)
+		if isStartup {
+			slog.Info("Detected app startup", "app", ws.appName, "message", entry.Message)
+		}
+
 		select {
-		case s.LogChan <- AppLogEntry{AppName: ws.appName, Entry: *entry}:
+		case s.LogChan <- AppLogEntry{AppName: ws.appName, Entry: *entry, IsStartup: isStartup}:
 		case <-ctx.Done():
 			return
 		default:
@@ -203,6 +225,15 @@ func (s *Service) readJournalctl(ctx context.Context, ws *watchedSource) {
 	if err := scanner.Err(); err != nil {
 		slog.Warn("Journalctl scanner error", "unit", ws.unit, "error", err)
 	}
+}
+
+// isStartupEntry checks if the log entry matches the startup pattern
+func (ws *watchedSource) isStartupEntry(entry *logparser.LogEntry) bool {
+	if ws.startupRegex == nil {
+		return false
+	}
+	// Check against the message and the raw log line
+	return ws.startupRegex.MatchString(entry.Message) || ws.startupRegex.MatchString(entry.Raw)
 }
 
 func (s *Service) pollAll(ctx context.Context) {
@@ -258,8 +289,14 @@ func (s *Service) readNewLines(ctx context.Context, ws *watchedSource) {
 			continue
 		}
 
+		// Check if this is a startup message
+		isStartup := ws.isStartupEntry(entry)
+		if isStartup {
+			slog.Info("Detected app startup", "app", ws.appName, "message", entry.Message)
+		}
+
 		select {
-		case s.LogChan <- AppLogEntry{AppName: ws.appName, Entry: *entry}:
+		case s.LogChan <- AppLogEntry{AppName: ws.appName, Entry: *entry, IsStartup: isStartup}:
 		default:
 			slog.Warn("Log channel full, dropping entry")
 		}

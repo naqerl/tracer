@@ -29,7 +29,7 @@ var upgrader = websocket.Upgrader{
 
 // LogMessage is the message format from collectors
 type LogMessage struct {
-	Type          string   `json:"type"` // "register" or "log"
+	Type          string   `json:"type"` // "register", "log", or "startup"
 	AppName       string   `json:"app_name"`
 	Apps          []string `json:"apps,omitempty"`           // for registration
 	CollectorName string   `json:"collector_name,omitempty"` // for registration
@@ -172,6 +172,12 @@ func (h *handler) processMessage(ctx context.Context, connID, remoteAddr string,
 	// Update last seen on any message
 	h.tracker.UpdateLastSeen(connID)
 
+	// Handle startup messages - always persist and notify
+	if msg.Type == "startup" {
+		h.handleStartup(ctx, msg)
+		return
+	}
+
 	// Handle log messages
 	if msg.AppName == "" {
 		slog.Warn("Received log without app_name")
@@ -235,6 +241,75 @@ func (h *handler) processMessage(ctx context.Context, connID, remoteAddr string,
 		}:
 		default:
 			slog.Warn("Notification channel full, dropping notification")
+		}
+	}
+}
+
+// handleStartup processes app startup notifications
+// Startup messages are always persisted and trigger a notification
+func (h *handler) handleStartup(ctx context.Context, msg LogMessage) {
+	if msg.AppName == "" {
+		slog.Warn("Received startup without app_name")
+		return
+	}
+
+	slog.Info("App startup detected", "app", msg.AppName, "message", msg.Entry.Message)
+
+	// Get queries for this app
+	queries, err := h.dbManager.GetQueries(msg.AppName)
+	if err != nil {
+		slog.Error("Failed to get queries for startup", "error", err, "app_name", msg.AppName)
+		return
+	}
+
+	// Marshal extra context
+	contextJSON := "{}"
+	if len(msg.Entry.Extra) > 0 {
+		if b, err := json.Marshal(msg.Entry.Extra); err == nil {
+			contextJSON = string(b)
+		}
+	}
+
+	// Store startup entry (always persist, no sampling)
+	ts := msg.Entry.Timestamp
+	if ts.IsZero() {
+		ts = time.Now()
+	}
+
+	// Use "STARTUP" as the level for startup events
+	level := "STARTUP"
+	if msg.Entry.Level != "" {
+		level = msg.Entry.Level
+	}
+
+	_, err = queries.InsertLog(ctx, db.InsertLogParams{
+		TraceID:   msg.Entry.TraceID,
+		Level:     level,
+		Message:   msg.Entry.Message,
+		Source:    msg.Entry.Source,
+		Context:   sql.NullString{String: contextJSON, Valid: true},
+		Raw:       msg.Entry.Raw,
+		CreatedAt: sql.NullTime{Time: ts, Valid: true},
+	})
+	if err != nil {
+		slog.Error("Failed to store startup log", "error", err, "app_name", msg.AppName)
+		return
+	}
+
+	// Send startup notification
+	if h.notifyChan != nil {
+		select {
+		case h.notifyChan <- notify.Notification{
+			Type:      notify.TypeNotice,
+			AppName:   msg.AppName,
+			TraceID:   msg.Entry.TraceID,
+			Level:     "STARTUP",
+			Message:   msg.Entry.Message,
+			Source:    msg.Entry.Source,
+			Timestamp: ts,
+		}:
+		default:
+			slog.Warn("Notification channel full, dropping startup notification")
 		}
 	}
 }
