@@ -1,11 +1,11 @@
 {{define "navbar"}}
-<nav class="flex justify-between items-center mb-6 pb-4 border-b border-bg-secondary">
+<nav class="flex justify-between items-center mb-6 pb-4">
     <div class="flex items-center">
         <!-- Breadcrumb Path -->
         {{range $i, $seg := .Breadcrumbs}}
         {{if eq $i (sub (len $.Breadcrumbs) 1)}}
         {{/* Last segment - active (bright) */}}
-        <a href="{{$seg.URL}}" class="text-fg hover:text-accent transition-colors">/{{$seg.Text}}</a>
+        <a href="{{$seg.URL}}" class="breadcrumb-active text-fg hover:text-accent transition-colors">/{{$seg.Text}}</a>
         {{else}}
         {{/* Non-last segment - gray, with hover highlight for entire path */}}
         <a href="{{$seg.URL}}" class="breadcrumb-segment text-fg-secondary hover:text-fg transition-colors" data-index="{{$i}}">/{{$seg.Text}}</a>
@@ -41,22 +41,36 @@
 </style>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    // Breadcrumb hover effect - highlight path up to hovered segment
+    // Breadcrumb hover effect - highlight path up to hovered segment, dim active
     const segments = document.querySelectorAll('.breadcrumb-segment');
+    const active = document.querySelector('.breadcrumb-active');
+    
     segments.forEach((seg, idx) => {
         seg.addEventListener('mouseenter', () => {
+            // Highlight segments up to hovered
             segments.forEach((s, i) => {
                 if (i <= idx) {
                     s.classList.add('text-fg');
                     s.classList.remove('text-fg-secondary');
                 }
             });
+            // Dim the active segment
+            if (active) {
+                active.classList.remove('text-fg');
+                active.classList.add('text-fg-secondary');
+            }
         });
         seg.addEventListener('mouseleave', () => {
+            // Revert non-active segments to gray
             segments.forEach(s => {
                 s.classList.remove('text-fg');
                 s.classList.add('text-fg-secondary');
             });
+            // Restore active segment
+            if (active) {
+                active.classList.add('text-fg');
+                active.classList.remove('text-fg-secondary');
+            }
         });
     });
 
