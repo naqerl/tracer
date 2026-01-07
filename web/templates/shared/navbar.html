@@ -41,17 +41,20 @@
 </style>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    // Breadcrumb hover effect - highlight path up to hovered segment, dim active
+    // Breadcrumb hover effect - highlight only path up to hovered segment, dim everything else
     const segments = document.querySelectorAll('.breadcrumb-segment');
     const active = document.querySelector('.breadcrumb-active');
     
     segments.forEach((seg, idx) => {
         seg.addEventListener('mouseenter', () => {
-            // Highlight segments up to hovered
+            // Highlight segments up to and including hovered, dim the rest
             segments.forEach((s, i) => {
                 if (i <= idx) {
                     s.classList.add('text-fg');
                     s.classList.remove('text-fg-secondary');
+                } else {
+                    s.classList.remove('text-fg');
+                    s.classList.add('text-fg-secondary');
                 }
             });
             // Dim the active segment
