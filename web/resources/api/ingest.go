@@ -230,6 +230,8 @@ func (h *handler) processMessage(ctx context.Context, connID, remoteAddr string,
 	if ts.IsZero() {
 		ts = time.Now()
 	}
+	// Normalize to UTC for consistent storage
+	ts = ts.UTC()
 
 	_, err = queries.InsertLog(ctx, db.InsertLogParams{
 		TraceID:   msg.Entry.TraceID,
@@ -294,6 +296,8 @@ func (h *handler) handleStartup(ctx context.Context, msg LogMessage) {
 	if ts.IsZero() {
 		ts = time.Now()
 	}
+	// Normalize to UTC for consistent storage
+	ts = ts.UTC()
 
 	// Use "STARTUP" as the level for startup events
 	level := "STARTUP"
