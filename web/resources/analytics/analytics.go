@@ -9,6 +9,7 @@ import (
 	"github.com/ai-shift/tracer/core/services/auth"
 	"github.com/ai-shift/tracer/core/services/collectors"
 	"github.com/ai-shift/tracer/core/services/dbmanager"
+	"github.com/ai-shift/tracer/db"
 	"github.com/ai-shift/tracer/web/htmx"
 	"github.com/ai-shift/tracer/web/middleware"
 	"github.com/ai-shift/tracer/web/templates"
@@ -75,13 +76,20 @@ func (h *handler) dashboard(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Get collectors filtered by user access
+	collectorsWithStats, err := h.getFilteredCollectors(r, user)
+	if err != nil {
+		h.t.RenderError(w, r, "Error", "Failed to get collectors", http.StatusInternalServerError)
+		return
+	}
+
 	data := map[string]any{
 		"Title":      "Analytics",
 		"Apps":       apps,
 		"User":       user,
 		"IsAdmin":    user.IsAdmin == 1,
 		"Nav":        templates.NewNavData("Analytics", "analytics", user.Username),
-		"Collectors": h.tracker.List(),
+		"Collectors": collectorsWithStats,
 	}
 
 	if htmx.IsAjax(r) {
@@ -190,9 +198,72 @@ func (h *handler) getCollectors(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Get collectors filtered by user access
+	collectorsWithStats, err := h.getFilteredCollectors(r, user)
+	if err != nil {
+		http.Error(w, "Failed to get collectors", http.StatusInternalServerError)
+		return
+	}
+
 	data := map[string]any{
-		"Collectors": h.tracker.List(),
+		"Collectors": collectorsWithStats,
 	}
 
 	h.t.RenderHTTP(w, r, "collectors-list", data)
+}
+
+// CollectorWithStats combines collector info with latest system stats
+type CollectorWithStats struct {
+	collectors.Collector
+	Stats *db.SystemStat
+}
+
+// getFilteredCollectors returns collectors filtered by user access
+// Admins see all collectors, regular users only see collectors that serve apps they have access to
+func (h *handler) getFilteredCollectors(r *http.Request, user *db.User) ([]CollectorWithStats, error) {
+	collectorList := h.tracker.List()
+
+	// Get user's accessible apps (for non-admins)
+	var userAppMap map[string]bool
+	if user.IsAdmin != 1 {
+		userApps, err := h.authService.GetUserApps(r.Context(), user.ID)
+		if err != nil {
+			return nil, err
+		}
+		userAppMap = make(map[string]bool)
+		for _, app := range userApps {
+			userAppMap[app] = true
+		}
+	}
+
+	collectorsWithStats := make([]CollectorWithStats, 0, len(collectorList))
+	for _, c := range collectorList {
+		// For non-admins, check if collector has any apps the user can access
+		if user.IsAdmin != 1 {
+			hasAccessibleApp := false
+			for _, app := range c.Apps {
+				if userAppMap[app] {
+					hasAccessibleApp = true
+					break
+				}
+			}
+			if !hasAccessibleApp {
+				continue // Skip this collector
+			}
+		}
+
+		cws := CollectorWithStats{
+			Collector: c,
+		}
+
+		// Try to get latest stats for this collector
+		stats, err := h.authService.GetLatestStats(r.Context(), c.Name)
+		if err == nil && stats != nil {
+			cws.Stats = stats
+		}
+
+		collectorsWithStats = append(collectorsWithStats, cws)
+	}
+
+	return collectorsWithStats, nil
 }
