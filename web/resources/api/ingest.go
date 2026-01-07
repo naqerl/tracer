@@ -355,6 +355,8 @@ func (h *handler) handleStats(ctx context.Context, msg LogMessage) {
 	if ts.IsZero() {
 		ts = time.Now()
 	}
+	// Normalize to UTC for consistent storage
+	ts = ts.UTC()
 
 	err := h.authService.InsertSystemStats(ctx, db.InsertSystemStatsParams{
 		CollectorName:   msg.CollectorName,
