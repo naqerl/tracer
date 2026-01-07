@@ -51,15 +51,17 @@ type handler struct {
 	sampleRate float64
 	notifyChan notify.NotificationChan
 	tracker    *collectors.Tracker
+	panelURL   string
 }
 
-func InitMux(dbManager *dbmanager.Manager, sampleRate float64, notifyChan notify.NotificationChan, tracker *collectors.Tracker) *http.ServeMux {
+func InitMux(dbManager *dbmanager.Manager, sampleRate float64, notifyChan notify.NotificationChan, tracker *collectors.Tracker, panelURL string) *http.ServeMux {
 	m := http.NewServeMux()
 	h := &handler{
 		dbManager:  dbManager,
 		sampleRate: sampleRate,
 		notifyChan: notifyChan,
 		tracker:    tracker,
+		panelURL:   panelURL,
 	}
 
 	m.HandleFunc("GET /ws/ingest", h.handleWebSocket)
@@ -238,6 +240,7 @@ func (h *handler) processMessage(ctx context.Context, connID, remoteAddr string,
 			Message:   msg.Entry.Message,
 			Source:    msg.Entry.Source,
 			Timestamp: ts,
+			PanelURL:  h.panelURL,
 		}:
 		default:
 			slog.Warn("Notification channel full, dropping notification")
@@ -307,6 +310,7 @@ func (h *handler) handleStartup(ctx context.Context, msg LogMessage) {
 			Message:   msg.Entry.Message,
 			Source:    msg.Entry.Source,
 			Timestamp: ts,
+			PanelURL:  h.panelURL,
 		}:
 		default:
 			slog.Warn("Notification channel full, dropping startup notification")

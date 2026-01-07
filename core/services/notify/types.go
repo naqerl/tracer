@@ -19,6 +19,7 @@ type Notification struct {
 	Message   string
 	Source    string
 	Timestamp time.Time
+	PanelURL  string // Base URL of the panel for generating links
 }
 
 // NotificationChan is a channel for sending notifications

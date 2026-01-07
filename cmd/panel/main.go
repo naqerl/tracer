@@ -134,7 +134,7 @@ func main() {
 
 	// Initialize HTTP server
 	sessionDurationSec := int(sessionDuration.Seconds())
-	server := web.Run(cfg.Port, dbManager, cfg.SampleRate, notifyService, authService, tracker, sessionDurationSec)
+	server := web.Run(cfg.Port, dbManager, cfg.SampleRate, notifyService, authService, tracker, sessionDurationSec, cfg.PanelURL)
 
 	// Handle shutdown signals
 	sigChan := make(chan os.Signal, 1)

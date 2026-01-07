@@ -94,6 +94,7 @@ type Panel struct {
 	DataDir       string  `toml:"data_dir"`
 	SampleRate    float64 `toml:"sample_rate"`
 	RetentionDays int     `toml:"retention_days"`
+	PanelURL      string  `toml:"panel_url"` // Base URL for the panel (e.g., "https://tracer.example.com")
 	Auth          Auth    `toml:"auth"`
 }
 

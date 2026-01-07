@@ -2,7 +2,6 @@ package notify
 
 import (
 	"fmt"
-	"time"
 
 	"github.com/ai-shift/tgmd"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
@@ -39,17 +38,14 @@ func (t *TelegramNotifier) Name() string {
 
 func (t *TelegramNotifier) Notify(n Notification) error {
 	var text string
-	timeStr := n.Timestamp.Format(time.RFC3339)
 
 	// Format differently based on notification type
 	if n.Level == "STARTUP" {
 		// Startup notification - compact and informative
 		text = fmt.Sprintf(
 			"🚀 **App Started**\n\n"+
-				"**App:** `%s`\n"+
-				"**Time:** %s\n",
+				"**App:** `%s`\n",
 			n.AppName,
-			timeStr,
 		)
 		if n.Message != "" {
 			text += fmt.Sprintf("\n**Message:**\n```\n%s\n```", n.Message)
@@ -68,21 +64,19 @@ func (t *TelegramNotifier) Notify(n Notification) error {
 
 		text = fmt.Sprintf(
 			"%s **%s**\n\n"+
-				"**App:** `%s`\n"+
-				"**Source:** `%s`\n"+
-				"**Time:** %s\n",
+				"**App:** `%s`\n",
 			emoji,
 			string(n.Type),
 			n.AppName,
-			n.Source,
-			timeStr,
 		)
 
-		if n.TraceID != "" {
-			text += fmt.Sprintf("**TraceID:** `%s`\n", n.TraceID)
-		}
-
 		text += fmt.Sprintf("\n**Message:**\n```\n%s\n```", n.Message)
+	}
+
+	// Add link to panel if panel URL is configured
+	if n.PanelURL != "" {
+		detailsURL := fmt.Sprintf("%s/logs/%s", n.PanelURL, n.AppName)
+		text += fmt.Sprintf("\n\n[details](%s)", detailsURL)
 	}
 
 	// Use tgmd to convert standard markdown to Telegram MarkdownV2 format
