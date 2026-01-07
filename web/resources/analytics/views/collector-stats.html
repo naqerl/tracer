@@ -7,12 +7,12 @@
     <script src="https://cdn.jsdelivr.net/npm/uplot@1.6.30/dist/uPlot.iife.min.js"></script>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/uplot@1.6.30/dist/uPlot.min.css">
     <style>
-        .uplot { margin: 1.5rem 0; }
-        .stats-table { width: 100%; border-collapse: collapse; margin-top: 2rem; }
-        .stats-table th, .stats-table td { padding: 0.5rem; text-align: left; border-bottom: 1px solid #1E1E1E; }
+        .uplot { margin: 1.5rem 0; touch-action: pan-y pinch-zoom; }
+        .stats-table { width: 100%; border-collapse: collapse; margin-top: 2rem; overflow-x: auto; display: block; -webkit-overflow-scrolling: touch; }
+        .stats-table th, .stats-table td { padding: 0.5rem; text-align: left; border-bottom: 1px solid #1E1E1E; white-space: nowrap; }
         .stats-table th { font-weight: 600; color: #808080; }
         .stats-table tr:hover { background-color: #1E1E1E; }
-        .range-tabs { display: flex; gap: 0.5rem; margin-bottom: 1.5rem; }
+        .range-tabs { display: flex; gap: 0.5rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
         .range-tab { 
             padding: 0.5rem 1rem; 
             background: #1E1E1E; 
@@ -21,13 +21,17 @@
             transition: all 0.2s;
             text-decoration: none;
             display: inline-block;
+            font-size: 0.875rem;
         }
         .range-tab:hover { background: #2A2A2A; }
         .range-tab.active { background: #5C9CF5; color: #0A0A0A; font-weight: 600; }
+        @media (max-width: 640px) {
+            .range-tab { padding: 0.4rem 0.75rem; font-size: 0.8rem; }
+        }
     </style>
 </head>
 <body>
-    <div class="max-w-7xl mx-auto p-6">
+    <div class="max-w-7xl mx-auto p-6 sm:p-6 px-4">
         {{template "collector-stats-content" .}}
     </div>
 </body>
@@ -125,29 +129,31 @@
 
     // Common chart options
     const containerWidth = document.getElementById('charts-container').offsetWidth;
+    const isMobile = window.innerWidth < 768;
     const commonOpts = {
         width: containerWidth,
-        height: 250,
+        height: isMobile ? 200 : 250,
         scales: {
             x: { time: true }
         },
         axes: [
             { 
                 stroke: "#808080",
-                grid: { stroke: "#1E1E1E", width: 1 }
+                grid: { stroke: "#1E1E1E", width: 1 },
+                size: isMobile ? 40 : 50
             },
             { 
                 stroke: "#808080",
-                size: 60,
+                size: isMobile ? 50 : 60,
                 grid: { stroke: "#1E1E1E", width: 1 }
             }
         ],
         legend: { show: false },
         cursor: {
             drag: { x: false, y: false },
-            focus: { prox: 30 },
+            focus: { prox: isMobile ? 50 : 30 },
             points: {
-                size: 8,
+                size: isMobile ? 6 : 8,
                 width: 2
             }
         }
@@ -220,17 +226,25 @@
     }, [timestamps, diskData], document.getElementById('disk-chart'));
 
     // Handle window resize
+    let resizeTimeout;
     window.addEventListener('resize', () => {
-        const charts = document.querySelectorAll('.uplot');
-        charts.forEach(chart => {
-            const uplot = uPlot.charts.find(c => c.root === chart);
-            if (uplot) {
-                uplot.setSize({ 
-                    width: document.getElementById('charts-container').offsetWidth, 
-                    height: 250 
-                });
-            }
-        });
+        clearTimeout(resizeTimeout);
+        resizeTimeout = setTimeout(() => {
+            const newWidth = document.getElementById('charts-container').offsetWidth;
+            const newIsMobile = window.innerWidth < 768;
+            const newHeight = newIsMobile ? 200 : 250;
+            
+            const charts = document.querySelectorAll('.uplot');
+            charts.forEach(chart => {
+                const uplot = uPlot.charts.find(c => c.root === chart);
+                if (uplot) {
+                    uplot.setSize({ 
+                        width: newWidth, 
+                        height: newHeight 
+                    });
+                }
+            });
+        }, 150);
     });
 })();
 </script>

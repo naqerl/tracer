@@ -31,17 +31,25 @@
 <div class="mb-10">
     <!-- Collector Header -->
     <div class="flex items-center mb-2">
+        <span class="text-fg-secondary text-xl mr-1">[</span>
         <h2 class="text-xl font-semibold">{{.Name}}</h2>
-        <span class="w-2.5 h-2.5 rounded-full ml-2 {{if .IsConnected}}bg-green-500 animate-pulse{{else}}bg-fg-secondary{{end}}"></span>
+        <span class="text-fg-secondary text-xl ml-1">]</span>
+        <span class="text-fg-secondary text-xl mx-1">[</span>
+        <span class="w-2.5 h-2.5 rounded-full {{if .IsConnected}}bg-green-500 animate-pulse{{else}}bg-fg-secondary{{end}}"></span>
+        <span class="text-fg-secondary text-xl ml-1">]</span>
         <div class="flex-1 mx-4 border-b border-bg-secondary"></div>
         {{if .Stats}}
+        <span class="text-fg-secondary text-xs mr-1">[</span>
         <span class="text-fg-secondary text-xs">{{.Stats.CreatedAt.Format "15:04:05"}}</span>
+        <span class="text-fg-secondary text-xs ml-1">]</span>
         {{end}}
+        <span class="text-xs text-fg-secondary mx-1">[</span>
         <a href="/analytics/collectors/{{.Name}}/stats?range=24h" 
-           class="text-xs text-accent hover:underline ml-3"
+           class="text-xs text-accent hover:underline"
            title="View resource usage history">
             stats
         </a>
+        <span class="text-xs text-fg-secondary ml-1">]</span>
     </div>
 
     <!-- Stats Row -->
