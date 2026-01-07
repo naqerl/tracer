@@ -12,9 +12,11 @@
         {{end}}
         {{end}}
         
-        {{/* Settings link - always show, separate from breadcrumb */}}
-        {{if not (isSettingsPath .Breadcrumbs)}}
+        {{/* Show the other top-level link */}}
         <span class="mx-3 text-fg-secondary">|</span>
+        {{if isSettingsPath .Breadcrumbs}}
+        <a href="/analytics/" class="text-fg-secondary hover:text-fg transition-colors">/analytics</a>
+        {{else}}
         <a href="/settings/" class="text-fg-secondary hover:text-fg transition-colors">/settings</a>
         {{end}}
     </div>
