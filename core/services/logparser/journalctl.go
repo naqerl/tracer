@@ -76,6 +76,9 @@ func (p *journalctlParser) Parse(line string) (*LogEntry, error) {
 	if msg, ok := data[p.messageField]; ok {
 		entry.Message = fmt.Sprintf("%v", msg)
 		delete(data, p.messageField)
+	} else {
+		// If no message field found, use the entire raw log line
+		entry.Message = line
 	}
 
 	// Extract useful metadata

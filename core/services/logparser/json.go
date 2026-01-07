@@ -61,6 +61,9 @@ func (p *jsonParser) Parse(line string) (*LogEntry, error) {
 	if msg, ok := data[p.messageField].(string); ok {
 		entry.Message = msg
 		delete(data, p.messageField)
+	} else {
+		// If no message field found, use the entire raw log line
+		entry.Message = line
 	}
 
 	// Store remaining fields as extra context

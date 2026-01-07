@@ -76,6 +76,9 @@ func (p *regexParser) Parse(line string) (*LogEntry, error) {
 	if msg, ok := groups[p.messageField]; ok {
 		entry.Message = msg
 		delete(groups, p.messageField)
+	} else {
+		// If no message field found, use the entire raw log line
+		entry.Message = line
 	}
 
 	// Store remaining named groups as extra context
