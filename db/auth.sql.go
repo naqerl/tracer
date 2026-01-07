@@ -240,6 +240,51 @@ func (q *Queries) GetAppsByCollector(ctx context.Context, collectorName string) 
 	return items, nil
 }
 
+const getCollectorStatsHistory = `-- name: GetCollectorStatsHistory :many
+SELECT id, collector_name, cpu_usage_percent, mem_total_mb, mem_used_mb, mem_available_mb, disk_total_gb, disk_used_gb, disk_avail_gb, created_at FROM system_stats
+WHERE collector_name = ? AND created_at >= ?
+ORDER BY created_at ASC
+`
+
+type GetCollectorStatsHistoryParams struct {
+	CollectorName string
+	CreatedAt     time.Time
+}
+
+func (q *Queries) GetCollectorStatsHistory(ctx context.Context, arg GetCollectorStatsHistoryParams) ([]SystemStat, error) {
+	rows, err := q.db.QueryContext(ctx, getCollectorStatsHistory, arg.CollectorName, arg.CreatedAt)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []SystemStat
+	for rows.Next() {
+		var i SystemStat
+		if err := rows.Scan(
+			&i.ID,
+			&i.CollectorName,
+			&i.CpuUsagePercent,
+			&i.MemTotalMb,
+			&i.MemUsedMb,
+			&i.MemAvailableMb,
+			&i.DiskTotalGb,
+			&i.DiskUsedGb,
+			&i.DiskAvailGb,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getCollectorsByApp = `-- name: GetCollectorsByApp :many
 SELECT collector_name FROM app_collectors
 WHERE app_name = ?

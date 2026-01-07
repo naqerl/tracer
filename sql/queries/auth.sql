@@ -175,6 +175,11 @@ INNER JOIN (
 DELETE FROM system_stats
 WHERE created_at < ?;
 
+-- name: GetCollectorStatsHistory :many
+SELECT * FROM system_stats
+WHERE collector_name = ? AND created_at >= ?
+ORDER BY created_at ASC;
+
 -- App-collector mapping queries
 
 -- name: UpsertAppCollector :exec

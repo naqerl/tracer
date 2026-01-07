@@ -36,6 +36,7 @@ type Querier interface {
 	EnableNotifier(ctx context.Context, id int64) error
 	FindLogsByTraceID(ctx context.Context, traceID string) ([]Log, error)
 	GetAppsByCollector(ctx context.Context, collectorName string) ([]string, error)
+	GetCollectorStatsHistory(ctx context.Context, arg GetCollectorStatsHistoryParams) ([]SystemStat, error)
 	GetCollectorsByApp(ctx context.Context, appName string) ([]string, error)
 	// Config queries
 	GetConfig(ctx context.Context, key string) (string, error)
