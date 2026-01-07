@@ -48,20 +48,20 @@
 
 <!-- Time Range Tabs -->
 <div class="range-tabs">
-    <a href="/analytics/collectors/{{.CollectorName}}/stats?range=1h" 
+    <a href="/analytics/{{.CollectorName}}/resources?range=1h" 
        class="range-tab {{if eq .RangeParam "1h"}}active{{end}}">1 Hour</a>
-    <a href="/analytics/collectors/{{.CollectorName}}/stats?range=6h"
+    <a href="/analytics/{{.CollectorName}}/resources?range=6h"
        class="range-tab {{if eq .RangeParam "6h"}}active{{end}}">6 Hours</a>
-    <a href="/analytics/collectors/{{.CollectorName}}/stats?range=24h"
+    <a href="/analytics/{{.CollectorName}}/resources?range=24h"
        class="range-tab {{if eq .RangeParam "24h"}}active{{end}}">24 Hours</a>
-    <a href="/analytics/collectors/{{.CollectorName}}/stats?range=7d"
+    <a href="/analytics/{{.CollectorName}}/resources?range=7d"
        class="range-tab {{if eq .RangeParam "7d"}}active{{end}}">7 Days</a>
-    <a href="/analytics/collectors/{{.CollectorName}}/stats?range=30d"
+    <a href="/analytics/{{.CollectorName}}/resources?range=30d"
        class="range-tab {{if eq .RangeParam "30d"}}active{{end}}">30 Days</a>
 </div>
 
 <!-- Lazy Load Data Container -->
-<div hx-get="/analytics/collectors/{{.CollectorName}}/stats/data?range={{.RangeParam}}" 
+<div hx-get="/analytics/{{.CollectorName}}/resources/data?range={{.RangeParam}}" 
      hx-trigger="load"
      hx-swap="innerHTML">
     <!-- Loading State -->

@@ -16,7 +16,7 @@
 {{define "app-analytics-content"}}
 {{template "navbar" .Nav}}
 
-<div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6" hx-get="/analytics/{{.AppName}}" hx-trigger="every 30s" hx-select=".grid" hx-swap="outerHTML">
+<div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6" hx-get="/analytics/{{.CollectorName}}/apps/{{.AppName}}" hx-trigger="every 30s" hx-select=".grid" hx-swap="outerHTML">
     <div class="bg-bg-secondary p-4 border-l-4 border-red-400 text-center">
         <span class="block text-3xl font-bold">{{.Stats.Errors}}</span>
         <span class="text-fg-secondary text-sm">Errors (24h)</span>

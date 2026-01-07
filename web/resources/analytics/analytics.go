@@ -34,47 +34,28 @@ func InitMux(dbManager *dbmanager.Manager, authService *auth.Service, tracker *c
 		tracker:     tracker,
 	}
 
+	// Dashboard - list all collectors
 	m.HandleFunc("GET /", h.dashboard)
-	m.HandleFunc("GET /collectors/{collector}/stats", h.collectorStats)
-	m.HandleFunc("GET /collectors/{collector}/stats/data", h.collectorStatsData)
 	m.HandleFunc("GET /collectors", h.getCollectors)
-	m.HandleFunc("GET /{app}", h.appAnalytics)
+
+	// Collector routes
+	m.HandleFunc("GET /{collector}", h.collectorOverview)
+	m.HandleFunc("GET /{collector}/data", h.collectorOverviewData)
+	m.HandleFunc("GET /{collector}/resources", h.collectorResources)
+	m.HandleFunc("GET /{collector}/resources/data", h.collectorResourcesData)
+	m.HandleFunc("GET /{collector}/apps", h.collectorApps)
+	m.HandleFunc("GET /{collector}/apps/data", h.collectorAppsData)
+	m.HandleFunc("GET /{collector}/apps/{app}", h.appAnalytics)
 
 	return m
 }
 
+// dashboard shows all collectors overview
 func (h *handler) dashboard(w http.ResponseWriter, r *http.Request) {
 	user := middleware.GetUser(r)
 	if user == nil {
 		http.Redirect(w, r, "/login", http.StatusSeeOther)
 		return
-	}
-
-	allApps, err := h.dbManager.ListApps()
-	if err != nil {
-		h.t.RenderError(w, r, "Error", "Failed to list apps", http.StatusInternalServerError)
-		return
-	}
-
-	// Filter apps based on user access
-	var apps []string
-	if user.IsAdmin == 1 {
-		apps = allApps
-	} else {
-		userApps, err := h.authService.GetUserApps(r.Context(), user.ID)
-		if err != nil {
-			h.t.RenderError(w, r, "Error", "Failed to get user apps", http.StatusInternalServerError)
-			return
-		}
-		userAppMap := make(map[string]bool)
-		for _, app := range userApps {
-			userAppMap[app] = true
-		}
-		for _, app := range allApps {
-			if userAppMap[app] {
-				apps = append(apps, app)
-			}
-		}
 	}
 
 	// Get collectors filtered by user access
@@ -84,12 +65,13 @@ func (h *handler) dashboard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	nav := templates.NewNavBuilder().Add("analytics", "analytics").Build()
+
 	data := map[string]any{
 		"Title":      "Analytics",
-		"Apps":       apps,
 		"User":       user,
 		"IsAdmin":    user.IsAdmin == 1,
-		"Nav":        templates.NewNavData("Analytics", "analytics", user.Username),
+		"Nav":        nav,
 		"Collectors": collectorsWithStats,
 	}
 
@@ -100,6 +82,267 @@ func (h *handler) dashboard(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// getCollectors returns collectors sections for HTMX refresh
+func (h *handler) getCollectors(w http.ResponseWriter, r *http.Request) {
+	user := middleware.GetUser(r)
+	if user == nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	collectorsWithStats, err := h.getFilteredCollectors(r, user)
+	if err != nil {
+		http.Error(w, "Failed to get collectors", http.StatusInternalServerError)
+		return
+	}
+
+	data := map[string]any{
+		"Collectors": collectorsWithStats,
+	}
+
+	h.t.RenderHTTP(w, r, "collectors-sections", data)
+}
+
+// collectorOverview shows a single collector with stats and apps
+func (h *handler) collectorOverview(w http.ResponseWriter, r *http.Request) {
+	user := middleware.GetUser(r)
+	if user == nil {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+
+	collectorName := r.PathValue("collector")
+	if collectorName == "" {
+		h.t.RenderError(w, r, "Error", "Collector name required", http.StatusBadRequest)
+		return
+	}
+
+	// Check access
+	if !h.userHasCollectorAccess(r, user, collectorName) {
+		h.t.RenderError(w, r, "Forbidden", "You don't have access to this collector", http.StatusForbidden)
+		return
+	}
+
+	nav := templates.NewNavBuilder().
+		Add("analytics", "analytics").
+		Add(collectorName, collectorName).
+		Build()
+
+	data := map[string]any{
+		"Title":         collectorName,
+		"CollectorName": collectorName,
+		"User":          user,
+		"IsAdmin":       user.IsAdmin == 1,
+		"Nav":           nav,
+	}
+
+	if htmx.IsAjax(r) {
+		h.t.RenderHTTP(w, r, "collector-overview-content", data)
+	} else {
+		h.t.RenderHTTP(w, r, "collector-overview", data)
+	}
+}
+
+// collectorOverviewData returns lazy-loaded data for collector overview
+func (h *handler) collectorOverviewData(w http.ResponseWriter, r *http.Request) {
+	user := middleware.GetUser(r)
+	if user == nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	collectorName := r.PathValue("collector")
+	if !h.userHasCollectorAccess(r, user, collectorName) {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+
+	collector, exists := h.tracker.Get(collectorName)
+	if !exists {
+		http.Error(w, "Collector not found", http.StatusNotFound)
+		return
+	}
+
+	// Get latest stats
+	var stats *db.SystemStat
+	s, err := h.authService.GetLatestStats(r.Context(), collectorName)
+	if err == nil && s != nil {
+		stats = s
+	}
+
+	// Filter apps by user access
+	apps := h.filterAppsByAccess(r, user, collector.Apps)
+
+	data := map[string]any{
+		"CollectorName": collectorName,
+		"IsConnected":   collector.IsConnected,
+		"Stats":         stats,
+		"Apps":          apps,
+	}
+
+	h.t.RenderHTTP(w, r, "collector-overview-data", data)
+}
+
+// collectorResources shows resource usage charts (was collectorStats)
+func (h *handler) collectorResources(w http.ResponseWriter, r *http.Request) {
+	user := middleware.GetUser(r)
+	if user == nil {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+
+	collectorName := r.PathValue("collector")
+	if collectorName == "" {
+		h.t.RenderError(w, r, "Error", "Collector name required", http.StatusBadRequest)
+		return
+	}
+
+	if !h.userHasCollectorAccess(r, user, collectorName) {
+		h.t.RenderError(w, r, "Forbidden", "You don't have access to this collector", http.StatusForbidden)
+		return
+	}
+
+	rangeParam := r.URL.Query().Get("range")
+	if rangeParam == "" {
+		rangeParam = "24h"
+	}
+
+	nav := templates.NewNavBuilder().
+		Add("analytics", "analytics").
+		Add(collectorName, collectorName).
+		Add("resources", "resources").
+		Build()
+
+	data := map[string]any{
+		"Title":         collectorName + " Resources",
+		"CollectorName": collectorName,
+		"RangeParam":    rangeParam,
+		"User":          user,
+		"IsAdmin":       user.IsAdmin == 1,
+		"Nav":           nav,
+	}
+
+	if htmx.IsAjax(r) {
+		h.t.RenderHTTP(w, r, "collector-stats-content", data)
+	} else {
+		h.t.RenderHTTP(w, r, "collector-stats", data)
+	}
+}
+
+// collectorResourcesData returns lazy-loaded resource data (was collectorStatsData)
+func (h *handler) collectorResourcesData(w http.ResponseWriter, r *http.Request) {
+	user := middleware.GetUser(r)
+	if user == nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	collectorName := r.PathValue("collector")
+	if !h.userHasCollectorAccess(r, user, collectorName) {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+
+	rangeParam := r.URL.Query().Get("range")
+	var since time.Time
+
+	switch rangeParam {
+	case "1h":
+		since = time.Now().Add(-1 * time.Hour)
+	case "6h":
+		since = time.Now().Add(-6 * time.Hour)
+	case "7d":
+		since = time.Now().Add(-7 * 24 * time.Hour)
+	case "30d":
+		since = time.Now().Add(-30 * 24 * time.Hour)
+	default:
+		since = time.Now().Add(-24 * time.Hour)
+	}
+
+	stats, err := h.authService.GetCollectorStatsHistory(r.Context(), collectorName, since)
+	if err != nil {
+		http.Error(w, "Failed to get stats history", http.StatusInternalServerError)
+		return
+	}
+
+	data := map[string]any{
+		"Stats": stats,
+	}
+
+	h.t.RenderHTTP(w, r, "collector-stats-data", data)
+}
+
+// collectorApps shows apps list for a collector
+func (h *handler) collectorApps(w http.ResponseWriter, r *http.Request) {
+	user := middleware.GetUser(r)
+	if user == nil {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+
+	collectorName := r.PathValue("collector")
+	if collectorName == "" {
+		h.t.RenderError(w, r, "Error", "Collector name required", http.StatusBadRequest)
+		return
+	}
+
+	if !h.userHasCollectorAccess(r, user, collectorName) {
+		h.t.RenderError(w, r, "Forbidden", "You don't have access to this collector", http.StatusForbidden)
+		return
+	}
+
+	nav := templates.NewNavBuilder().
+		Add("analytics", "analytics").
+		Add(collectorName, collectorName).
+		Add("apps", "apps").
+		Build()
+
+	data := map[string]any{
+		"Title":         collectorName + " Apps",
+		"CollectorName": collectorName,
+		"User":          user,
+		"IsAdmin":       user.IsAdmin == 1,
+		"Nav":           nav,
+	}
+
+	if htmx.IsAjax(r) {
+		h.t.RenderHTTP(w, r, "collector-apps-content", data)
+	} else {
+		h.t.RenderHTTP(w, r, "collector-apps", data)
+	}
+}
+
+// collectorAppsData returns lazy-loaded apps list
+func (h *handler) collectorAppsData(w http.ResponseWriter, r *http.Request) {
+	user := middleware.GetUser(r)
+	if user == nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	collectorName := r.PathValue("collector")
+	if !h.userHasCollectorAccess(r, user, collectorName) {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+
+	collector, exists := h.tracker.Get(collectorName)
+	if !exists {
+		http.Error(w, "Collector not found", http.StatusNotFound)
+		return
+	}
+
+	apps := h.filterAppsByAccess(r, user, collector.Apps)
+
+	data := map[string]any{
+		"CollectorName": collectorName,
+		"Apps":          apps,
+	}
+
+	h.t.RenderHTTP(w, r, "collector-apps-data", data)
+}
+
+// appAnalytics shows analytics for a specific app
 func (h *handler) appAnalytics(w http.ResponseWriter, r *http.Request) {
 	user := middleware.GetUser(r)
 	if user == nil {
@@ -107,6 +350,7 @@ func (h *handler) appAnalytics(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	collectorName := r.PathValue("collector")
 	appName := r.PathValue("app")
 
 	// Check app access
@@ -134,11 +378,20 @@ func (h *handler) appAnalytics(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	nav := templates.NewNavBuilder().
+		Add("analytics", "analytics").
+		Add(collectorName, collectorName).
+		Add("apps", "apps").
+		Add(appName, appName).
+		Build()
+
 	data := map[string]any{
-		"AppName": appName,
-		"Stats":   stats,
-		"IsAdmin": user.IsAdmin == 1,
-		"Nav":     templates.NewNavData(appName, "analytics", user.Username),
+		"Title":         appName,
+		"AppName":       appName,
+		"CollectorName": collectorName,
+		"Stats":         stats,
+		"IsAdmin":       user.IsAdmin == 1,
+		"Nav":           nav,
 	}
 
 	if htmx.IsAjax(r) {
@@ -148,27 +401,7 @@ func (h *handler) appAnalytics(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (h *handler) getCollectors(w http.ResponseWriter, r *http.Request) {
-	user := middleware.GetUser(r)
-	if user == nil {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return
-	}
-
-	// Get collectors filtered by user access
-	collectorsWithStats, err := h.getFilteredCollectors(r, user)
-	if err != nil {
-		http.Error(w, "Failed to get collectors", http.StatusInternalServerError)
-		return
-	}
-
-	data := map[string]any{
-		"Collectors": collectorsWithStats,
-	}
-
-	// Render collector sections for HTMX refresh
-	h.t.RenderHTTP(w, r, "collectors-sections", data)
-}
+// Helper types and functions
 
 // CollectorWithStats combines collector info with latest system stats
 type CollectorWithStats struct {
@@ -176,161 +409,10 @@ type CollectorWithStats struct {
 	Stats *db.SystemStat
 }
 
-func (h *handler) collectorStats(w http.ResponseWriter, r *http.Request) {
-	user := middleware.GetUser(r)
-	if user == nil {
-		http.Redirect(w, r, "/login", http.StatusSeeOther)
-		return
-	}
-
-	collectorName := r.PathValue("collector")
-	if collectorName == "" {
-		h.t.RenderError(w, r, "Error", "Collector name required", http.StatusBadRequest)
-		return
-	}
-
-	// Check if user has access to at least one app from this collector
-	if user.IsAdmin != 1 {
-		userApps, err := h.authService.GetUserApps(r.Context(), user.ID)
-		if err != nil {
-			h.t.RenderError(w, r, "Error", "Failed to get user apps", http.StatusInternalServerError)
-			return
-		}
-
-		// Get collector's apps
-		collector, exists := h.tracker.Get(collectorName)
-		if !exists {
-			h.t.RenderError(w, r, "Not Found", "Collector not found", http.StatusNotFound)
-			return
-		}
-
-		// Check if user has access to any of the collector's apps
-		userAppMap := make(map[string]bool)
-		for _, app := range userApps {
-			userAppMap[app] = true
-		}
-
-		hasAccess := false
-		for _, app := range collector.Apps {
-			if userAppMap[app] {
-				hasAccess = true
-				break
-			}
-		}
-
-		if !hasAccess {
-			h.t.RenderError(w, r, "Forbidden", "You don't have access to this collector", http.StatusForbidden)
-			return
-		}
-	}
-
-	// Parse time range parameter (default: 24h)
-	rangeParam := r.URL.Query().Get("range")
-	if rangeParam == "" {
-		rangeParam = "24h"
-	}
-
-	data := map[string]any{
-		"Title":         collectorName + " Stats",
-		"CollectorName": collectorName,
-		"RangeParam":    rangeParam,
-		"User":          user,
-		"IsAdmin":       user.IsAdmin == 1,
-		"Nav":           templates.NewNavData("Analytics", "analytics", user.Username),
-	}
-
-	if htmx.IsAjax(r) {
-		h.t.RenderHTTP(w, r, "collector-stats-content", data)
-	} else {
-		h.t.RenderHTTP(w, r, "collector-stats", data)
-	}
-}
-
-func (h *handler) collectorStatsData(w http.ResponseWriter, r *http.Request) {
-	user := middleware.GetUser(r)
-	if user == nil {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return
-	}
-
-	collectorName := r.PathValue("collector")
-	if collectorName == "" {
-		http.Error(w, "Collector name required", http.StatusBadRequest)
-		return
-	}
-
-	// Check if user has access to at least one app from this collector
-	if user.IsAdmin != 1 {
-		userApps, err := h.authService.GetUserApps(r.Context(), user.ID)
-		if err != nil {
-			http.Error(w, "Failed to get user apps", http.StatusInternalServerError)
-			return
-		}
-
-		// Get collector's apps
-		collector, exists := h.tracker.Get(collectorName)
-		if !exists {
-			http.Error(w, "Collector not found", http.StatusNotFound)
-			return
-		}
-
-		// Check if user has access to any of the collector's apps
-		userAppMap := make(map[string]bool)
-		for _, app := range userApps {
-			userAppMap[app] = true
-		}
-
-		hasAccess := false
-		for _, app := range collector.Apps {
-			if userAppMap[app] {
-				hasAccess = true
-				break
-			}
-		}
-
-		if !hasAccess {
-			http.Error(w, "You don't have access to this collector", http.StatusForbidden)
-			return
-		}
-	}
-
-	// Parse time range parameter (default: 24h)
-	rangeParam := r.URL.Query().Get("range")
-	var since time.Time
-
-	switch rangeParam {
-	case "1h":
-		since = time.Now().Add(-1 * time.Hour)
-	case "6h":
-		since = time.Now().Add(-6 * time.Hour)
-	case "7d":
-		since = time.Now().Add(-7 * 24 * time.Hour)
-	case "30d":
-		since = time.Now().Add(-30 * 24 * time.Hour)
-	default: // "24h" or empty
-		since = time.Now().Add(-24 * time.Hour)
-	}
-
-	// Get stats history
-	stats, err := h.authService.GetCollectorStatsHistory(r.Context(), collectorName, since)
-	if err != nil {
-		http.Error(w, "Failed to get stats history", http.StatusInternalServerError)
-		return
-	}
-
-	data := map[string]any{
-		"Stats": stats,
-	}
-
-	h.t.RenderHTTP(w, r, "collector-stats-data", data)
-}
-
 // getFilteredCollectors returns collectors filtered by user access
-// Admins see all collectors, regular users only see collectors that serve apps they have access to
 func (h *handler) getFilteredCollectors(r *http.Request, user *db.User) ([]CollectorWithStats, error) {
 	collectorList := h.tracker.List()
 
-	// Get user's accessible apps (for non-admins)
 	var userAppMap map[string]bool
 	if user.IsAdmin != 1 {
 		userApps, err := h.authService.GetUserApps(r.Context(), user.ID)
@@ -345,7 +427,6 @@ func (h *handler) getFilteredCollectors(r *http.Request, user *db.User) ([]Colle
 
 	collectorsWithStats := make([]CollectorWithStats, 0, len(collectorList))
 	for _, c := range collectorList {
-		// For non-admins, check if collector has any apps the user can access
 		if user.IsAdmin != 1 {
 			hasAccessibleApp := false
 			for _, app := range c.Apps {
@@ -355,7 +436,7 @@ func (h *handler) getFilteredCollectors(r *http.Request, user *db.User) ([]Colle
 				}
 			}
 			if !hasAccessibleApp {
-				continue // Skip this collector
+				continue
 			}
 		}
 
@@ -363,7 +444,6 @@ func (h *handler) getFilteredCollectors(r *http.Request, user *db.User) ([]Colle
 			Collector: c,
 		}
 
-		// Try to get latest stats for this collector
 		stats, err := h.authService.GetLatestStats(r.Context(), c.Name)
 		if err == nil && stats != nil {
 			cws.Stats = stats
@@ -373,4 +453,60 @@ func (h *handler) getFilteredCollectors(r *http.Request, user *db.User) ([]Colle
 	}
 
 	return collectorsWithStats, nil
+}
+
+// userHasCollectorAccess checks if user can access the collector
+func (h *handler) userHasCollectorAccess(r *http.Request, user *db.User, collectorName string) bool {
+	if user.IsAdmin == 1 {
+		return true
+	}
+
+	userApps, err := h.authService.GetUserApps(r.Context(), user.ID)
+	if err != nil {
+		return false
+	}
+
+	collector, exists := h.tracker.Get(collectorName)
+	if !exists {
+		return false
+	}
+
+	userAppMap := make(map[string]bool)
+	for _, app := range userApps {
+		userAppMap[app] = true
+	}
+
+	for _, app := range collector.Apps {
+		if userAppMap[app] {
+			return true
+		}
+	}
+
+	return false
+}
+
+// filterAppsByAccess filters apps list by user access
+func (h *handler) filterAppsByAccess(r *http.Request, user *db.User, apps []string) []string {
+	if user.IsAdmin == 1 {
+		return apps
+	}
+
+	userApps, err := h.authService.GetUserApps(r.Context(), user.ID)
+	if err != nil {
+		return nil
+	}
+
+	userAppMap := make(map[string]bool)
+	for _, app := range userApps {
+		userAppMap[app] = true
+	}
+
+	filtered := make([]string, 0)
+	for _, app := range apps {
+		if userAppMap[app] {
+			filtered = append(filtered, app)
+		}
+	}
+
+	return filtered
 }
