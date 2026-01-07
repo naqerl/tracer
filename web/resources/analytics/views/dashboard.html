@@ -56,10 +56,11 @@
     <div class="flex items-center gap-2 mb-3">
         <span class="w-2 h-2 rounded-full {{if .IsConnected}}bg-green-500 animate-pulse{{else}}bg-fg-secondary{{end}}"></span>
         <span class="font-medium">{{.Name}}</span>
+        {{if .Stats}}<span class="text-fg-secondary text-xs">{{.Stats.CreatedAt.Format "15:04:05"}}</span>{{end}}
         <span class="text-fg-secondary text-xs ml-auto">({{len .Apps}} apps)</span>
     </div>
     {{if .Stats}}
-    <div class="grid grid-cols-3 gap-2 text-center text-sm mb-2">
+    <div class="grid grid-cols-3 gap-2 text-center text-sm">
         <div>
             <div class="text-lg font-semibold {{if gt .Stats.CpuUsagePercent 80.0}}text-red-400{{else if gt .Stats.CpuUsagePercent 60.0}}text-yellow-400{{else}}text-green-400{{end}}">
                 {{printf "%.0f" .Stats.CpuUsagePercent}}%
@@ -82,7 +83,6 @@
             <div class="text-fg-secondary text-xs">Free</div>
         </div>
     </div>
-    <div class="text-fg-secondary text-xs text-center">{{.Stats.CreatedAt.Format "15:04:05"}}</div>
     {{else}}
     <div class="text-fg-secondary text-xs text-center py-2">No stats available</div>
     {{end}}

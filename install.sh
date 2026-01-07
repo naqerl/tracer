@@ -3,9 +3,13 @@
 # Tracer Installation Script
 # Usage: curl -fsSL https://raw.githubusercontent.com/ai-shift/tracer/main/install.sh | sudo bash
 #
+# Options:
+#   --collector-only    Install only the collector (no panel)
+#   COLLECTOR_ONLY=1    Same as --collector-only (env var)
+#
 # This script installs:
 #   - tracer-collector: runs as root (to access any log files)
-#   - tracer-panel: runs as dedicated 'tracer' user
+#   - tracer-panel: runs as dedicated 'tracer' user (unless --collector-only)
 #
 set -euo pipefail
 
@@ -16,6 +20,9 @@ CONFIG_DIR="/etc/tracer"
 DATA_DIR="/var/lib/tracer"
 TRACER_USER="tracer"
 TRACER_GROUP="tracer"
+
+# Installation mode
+COLLECTOR_ONLY="${COLLECTOR_ONLY:-0}"
 
 # Colors for output
 RED='\033[0;31m'
@@ -96,13 +103,19 @@ install_binaries() {
     
     log_info "Installing binaries to ${INSTALL_DIR}..."
     install -m 755 "${tmp_dir}/tracer-collector" "${INSTALL_DIR}/tracer-collector"
-    install -m 755 "${tmp_dir}/tracer-panel" "${INSTALL_DIR}/tracer-panel"
+    if [[ "$COLLECTOR_ONLY" != "1" ]]; then
+        install -m 755 "${tmp_dir}/tracer-panel" "${INSTALL_DIR}/tracer-panel"
+    fi
     
     log_info "Binaries installed successfully"
 }
 
-# Create tracer user (similar to postgres)
+# Create tracer user (similar to postgres) - only needed for panel
 create_user() {
+    if [[ "$COLLECTOR_ONLY" == "1" ]]; then
+        return
+    fi
+
     if id "${TRACER_USER}" &>/dev/null; then
         log_info "User '${TRACER_USER}' already exists"
         return
@@ -133,10 +146,12 @@ setup_directories() {
     mkdir -p "${CONFIG_DIR}"
     chmod 755 "${CONFIG_DIR}"
     
-    # Data directory (owned by tracer user)
-    mkdir -p "${DATA_DIR}"
-    chown "${TRACER_USER}:${TRACER_GROUP}" "${DATA_DIR}"
-    chmod 750 "${DATA_DIR}"
+    # Data directory (owned by tracer user) - only needed for panel
+    if [[ "$COLLECTOR_ONLY" != "1" ]]; then
+        mkdir -p "${DATA_DIR}"
+        chown "${TRACER_USER}:${TRACER_GROUP}" "${DATA_DIR}"
+        chmod 750 "${DATA_DIR}"
+    fi
     
     log_info "Directories created"
 }
@@ -150,7 +165,14 @@ create_configs() {
 # Tracer Collector Configuration
 # Documentation: https://github.com/ai-shift/tracer
 
-panel_endpoint = "ws://localhost:8080/api/ws/ingest"
+# Collector name (identifies this collector in the panel)
+name = "my-collector"
+
+# Panel WebSocket endpoint (include API key as query parameter)
+panel_endpoint = "ws://localhost:8080/api/ws/ingest?api_key=YOUR_API_KEY"
+
+# System stats collection interval (optional, e.g. "30s", "1m")
+# stats_interval = "30s"
 
 # Each app entry creates a separate application in the panel
 # The 'name' field is the app identifier that will appear in the dashboard
@@ -182,10 +204,11 @@ EOF
         log_warn "Collector config already exists, skipping"
     fi
     
-    # Panel config (only if doesn't exist)
-    if [[ ! -f "${CONFIG_DIR}/panel.toml" ]]; then
-        log_info "Creating panel configuration..."
-        cat > "${CONFIG_DIR}/panel.toml" << EOF
+    # Panel config (only if doesn't exist and not collector-only mode)
+    if [[ "$COLLECTOR_ONLY" != "1" ]]; then
+        if [[ ! -f "${CONFIG_DIR}/panel.toml" ]]; then
+            log_info "Creating panel configuration..."
+            cat > "${CONFIG_DIR}/panel.toml" << EOF
 # Tracer Panel Configuration
 # Documentation: https://github.com/ai-shift/tracer
 
@@ -204,10 +227,11 @@ retention_days = 90
 token = ""
 chat_id = 0
 EOF
-        chmod 640 "${CONFIG_DIR}/panel.toml"
-        chown root:${TRACER_GROUP} "${CONFIG_DIR}/panel.toml"
-    else
-        log_warn "Panel config already exists, skipping"
+            chmod 640 "${CONFIG_DIR}/panel.toml"
+            chown root:${TRACER_GROUP} "${CONFIG_DIR}/panel.toml"
+        else
+            log_warn "Panel config already exists, skipping"
+        fi
     fi
 }
 
@@ -216,7 +240,35 @@ create_systemd_services() {
     log_info "Creating systemd services..."
     
     # Collector service (runs as root to access all logs)
-    cat > /etc/systemd/system/tracer-collector.service << EOF
+    if [[ "$COLLECTOR_ONLY" == "1" ]]; then
+        # Standalone collector - no dependency on panel
+        cat > /etc/systemd/system/tracer-collector.service << EOF
+[Unit]
+Description=Tracer Log Collector
+Documentation=https://github.com/ai-shift/tracer
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=${INSTALL_DIR}/tracer-collector -config ${CONFIG_DIR}/collector.toml
+Restart=always
+RestartSec=5
+
+# Security hardening (while maintaining root for log access)
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+
+[Install]
+WantedBy=multi-user.target
+EOF
+    else
+        # Collector with local panel dependency
+        cat > /etc/systemd/system/tracer-collector.service << EOF
 [Unit]
 Description=Tracer Log Collector
 Documentation=https://github.com/ai-shift/tracer
@@ -242,8 +294,8 @@ ProtectControlGroups=yes
 WantedBy=multi-user.target
 EOF
 
-    # Panel service (runs as tracer user)
-    cat > /etc/systemd/system/tracer-panel.service << EOF
+        # Panel service (runs as tracer user)
+        cat > /etc/systemd/system/tracer-panel.service << EOF
 [Unit]
 Description=Tracer Panel
 Documentation=https://github.com/ai-shift/tracer
@@ -270,6 +322,7 @@ ReadWritePaths=${DATA_DIR}
 [Install]
 WantedBy=multi-user.target
 EOF
+    fi
 
     systemctl daemon-reload
     log_info "Systemd services created"
@@ -282,42 +335,106 @@ print_instructions() {
     echo -e "${GREEN}Tracer installed successfully!${NC}"
     echo "=============================================="
     echo ""
-    echo "Configuration files:"
-    echo "  - Collector: ${CONFIG_DIR}/collector.toml"
-    echo "  - Panel:     ${CONFIG_DIR}/panel.toml"
+    
+    if [[ "$COLLECTOR_ONLY" == "1" ]]; then
+        echo "Mode: Collector only (no panel)"
+        echo ""
+        echo "Configuration file:"
+        echo "  - Collector: ${CONFIG_DIR}/collector.toml"
+        echo ""
+        echo "Next steps:"
+        echo ""
+        echo "1. Configure the collector with your panel endpoint and API key:"
+        echo "   sudo nano ${CONFIG_DIR}/collector.toml"
+        echo ""
+        echo "   Set panel_endpoint to your panel's WebSocket URL, e.g.:"
+        echo "   panel_endpoint = \"ws://panel.example.com/api/ws/ingest?api_key=YOUR_KEY\""
+        echo ""
+        echo "2. Add your applications to monitor (see examples in config)"
+        echo ""
+        echo "3. Start the collector:"
+        echo "   sudo systemctl enable --now tracer-collector"
+        echo ""
+        echo "Useful commands:"
+        echo "   sudo systemctl status tracer-collector"
+        echo "   sudo journalctl -u tracer-collector -f"
+    else
+        echo "Mode: Full installation (panel + collector)"
+        echo ""
+        echo "Configuration files:"
+        echo "  - Collector: ${CONFIG_DIR}/collector.toml"
+        echo "  - Panel:     ${CONFIG_DIR}/panel.toml"
+        echo ""
+        echo "Data directory: ${DATA_DIR}"
+        echo ""
+        echo "Next steps:"
+        echo ""
+        echo "1. Configure the collector to watch your log files:"
+        echo "   sudo nano ${CONFIG_DIR}/collector.toml"
+        echo ""
+        echo "2. (Optional) Configure Telegram alerts in panel config:"
+        echo "   sudo nano ${CONFIG_DIR}/panel.toml"
+        echo ""
+        echo "3. Start the services:"
+        echo "   sudo systemctl enable --now tracer-panel"
+        echo "   sudo systemctl enable --now tracer-collector"
+        echo ""
+        echo "4. Access the panel at:"
+        echo "   http://localhost:8080"
+        echo ""
+        echo "Useful commands:"
+        echo "   sudo systemctl status tracer-panel"
+        echo "   sudo systemctl status tracer-collector"
+        echo "   sudo journalctl -u tracer-panel -f"
+        echo "   sudo journalctl -u tracer-collector -f"
+    fi
     echo ""
-    echo "Data directory: ${DATA_DIR}"
-    echo ""
-    echo "Next steps:"
-    echo ""
-    echo "1. Configure the collector to watch your log files:"
-    echo "   sudo nano ${CONFIG_DIR}/collector.toml"
-    echo ""
-    echo "2. (Optional) Configure Telegram alerts in panel config:"
-    echo "   sudo nano ${CONFIG_DIR}/panel.toml"
-    echo ""
-    echo "3. Start the services:"
-    echo "   sudo systemctl enable --now tracer-panel"
-    echo "   sudo systemctl enable --now tracer-collector"
-    echo ""
-    echo "4. Access the panel at:"
-    echo "   http://localhost:8080"
-    echo ""
-    echo "Useful commands:"
-    echo "   sudo systemctl status tracer-panel"
-    echo "   sudo systemctl status tracer-collector"
-    echo "   sudo journalctl -u tracer-panel -f"
-    echo "   sudo journalctl -u tracer-collector -f"
-    echo ""
+}
+
+# Parse command line arguments
+parse_args() {
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --collector-only)
+                COLLECTOR_ONLY="1"
+                shift
+                ;;
+            --help|-h)
+                echo "Tracer Installation Script"
+                echo ""
+                echo "Usage: install.sh [OPTIONS]"
+                echo ""
+                echo "Options:"
+                echo "  --collector-only    Install only the collector (for remote servers)"
+                echo "  --help, -h          Show this help message"
+                echo ""
+                echo "Environment variables:"
+                echo "  COLLECTOR_ONLY=1    Same as --collector-only"
+                echo "  TRACER_VERSION      Install specific version (e.g. v1.0.0)"
+                exit 0
+                ;;
+            *)
+                log_error "Unknown option: $1"
+                echo "Use --help for usage information"
+                exit 1
+                ;;
+        esac
+    done
 }
 
 # Main installation flow
 main() {
+    parse_args "$@"
+
     echo ""
     echo "=========================================="
     echo "       Tracer Installation Script        "
     echo "=========================================="
     echo ""
+    
+    if [[ "$COLLECTOR_ONLY" == "1" ]]; then
+        log_info "Installing collector only (no panel)"
+    fi
     
     check_root
     
