@@ -17,6 +17,7 @@ const (
 	writeTimeout     = 10 * time.Second
 	reconnectDelay   = 5 * time.Second
 	pingInterval     = 30 * time.Second
+	pongWait         = 60 * time.Second // Time allowed to read the next pong message from server
 	maxReconnectWait = 5 * time.Minute
 )
 
@@ -95,17 +96,35 @@ func (s *Service) connect() error {
 		return err
 	}
 
+	// Set up pong handler to reset read deadline when server responds to our pings
+	conn.SetReadDeadline(time.Now().Add(pongWait))
+	conn.SetPongHandler(func(string) error {
+		conn.SetReadDeadline(time.Now().Add(pongWait))
+		return nil
+	})
+
 	s.conn = conn
 	return nil
 }
 
 func (s *Service) pingLoop(ctx context.Context) {
+	// Channel to signal connection is dead (from read loop)
+	connDead := make(chan struct{})
+
+	// Start read loop to handle incoming messages and keep connection alive
+	// This is essential: Gorilla WebSocket only processes control frames (ping/pong)
+	// when ReadMessage is called. Without this, server pings are never answered.
+	go s.readLoop(connDead)
+
 	ticker := time.NewTicker(pingInterval)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ctx.Done():
+			return
+		case <-connDead:
+			// Connection died, exit to trigger reconnect
 			return
 		case <-ticker.C:
 			s.connMu.Lock()
@@ -120,6 +139,36 @@ func (s *Service) pingLoop(ctx context.Context) {
 				slog.Warn("Ping failed, reconnecting", "error", err)
 				return
 			}
+		}
+	}
+}
+
+// readLoop continuously reads from the WebSocket connection.
+// This serves two purposes:
+// 1. Allows Gorilla WebSocket to process control frames (ping from server -> automatic pong response)
+// 2. Resets the read deadline via the pong handler when server responds to our pings
+func (s *Service) readLoop(connDead chan<- struct{}) {
+	defer close(connDead)
+
+	for {
+		s.connMu.Lock()
+		conn := s.conn
+		s.connMu.Unlock()
+
+		if conn == nil {
+			return
+		}
+
+		// ReadMessage will block until a message arrives or deadline expires.
+		// It also processes control frames (ping/pong) automatically.
+		// We don't expect any actual messages from the server, so we discard them.
+		_, _, err := conn.ReadMessage()
+		if err != nil {
+			// Connection closed or error - signal to ping loop
+			if !websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
+				slog.Debug("Read loop ended", "error", err)
+			}
+			return
 		}
 	}
 }
