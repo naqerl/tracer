@@ -132,6 +132,25 @@ func main() {
 		}
 	}()
 
+	// Start system stats cleanup goroutine (use same retention as logs)
+	go func() {
+		ticker := time.NewTicker(24 * time.Hour)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				cutoff := time.Now().Add(-time.Duration(cfg.RetentionDays) * 24 * time.Hour)
+				if err := authService.DeleteOldStats(ctx, cutoff); err != nil {
+					slog.Error("Failed to cleanup old stats", "error", err)
+				} else {
+					slog.Info("Cleaned up old stats", "cutoff", cutoff.Format(time.RFC3339))
+				}
+			}
+		}
+	}()
+
 	// Initialize HTTP server
 	sessionDurationSec := int(sessionDuration.Seconds())
 	server := web.Run(cfg.Port, dbManager, cfg.SampleRate, notifyService, authService, tracker, sessionDurationSec, cfg.PanelURL)

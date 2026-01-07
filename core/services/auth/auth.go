@@ -500,6 +500,13 @@ func (s *Service) DeleteOldStats(ctx context.Context, before time.Time) error {
 	return s.queries.DeleteOldStats(ctx, before)
 }
 
+func (s *Service) GetCollectorStatsHistory(ctx context.Context, collectorName string, since time.Time) ([]db.SystemStat, error) {
+	return s.queries.GetCollectorStatsHistory(ctx, db.GetCollectorStatsHistoryParams{
+		CollectorName: collectorName,
+		CreatedAt:     since,
+	})
+}
+
 // App-collector mapping methods
 
 func (s *Service) UpsertAppCollector(ctx context.Context, appName, collectorName string) error {
