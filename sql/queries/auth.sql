@@ -148,3 +148,51 @@ WHERE na.app_name = ? AND n.enabled = 1;
 SELECT n.* FROM notifier n
 JOIN notifier_app na ON n.id = na.notifier_id
 WHERE na.app_name = '*' AND n.enabled = 1;
+
+-- System stats queries
+
+-- name: InsertSystemStats :exec
+INSERT INTO system_stats (
+    collector_name, cpu_usage_percent, mem_total_mb, mem_used_mb,
+    mem_available_mb, disk_total_gb, disk_used_gb, disk_avail_gb, created_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+-- name: GetLatestStats :one
+SELECT * FROM system_stats
+WHERE collector_name = ?
+ORDER BY created_at DESC
+LIMIT 1;
+
+-- name: GetLatestStatsForAllCollectors :many
+SELECT s1.* FROM system_stats s1
+INNER JOIN (
+    SELECT collector_name, MAX(created_at) as max_created
+    FROM system_stats
+    GROUP BY collector_name
+) s2 ON s1.collector_name = s2.collector_name AND s1.created_at = s2.max_created;
+
+-- name: DeleteOldStats :exec
+DELETE FROM system_stats
+WHERE created_at < ?;
+
+-- App-collector mapping queries
+
+-- name: UpsertAppCollector :exec
+INSERT INTO app_collectors (app_name, collector_name, last_seen_at)
+VALUES (?, ?, ?)
+ON CONFLICT(app_name, collector_name) 
+DO UPDATE SET last_seen_at = excluded.last_seen_at;
+
+-- name: ListAppCollectors :many
+SELECT * FROM app_collectors
+ORDER BY app_name, collector_name;
+
+-- name: GetAppsByCollector :many
+SELECT app_name FROM app_collectors
+WHERE collector_name = ?
+ORDER BY app_name;
+
+-- name: GetCollectorsByApp :many
+SELECT collector_name FROM app_collectors
+WHERE app_name = ?
+ORDER BY collector_name;

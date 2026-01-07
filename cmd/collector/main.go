@@ -8,9 +8,11 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/ai-shift/tracer/config"
 	"github.com/ai-shift/tracer/core/services/filewatcher"
+	"github.com/ai-shift/tracer/core/services/sysstats"
 	"github.com/ai-shift/tracer/core/services/wsclient"
 )
 
@@ -64,6 +66,22 @@ func main() {
 
 	// Initialize WebSocket client
 	wsClient := wsclient.New(cfg.PanelEndpoint, collectorName, watcher.GetAppNames(), watcher.LogChan)
+
+	// Configure system stats if interval is set
+	if cfg.StatsInterval != "" {
+		interval, err := time.ParseDuration(cfg.StatsInterval)
+		if err != nil {
+			slog.Warn("Invalid stats_interval, disabling stats", "error", err)
+		} else if interval > 0 {
+			dataDir := cfg.DataDir
+			if dataDir == "" {
+				dataDir = "/" // Default to root for disk monitoring
+			}
+			statsCollector := sysstats.New(dataDir)
+			wsClient.WithStats(statsCollector, interval)
+			slog.Info("System stats enabled", "interval", interval, "data_dir", dataDir)
+		}
+	}
 
 	// Start services
 	go watcher.Start(ctx)

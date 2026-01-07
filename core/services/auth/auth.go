@@ -477,3 +477,43 @@ func (s *Service) GetNotifiersForApp(ctx context.Context, appName string) ([]db.
 func (s *Service) GetGlobalNotifiers(ctx context.Context) ([]db.Notifier, error) {
 	return s.queries.GetGlobalNotifiers(ctx)
 }
+
+// System stats methods
+
+func (s *Service) InsertSystemStats(ctx context.Context, params db.InsertSystemStatsParams) error {
+	return s.queries.InsertSystemStats(ctx, params)
+}
+
+func (s *Service) GetLatestStats(ctx context.Context, collectorName string) (*db.SystemStat, error) {
+	stat, err := s.queries.GetLatestStats(ctx, collectorName)
+	if err != nil {
+		return nil, err
+	}
+	return &stat, nil
+}
+
+func (s *Service) GetLatestStatsForAllCollectors(ctx context.Context) ([]db.SystemStat, error) {
+	return s.queries.GetLatestStatsForAllCollectors(ctx)
+}
+
+func (s *Service) DeleteOldStats(ctx context.Context, before time.Time) error {
+	return s.queries.DeleteOldStats(ctx, before)
+}
+
+// App-collector mapping methods
+
+func (s *Service) UpsertAppCollector(ctx context.Context, appName, collectorName string) error {
+	return s.queries.UpsertAppCollector(ctx, db.UpsertAppCollectorParams{
+		AppName:       appName,
+		CollectorName: collectorName,
+		LastSeenAt:    time.Now(),
+	})
+}
+
+func (s *Service) ListAppCollectors(ctx context.Context) ([]db.AppCollector, error) {
+	return s.queries.ListAppCollectors(ctx)
+}
+
+func (s *Service) GetAppsByCollector(ctx context.Context, collectorName string) ([]string, error) {
+	return s.queries.GetAppsByCollector(ctx, collectorName)
+}

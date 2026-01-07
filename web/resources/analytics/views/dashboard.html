@@ -44,19 +44,50 @@
 {{end}}
 
 {{define "collectors-list"}}
-<div class="flex flex-wrap gap-3" hx-get="/analytics/collectors" hx-trigger="every 5s" hx-swap="innerHTML">
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4" hx-get="/analytics/collectors" hx-trigger="every 10s" hx-swap="innerHTML">
     {{if .Collectors}}
     {{range .Collectors}}
-    <div class="flex items-center gap-2 bg-bg-secondary px-3 py-2 text-sm">
-        <span class="w-2 h-2 rounded-full {{if .IsConnected}}bg-green-500 animate-pulse{{else}}bg-fg-secondary{{end}}"></span>
-        <span>{{.Name}}</span>
-        <span class="text-fg-secondary text-xs">({{len .Apps}} apps)</span>
+    <div class="bg-bg-secondary p-4">
+        <div class="flex items-center gap-2 mb-3">
+            <span class="w-2 h-2 rounded-full {{if .IsConnected}}bg-green-500 animate-pulse{{else}}bg-fg-secondary{{end}}"></span>
+            <span class="font-medium">{{.Name}}</span>
+            <span class="text-fg-secondary text-xs ml-auto">({{len .Apps}} apps)</span>
+        </div>
+        {{if .Stats}}
+        <div class="grid grid-cols-3 gap-2 text-center text-sm">
+            <div>
+                <div class="text-lg font-semibold {{if gt .Stats.CpuUsagePercent 80.0}}text-red-400{{else if gt .Stats.CpuUsagePercent 60.0}}text-yellow-400{{else}}text-green-400{{end}}">
+                    {{printf "%.0f" .Stats.CpuUsagePercent}}%
+                </div>
+                <div class="text-fg-secondary text-xs">CPU</div>
+            </div>
+            <div>
+                {{$memPercent := 0.0}}
+                {{if gt .Stats.MemTotalMb 0}}
+                    {{$memPercent = (divFloat (toFloat .Stats.MemUsedMb) (toFloat .Stats.MemTotalMb))}}
+                    {{$memPercent = (mulFloat $memPercent 100.0)}}
+                {{end}}
+                <div class="text-lg font-semibold {{if gt $memPercent 80.0}}text-red-400{{else if gt $memPercent 60.0}}text-yellow-400{{else}}text-green-400{{end}}">
+                    {{printf "%.0f" $memPercent}}%
+                </div>
+                <div class="text-fg-secondary text-xs">RAM</div>
+            </div>
+            <div>
+                <div class="text-lg font-semibold text-fg">{{.Stats.DiskAvailGb}}GB</div>
+                <div class="text-fg-secondary text-xs">Free</div>
+            </div>
+        </div>
+        {{else}}
+        <div class="text-fg-secondary text-xs text-center py-2">No stats available</div>
+        {{end}}
     </div>
     {{end}}
     {{else}}
-    <div class="flex items-center gap-2 bg-bg-secondary px-3 py-2 text-sm">
-        <span class="w-2 h-2 rounded-full bg-fg-secondary"></span>
-        <span class="text-fg-secondary">No collectors connected</span>
+    <div class="bg-bg-secondary p-4 col-span-full">
+        <div class="flex items-center gap-2">
+            <span class="w-2 h-2 rounded-full bg-fg-secondary"></span>
+            <span class="text-fg-secondary">No collectors connected</span>
+        </div>
     </div>
     {{end}}
 </div>

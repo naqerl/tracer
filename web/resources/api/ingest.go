@@ -13,9 +13,11 @@ import (
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 
+	"github.com/ai-shift/tracer/core/services/auth"
 	"github.com/ai-shift/tracer/core/services/collectors"
 	"github.com/ai-shift/tracer/core/services/dbmanager"
 	"github.com/ai-shift/tracer/core/services/notify"
+	"github.com/ai-shift/tracer/core/services/sysstats"
 	"github.com/ai-shift/tracer/db"
 )
 
@@ -29,11 +31,12 @@ var upgrader = websocket.Upgrader{
 
 // LogMessage is the message format from collectors
 type LogMessage struct {
-	Type          string   `json:"type"` // "register", "log", or "startup"
-	AppName       string   `json:"app_name"`
-	Apps          []string `json:"apps,omitempty"`           // for registration
-	CollectorName string   `json:"collector_name,omitempty"` // for registration
-	Entry         LogEntry `json:"entry,omitempty"`
+	Type          string          `json:"type"` // "register", "log", "startup", or "stats"
+	AppName       string          `json:"app_name"`
+	Apps          []string        `json:"apps,omitempty"`           // for registration
+	CollectorName string          `json:"collector_name,omitempty"` // for registration and stats
+	Entry         LogEntry        `json:"entry,omitempty"`
+	Stats         *sysstats.Stats `json:"stats,omitempty"` // for stats messages
 }
 
 type LogEntry struct {
@@ -47,21 +50,23 @@ type LogEntry struct {
 }
 
 type handler struct {
-	dbManager  *dbmanager.Manager
-	sampleRate float64
-	notifyChan notify.NotificationChan
-	tracker    *collectors.Tracker
-	panelURL   string
+	dbManager   *dbmanager.Manager
+	authService *auth.Service
+	sampleRate  float64
+	notifyChan  notify.NotificationChan
+	tracker     *collectors.Tracker
+	panelURL    string
 }
 
-func InitMux(dbManager *dbmanager.Manager, sampleRate float64, notifyChan notify.NotificationChan, tracker *collectors.Tracker, panelURL string) *http.ServeMux {
+func InitMux(dbManager *dbmanager.Manager, authService *auth.Service, sampleRate float64, notifyChan notify.NotificationChan, tracker *collectors.Tracker, panelURL string) *http.ServeMux {
 	m := http.NewServeMux()
 	h := &handler{
-		dbManager:  dbManager,
-		sampleRate: sampleRate,
-		notifyChan: notifyChan,
-		tracker:    tracker,
-		panelURL:   panelURL,
+		dbManager:   dbManager,
+		authService: authService,
+		sampleRate:  sampleRate,
+		notifyChan:  notifyChan,
+		tracker:     tracker,
+		panelURL:    panelURL,
 	}
 
 	m.HandleFunc("GET /ws/ingest", h.handleWebSocket)
@@ -134,7 +139,7 @@ func (h *handler) handleRegistration(ctx context.Context, connID, remoteAddr, co
 	// Register collector with tracker
 	h.tracker.Register(connID, collectorName, remoteAddr, apps)
 
-	// Pre-create databases for registered apps
+	// Pre-create databases for registered apps and track app-collector mapping
 	for _, appName := range apps {
 		if appName == "" {
 			continue
@@ -143,6 +148,11 @@ func (h *handler) handleRegistration(ctx context.Context, connID, remoteAddr, co
 			slog.Error("Failed to register app", "app_name", appName, "error", err)
 		} else {
 			slog.Info("Registered app", "app_name", appName)
+		}
+
+		// Track which collector serves this app
+		if err := h.authService.UpsertAppCollector(ctx, appName, collectorName); err != nil {
+			slog.Error("Failed to upsert app collector", "app_name", appName, "collector", collectorName, "error", err)
 		}
 	}
 }
@@ -173,6 +183,12 @@ func (h *handler) processMessage(ctx context.Context, connID, remoteAddr string,
 
 	// Update last seen on any message
 	h.tracker.UpdateLastSeen(connID)
+
+	// Handle stats messages
+	if msg.Type == "stats" {
+		h.handleStats(ctx, msg)
+		return
+	}
 
 	// Handle startup messages - always persist and notify
 	if msg.Type == "startup" {
@@ -326,4 +342,35 @@ func (h *handler) listCollectors(w http.ResponseWriter, r *http.Request) {
 		slog.Error("Failed to encode collectors", "error", err)
 		http.Error(w, "Internal error", http.StatusInternalServerError)
 	}
+}
+
+// handleStats processes system statistics from collectors
+func (h *handler) handleStats(ctx context.Context, msg LogMessage) {
+	if msg.Stats == nil || msg.CollectorName == "" {
+		slog.Warn("Received stats without stats data or collector name")
+		return
+	}
+
+	ts := msg.Stats.Timestamp
+	if ts.IsZero() {
+		ts = time.Now()
+	}
+
+	err := h.authService.InsertSystemStats(ctx, db.InsertSystemStatsParams{
+		CollectorName:   msg.CollectorName,
+		CpuUsagePercent: msg.Stats.CPUUsagePercent,
+		MemTotalMb:      int64(msg.Stats.MemTotalMB),
+		MemUsedMb:       int64(msg.Stats.MemUsedMB),
+		MemAvailableMb:  int64(msg.Stats.MemAvailableMB),
+		DiskTotalGb:     int64(msg.Stats.DiskTotalGB),
+		DiskUsedGb:      int64(msg.Stats.DiskUsedGB),
+		DiskAvailGb:     int64(msg.Stats.DiskAvailGB),
+		CreatedAt:       ts,
+	})
+	if err != nil {
+		slog.Error("Failed to store system stats", "error", err, "collector", msg.CollectorName)
+		return
+	}
+
+	slog.Debug("Stored system stats", "collector", msg.CollectorName, "cpu", msg.Stats.CPUUsagePercent)
 }

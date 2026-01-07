@@ -153,6 +153,16 @@ func (q *Queries) DeleteNotifier(ctx context.Context, id int64) error {
 	return err
 }
 
+const deleteOldStats = `-- name: DeleteOldStats :exec
+DELETE FROM system_stats
+WHERE created_at < ?
+`
+
+func (q *Queries) DeleteOldStats(ctx context.Context, createdAt time.Time) error {
+	_, err := q.db.ExecContext(ctx, deleteOldStats, createdAt)
+	return err
+}
+
 const deleteSession = `-- name: DeleteSession :exec
 DELETE FROM session
 WHERE id = ?
@@ -201,6 +211,64 @@ func (q *Queries) EnableNotifier(ctx context.Context, id int64) error {
 	return err
 }
 
+const getAppsByCollector = `-- name: GetAppsByCollector :many
+SELECT app_name FROM app_collectors
+WHERE collector_name = ?
+ORDER BY app_name
+`
+
+func (q *Queries) GetAppsByCollector(ctx context.Context, collectorName string) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, getAppsByCollector, collectorName)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var app_name string
+		if err := rows.Scan(&app_name); err != nil {
+			return nil, err
+		}
+		items = append(items, app_name)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getCollectorsByApp = `-- name: GetCollectorsByApp :many
+SELECT collector_name FROM app_collectors
+WHERE app_name = ?
+ORDER BY collector_name
+`
+
+func (q *Queries) GetCollectorsByApp(ctx context.Context, appName string) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, getCollectorsByApp, appName)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var collector_name string
+		if err := rows.Scan(&collector_name); err != nil {
+			return nil, err
+		}
+		items = append(items, collector_name)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getConfig = `-- name: GetConfig :one
 
 SELECT value FROM config
@@ -237,6 +305,74 @@ func (q *Queries) GetGlobalNotifiers(ctx context.Context) ([]Notifier, error) {
 			&i.Type,
 			&i.Config,
 			&i.Enabled,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getLatestStats = `-- name: GetLatestStats :one
+SELECT id, collector_name, cpu_usage_percent, mem_total_mb, mem_used_mb, mem_available_mb, disk_total_gb, disk_used_gb, disk_avail_gb, created_at FROM system_stats
+WHERE collector_name = ?
+ORDER BY created_at DESC
+LIMIT 1
+`
+
+func (q *Queries) GetLatestStats(ctx context.Context, collectorName string) (SystemStat, error) {
+	row := q.db.QueryRowContext(ctx, getLatestStats, collectorName)
+	var i SystemStat
+	err := row.Scan(
+		&i.ID,
+		&i.CollectorName,
+		&i.CpuUsagePercent,
+		&i.MemTotalMb,
+		&i.MemUsedMb,
+		&i.MemAvailableMb,
+		&i.DiskTotalGb,
+		&i.DiskUsedGb,
+		&i.DiskAvailGb,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const getLatestStatsForAllCollectors = `-- name: GetLatestStatsForAllCollectors :many
+SELECT s1.id, s1.collector_name, s1.cpu_usage_percent, s1.mem_total_mb, s1.mem_used_mb, s1.mem_available_mb, s1.disk_total_gb, s1.disk_used_gb, s1.disk_avail_gb, s1.created_at FROM system_stats s1
+INNER JOIN (
+    SELECT collector_name, MAX(created_at) as max_created
+    FROM system_stats
+    GROUP BY collector_name
+) s2 ON s1.collector_name = s2.collector_name AND s1.created_at = s2.max_created
+`
+
+func (q *Queries) GetLatestStatsForAllCollectors(ctx context.Context) ([]SystemStat, error) {
+	rows, err := q.db.QueryContext(ctx, getLatestStatsForAllCollectors)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []SystemStat
+	for rows.Next() {
+		var i SystemStat
+		if err := rows.Scan(
+			&i.ID,
+			&i.CollectorName,
+			&i.CpuUsagePercent,
+			&i.MemTotalMb,
+			&i.MemUsedMb,
+			&i.MemAvailableMb,
+			&i.DiskTotalGb,
+			&i.DiskUsedGb,
+			&i.DiskAvailGb,
 			&i.CreatedAt,
 		); err != nil {
 			return nil, err
@@ -442,6 +578,70 @@ func (q *Queries) GetUserByUsername(ctx context.Context, username string) (User,
 		&i.CreatedAt,
 	)
 	return i, err
+}
+
+const insertSystemStats = `-- name: InsertSystemStats :exec
+
+INSERT INTO system_stats (
+    collector_name, cpu_usage_percent, mem_total_mb, mem_used_mb,
+    mem_available_mb, disk_total_gb, disk_used_gb, disk_avail_gb, created_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+`
+
+type InsertSystemStatsParams struct {
+	CollectorName   string
+	CpuUsagePercent float64
+	MemTotalMb      int64
+	MemUsedMb       int64
+	MemAvailableMb  int64
+	DiskTotalGb     int64
+	DiskUsedGb      int64
+	DiskAvailGb     int64
+	CreatedAt       time.Time
+}
+
+// System stats queries
+func (q *Queries) InsertSystemStats(ctx context.Context, arg InsertSystemStatsParams) error {
+	_, err := q.db.ExecContext(ctx, insertSystemStats,
+		arg.CollectorName,
+		arg.CpuUsagePercent,
+		arg.MemTotalMb,
+		arg.MemUsedMb,
+		arg.MemAvailableMb,
+		arg.DiskTotalGb,
+		arg.DiskUsedGb,
+		arg.DiskAvailGb,
+		arg.CreatedAt,
+	)
+	return err
+}
+
+const listAppCollectors = `-- name: ListAppCollectors :many
+SELECT app_name, collector_name, last_seen_at FROM app_collectors
+ORDER BY app_name, collector_name
+`
+
+func (q *Queries) ListAppCollectors(ctx context.Context) ([]AppCollector, error) {
+	rows, err := q.db.QueryContext(ctx, listAppCollectors)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []AppCollector
+	for rows.Next() {
+		var i AppCollector
+		if err := rows.Scan(&i.AppName, &i.CollectorName, &i.LastSeenAt); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listEnabledNotifiers = `-- name: ListEnabledNotifiers :many
@@ -676,5 +876,25 @@ func (q *Queries) UpdateNotifier(ctx context.Context, arg UpdateNotifierParams) 
 		arg.Enabled,
 		arg.ID,
 	)
+	return err
+}
+
+const upsertAppCollector = `-- name: UpsertAppCollector :exec
+
+INSERT INTO app_collectors (app_name, collector_name, last_seen_at)
+VALUES (?, ?, ?)
+ON CONFLICT(app_name, collector_name) 
+DO UPDATE SET last_seen_at = excluded.last_seen_at
+`
+
+type UpsertAppCollectorParams struct {
+	AppName       string
+	CollectorName string
+	LastSeenAt    time.Time
+}
+
+// App-collector mapping queries
+func (q *Queries) UpsertAppCollector(ctx context.Context, arg UpsertAppCollectorParams) error {
+	_, err := q.db.ExecContext(ctx, upsertAppCollector, arg.AppName, arg.CollectorName, arg.LastSeenAt)
 	return err
 }

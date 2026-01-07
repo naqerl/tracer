@@ -96,7 +96,7 @@ func main() {
 	}
 
 	// Initialize retention service
-	retentionService := retention.New(dbManager, cfg.RetentionDays)
+	retentionService := retention.New(dbManager, authService, cfg.RetentionDays)
 	go retentionService.Start(ctx)
 
 	// Initialize collector tracker

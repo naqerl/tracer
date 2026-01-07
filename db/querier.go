@@ -15,6 +15,10 @@ type Querier interface {
 	AddUserApp(ctx context.Context, arg AddUserAppParams) error
 	CountByLevel(ctx context.Context, createdAt sql.NullTime) ([]CountByLevelRow, error)
 	CountByLevelAndHour(ctx context.Context, createdAt sql.NullTime) ([]CountByLevelAndHourRow, error)
+	// Groups logs by message and returns counts, ordered by frequency (most frequent first)
+	CountLogsByMessage(ctx context.Context, limit int64) ([]CountLogsByMessageRow, error)
+	// Groups logs by message filtered by level, ordered by frequency
+	CountLogsByMessageAndLevel(ctx context.Context, arg CountLogsByMessageAndLevelParams) ([]CountLogsByMessageAndLevelRow, error)
 	CountUsers(ctx context.Context) (int64, error)
 	// Notifier queries
 	CreateNotifier(ctx context.Context, arg CreateNotifierParams) (Notifier, error)
@@ -25,16 +29,23 @@ type Querier interface {
 	DeleteExpiredSessions(ctx context.Context, expiresAt time.Time) error
 	DeleteNotifier(ctx context.Context, id int64) error
 	DeleteOldLogs(ctx context.Context, createdAt sql.NullTime) error
+	DeleteOldStats(ctx context.Context, createdAt time.Time) error
 	DeleteSession(ctx context.Context, id string) error
 	DeleteUser(ctx context.Context, id int64) error
 	DeleteUserSessions(ctx context.Context, userID int64) error
 	DisableNotifier(ctx context.Context, id int64) error
 	EnableNotifier(ctx context.Context, id int64) error
 	FindLogsByTraceID(ctx context.Context, traceID string) ([]Log, error)
+	GetAppsByCollector(ctx context.Context, collectorName string) ([]string, error)
+	GetCollectorsByApp(ctx context.Context, appName string) ([]string, error)
 	// Config queries
 	GetConfig(ctx context.Context, key string) (string, error)
 	GetGlobalNotifiers(ctx context.Context) ([]Notifier, error)
+	GetLatestStats(ctx context.Context, collectorName string) (SystemStat, error)
+	GetLatestStatsForAllCollectors(ctx context.Context) ([]SystemStat, error)
 	GetLogByID(ctx context.Context, id int64) (Log, error)
+	// Get all logs matching a specific level and message
+	GetLogsByLevelAndMessage(ctx context.Context, arg GetLogsByLevelAndMessageParams) ([]Log, error)
 	GetNotifier(ctx context.Context, id int64) (Notifier, error)
 	// Notifier app mapping queries
 	GetNotifierApps(ctx context.Context, notifierID int64) ([]string, error)
@@ -47,6 +58,9 @@ type Querier interface {
 	GetUserByID(ctx context.Context, id int64) (User, error)
 	GetUserByUsername(ctx context.Context, username string) (User, error)
 	InsertLog(ctx context.Context, arg InsertLogParams) (Log, error)
+	// System stats queries
+	InsertSystemStats(ctx context.Context, arg InsertSystemStatsParams) error
+	ListAppCollectors(ctx context.Context) ([]AppCollector, error)
 	ListEnabledNotifiers(ctx context.Context) ([]Notifier, error)
 	ListLogsByLevel(ctx context.Context, arg ListLogsByLevelParams) ([]Log, error)
 	ListNotifiers(ctx context.Context) ([]Notifier, error)
@@ -60,6 +74,8 @@ type Querier interface {
 	SearchLogs(ctx context.Context, arg SearchLogsParams) ([]Log, error)
 	SetConfig(ctx context.Context, arg SetConfigParams) error
 	UpdateNotifier(ctx context.Context, arg UpdateNotifierParams) error
+	// App-collector mapping queries
+	UpsertAppCollector(ctx context.Context, arg UpsertAppCollectorParams) error
 }
 
 var _ Querier = (*Queries)(nil)

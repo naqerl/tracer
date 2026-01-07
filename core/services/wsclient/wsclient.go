@@ -11,6 +11,7 @@ import (
 
 	"github.com/ai-shift/tracer/core/services/filewatcher"
 	"github.com/ai-shift/tracer/core/services/logparser"
+	"github.com/ai-shift/tracer/core/services/sysstats"
 )
 
 const (
@@ -22,11 +23,12 @@ const (
 )
 
 type Message struct {
-	Type          string             `json:"type"` // "register", "log", or "startup"
+	Type          string             `json:"type"` // "register", "log", "startup", or "stats"
 	AppName       string             `json:"app_name"`
 	Apps          []string           `json:"apps,omitempty"`           // for registration
-	CollectorName string             `json:"collector_name,omitempty"` // for registration
+	CollectorName string             `json:"collector_name,omitempty"` // for registration and stats
 	Entry         logparser.LogEntry `json:"entry,omitempty"`
+	Stats         *sysstats.Stats    `json:"stats,omitempty"` // for stats messages
 }
 
 type Service struct {
@@ -34,6 +36,10 @@ type Service struct {
 	collectorName string
 	appNames      []string
 	logChan       <-chan filewatcher.AppLogEntry
+
+	// System stats
+	statsCollector *sysstats.Collector
+	statsInterval  time.Duration
 
 	conn   *websocket.Conn
 	connMu sync.Mutex
@@ -48,8 +54,21 @@ func New(endpoint, collectorName string, appNames []string, logChan <-chan filew
 	}
 }
 
+// WithStats configures the service to send system stats at the given interval
+func (s *Service) WithStats(collector *sysstats.Collector, interval time.Duration) *Service {
+	s.statsCollector = collector
+	s.statsInterval = interval
+	return s
+}
+
 func (s *Service) Start(ctx context.Context) {
 	go s.maintainConnection(ctx)
+
+	// Start stats loop if configured
+	if s.statsCollector != nil && s.statsInterval > 0 {
+		go s.statsLoop(ctx)
+	}
+
 	s.processLogs(ctx)
 }
 
@@ -262,5 +281,60 @@ func (s *Service) close() {
 		)
 		s.conn.Close()
 		s.conn = nil
+	}
+}
+
+// statsLoop periodically collects and sends system statistics
+func (s *Service) statsLoop(ctx context.Context) {
+	ticker := time.NewTicker(s.statsInterval)
+	defer ticker.Stop()
+
+	// Send initial stats immediately
+	s.collectAndSendStats()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			s.collectAndSendStats()
+		}
+	}
+}
+
+func (s *Service) collectAndSendStats() {
+	stats, err := s.statsCollector.Collect()
+	if err != nil {
+		slog.Error("Failed to collect system stats", "error", err)
+		return
+	}
+
+	s.sendStats(stats)
+}
+
+func (s *Service) sendStats(stats *sysstats.Stats) {
+	msg := Message{
+		Type:          "stats",
+		CollectorName: s.collectorName,
+		Stats:         stats,
+	}
+
+	data, err := json.Marshal(msg)
+	if err != nil {
+		slog.Error("Failed to marshal stats", "error", err)
+		return
+	}
+
+	s.connMu.Lock()
+	defer s.connMu.Unlock()
+
+	if s.conn == nil {
+		return // No connection, skip this cycle
+	}
+
+	s.conn.SetWriteDeadline(time.Now().Add(writeTimeout))
+	if err := s.conn.WriteMessage(websocket.TextMessage, data); err != nil {
+		slog.Warn("Failed to send stats", "error", err)
+		// Don't close connection on stats failure, let ping handle it
 	}
 }

@@ -6,17 +6,20 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/ai-shift/tracer/core/services/auth"
 	"github.com/ai-shift/tracer/core/services/dbmanager"
 )
 
 type Service struct {
 	dbManager     *dbmanager.Manager
+	authService   *auth.Service
 	retentionDays int
 }
 
-func New(dbManager *dbmanager.Manager, retentionDays int) *Service {
+func New(dbManager *dbmanager.Manager, authService *auth.Service, retentionDays int) *Service {
 	return &Service{
 		dbManager:     dbManager,
+		authService:   authService,
 		retentionDays: retentionDays,
 	}
 }
@@ -66,4 +69,19 @@ func (s *Service) runCleanup(ctx context.Context) {
 
 		slog.Debug("Cleaned up old logs", "app_name", appName, "cutoff", cutoff.Time)
 	}
+
+	// Cleanup old system stats
+	s.cleanupSystemStats(ctx)
+}
+
+func (s *Service) cleanupSystemStats(ctx context.Context) {
+	cutoff := time.Now().AddDate(0, 0, -s.retentionDays)
+
+	err := s.authService.DeleteOldStats(ctx, cutoff)
+	if err != nil {
+		slog.Error("Failed to cleanup system stats", "error", err)
+		return
+	}
+
+	slog.Debug("Cleaned up old system stats", "cutoff", cutoff)
 }

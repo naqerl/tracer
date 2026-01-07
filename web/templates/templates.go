@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"time"
 )
 
@@ -25,6 +26,10 @@ func New(fsys fs.FS) Templates {
 		"truncate":       truncate,
 		"nullStr":        nullStr,
 		"hasContext":     hasContext,
+		"urlEncode":      url.QueryEscape,
+		"toFloat":        toFloat,
+		"divFloat":       divFloat,
+		"mulFloat":       mulFloat,
 	}
 
 	// Parse shared templates first
@@ -146,4 +151,30 @@ func hasContext(v any) bool {
 	default:
 		return false
 	}
+}
+
+func toFloat(v any) float64 {
+	switch n := v.(type) {
+	case int:
+		return float64(n)
+	case int64:
+		return float64(n)
+	case float64:
+		return n
+	case uint64:
+		return float64(n)
+	default:
+		return 0
+	}
+}
+
+func divFloat(a, b float64) float64 {
+	if b == 0 {
+		return 0
+	}
+	return a / b
+}
+
+func mulFloat(a, b float64) float64 {
+	return a * b
 }

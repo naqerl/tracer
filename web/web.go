@@ -29,7 +29,7 @@ func Run(port string, dbManager *dbmanager.Manager, sampleRate float64, notifySe
 	mux.Handle("/", authres.InitMux(authService, sessionDurationSec))
 
 	// API routes (uses API key auth via middleware)
-	mux.Handle("/api/", http.StripPrefix("/api", api.InitMux(dbManager, sampleRate, notifyService.Chan(), tracker, panelURL)))
+	mux.Handle("/api/", http.StripPrefix("/api", api.InitMux(dbManager, authService, sampleRate, notifyService.Chan(), tracker, panelURL)))
 
 	// UI routes (protected by auth middleware)
 	mux.Handle("/logs/", http.StripPrefix("/logs", logs.InitMux(dbManager, authService)))

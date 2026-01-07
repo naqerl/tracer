@@ -16,6 +16,8 @@ const (
 type Collector struct {
 	Name          string `toml:"name"` // Optional collector name, uses IP if not set
 	PanelEndpoint string `toml:"panel_endpoint"`
+	StatsInterval string `toml:"stats_interval"` // How often to send system stats (e.g., "30s", "1m")
+	DataDir       string `toml:"data_dir"`       // Directory to monitor for disk usage
 	Apps          []App  `toml:"apps"`
 }
 
