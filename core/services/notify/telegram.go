@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/ai-shift/tgmd"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
@@ -37,77 +38,59 @@ func (t *TelegramNotifier) Name() string {
 }
 
 func (t *TelegramNotifier) Notify(n Notification) error {
-	var emoji string
-	switch n.Type {
-	case TypeAlert:
-		emoji = "\\u26A0\\uFE0F" // Warning sign
-	case TypeNotice:
-		emoji = "\\u2139\\uFE0F" // Info sign
-	default:
-		emoji = "\\u2139\\uFE0F"
+	var text string
+	timeStr := n.Timestamp.Format(time.RFC3339)
+
+	// Format differently based on notification type
+	if n.Level == "STARTUP" {
+		// Startup notification - compact and informative
+		text = fmt.Sprintf(
+			"🚀 **App Started**\n\n"+
+				"**App:** `%s`\n"+
+				"**Time:** %s\n",
+			n.AppName,
+			timeStr,
+		)
+		if n.Message != "" {
+			text += fmt.Sprintf("\n**Message:**\n```\n%s\n```", n.Message)
+		}
+	} else {
+		// Error/Alert notification - full details
+		var emoji string
+		switch n.Type {
+		case TypeAlert:
+			emoji = "⚠️"
+		case TypeNotice:
+			emoji = "ℹ️"
+		default:
+			emoji = "ℹ️"
+		}
+
+		text = fmt.Sprintf(
+			"%s **%s**\n\n"+
+				"**App:** `%s`\n"+
+				"**Source:** `%s`\n"+
+				"**Time:** %s\n",
+			emoji,
+			string(n.Type),
+			n.AppName,
+			n.Source,
+			timeStr,
+		)
+
+		if n.TraceID != "" {
+			text += fmt.Sprintf("**TraceID:** `%s`\n", n.TraceID)
+		}
+
+		text += fmt.Sprintf("\n**Message:**\n```\n%s\n```", n.Message)
 	}
 
-	text := fmt.Sprintf(
-		"%s *%s*\n\n"+
-			"*App:* `%s`\n"+
-			"*Source:* `%s`\n"+
-			"*Time:* %s\n",
-		emoji,
-		escapeMarkdown(string(n.Type)),
-		escapeMarkdown(n.AppName),
-		escapeMarkdown(n.Source),
-		n.Timestamp.Format(time.RFC3339),
-	)
+	// Use tgmd to convert standard markdown to Telegram MarkdownV2 format
+	telegramText := tgmd.Telegramify(text)
 
-	if n.TraceID != "" {
-		text += fmt.Sprintf("*TraceID:* `%s`\n", escapeMarkdown(n.TraceID))
-	}
-
-	text += fmt.Sprintf("\n*Message:*\n```\n%s\n```", escapeMarkdown(n.Message))
-
-	msg := tgbotapi.NewMessage(t.chatID, text)
+	msg := tgbotapi.NewMessage(t.chatID, telegramText)
 	msg.ParseMode = "MarkdownV2"
 
 	_, err := t.bot.Send(msg)
 	return err
-}
-
-func escapeMarkdown(s string) string {
-	replacer := []string{
-		"_", "\\_",
-		"*", "\\*",
-		"[", "\\[",
-		"]", "\\]",
-		"(", "\\(",
-		")", "\\)",
-		"~", "\\~",
-		"`", "\\`",
-		">", "\\>",
-		"#", "\\#",
-		"+", "\\+",
-		"-", "\\-",
-		"=", "\\=",
-		"|", "\\|",
-		"{", "\\{",
-		"}", "\\}",
-		".", "\\.",
-		"!", "\\!",
-	}
-	result := s
-	for i := 0; i < len(replacer); i += 2 {
-		result = replaceAll(result, replacer[i], replacer[i+1])
-	}
-	return result
-}
-
-func replaceAll(s, old, new string) string {
-	result := ""
-	for i := 0; i < len(s); i++ {
-		if string(s[i]) == old {
-			result += new
-		} else {
-			result += string(s[i])
-		}
-	}
-	return result
 }
