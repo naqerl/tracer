@@ -20,16 +20,19 @@ type Templates struct {
 
 func New(fsys fs.FS) Templates {
 	funcMap := template.FuncMap{
-		"formatDate":     formatDate,
-		"formatDateTime": formatDateTime,
-		"levelClass":     levelClass,
-		"truncate":       truncate,
-		"nullStr":        nullStr,
-		"hasContext":     hasContext,
-		"urlEncode":      url.QueryEscape,
-		"toFloat":        toFloat,
-		"divFloat":       divFloat,
-		"mulFloat":       mulFloat,
+		"formatDate":      formatDate,
+		"formatDateTime":  formatDateTime,
+		"levelClass":      levelClass,
+		"truncate":        truncate,
+		"nullStr":         nullStr,
+		"hasContext":      hasContext,
+		"urlEncode":       url.QueryEscape,
+		"toFloat":         toFloat,
+		"divFloat":        divFloat,
+		"mulFloat":        mulFloat,
+		"sub":             func(a, b int) int { return a - b },
+		"isAnalyticsPath": isAnalyticsPath,
+		"isSettingsPath":  isSettingsPath,
 	}
 
 	// Parse shared templates first
@@ -62,20 +65,61 @@ func (t Templates) RenderError(w http.ResponseWriter, r *http.Request, title, me
 	}
 }
 
-// NavData holds data for the shared navbar template
-type NavData struct {
-	Title      string
-	ActivePage string
-	Username   string
+// BreadcrumbSegment represents a single segment in the breadcrumb path
+type BreadcrumbSegment struct {
+	Text string // lowercase text, e.g., "analytics", "aishift", "apps", "mimi"
+	URL  string // full URL up to this segment, e.g., "/analytics/aishift"
 }
 
-// NewNavData creates navbar data
-func NewNavData(title, activePage, username string) NavData {
-	return NavData{
-		Title:      title,
-		ActivePage: activePage,
-		Username:   username,
+// NavData holds data for the shared navbar template
+type NavData struct {
+	Breadcrumbs []BreadcrumbSegment
+}
+
+// NavBuilder helps construct breadcrumb navigation
+type NavBuilder struct {
+	segments []BreadcrumbSegment
+}
+
+// NewNavBuilder creates a new navigation builder
+func NewNavBuilder() *NavBuilder {
+	return &NavBuilder{
+		segments: make([]BreadcrumbSegment, 0),
 	}
+}
+
+// Add appends a segment to the breadcrumb
+func (b *NavBuilder) Add(text, urlPart string) *NavBuilder {
+	var url string
+	if len(b.segments) > 0 {
+		url = b.segments[len(b.segments)-1].URL + "/" + urlPart
+	} else {
+		url = "/" + urlPart
+	}
+	b.segments = append(b.segments, BreadcrumbSegment{
+		Text: text,
+		URL:  url,
+	})
+	return b
+}
+
+// Build returns the NavData
+func (b *NavBuilder) Build() NavData {
+	return NavData{
+		Breadcrumbs: b.segments,
+	}
+}
+
+// NewNavData creates navbar data (kept for backwards compatibility during migration)
+func NewNavData(title, activePage, username string) NavData {
+	// Convert old format to new breadcrumb format
+	builder := NewNavBuilder()
+	if activePage == "analytics" {
+		builder.Add("analytics", "analytics")
+	} else if activePage == "settings" {
+		builder.Add("settings", "settings")
+	}
+	return builder.Build()
 }
 
 func formatDate(t any) string {
@@ -177,4 +221,18 @@ func divFloat(a, b float64) float64 {
 
 func mulFloat(a, b float64) float64 {
 	return a * b
+}
+
+func isAnalyticsPath(breadcrumbs []BreadcrumbSegment) bool {
+	if len(breadcrumbs) == 0 {
+		return false
+	}
+	return breadcrumbs[0].Text == "analytics"
+}
+
+func isSettingsPath(breadcrumbs []BreadcrumbSegment) bool {
+	if len(breadcrumbs) == 0 {
+		return false
+	}
+	return breadcrumbs[0].Text == "settings"
 }

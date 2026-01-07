@@ -1,10 +1,25 @@
 {{define "navbar"}}
 <nav class="flex justify-between items-center mb-6 pb-4 border-b border-bg-secondary">
-    <div class="flex gap-2">
-        <a href="/analytics/" class="px-3 py-1.5 text-fg-secondary hover:text-fg transition-colors {{if eq .ActivePage "analytics"}}text-accent{{end}}">Analytics</a>
-        <a href="/settings/" class="px-3 py-1.5 text-fg-secondary hover:text-fg transition-colors {{if eq .ActivePage "settings"}}text-accent{{end}}">Settings</a>
+    <div class="flex items-center">
+        <!-- Breadcrumb Path -->
+        {{range $i, $seg := .Breadcrumbs}}
+        {{if eq $i (sub (len $.Breadcrumbs) 1)}}
+        {{/* Last segment - active (bright) */}}
+        <a href="{{$seg.URL}}" class="text-fg hover:text-accent transition-colors">/{{$seg.Text}}</a>
+        {{else}}
+        {{/* Non-last segment - gray, with hover highlight for entire path */}}
+        <a href="{{$seg.URL}}" class="breadcrumb-segment text-fg-secondary hover:text-fg transition-colors" data-index="{{$i}}">/{{$seg.Text}}</a>
+        {{end}}
+        {{end}}
+        
+        {{/* Settings link - always show, separate from breadcrumb */}}
+        {{if not (isSettingsPath .Breadcrumbs)}}
+        <span class="mx-3 text-fg-secondary">|</span>
+        <a href="/settings/" class="text-fg-secondary hover:text-fg transition-colors">/settings</a>
+        {{end}}
     </div>
-    {{if eq .ActivePage "analytics"}}
+    
+    {{if isAnalyticsPath .Breadcrumbs}}
     <div class="flex items-center gap-1 text-xs">
         <svg id="refresh-spinner" class="htmx-indicator animate-spin h-4 w-4 text-fg-secondary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
             <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
@@ -18,8 +33,34 @@
     </div>
     {{end}}
 </nav>
+<style>
+    /* Hover effect: highlight all segments up to and including hovered segment */
+    .breadcrumb-segment:hover ~ .breadcrumb-segment {
+        color: inherit;
+    }
+</style>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+    // Breadcrumb hover effect - highlight path up to hovered segment
+    const segments = document.querySelectorAll('.breadcrumb-segment');
+    segments.forEach((seg, idx) => {
+        seg.addEventListener('mouseenter', () => {
+            segments.forEach((s, i) => {
+                if (i <= idx) {
+                    s.classList.add('text-fg');
+                    s.classList.remove('text-fg-secondary');
+                }
+            });
+        });
+        seg.addEventListener('mouseleave', () => {
+            segments.forEach(s => {
+                s.classList.remove('text-fg');
+                s.classList.add('text-fg-secondary');
+            });
+        });
+    });
+
+    // Refresh interval logic
     const input = document.getElementById('refresh-interval');
     if (!input) return;
     
@@ -102,5 +143,3 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 </script>
 {{end}}
-
-{{define "navbar-styles"}}{{end}}
