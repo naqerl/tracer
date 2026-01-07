@@ -85,6 +85,114 @@ func (q *Queries) CountByLevelAndHour(ctx context.Context, createdAt sql.NullTim
 	return items, nil
 }
 
+const countLogsByMessage = `-- name: CountLogsByMessage :many
+SELECT 
+    level,
+    message,
+    COUNT(*) as count,
+    MAX(created_at) as latest_at,
+    MIN(id) as sample_id
+FROM logs
+GROUP BY level, message
+ORDER BY count DESC, latest_at DESC
+LIMIT ?
+`
+
+type CountLogsByMessageRow struct {
+	Level    string
+	Message  string
+	Count    int64
+	LatestAt interface{}
+	SampleID interface{}
+}
+
+// Groups logs by message and returns counts, ordered by frequency (most frequent first)
+func (q *Queries) CountLogsByMessage(ctx context.Context, limit int64) ([]CountLogsByMessageRow, error) {
+	rows, err := q.db.QueryContext(ctx, countLogsByMessage, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []CountLogsByMessageRow
+	for rows.Next() {
+		var i CountLogsByMessageRow
+		if err := rows.Scan(
+			&i.Level,
+			&i.Message,
+			&i.Count,
+			&i.LatestAt,
+			&i.SampleID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const countLogsByMessageAndLevel = `-- name: CountLogsByMessageAndLevel :many
+SELECT 
+    level,
+    message,
+    COUNT(*) as count,
+    MAX(created_at) as latest_at,
+    MIN(id) as sample_id
+FROM logs
+WHERE LOWER(level) = LOWER(?)
+GROUP BY level, message
+ORDER BY count DESC, latest_at DESC
+LIMIT ?
+`
+
+type CountLogsByMessageAndLevelParams struct {
+	LOWER string
+	Limit int64
+}
+
+type CountLogsByMessageAndLevelRow struct {
+	Level    string
+	Message  string
+	Count    int64
+	LatestAt interface{}
+	SampleID interface{}
+}
+
+// Groups logs by message filtered by level, ordered by frequency
+func (q *Queries) CountLogsByMessageAndLevel(ctx context.Context, arg CountLogsByMessageAndLevelParams) ([]CountLogsByMessageAndLevelRow, error) {
+	rows, err := q.db.QueryContext(ctx, countLogsByMessageAndLevel, arg.LOWER, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []CountLogsByMessageAndLevelRow
+	for rows.Next() {
+		var i CountLogsByMessageAndLevelRow
+		if err := rows.Scan(
+			&i.Level,
+			&i.Message,
+			&i.Count,
+			&i.LatestAt,
+			&i.SampleID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const deleteOldLogs = `-- name: DeleteOldLogs :exec
 DELETE FROM logs
 WHERE created_at < ?
@@ -154,12 +262,59 @@ func (q *Queries) GetLogByID(ctx context.Context, id int64) (Log, error) {
 	return i, err
 }
 
+const getLogsByLevelAndMessage = `-- name: GetLogsByLevelAndMessage :many
+SELECT id, trace_id, level, message, source, context, raw, created_at
+FROM logs
+WHERE LOWER(level) = LOWER(?) AND message = ?
+ORDER BY created_at DESC
+LIMIT ?
+`
+
+type GetLogsByLevelAndMessageParams struct {
+	LOWER   string
+	Message string
+	Limit   int64
+}
+
+// Get all logs matching a specific level and message
+func (q *Queries) GetLogsByLevelAndMessage(ctx context.Context, arg GetLogsByLevelAndMessageParams) ([]Log, error) {
+	rows, err := q.db.QueryContext(ctx, getLogsByLevelAndMessage, arg.LOWER, arg.Message, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Log
+	for rows.Next() {
+		var i Log
+		if err := rows.Scan(
+			&i.ID,
+			&i.TraceID,
+			&i.Level,
+			&i.Message,
+			&i.Source,
+			&i.Context,
+			&i.Raw,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getPercentiles = `-- name: GetPercentiles :one
 SELECT 
     COUNT(*) as total,
-    (SELECT COUNT(*) FROM logs l2 WHERE l2.level = 'error' AND l2.created_at >= ?1) as errors,
-    (SELECT COUNT(*) FROM logs l3 WHERE l3.level = 'warn' AND l3.created_at >= ?1) as warnings,
-    (SELECT COUNT(*) FROM logs l4 WHERE l4.level = 'info' AND l4.created_at >= ?1) as infos
+    (SELECT COUNT(*) FROM logs l2 WHERE LOWER(l2.level) = 'error' AND l2.created_at >= ?1) as errors,
+    (SELECT COUNT(*) FROM logs l3 WHERE LOWER(l3.level) = 'warn' AND l3.created_at >= ?1) as warnings,
+    (SELECT COUNT(*) FROM logs l4 WHERE LOWER(l4.level) = 'info' AND l4.created_at >= ?1) as infos
 FROM logs l1
 WHERE l1.created_at >= ?1
 `

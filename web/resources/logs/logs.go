@@ -32,10 +32,12 @@ func InitMux(dbManager *dbmanager.Manager, authService *auth.Service) *http.Serv
 		authService: authService,
 	}
 
-	m.HandleFunc("GET /{app}", h.listLogs)
-	m.HandleFunc("GET /{app}/embed", h.embedLogs)
+	m.HandleFunc("GET /{app}", h.listLogsGrouped)        // Default to grouped view
+	m.HandleFunc("GET /{app}/all", h.listLogs)           // All logs (ungrouped)
+	m.HandleFunc("GET /{app}/embed", h.embedLogsGrouped) // Embedded grouped view
 	m.HandleFunc("GET /{app}/trace/{traceId}", h.showTrace)
 	m.HandleFunc("GET /{app}/log/{id}", h.showLog)
+	m.HandleFunc("GET /{app}/message", h.showMessageLogs) // Logs by message
 	m.HandleFunc("GET /{app}/stats", h.getStats)
 
 	return m
@@ -257,4 +259,166 @@ func (h *handler) getStats(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.t.RenderHTTP(w, r, "stats-panel", data)
+}
+
+// listLogsGrouped shows logs grouped by message (most frequent first)
+func (h *handler) listLogsGrouped(w http.ResponseWriter, r *http.Request) {
+	appName := r.PathValue("app")
+	user := middleware.GetUser(r)
+
+	if !h.checkAppAccess(w, r, appName) {
+		return
+	}
+
+	level := r.URL.Query().Get("level")
+	limit := int64(100)
+
+	queries, err := h.dbManager.GetQueries(appName)
+	if err != nil {
+		h.t.RenderError(w, r, "Error", "App not found", http.StatusNotFound)
+		return
+	}
+
+	var grouped []db.CountLogsByMessageRow
+	if level != "" {
+		groupedByLevel, err := queries.CountLogsByMessageAndLevel(r.Context(), db.CountLogsByMessageAndLevelParams{
+			LOWER: level,
+			Limit: limit,
+		})
+		if err != nil {
+			h.t.RenderError(w, r, "Error", "Failed to fetch logs", http.StatusInternalServerError)
+			return
+		}
+		// Convert to common type
+		for _, g := range groupedByLevel {
+			grouped = append(grouped, db.CountLogsByMessageRow{
+				Level:    g.Level,
+				Message:  g.Message,
+				Count:    g.Count,
+				LatestAt: g.LatestAt,
+				SampleID: g.SampleID,
+			})
+		}
+	} else {
+		grouped, err = queries.CountLogsByMessage(r.Context(), limit)
+		if err != nil {
+			h.t.RenderError(w, r, "Error", "Failed to fetch logs", http.StatusInternalServerError)
+			return
+		}
+	}
+
+	data := map[string]any{
+		"AppName": appName,
+		"Grouped": grouped,
+		"Level":   level,
+		"Nav":     templates.NewNavData("Logs: "+appName, "analytics", user.Username),
+	}
+
+	if htmx.IsAjax(r) {
+		h.t.RenderHTTP(w, r, "logs-grouped-table", data)
+	} else {
+		h.t.RenderHTTP(w, r, "logs-grouped-page", data)
+	}
+}
+
+// embedLogsGrouped shows grouped logs for embedding in analytics page
+func (h *handler) embedLogsGrouped(w http.ResponseWriter, r *http.Request) {
+	appName := r.PathValue("app")
+
+	if !h.checkAppAccess(w, r, appName) {
+		return
+	}
+
+	level := r.URL.Query().Get("level")
+	limit := int64(50) // Fewer for embed view
+
+	queries, err := h.dbManager.GetQueries(appName)
+	if err != nil {
+		w.Write([]byte("App not found"))
+		return
+	}
+
+	var grouped []db.CountLogsByMessageRow
+	if level != "" {
+		groupedByLevel, err := queries.CountLogsByMessageAndLevel(r.Context(), db.CountLogsByMessageAndLevelParams{
+			LOWER: level,
+			Limit: limit,
+		})
+		if err != nil {
+			w.Write([]byte("Failed to fetch logs"))
+			return
+		}
+		for _, g := range groupedByLevel {
+			grouped = append(grouped, db.CountLogsByMessageRow{
+				Level:    g.Level,
+				Message:  g.Message,
+				Count:    g.Count,
+				LatestAt: g.LatestAt,
+				SampleID: g.SampleID,
+			})
+		}
+	} else {
+		grouped, err = queries.CountLogsByMessage(r.Context(), limit)
+		if err != nil {
+			w.Write([]byte("Failed to fetch logs"))
+			return
+		}
+	}
+
+	data := map[string]any{
+		"AppName": appName,
+		"Grouped": grouped,
+		"Level":   level,
+	}
+
+	h.t.RenderHTTP(w, r, "logs-grouped-embed", data)
+}
+
+// showMessageLogs shows all logs with a specific level and message
+func (h *handler) showMessageLogs(w http.ResponseWriter, r *http.Request) {
+	appName := r.PathValue("app")
+	user := middleware.GetUser(r)
+
+	if !h.checkAppAccess(w, r, appName) {
+		return
+	}
+
+	level := r.URL.Query().Get("level")
+	message := r.URL.Query().Get("message")
+
+	if level == "" || message == "" {
+		h.t.RenderError(w, r, "Error", "Level and message are required", http.StatusBadRequest)
+		return
+	}
+
+	queries, err := h.dbManager.GetQueries(appName)
+	if err != nil {
+		h.t.RenderError(w, r, "Error", "App not found", http.StatusNotFound)
+		return
+	}
+
+	logs, err := queries.GetLogsByLevelAndMessage(r.Context(), db.GetLogsByLevelAndMessageParams{
+		LOWER:   level,
+		Message: message,
+		Limit:   500, // Reasonable limit for detail view
+	})
+	if err != nil {
+		h.t.RenderError(w, r, "Error", "Failed to fetch logs", http.StatusInternalServerError)
+		return
+	}
+
+	data := map[string]any{
+		"AppName": appName,
+		"Logs":    logs,
+		"Level":   level,
+		"Message": message,
+		"Count":   len(logs),
+		"Nav":     templates.NewNavData("Message Logs", "analytics", user.Username),
+	}
+
+	if htmx.IsAjax(r) {
+		h.t.RenderHTTP(w, r, "message-logs-content", data)
+	} else {
+		h.t.RenderHTTP(w, r, "message-logs-page", data)
+	}
 }

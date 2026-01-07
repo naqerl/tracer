@@ -1,0 +1,227 @@
+{{define "logs-grouped-page"}}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    {{template "head"}}
+    <title>Logs - {{.AppName}}</title>
+</head>
+<body>
+    <div class="max-w-7xl mx-auto p-6">
+        {{template "navbar" .Nav}}
+        {{template "logs-grouped-table" .}}
+    </div>
+</body>
+</html>
+{{end}}
+
+{{define "logs-grouped-table"}}
+<div id="logs-container">
+    <div class="flex items-center justify-between mb-4">
+        <div class="flex gap-2">
+            <a href="/logs/{{.AppName}}" class="px-3 py-1.5 text-sm transition-colors {{if not .Level}}text-accent{{else}}text-fg-secondary hover:text-fg{{end}}" hx-get="/logs/{{.AppName}}" hx-target="#logs-container" hx-swap="innerHTML">All</a>
+            <a href="/logs/{{.AppName}}?level=error" class="px-3 py-1.5 text-sm transition-colors {{if eq .Level "error"}}text-accent{{else}}text-fg-secondary hover:text-fg{{end}}" hx-get="/logs/{{.AppName}}?level=error" hx-target="#logs-container" hx-swap="innerHTML">Errors</a>
+            <a href="/logs/{{.AppName}}?level=warn" class="px-3 py-1.5 text-sm transition-colors {{if eq .Level "warn"}}text-accent{{else}}text-fg-secondary hover:text-fg{{end}}" hx-get="/logs/{{.AppName}}?level=warn" hx-target="#logs-container" hx-swap="innerHTML">Warnings</a>
+            <a href="/logs/{{.AppName}}?level=info" class="px-3 py-1.5 text-sm transition-colors {{if eq .Level "info"}}text-accent{{else}}text-fg-secondary hover:text-fg{{end}}" hx-get="/logs/{{.AppName}}?level=info" hx-target="#logs-container" hx-swap="innerHTML">Info</a>
+        </div>
+        <a href="/logs/{{.AppName}}/all{{if .Level}}?level={{.Level}}{{end}}" class="text-fg-secondary hover:text-fg text-sm">View All Logs</a>
+    </div>
+    
+    <!-- Desktop table view (hidden on small screens) -->
+    <div class="bg-bg-secondary overflow-hidden hidden md:block">
+        <table class="w-full">
+            <thead>
+                <tr class="border-b border-bg">
+                    <th class="px-4 py-3 text-left text-fg-secondary text-sm font-medium">Level</th>
+                    <th class="px-4 py-3 text-left text-fg-secondary text-sm font-medium">Message</th>
+                    <th class="px-4 py-3 text-right text-fg-secondary text-sm font-medium">Count</th>
+                </tr>
+            </thead>
+            <tbody>
+                {{range .Grouped}}
+                <tr class="border-b border-bg hover:bg-bg/50 transition-colors cursor-pointer" onclick="window.location.href='/logs/{{$.AppName}}/message?level={{.Level}}&message={{urlEncode .Message}}'">
+                    <td class="px-4 py-3">{{template "level-badge" .Level}}</td>
+                    <td class="px-4 py-3 max-w-2xl truncate" title="{{.Message}}">{{truncate .Message 120}}</td>
+                    <td class="px-4 py-3 text-right">
+                        <span class="inline-flex items-center justify-center min-w-[2rem] px-2 py-0.5 text-sm font-medium bg-bg text-fg-secondary rounded">{{.Count}}</span>
+                    </td>
+                </tr>
+                {{else}}
+                <tr>
+                    <td colspan="3" class="text-center text-fg-secondary py-8">No logs available</td>
+                </tr>
+                {{end}}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Mobile card view (shown on small screens) -->
+    <div class="bg-bg-secondary space-y-3 md:hidden">
+        {{range .Grouped}}
+        <a href="/logs/{{$.AppName}}/message?level={{.Level}}&message={{urlEncode .Message}}" class="block bg-bg p-4 border border-bg hover:border-accent/50 transition-colors">
+            <div class="flex items-start justify-between mb-2">
+                <div>{{template "level-badge" .Level}}</div>
+                <span class="inline-flex items-center justify-center min-w-[2rem] px-2 py-0.5 text-sm font-medium bg-bg-secondary text-fg-secondary rounded">{{.Count}}</span>
+            </div>
+            <div>
+                <span class="text-fg-secondary text-xs font-medium block mb-1">Message</span>
+                <p class="text-sm break-words">{{.Message}}</p>
+            </div>
+        </a>
+        {{else}}
+        <div class="text-center text-fg-secondary py-8">No logs available</div>
+        {{end}}
+    </div>
+</div>
+{{end}}
+
+{{define "logs-grouped-embed"}}
+<div class="flex items-center justify-between mb-4">
+    <div class="flex gap-2">
+        <a href="#" class="px-3 py-1.5 text-sm transition-colors {{if not .Level}}text-accent{{else}}text-fg-secondary hover:text-fg{{end}}" hx-get="/logs/{{.AppName}}/embed" hx-swap="outerHTML" hx-target="closest div">All</a>
+        <a href="#" class="px-3 py-1.5 text-sm transition-colors {{if eq .Level "error"}}text-accent{{else}}text-fg-secondary hover:text-fg{{end}}" hx-get="/logs/{{.AppName}}/embed?level=error" hx-swap="outerHTML" hx-target="closest div">Errors</a>
+        <a href="#" class="px-3 py-1.5 text-sm transition-colors {{if eq .Level "warn"}}text-accent{{else}}text-fg-secondary hover:text-fg{{end}}" hx-get="/logs/{{.AppName}}/embed?level=warn" hx-swap="outerHTML" hx-target="closest div">Warnings</a>
+        <a href="#" class="px-3 py-1.5 text-sm transition-colors {{if eq .Level "info"}}text-accent{{else}}text-fg-secondary hover:text-fg{{end}}" hx-get="/logs/{{.AppName}}/embed?level=info" hx-swap="outerHTML" hx-target="closest div">Info</a>
+    </div>
+</div>
+
+<!-- Desktop table view (hidden on small screens) -->
+<div class="bg-bg overflow-hidden hidden md:block">
+    <table class="w-full">
+        <thead>
+            <tr class="border-b border-bg-secondary">
+                <th class="px-4 py-3 text-left text-fg-secondary text-sm font-medium">Level</th>
+                <th class="px-4 py-3 text-left text-fg-secondary text-sm font-medium">Message</th>
+                <th class="px-4 py-3 text-right text-fg-secondary text-sm font-medium">Count</th>
+            </tr>
+        </thead>
+        <tbody>
+            {{range .Grouped}}
+            <tr class="border-b border-bg-secondary hover:bg-bg-secondary/50 transition-colors cursor-pointer" onclick="window.location.href='/logs/{{$.AppName}}/message?level={{.Level}}&message={{urlEncode .Message}}'">
+                <td class="px-4 py-3">{{template "level-badge" .Level}}</td>
+                <td class="px-4 py-3 max-w-2xl truncate" title="{{.Message}}">{{truncate .Message 100}}</td>
+                <td class="px-4 py-3 text-right">
+                    <span class="inline-flex items-center justify-center min-w-[2rem] px-2 py-0.5 text-sm font-medium bg-bg-secondary text-fg-secondary rounded">{{.Count}}</span>
+                </td>
+            </tr>
+            {{else}}
+            <tr>
+                <td colspan="3" class="text-center text-fg-secondary py-8">No logs available</td>
+            </tr>
+            {{end}}
+        </tbody>
+    </table>
+</div>
+
+<!-- Mobile card view (shown on small screens) -->
+<div class="bg-bg space-y-3 md:hidden">
+    {{range .Grouped}}
+    <a href="/logs/{{$.AppName}}/message?level={{.Level}}&message={{urlEncode .Message}}" class="block bg-bg-secondary p-4 border border-bg hover:border-accent/50 transition-colors">
+        <div class="flex items-start justify-between mb-2">
+            <div>{{template "level-badge" .Level}}</div>
+            <span class="inline-flex items-center justify-center min-w-[2rem] px-2 py-0.5 text-sm font-medium bg-bg text-fg-secondary rounded">{{.Count}}</span>
+        </div>
+        <div>
+            <span class="text-fg-secondary text-xs font-medium block mb-1">Message</span>
+            <p class="text-sm break-words">{{.Message}}</p>
+        </div>
+    </a>
+    {{else}}
+    <div class="text-center text-fg-secondary py-8">No logs available</div>
+    {{end}}
+</div>
+{{end}}
+
+{{define "message-logs-page"}}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    {{template "head"}}
+    <title>Message Logs - {{.AppName}}</title>
+</head>
+<body>
+    <div class="max-w-7xl mx-auto p-6">
+        {{template "navbar" .Nav}}
+        {{template "message-logs-content" .}}
+    </div>
+</body>
+</html>
+{{end}}
+
+{{define "message-logs-content"}}
+<div class="mb-6">
+    <a href="/logs/{{.AppName}}" class="text-accent hover:underline text-sm">&larr; Back to Grouped Logs</a>
+</div>
+
+<div class="bg-bg-secondary p-4 mb-6">
+    <div class="flex items-start justify-between">
+        <div class="flex-1">
+            <div class="flex items-center gap-3 mb-2">
+                {{template "level-badge" .Level}}
+                <span class="text-fg-secondary text-sm">{{.Count}} occurrences</span>
+            </div>
+            <div class="font-mono text-sm bg-bg p-3 whitespace-pre-wrap break-all max-h-48 overflow-y-auto">{{.Message}}</div>
+        </div>
+    </div>
+</div>
+
+<h2 class="text-lg font-medium mb-4">All Occurrences</h2>
+
+<!-- Desktop table view -->
+<div class="bg-bg-secondary overflow-hidden hidden md:block">
+    <table class="w-full">
+        <thead>
+            <tr class="border-b border-bg">
+                <th class="px-4 py-3 text-left text-fg-secondary text-sm font-medium">Time</th>
+                <th class="px-4 py-3 text-left text-fg-secondary text-sm font-medium">Trace ID</th>
+                <th class="px-4 py-3 text-left text-fg-secondary text-sm font-medium">Source</th>
+            </tr>
+        </thead>
+        <tbody>
+            {{range .Logs}}
+            <tr class="border-b border-bg hover:bg-bg/50 transition-colors cursor-pointer" onclick="window.location.href='/logs/{{$.AppName}}/log/{{.ID}}'">
+                <td class="px-4 py-3 text-fg-secondary text-sm whitespace-nowrap">{{formatDateTime .CreatedAt}}</td>
+                <td class="px-4 py-3">
+                    {{if .TraceID}}
+                    <a href="/logs/{{$.AppName}}/trace/{{.TraceID}}" class="text-accent hover:underline font-mono text-sm" onclick="event.stopPropagation()">{{truncate .TraceID 16}}</a>
+                    {{else}}
+                    <span class="text-fg-secondary">-</span>
+                    {{end}}
+                </td>
+                <td class="px-4 py-3 text-fg-secondary text-sm">{{.Source}}</td>
+            </tr>
+            {{else}}
+            <tr>
+                <td colspan="3" class="text-center text-fg-secondary py-8">No logs found</td>
+            </tr>
+            {{end}}
+        </tbody>
+    </table>
+</div>
+
+<!-- Mobile card view -->
+<div class="bg-bg-secondary space-y-3 md:hidden">
+    {{range .Logs}}
+    <a href="/logs/{{$.AppName}}/log/{{.ID}}" class="block bg-bg p-4 border border-bg hover:border-accent/50 transition-colors">
+        <div class="flex items-center justify-between mb-2">
+            <span class="text-fg-secondary text-xs">{{formatDateTime .CreatedAt}}</span>
+        </div>
+        <div class="space-y-2">
+            {{if .TraceID}}
+            <div>
+                <span class="text-fg-secondary text-xs font-medium block mb-1">Trace ID</span>
+                <span class="text-accent font-mono text-xs">{{.TraceID}}</span>
+            </div>
+            {{end}}
+            {{if .Source}}
+            <div>
+                <span class="text-fg-secondary text-xs font-medium block mb-1">Source</span>
+                <span class="text-fg-secondary text-xs">{{.Source}}</span>
+            </div>
+            {{end}}
+        </div>
+    </a>
+    {{else}}
+    <div class="text-center text-fg-secondary py-8">No logs found</div>
+    {{end}}
+</div>
+{{end}}

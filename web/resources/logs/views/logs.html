@@ -23,7 +23,8 @@
         <a href="/logs/{{.AppName}}?level=info" class="px-3 py-1.5 text-sm transition-colors {{if eq .Level "info"}}text-accent{{else}}text-fg-secondary hover:text-fg{{end}}" hx-get="/logs/{{.AppName}}?level=info" hx-target="#logs-container" hx-swap="innerHTML">Info</a>
     </div>
     
-    <div class="bg-bg-secondary overflow-hidden">
+    <!-- Desktop table view (hidden on small screens) -->
+    <div class="bg-bg-secondary overflow-hidden hidden md:block">
         <table class="w-full" hx-get="/logs/{{.AppName}}{{if .Level}}?level={{.Level}}{{end}}" hx-trigger="every 5s" hx-select="table" hx-swap="outerHTML">
             <thead>
                 <tr class="border-b border-bg">
@@ -36,13 +37,13 @@
             </thead>
             <tbody>
                 {{range .Logs}}
-                <tr class="border-b border-bg hover:bg-bg/50 transition-colors">
+                <tr class="border-b border-bg hover:bg-bg/50 transition-colors cursor-pointer" onclick="window.location.href='/logs/{{$.AppName}}/log/{{.ID}}'">
                     <td class="px-4 py-3 text-fg-secondary text-sm whitespace-nowrap">{{formatDateTime .CreatedAt}}</td>
                     <td class="px-4 py-3">{{template "level-badge" .Level}}</td>
                     <td class="px-4 py-3 max-w-md truncate" title="{{.Message}}">{{truncate .Message 80}}</td>
                     <td class="px-4 py-3">
                         {{if .TraceID}}
-                        <a href="/logs/{{$.AppName}}/trace/{{.TraceID}}" class="text-accent hover:underline font-mono text-sm">{{truncate .TraceID 12}}</a>
+                        <a href="/logs/{{$.AppName}}/trace/{{.TraceID}}" class="text-accent hover:underline font-mono text-sm" onclick="event.stopPropagation()">{{truncate .TraceID 12}}</a>
                         {{end}}
                     </td>
                     <td class="px-4 py-3 text-fg-secondary text-sm">{{.Source}}</td>
@@ -50,6 +51,38 @@
                 {{end}}
             </tbody>
         </table>
+    </div>
+
+    <!-- Mobile card view (shown on small screens) -->
+    <div class="bg-bg-secondary space-y-3 md:hidden">
+        {{range .Logs}}
+        <a href="/logs/{{$.AppName}}/log/{{.ID}}" class="block bg-bg p-4 border border-bg hover:border-accent/50 transition-colors">
+            <div class="flex items-start justify-between mb-2">
+                <div>{{template "level-badge" .Level}}</div>
+                <span class="text-fg-secondary text-xs">{{formatDateTime .CreatedAt}}</span>
+            </div>
+            <div class="space-y-2">
+                <div>
+                    <span class="text-fg-secondary text-xs font-medium block mb-1">Message</span>
+                    <p class="text-sm break-words">{{.Message}}</p>
+                </div>
+                {{if .TraceID}}
+                <div>
+                    <span class="text-fg-secondary text-xs font-medium block mb-1">Trace ID</span>
+                    <span class="text-accent font-mono text-xs">{{.TraceID}}</span>
+                </div>
+                {{end}}
+                {{if .Source}}
+                <div>
+                    <span class="text-fg-secondary text-xs font-medium block mb-1">Source</span>
+                    <span class="text-fg-secondary text-xs">{{.Source}}</span>
+                </div>
+                {{end}}
+            </div>
+        </a>
+        {{else}}
+        <div class="text-center text-fg-secondary py-8">No logs available</div>
+        {{end}}
     </div>
 </div>
 {{end}}
@@ -62,7 +95,8 @@
     <a href="#" class="px-3 py-1.5 text-sm transition-colors {{if eq .Level "info"}}text-accent{{else}}text-fg-secondary hover:text-fg{{end}}" hx-get="/logs/{{.AppName}}/embed?level=info" hx-swap="outerHTML" hx-target="closest div">Info</a>
 </div>
 
-<div class="bg-bg overflow-hidden">
+<!-- Desktop table view (hidden on small screens) -->
+<div class="bg-bg overflow-hidden hidden md:block">
     <table class="w-full">
         <thead>
             <tr class="border-b border-bg-secondary">
@@ -75,13 +109,13 @@
         </thead>
         <tbody>
             {{range .Logs}}
-            <tr class="border-b border-bg-secondary hover:bg-bg-secondary/50 transition-colors">
+            <tr class="border-b border-bg-secondary hover:bg-bg-secondary/50 transition-colors cursor-pointer" onclick="window.location.href='/logs/{{$.AppName}}/log/{{.ID}}'">
                 <td class="px-4 py-3 text-fg-secondary text-sm whitespace-nowrap">{{formatDateTime .CreatedAt}}</td>
                 <td class="px-4 py-3">{{template "level-badge" .Level}}</td>
                 <td class="px-4 py-3 max-w-md truncate" title="{{.Message}}">{{truncate .Message 80}}</td>
                 <td class="px-4 py-3">
                     {{if .TraceID}}
-                    <a href="/logs/{{$.AppName}}/trace/{{.TraceID}}" class="text-accent hover:underline font-mono text-sm">{{truncate .TraceID 12}}</a>
+                    <a href="/logs/{{$.AppName}}/trace/{{.TraceID}}" class="text-accent hover:underline font-mono text-sm" onclick="event.stopPropagation()">{{truncate .TraceID 12}}</a>
                     {{end}}
                 </td>
                 <td class="px-4 py-3 text-fg-secondary text-sm">{{.Source}}</td>
@@ -93,6 +127,38 @@
             {{end}}
         </tbody>
     </table>
+</div>
+
+<!-- Mobile card view (shown on small screens) -->
+<div class="bg-bg space-y-3 md:hidden">
+    {{range .Logs}}
+    <a href="/logs/{{$.AppName}}/log/{{.ID}}" class="block bg-bg-secondary p-4 border border-bg hover:border-accent/50 transition-colors">
+        <div class="flex items-start justify-between mb-2">
+            <div>{{template "level-badge" .Level}}</div>
+            <span class="text-fg-secondary text-xs">{{formatDateTime .CreatedAt}}</span>
+        </div>
+        <div class="space-y-2">
+            <div>
+                <span class="text-fg-secondary text-xs font-medium block mb-1">Message</span>
+                <p class="text-sm break-words">{{.Message}}</p>
+            </div>
+            {{if .TraceID}}
+            <div>
+                <span class="text-fg-secondary text-xs font-medium block mb-1">Trace ID</span>
+                <span class="text-accent font-mono text-xs">{{.TraceID}}</span>
+            </div>
+            {{end}}
+            {{if .Source}}
+            <div>
+                <span class="text-fg-secondary text-xs font-medium block mb-1">Source</span>
+                <span class="text-fg-secondary text-xs">{{.Source}}</span>
+            </div>
+            {{end}}
+        </div>
+    </a>
+    {{else}}
+    <div class="text-center text-fg-secondary py-8">No logs available</div>
+    {{end}}
 </div>
 {{end}}
 
