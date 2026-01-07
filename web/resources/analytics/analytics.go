@@ -165,9 +165,11 @@ func (h *handler) collectorOverviewData(w http.ResponseWriter, r *http.Request) 
 
 	// Get latest stats
 	var stats *db.SystemStat
+	var statsDisplay *StatsDisplay
 	s, err := h.authService.GetLatestStats(r.Context(), collectorName)
 	if err == nil && s != nil {
 		stats = s
+		statsDisplay = formatStatsForDisplay(s)
 	}
 
 	// Filter apps by user access
@@ -177,6 +179,7 @@ func (h *handler) collectorOverviewData(w http.ResponseWriter, r *http.Request) 
 		"CollectorName": collectorName,
 		"IsConnected":   collector.IsConnected,
 		"Stats":         stats,
+		"StatsDisplay":  statsDisplay,
 		"Apps":          apps,
 	}
 
@@ -403,10 +406,60 @@ func (h *handler) appAnalytics(w http.ResponseWriter, r *http.Request) {
 
 // Helper types and functions
 
+// StatsDisplay holds formatted stats data for display
+type StatsDisplay struct {
+	*db.SystemStat
+	TimestampFormatted string // Formatted timestamp
+	Staleness          string // "fresh", "warning", "stale", "old"
+}
+
 // CollectorWithStats combines collector info with latest system stats
 type CollectorWithStats struct {
 	collectors.Collector
-	Stats *db.SystemStat
+	Stats        *db.SystemStat
+	StatsDisplay *StatsDisplay
+}
+
+// formatStatsForDisplay creates a StatsDisplay from SystemStat
+func formatStatsForDisplay(stats *db.SystemStat) *StatsDisplay {
+	if stats == nil {
+		return nil
+	}
+
+	now := time.Now()
+	age := now.Sub(stats.CreatedAt)
+
+	// Check if same date
+	nowY, nowM, nowD := now.Date()
+	statY, statM, statD := stats.CreatedAt.Date()
+	sameDate := nowY == statY && nowM == statM && nowD == statD
+
+	var staleness string
+	var formatted string
+
+	if !sameDate {
+		// Different date - old
+		staleness = "old"
+		formatted = stats.CreatedAt.Format("2006-01-02 15:04:05")
+	} else if age > 30*time.Minute {
+		// > 1 minute - stale
+		staleness = "stale"
+		formatted = stats.CreatedAt.Format("15:04:05")
+	} else if age > 5*time.Minute {
+		// > 30 seconds - warning
+		staleness = "warning"
+		formatted = stats.CreatedAt.Format("15:04:05")
+	} else {
+		// Fresh
+		staleness = "fresh"
+		formatted = stats.CreatedAt.Format("15:04:05")
+	}
+
+	return &StatsDisplay{
+		SystemStat:         stats,
+		TimestampFormatted: formatted,
+		Staleness:          staleness,
+	}
 }
 
 // getFilteredCollectors returns collectors filtered by user access
@@ -447,6 +500,7 @@ func (h *handler) getFilteredCollectors(r *http.Request, user *db.User) ([]Colle
 		stats, err := h.authService.GetLatestStats(r.Context(), c.Name)
 		if err == nil && stats != nil {
 			cws.Stats = stats
+			cws.StatsDisplay = formatStatsForDisplay(stats)
 		}
 
 		collectorsWithStats = append(collectorsWithStats, cws)

@@ -47,13 +47,16 @@
             <h2 class="text-xl font-semibold">{{.Name}}</h2>
             <span class="text-fg-secondary text-xl ml-1">]</span>
         </a>
-        <span class="text-fg-secondary text-xl mx-1">[</span>
-        <span class="text-xl {{if .IsConnected}}text-green-500 animate-pulse{{else}}text-fg-secondary{{end}}">●</span>
-        <span class="text-fg-secondary text-xl ml-1">]</span>
         <hr class="flex-1 mx-4 border-bg-secondary" />
-        {{if .Stats}}
+        {{if .StatsDisplay}}
         <span class="text-fg-secondary text-xs mr-1">[</span>
-        <span class="text-fg-secondary text-xs">{{.Stats.CreatedAt.Format "15:04:05"}}</span>
+        {{if eq .StatsDisplay.Staleness "fresh"}}
+        <span class="text-xs text-fg">{{.StatsDisplay.TimestampFormatted}}</span>
+        {{else if eq .StatsDisplay.Staleness "warning"}}
+        <span class="text-xs text-yellow-400">{{.StatsDisplay.TimestampFormatted}}</span>
+        {{else}}
+        <span class="text-xs text-red-400">{{.StatsDisplay.TimestampFormatted}}</span>
+        {{end}}
         <span class="text-fg-secondary text-xs ml-1">]</span>
         {{end}}
         <span class="text-xs text-fg-secondary mx-1">[</span>
@@ -80,11 +83,15 @@
                 {{$memPercent = (mulFloat $memPercent 100.0)}}
             {{end}}
             <span class="{{if gt $memPercent 80.0}}text-red-400{{else if gt $memPercent 60.0}}text-yellow-400{{else}}text-green-400{{end}}">{{printf "%.0f" $memPercent}}%</span>
-            <span class="text-fg-secondary">({{.Stats.MemUsedMb}}/{{.Stats.MemTotalMb}} MB)</span>
         </div>
         <div class="flex items-center gap-1">
             <span class="text-fg-secondary">Disk:</span>
-            <span>{{.Stats.DiskAvailGb}} GB free</span>
+            {{$diskPercent := 0.0}}
+            {{if gt .Stats.DiskTotalGb 0}}
+                {{$diskPercent = (divFloat (toFloat .Stats.DiskUsedGb) (toFloat .Stats.DiskTotalGb))}}
+                {{$diskPercent = (mulFloat $diskPercent 100.0)}}
+            {{end}}
+            <span class="{{if gt $diskPercent 80.0}}text-red-400{{else if gt $diskPercent 60.0}}text-yellow-400{{else}}text-green-400{{end}}">{{printf "%.0f" $diskPercent}}%</span>
         </div>
     </div>
     {{else}}
