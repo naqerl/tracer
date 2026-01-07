@@ -182,12 +182,16 @@ panel_endpoint = "ws://localhost:8080/api/ws/ingest?api_key=YOUR_API_KEY"
 # name = "my-app"
 # path = "/var/log/my-app/app.log"
 # format = "json"
+# # Optional: detect app restarts
+# # startup_pattern = "Server started"
 
 # Example: systemd service via journalctl
 # [[apps]]
 # name = "my-service"
 # format = "journalctl"
 # unit = "my-service"
+# # Optional: parse MESSAGE field content with regex
+# # pattern = '^(?P<level>\w+):\s+(?P<message>.+)$'
 
 # Example: Nginx access logs
 # [[apps]]
@@ -215,12 +219,19 @@ EOF
 port = "8080"
 data_dir = "${DATA_DIR}"
 
+# Panel URL (optional, used in email/notification links)
+# panel_url = "https://tracer.example.com"
+
 # Percentage of non-error logs to persist (0.0 - 1.0)
 # Errors are always persisted at 100%
 sample_rate = 0.1
 
 # Days to keep logs before automatic cleanup
 retention_days = 90
+
+# Authentication settings
+[auth]
+session_duration = "24h"
 
 # Telegram alerts (optional)
 [telegram]
