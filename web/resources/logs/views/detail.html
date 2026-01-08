@@ -48,7 +48,16 @@
         {{if hasContext .Log.Context}}
         <div>
             <div class="text-xs text-fg-secondary uppercase mb-1">Context</div>
-            <div class="font-mono bg-bg p-3 text-sm text-fg-secondary whitespace-pre-wrap break-all max-h-72 overflow-y-auto">{{nullStr .Log.Context}}</div>
+            <div class="bg-bg p-3 max-h-72 overflow-y-auto">
+                <dl class="space-y-2">
+                    {{range $key, $value := parseContext .Log.Context}}
+                    <div class="flex gap-4">
+                        <dt class="text-fg-secondary text-sm font-medium min-w-32">{{$key}}</dt>
+                        <dd class="font-mono text-sm break-all">{{$value}}</dd>
+                    </div>
+                    {{end}}
+                </dl>
+            </div>
         </div>
         {{end}}
         

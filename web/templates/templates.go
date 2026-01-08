@@ -3,6 +3,8 @@ package templates
 import (
 	"database/sql"
 	"embed"
+	"encoding/json"
+	"fmt"
 	"html/template"
 	"io/fs"
 	"log/slog"
@@ -26,6 +28,7 @@ func New(fsys fs.FS) Templates {
 		"truncate":        truncate,
 		"nullStr":         nullStr,
 		"hasContext":      hasContext,
+		"parseContext":    parseContext,
 		"urlEncode":       url.QueryEscape,
 		"toFloat":         toFloat,
 		"divFloat":        divFloat,
@@ -235,4 +238,38 @@ func isSettingsPath(breadcrumbs []BreadcrumbSegment) bool {
 		return false
 	}
 	return breadcrumbs[0].Text == "settings"
+}
+
+func parseContext(v any) map[string]string {
+	var contextStr string
+
+	switch ctx := v.(type) {
+	case string:
+		contextStr = ctx
+	case sql.NullString:
+		if ctx.Valid {
+			contextStr = ctx.String
+		}
+	default:
+		return nil
+	}
+
+	if contextStr == "" || contextStr == "{}" {
+		return nil
+	}
+
+	// Try to parse as JSON
+	var data map[string]any
+	if err := json.Unmarshal([]byte(contextStr), &data); err != nil {
+		// If not JSON, return as single "raw" entry
+		return map[string]string{"raw": contextStr}
+	}
+
+	// Convert to string map
+	result := make(map[string]string)
+	for k, v := range data {
+		result[k] = fmt.Sprintf("%v", v)
+	}
+
+	return result
 }
