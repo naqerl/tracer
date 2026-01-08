@@ -172,6 +172,7 @@
         <thead>
             <tr class="border-b border-bg">
                 <th class="px-4 py-3 text-left text-fg-secondary text-sm font-medium">Time</th>
+                <th class="px-4 py-3 text-left text-fg-secondary text-sm font-medium">Context</th>
                 <th class="px-4 py-3 text-left text-fg-secondary text-sm font-medium">Trace ID</th>
                 <th class="px-4 py-3 text-left text-fg-secondary text-sm font-medium">Source</th>
             </tr>
@@ -180,6 +181,20 @@
             {{range .Logs}}
             <tr class="border-b border-bg hover:bg-bg/50 transition-colors cursor-pointer" onclick="window.location.href='/logs/{{$.AppName}}/log/{{.ID}}'">
                 <td class="px-4 py-3 text-fg-secondary text-sm whitespace-nowrap">{{formatDateTime .CreatedAt}}</td>
+                <td class="px-4 py-3 text-fg-secondary text-xs max-w-md">
+                    {{if hasContext .Context}}
+                    <div class="space-y-1">
+                        {{range $key, $value := parseContext .Context}}
+                        <div class="flex gap-2">
+                            <span class="font-medium">{{$key}}:</span>
+                            <span class="truncate" title="{{$value}}">{{truncate $value 40}}</span>
+                        </div>
+                        {{end}}
+                    </div>
+                    {{else}}
+                    <span class="text-fg-secondary">-</span>
+                    {{end}}
+                </td>
                 <td class="px-4 py-3">
                     {{if .TraceID}}
                     <a href="/logs/{{$.AppName}}/trace/{{.TraceID}}" class="text-accent hover:underline font-mono text-sm" onclick="event.stopPropagation()">{{truncate .TraceID 16}}</a>
@@ -191,7 +206,7 @@
             </tr>
             {{else}}
             <tr>
-                <td colspan="3" class="text-center text-fg-secondary py-8">No logs found</td>
+                <td colspan="4" class="text-center text-fg-secondary py-8">No logs found</td>
             </tr>
             {{end}}
         </tbody>
@@ -206,6 +221,19 @@
             <span class="text-fg-secondary text-xs">{{formatDateTime .CreatedAt}}</span>
         </div>
         <div class="space-y-2">
+            {{if hasContext .Context}}
+            <div>
+                <span class="text-fg-secondary text-xs font-medium block mb-1">Context</span>
+                <div class="text-xs space-y-1">
+                    {{range $key, $value := parseContext .Context}}
+                    <div>
+                        <span class="font-medium">{{$key}}:</span>
+                        <span class="text-fg-secondary">{{truncate $value 60}}</span>
+                    </div>
+                    {{end}}
+                </div>
+            </div>
+            {{end}}
             {{if .TraceID}}
             <div>
                 <span class="text-fg-secondary text-xs font-medium block mb-1">Trace ID</span>
