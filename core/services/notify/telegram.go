@@ -37,49 +37,10 @@ func (t *TelegramNotifier) Name() string {
 }
 
 func (t *TelegramNotifier) Notify(n Notification) error {
-	var text string
+	// Simple format: {level} @{app}\n{text}
+	text := fmt.Sprintf("%s @%s\n%s", n.Level, n.AppName, n.Message)
 
-	// Format differently based on notification type
-	if n.Level == "STARTUP" {
-		// Startup notification - compact and informative
-		text = fmt.Sprintf(
-			"🚀 **App Started**\n"+
-				"**App:** `%s`",
-			n.AppName,
-		)
-		if n.Message != "" {
-			text += fmt.Sprintf("\n**Message:** ```%s```", n.Message)
-		}
-	} else {
-		// Error/Alert notification - full details
-		var emoji string
-		switch n.Type {
-		case TypeAlert:
-			emoji = "⚠️"
-		case TypeNotice:
-			emoji = "ℹ️"
-		default:
-			emoji = "ℹ️"
-		}
-
-		text = fmt.Sprintf(
-			"%s **%s**\n"+
-				"**App:** `%s`",
-			emoji,
-			string(n.Type),
-			n.AppName,
-		)
-
-		text += fmt.Sprintf("\n**Message:** ```%s```", n.Message)
-	}
-
-	// Add link to panel if panel URL is configured
-	if n.PanelURL != "" {
-		detailsURL := fmt.Sprintf("%s/logs/%s", n.PanelURL, n.AppName)
-		text += fmt.Sprintf("\n[details](%s)", detailsURL)
-	}
-
-	// Use tgmd to convert standard markdown to Telegram MarkdownV2 format
+	// Convert standard markdown to Telegram MarkdownV2 format
 	telegramText := tgmd.Telegramify(text)
 
 	msg := tgbotapi.NewMessage(t.chatID, telegramText)
