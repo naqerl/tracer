@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"math/rand"
 	"net/http"
@@ -254,8 +255,8 @@ func (h *handler) processMessage(ctx context.Context, connID, remoteAddr string,
 			Type:      notify.TypeAlert,
 			AppName:   msg.AppName,
 			TraceID:   msg.Entry.TraceID,
-			Level:     msg.Entry.Level,
-			Message:   msg.Entry.Message,
+			Level:     "⚠️ alert",
+			Message:   fmt.Sprintf("```%s```", msg.Entry.Message),
 			Source:    msg.Entry.Source,
 			Timestamp: ts,
 			PanelURL:  h.panelURL,
@@ -326,7 +327,7 @@ func (h *handler) handleStartup(ctx context.Context, msg LogMessage) {
 			Type:      notify.TypeNotice,
 			AppName:   msg.AppName,
 			TraceID:   msg.Entry.TraceID,
-			Level:     "STARTUP",
+			Level:     "🚀 startup",
 			Message:   msg.Entry.Message,
 			Source:    msg.Entry.Source,
 			Timestamp: ts,
