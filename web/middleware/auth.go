@@ -74,6 +74,12 @@ func BuildAuthMiddleware(authService *auth.Service) func(http.Handler) http.Hand
 				return
 			}
 
+			// Markdown format paths can use either session or API key auth
+			if IsMarkdownFormat(r) {
+				handleMarkdownAuth(w, r, next, authService)
+				return
+			}
+
 			// All other paths require session authentication
 			handleSessionAuth(w, r, next, authService)
 		})
@@ -107,6 +113,16 @@ func handleAPIAuth(w http.ResponseWriter, r *http.Request, next http.Handler, au
 		return
 	}
 
+	// First try validating as user API key
+	user, err := authService.ValidateUserAPIKey(r.Context(), apiKey)
+	if err == nil {
+		// Valid user API key - add user to context
+		ctx := context.WithValue(r.Context(), userContextKey, user)
+		next.ServeHTTP(w, r.WithContext(ctx))
+		return
+	}
+
+	// Fall back to global collector API key
 	valid, err := authService.ValidateAPIKey(r.Context(), apiKey)
 	if err != nil {
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
@@ -119,6 +135,26 @@ func handleAPIAuth(w http.ResponseWriter, r *http.Request, next http.Handler, au
 	}
 
 	next.ServeHTTP(w, r)
+}
+
+func handleMarkdownAuth(w http.ResponseWriter, r *http.Request, next http.Handler, authService *auth.Service) {
+	// Try API key first (from header or query)
+	apiKey := r.Header.Get("X-API-Key")
+	if apiKey == "" {
+		apiKey = r.URL.Query().Get("api_key")
+	}
+
+	if apiKey != "" {
+		user, err := authService.ValidateUserAPIKey(r.Context(), apiKey)
+		if err == nil {
+			ctx := context.WithValue(r.Context(), userContextKey, user)
+			next.ServeHTTP(w, r.WithContext(ctx))
+			return
+		}
+	}
+
+	// Fall back to session auth
+	handleSessionAuth(w, r, next, authService)
 }
 
 func handleSessionAuth(w http.ResponseWriter, r *http.Request, next http.Handler, authService *auth.Service) {
