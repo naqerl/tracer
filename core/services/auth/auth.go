@@ -17,6 +17,7 @@ import (
 	_ "modernc.org/sqlite"
 
 	"github.com/ai-shift/tracer/core/services/auth/migrations"
+	"github.com/ai-shift/tracer/core/services/notify"
 	"github.com/ai-shift/tracer/db"
 )
 
@@ -359,7 +360,7 @@ func (s *Service) ValidateAPIKey(ctx context.Context, key string) (bool, error) 
 
 // Notifier management
 
-func (s *Service) CreateNotifier(ctx context.Context, userID int64, name, notifierType, config string, enabled bool) (*db.Notifier, error) {
+func (s *Service) CreateNotifierDB(ctx context.Context, userID int64, name, notifierType, config string, enabled bool) (*db.Notifier, error) {
 	var enabledInt int64
 	if enabled {
 		enabledInt = 1
@@ -378,7 +379,7 @@ func (s *Service) CreateNotifier(ctx context.Context, userID int64, name, notifi
 	return &notifier, nil
 }
 
-func (s *Service) GetNotifier(ctx context.Context, id int64) (*db.Notifier, error) {
+func (s *Service) GetNotifierDB(ctx context.Context, id int64) (*db.Notifier, error) {
 	notifier, err := s.queries.GetNotifier(ctx, id)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -523,4 +524,51 @@ func (s *Service) ListAppCollectors(ctx context.Context) ([]db.AppCollector, err
 
 func (s *Service) GetAppsByCollector(ctx context.Context, collectorName string) ([]string, error) {
 	return s.queries.GetAppsByCollector(ctx, collectorName)
+}
+
+// Adapter methods for notify.AuthService interface
+
+// CreateNotifier creates a notifier and returns data suitable for notify service
+func (s *Service) CreateNotifier(ctx context.Context, userID int64, name, notifierType, config string, enabled bool) (notify.NotifierData, error) {
+	enabledInt := int64(0)
+	if enabled {
+		enabledInt = 1
+	}
+
+	notifier, err := s.queries.CreateNotifier(ctx, db.CreateNotifierParams{
+		UserID:  userID,
+		Name:    name,
+		Type:    notifierType,
+		Config:  config,
+		Enabled: enabledInt,
+	})
+	if err != nil {
+		return notify.NotifierData{}, err
+	}
+
+	return notify.NotifierData{
+		ID:      notifier.ID,
+		UserID:  notifier.UserID,
+		Name:    notifier.Name,
+		Type:    notifier.Type,
+		Config:  notifier.Config,
+		Enabled: notifier.Enabled == 1,
+	}, nil
+}
+
+// GetNotifier gets a notifier and returns data suitable for notify service
+func (s *Service) GetNotifier(ctx context.Context, id int64) (notify.NotifierData, error) {
+	notifier, err := s.queries.GetNotifier(ctx, id)
+	if err != nil {
+		return notify.NotifierData{}, err
+	}
+
+	return notify.NotifierData{
+		ID:      notifier.ID,
+		UserID:  notifier.UserID,
+		Name:    notifier.Name,
+		Type:    notifier.Type,
+		Config:  notifier.Config,
+		Enabled: notifier.Enabled == 1,
+	}, nil
 }
