@@ -117,46 +117,6 @@ func (h *handler) listLogs(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (h *handler) embedLogs(w http.ResponseWriter, r *http.Request) {
-	appName := r.PathValue("app")
-
-	if !h.checkAppAccess(w, r, appName) {
-		return
-	}
-
-	level := r.URL.Query().Get("level")
-	limit := int64(50) // Fewer logs for embed view
-
-	queries, err := h.dbManager.GetQueries(appName)
-	if err != nil {
-		w.Write([]byte("App not found"))
-		return
-	}
-
-	var logs []db.Log
-	if level != "" {
-		logs, err = queries.ListLogsByLevel(r.Context(), db.ListLogsByLevelParams{
-			Level: level,
-			Limit: limit,
-		})
-	} else {
-		logs, err = queries.ListRecentLogs(r.Context(), limit)
-	}
-
-	if err != nil {
-		w.Write([]byte("Failed to fetch logs"))
-		return
-	}
-
-	data := map[string]any{
-		"AppName": appName,
-		"Logs":    logs,
-		"Level":   level,
-	}
-
-	h.t.RenderHTTP(w, r, "logs-embed", data)
-}
-
 func (h *handler) showTrace(w http.ResponseWriter, r *http.Request) {
 	appName := r.PathValue("app")
 	user := middleware.GetUser(r)
@@ -296,13 +256,7 @@ func (h *handler) listLogsGrouped(w http.ResponseWriter, r *http.Request) {
 		}
 		// Convert to common type
 		for _, g := range groupedByLevel {
-			grouped = append(grouped, db.CountLogsByMessageRow{
-				Level:    g.Level,
-				Message:  g.Message,
-				Count:    g.Count,
-				LatestAt: g.LatestAt,
-				SampleID: g.SampleID,
-			})
+			grouped = append(grouped, db.CountLogsByMessageRow(g))
 		}
 	} else {
 		grouped, err = queries.CountLogsByMessage(r.Context(), limit)
@@ -326,59 +280,6 @@ func (h *handler) listLogsGrouped(w http.ResponseWriter, r *http.Request) {
 	} else {
 		h.t.RenderHTTP(w, r, "logs-grouped-page", data)
 	}
-}
-
-// embedLogsGrouped shows grouped logs for embedding in analytics page
-func (h *handler) embedLogsGrouped(w http.ResponseWriter, r *http.Request) {
-	appName := r.PathValue("app")
-
-	if !h.checkAppAccess(w, r, appName) {
-		return
-	}
-
-	level := r.URL.Query().Get("level")
-	limit := int64(50) // Fewer for embed view
-
-	queries, err := h.dbManager.GetQueries(appName)
-	if err != nil {
-		w.Write([]byte("App not found"))
-		return
-	}
-
-	var grouped []db.CountLogsByMessageRow
-	if level != "" {
-		groupedByLevel, err := queries.CountLogsByMessageAndLevel(r.Context(), db.CountLogsByMessageAndLevelParams{
-			LOWER: level,
-			Limit: limit,
-		})
-		if err != nil {
-			w.Write([]byte("Failed to fetch logs"))
-			return
-		}
-		for _, g := range groupedByLevel {
-			grouped = append(grouped, db.CountLogsByMessageRow{
-				Level:    g.Level,
-				Message:  g.Message,
-				Count:    g.Count,
-				LatestAt: g.LatestAt,
-				SampleID: g.SampleID,
-			})
-		}
-	} else {
-		grouped, err = queries.CountLogsByMessage(r.Context(), limit)
-		if err != nil {
-			w.Write([]byte("Failed to fetch logs"))
-			return
-		}
-	}
-
-	data := map[string]any{
-		"AppName": appName,
-		"Grouped": grouped,
-		"Level":   level,
-	}
-
-	h.t.RenderHTTP(w, r, "logs-grouped-embed", data)
 }
 
 // showMessageLogs shows all logs with a specific level and message

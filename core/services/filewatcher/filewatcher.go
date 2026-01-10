@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
-	"sync"
 	"time"
 
 	"github.com/ai-shift/tracer/config"
@@ -53,7 +52,6 @@ type watchedSource struct {
 type Service struct {
 	LogChan chan AppLogEntry
 	sources []*watchedSource
-	mu      sync.Mutex
 }
 
 func New(apps []config.App) (*Service, error) {

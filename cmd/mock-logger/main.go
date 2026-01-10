@@ -49,11 +49,6 @@ var (
 		"Cache miss",
 		"Queue backlog growing",
 	}
-	sources = []string{
-		"/var/log/app/api.log",
-		"/var/log/app/worker.log",
-		"/var/log/app/scheduler.log",
-	}
 )
 
 type LogEntry struct {

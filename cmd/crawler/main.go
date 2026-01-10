@@ -57,7 +57,7 @@ func main() {
 	testEndpoint("/llm")
 
 	// Print results
-	fmt.Println("\n=== Test Results ===\n")
+	fmt.Println("\n=== Test Results ===")
 
 	passed := 0
 	failed := 0

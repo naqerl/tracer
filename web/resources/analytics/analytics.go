@@ -631,13 +631,7 @@ func (h *handler) appLogs(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		for _, g := range groupedByLevel {
-			grouped = append(grouped, db.CountLogsByMessageRow{
-				Level:    g.Level,
-				Message:  g.Message,
-				Count:    g.Count,
-				LatestAt: g.LatestAt,
-				SampleID: g.SampleID,
-			})
+			grouped = append(grouped, db.CountLogsByMessageRow(g))
 		}
 	} else {
 		grouped, err = queries.CountLogsByMessage(r.Context(), limit)

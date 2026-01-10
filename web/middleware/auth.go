@@ -13,7 +13,7 @@ type contextKey string
 
 const (
 	userContextKey contextKey = "user"
-	sessionCookie             = "tracer_session"
+	sessionCookie  string     = "tracer_session"
 )
 
 // GetUser returns the authenticated user from the request context
