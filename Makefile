@@ -1,3 +1,6 @@
+include .env
+export
+
 .PHONY: build build-collector build-panel build-release clean test vet generate
 
 # Build all binaries
@@ -93,3 +96,7 @@ dev-stop:
 # View panel logs
 dev-logs:
 	@tail -f /tmp/tracer-panel.log
+
+.PHONY: test-endpoints
+test-endpoints:
+	@TRACER_API_KEY=$${TRACER_API_KEY} go run cmd/crawler/main.go
