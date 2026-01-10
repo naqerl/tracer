@@ -68,6 +68,15 @@ func (t Templates) RenderError(w http.ResponseWriter, r *http.Request, title, me
 	}
 }
 
+// RenderMarkdown renders data as markdown formatted text
+func (t Templates) RenderMarkdown(w http.ResponseWriter, r *http.Request, name string, data any) {
+	w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
+	if err := t.views.ExecuteTemplate(w, name, data); err != nil {
+		slog.Error("Template error", "template", name, "error", err)
+		http.Error(w, "Internal error", http.StatusInternalServerError)
+	}
+}
+
 // BreadcrumbSegment represents a single segment in the breadcrumb path
 type BreadcrumbSegment struct {
 	Text string // lowercase text, e.g., "analytics", "aishift", "apps", "mimi"
