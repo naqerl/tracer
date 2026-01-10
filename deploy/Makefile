@@ -4,7 +4,10 @@
 include .env
 export
 
-deploy-panel:
+full: panel collector
+	@echo "All components deployed"
+
+panel:
 	@echo "Deploying panel to $(TARGET_HOST)..."
 	@cd .. && make build-release-panel
 	@ssh $(TARGET_HOST) "systemctl stop tracer-panel"
@@ -12,16 +15,13 @@ deploy-panel:
 	@ssh $(TARGET_HOST) "systemctl start tracer-panel"
 	@echo "Panel deployed and restarted"
 
-deploy-collector:
+collector:
 	@echo "Deploying collector to $(TARGET_HOST)..."
 	@cd .. && make build-release-collector
 	@ssh $(TARGET_HOST) "systemctl stop tracer-collector"
 	@scp ../bin/tracer-collector $(TARGET_HOST):/usr/local/bin/tracer-collector
 	@ssh $(TARGET_HOST) "systemctl start tracer-collector"
 	@echo "Collector deployed and restarted"
-
-deploy: deploy-panel deploy-collector
-	@echo "All components deployed"
 
 restart-panel:
 	@ssh $(TARGET_HOST) "systemctl restart tracer-panel"
