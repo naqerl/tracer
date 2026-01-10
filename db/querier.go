@@ -25,12 +25,15 @@ type Querier interface {
 	CreateSession(ctx context.Context, arg CreateSessionParams) error
 	// User queries
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
+	// User API key queries (LLM compatibility)
+	CreateUserAPIKey(ctx context.Context, arg CreateUserAPIKeyParams) (UserApiKey, error)
 	DeleteExpiredSessions(ctx context.Context, expiresAt time.Time) error
 	DeleteNotifier(ctx context.Context, id int64) error
 	DeleteOldLogs(ctx context.Context, createdAt sql.NullTime) error
 	DeleteOldStats(ctx context.Context, createdAt time.Time) error
 	DeleteSession(ctx context.Context, id string) error
 	DeleteUser(ctx context.Context, id int64) error
+	DeleteUserAPIKey(ctx context.Context, id int64) error
 	DeleteUserSessions(ctx context.Context, userID int64) error
 	DisableNotifier(ctx context.Context, id int64) error
 	EnableNotifier(ctx context.Context, id int64) error
@@ -53,6 +56,8 @@ type Querier interface {
 	GetNotifiersForApp(ctx context.Context, appName string) ([]Notifier, error)
 	GetPercentiles(ctx context.Context, createdAt sql.NullTime) (GetPercentilesRow, error)
 	GetSession(ctx context.Context, id string) (Session, error)
+	GetUserAPIKey(ctx context.Context, apiKey string) (UserApiKey, error)
+	GetUserAPIKeysByUser(ctx context.Context, userID int64) ([]UserApiKey, error)
 	// User app access queries
 	GetUserApps(ctx context.Context, userID int64) ([]string, error)
 	GetUserByID(ctx context.Context, id int64) (User, error)
@@ -74,6 +79,7 @@ type Querier interface {
 	SearchLogs(ctx context.Context, arg SearchLogsParams) ([]Log, error)
 	SetConfig(ctx context.Context, arg SetConfigParams) error
 	UpdateNotifier(ctx context.Context, arg UpdateNotifierParams) error
+	UpdateUserAPIKeyLastUsed(ctx context.Context, arg UpdateUserAPIKeyLastUsedParams) error
 	// App-collector mapping queries
 	UpsertAppCollector(ctx context.Context, arg UpsertAppCollectorParams) error
 }

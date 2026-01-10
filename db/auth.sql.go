@@ -7,6 +7,7 @@ package db
 
 import (
 	"context"
+	"database/sql"
 	"time"
 )
 
@@ -133,6 +134,34 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 	return i, err
 }
 
+const createUserAPIKey = `-- name: CreateUserAPIKey :one
+
+INSERT INTO user_api_key (user_id, api_key, name)
+VALUES (?, ?, ?)
+RETURNING id, user_id, api_key, name, created_at, last_used_at
+`
+
+type CreateUserAPIKeyParams struct {
+	UserID int64
+	ApiKey string
+	Name   string
+}
+
+// User API key queries (LLM compatibility)
+func (q *Queries) CreateUserAPIKey(ctx context.Context, arg CreateUserAPIKeyParams) (UserApiKey, error) {
+	row := q.db.QueryRowContext(ctx, createUserAPIKey, arg.UserID, arg.ApiKey, arg.Name)
+	var i UserApiKey
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.ApiKey,
+		&i.Name,
+		&i.CreatedAt,
+		&i.LastUsedAt,
+	)
+	return i, err
+}
+
 const deleteExpiredSessions = `-- name: DeleteExpiredSessions :exec
 DELETE FROM session
 WHERE expires_at < ?
@@ -180,6 +209,16 @@ WHERE id = ?
 
 func (q *Queries) DeleteUser(ctx context.Context, id int64) error {
 	_, err := q.db.ExecContext(ctx, deleteUser, id)
+	return err
+}
+
+const deleteUserAPIKey = `-- name: DeleteUserAPIKey :exec
+DELETE FROM user_api_key
+WHERE id = ?
+`
+
+func (q *Queries) DeleteUserAPIKey(ctx context.Context, id int64) error {
+	_, err := q.db.ExecContext(ctx, deleteUserAPIKey, id)
 	return err
 }
 
@@ -558,6 +597,61 @@ func (q *Queries) GetSession(ctx context.Context, id string) (Session, error) {
 	return i, err
 }
 
+const getUserAPIKey = `-- name: GetUserAPIKey :one
+SELECT id, user_id, api_key, name, created_at, last_used_at FROM user_api_key
+WHERE api_key = ?
+`
+
+func (q *Queries) GetUserAPIKey(ctx context.Context, apiKey string) (UserApiKey, error) {
+	row := q.db.QueryRowContext(ctx, getUserAPIKey, apiKey)
+	var i UserApiKey
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.ApiKey,
+		&i.Name,
+		&i.CreatedAt,
+		&i.LastUsedAt,
+	)
+	return i, err
+}
+
+const getUserAPIKeysByUser = `-- name: GetUserAPIKeysByUser :many
+SELECT id, user_id, api_key, name, created_at, last_used_at FROM user_api_key
+WHERE user_id = ?
+ORDER BY created_at DESC
+`
+
+func (q *Queries) GetUserAPIKeysByUser(ctx context.Context, userID int64) ([]UserApiKey, error) {
+	rows, err := q.db.QueryContext(ctx, getUserAPIKeysByUser, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []UserApiKey
+	for rows.Next() {
+		var i UserApiKey
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.ApiKey,
+			&i.Name,
+			&i.CreatedAt,
+			&i.LastUsedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getUserApps = `-- name: GetUserApps :many
 
 SELECT app_name FROM user_app
@@ -921,6 +1015,22 @@ func (q *Queries) UpdateNotifier(ctx context.Context, arg UpdateNotifierParams) 
 		arg.Enabled,
 		arg.ID,
 	)
+	return err
+}
+
+const updateUserAPIKeyLastUsed = `-- name: UpdateUserAPIKeyLastUsed :exec
+UPDATE user_api_key
+SET last_used_at = ?
+WHERE api_key = ?
+`
+
+type UpdateUserAPIKeyLastUsedParams struct {
+	LastUsedAt sql.NullTime
+	ApiKey     string
+}
+
+func (q *Queries) UpdateUserAPIKeyLastUsed(ctx context.Context, arg UpdateUserAPIKeyLastUsedParams) error {
+	_, err := q.db.ExecContext(ctx, updateUserAPIKeyLastUsed, arg.LastUsedAt, arg.ApiKey)
 	return err
 }
 

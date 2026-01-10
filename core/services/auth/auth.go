@@ -358,6 +358,60 @@ func (s *Service) ValidateAPIKey(ctx context.Context, key string) (bool, error) 
 	return storedKey != "" && storedKey == key, nil
 }
 
+// User API Key management (LLM compatibility)
+
+func (s *Service) GenerateUserAPIKey(ctx context.Context, userID int64, name string) (*db.UserApiKey, error) {
+	key, err := GenerateToken(apiKeySize)
+	if err != nil {
+		return nil, fmt.Errorf("generate user API key: %w", err)
+	}
+
+	userKey, err := s.queries.CreateUserAPIKey(ctx, db.CreateUserAPIKeyParams{
+		UserID: userID,
+		ApiKey: key,
+		Name:   name,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("create user API key: %w", err)
+	}
+
+	slog.Info("User API key created", "user_id", userID, "name", name)
+	return &userKey, nil
+}
+
+func (s *Service) ValidateUserAPIKey(ctx context.Context, key string) (*db.User, error) {
+	userKey, err := s.queries.GetUserAPIKey(ctx, key)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrInvalidCredentials
+		}
+		return nil, err
+	}
+
+	// Update last used timestamp (fire and forget)
+	go func() {
+		_ = s.queries.UpdateUserAPIKeyLastUsed(context.Background(), db.UpdateUserAPIKeyLastUsedParams{
+			LastUsedAt: sql.NullTime{Time: time.Now(), Valid: true},
+			ApiKey:     key,
+		})
+	}()
+
+	user, err := s.queries.GetUserByID(ctx, userKey.UserID)
+	if err != nil {
+		return nil, fmt.Errorf("get user for API key: %w", err)
+	}
+
+	return &user, nil
+}
+
+func (s *Service) ListUserAPIKeys(ctx context.Context, userID int64) ([]db.UserApiKey, error) {
+	return s.queries.GetUserAPIKeysByUser(ctx, userID)
+}
+
+func (s *Service) DeleteUserAPIKey(ctx context.Context, id int64) error {
+	return s.queries.DeleteUserAPIKey(ctx, id)
+}
+
 // Notifier management
 
 func (s *Service) CreateNotifierDB(ctx context.Context, userID int64, name, notifierType, config string, enabled bool) (*db.Notifier, error) {

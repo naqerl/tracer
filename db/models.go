@@ -74,6 +74,15 @@ type User struct {
 	CreatedAt    sql.NullTime
 }
 
+type UserApiKey struct {
+	ID         int64
+	UserID     int64
+	ApiKey     string
+	Name       string
+	CreatedAt  sql.NullTime
+	LastUsedAt sql.NullTime
+}
+
 type UserApp struct {
 	UserID  int64
 	AppName string
