@@ -32,9 +32,8 @@ func InitMux(dbManager *dbmanager.Manager, authService *auth.Service) *http.Serv
 		authService: authService,
 	}
 
-	m.HandleFunc("GET /{app}", h.listLogsGrouped)        // Default to grouped view
-	m.HandleFunc("GET /{app}/all", h.listLogs)           // All logs (ungrouped)
-	m.HandleFunc("GET /{app}/embed", h.embedLogsGrouped) // Embedded grouped view
+	m.HandleFunc("GET /{app}", h.listLogs)                // Default to ungrouped recent logs
+	m.HandleFunc("GET /{app}/grouped", h.listLogsGrouped) // Grouped view
 	m.HandleFunc("GET /{app}/trace/{traceId}", h.showTrace)
 	m.HandleFunc("GET /{app}/log/{id}", h.showLog)
 	m.HandleFunc("GET /{app}/message", h.showMessageLogs) // Logs by message
@@ -109,7 +108,9 @@ func (h *handler) listLogs(w http.ResponseWriter, r *http.Request) {
 		"Nav":     templates.NewNavData("Logs: "+appName, "analytics", user.Username),
 	}
 
-	if htmx.IsAjax(r) {
+	if middleware.IsMarkdownFormat(r) {
+		h.t.RenderMarkdown(w, r, "logs-markdown", data)
+	} else if htmx.IsAjax(r) {
 		h.t.RenderHTTP(w, r, "logs-table", data)
 	} else {
 		h.t.RenderHTTP(w, r, "logs-page", data)
@@ -185,7 +186,9 @@ func (h *handler) showTrace(w http.ResponseWriter, r *http.Request) {
 		"Nav":     templates.NewNavData("Trace View", "analytics", user.Username),
 	}
 
-	if htmx.IsAjax(r) {
+	if middleware.IsMarkdownFormat(r) {
+		h.t.RenderMarkdown(w, r, "trace-markdown", data)
+	} else if htmx.IsAjax(r) {
 		h.t.RenderHTTP(w, r, "trace-content", data)
 	} else {
 		h.t.RenderHTTP(w, r, "trace-page", data)
@@ -226,7 +229,9 @@ func (h *handler) showLog(w http.ResponseWriter, r *http.Request) {
 		"Nav":     templates.NewNavData("Log Detail", "analytics", user.Username),
 	}
 
-	if htmx.IsAjax(r) {
+	if middleware.IsMarkdownFormat(r) {
+		h.t.RenderMarkdown(w, r, "log-detail-markdown", data)
+	} else if htmx.IsAjax(r) {
 		h.t.RenderHTTP(w, r, "log-detail", data)
 	} else {
 		h.t.RenderHTTP(w, r, "log-page", data)
@@ -314,7 +319,9 @@ func (h *handler) listLogsGrouped(w http.ResponseWriter, r *http.Request) {
 		"Nav":     templates.NewNavData("Logs: "+appName, "analytics", user.Username),
 	}
 
-	if htmx.IsAjax(r) {
+	if middleware.IsMarkdownFormat(r) {
+		h.t.RenderMarkdown(w, r, "logs-grouped-markdown", data)
+	} else if htmx.IsAjax(r) {
 		h.t.RenderHTTP(w, r, "logs-grouped-table", data)
 	} else {
 		h.t.RenderHTTP(w, r, "logs-grouped-page", data)

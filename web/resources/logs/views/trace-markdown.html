@@ -1,0 +1,24 @@
+{{define "trace-markdown"}}# Trace {{.TraceID}} for {{.AppName}}
+
+{{if .Logs}}
+{{range .Logs}}
+## {{formatDateTime .CreatedAt}} - {{.Level}}
+
+**Message**: {{.Message}}
+**Source**: {{.Source}}
+{{if hasContext .Context}}
+
+**Context**:
+```
+{{nullStr .Context}}
+```
+{{end}}
+
+---
+{{end}}
+
+Total entries: {{len .Logs}}
+{{else}}
+No logs found for this trace.
+{{end}}
+{{end}}

@@ -1,0 +1,22 @@
+{{define "logs-markdown"}}# Logs for {{.AppName}}
+
+{{if .Level}}Filtered by level: **{{.Level}}**{{end}}
+{{if .Logs}}
+{{range .Logs}}
+## Log Entry {{.ID}}
+
+- **Level**: {{.Level}}
+- **Message**: {{.Message}}
+- **Source**: {{.Source}}
+{{if .TraceID}}- **Trace ID**: {{.TraceID}}{{end}}
+- **Created**: {{formatDateTime .CreatedAt}}
+{{if hasContext .Context}}- **Context**: {{nullStr .Context}}{{end}}
+
+---
+{{end}}
+
+Total logs: {{len .Logs}}
+{{else}}
+No logs found.
+{{end}}
+{{end}}
