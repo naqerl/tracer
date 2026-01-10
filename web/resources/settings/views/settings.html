@@ -35,6 +35,61 @@
     </div>
 </div>
 
+<!-- LLM API Keys Section -->
+<div class="bg-bg-secondary p-5 mb-6">
+    <h2 class="text-fg-secondary text-sm font-medium mb-2">LLM API Keys</h2>
+    <p class="text-fg-secondary text-sm mb-4">
+        Generate API keys to access logs via LLM tools. Keys inherit your app access permissions.
+    </p>
+
+    <form action="/settings/api-keys" method="POST" class="mb-6">
+        <div class="flex gap-3 items-end">
+            <div>
+                <label for="key_name" class="block text-fg-secondary text-sm mb-1">Key Name</label>
+                <input type="text" id="key_name" name="name" placeholder="Claude Desktop" required class="px-3 py-2 bg-bg border border-bg focus:border-accent focus:outline-none text-fg">
+            </div>
+            <button type="submit" class="px-4 py-2 bg-accent hover:bg-accent/80 text-fg text-sm transition-colors">Generate Key</button>
+        </div>
+    </form>
+
+    {{if .UserAPIKeys}}
+    <div class="overflow-x-auto">
+        <table class="w-full">
+            <thead>
+                <tr class="border-b border-bg">
+                    <th class="px-3 py-2 text-left text-fg-secondary text-sm font-medium">Name</th>
+                    <th class="px-3 py-2 text-left text-fg-secondary text-sm font-medium">Key</th>
+                    <th class="px-3 py-2 text-left text-fg-secondary text-sm font-medium">Created</th>
+                    <th class="px-3 py-2 text-left text-fg-secondary text-sm font-medium">Last Used</th>
+                    <th class="px-3 py-2 text-left text-fg-secondary text-sm font-medium">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {{range .UserAPIKeys}}
+                <tr class="border-b border-bg">
+                    <td class="px-3 py-2">{{.Name}}</td>
+                    <td class="px-3 py-2">
+                        <code class="text-xs font-mono text-green-400 break-all">{{.ApiKey}}</code>
+                    </td>
+                    <td class="px-3 py-2 text-fg-secondary text-sm">{{formatDateTime .CreatedAt}}</td>
+                    <td class="px-3 py-2 text-fg-secondary text-sm">
+                        {{if .LastUsedAt.Valid}}{{formatDateTime .LastUsedAt.Time}}{{else}}Never{{end}}
+                    </td>
+                    <td class="px-3 py-2">
+                        <form action="/settings/api-keys/{{.ID}}/delete" method="POST" onsubmit="return confirm('Delete API key {{.Name}}?');">
+                            <button type="submit" class="px-2 py-1 bg-red-600 hover:bg-red-700 text-fg text-xs transition-colors">Delete</button>
+                        </form>
+                    </td>
+                </tr>
+                {{end}}
+            </tbody>
+        </table>
+    </div>
+    {{else}}
+    <p class="text-center text-fg-secondary py-6">No API keys generated yet.</p>
+    {{end}}
+</div>
+
 {{if .IsAdmin}}
 <!-- API Key Section -->
 <div class="bg-bg-secondary p-5 mb-6">

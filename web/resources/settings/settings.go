@@ -48,6 +48,10 @@ func InitMux(authService *auth.Service, dbManager *dbmanager.Manager, notifyServ
 	m.HandleFunc("GET /api-key", h.getAPIKey)
 	m.HandleFunc("POST /api-key/regenerate", h.regenerateAPIKey)
 
+	// User API keys (LLM compatibility)
+	m.HandleFunc("POST /api-keys", h.createUserAPIKey)
+	m.HandleFunc("POST /api-keys/{id}/delete", h.deleteUserAPIKey)
+
 	// Notifiers management
 	m.HandleFunc("GET /notifiers", h.listNotifiers)
 	m.HandleFunc("POST /notifiers", h.createNotifier)
@@ -104,6 +108,14 @@ func (h *handler) settingsPage(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		data["Notifiers"] = notifiers
+	}
+
+	// Load user's API keys (all users can have API keys)
+	userAPIKeys, err := h.authService.ListUserAPIKeys(r.Context(), user.ID)
+	if err != nil {
+		slog.Error("Failed to list user API keys", "error", err)
+	} else {
+		data["UserAPIKeys"] = userAPIKeys
 	}
 
 	if htmx.IsAjax(r) {
@@ -328,6 +340,75 @@ func (h *handler) regenerateAPIKey(w http.ResponseWriter, r *http.Request) {
 	}
 
 	slog.Info("API key regenerated")
+	http.Redirect(w, r, "/settings/", http.StatusSeeOther)
+}
+
+// User API key handlers (LLM compatibility)
+
+func (h *handler) createUserAPIKey(w http.ResponseWriter, r *http.Request) {
+	user := middleware.GetUser(r)
+	if user == nil {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+
+	name := r.FormValue("name")
+	if name == "" {
+		http.Error(w, "Name required", http.StatusBadRequest)
+		return
+	}
+
+	_, err := h.authService.GenerateUserAPIKey(r.Context(), user.ID, name)
+	if err != nil {
+		slog.Error("Failed to generate user API key", "error", err)
+		http.Error(w, "Failed to generate API key", http.StatusInternalServerError)
+		return
+	}
+
+	http.Redirect(w, r, "/settings/", http.StatusSeeOther)
+}
+
+func (h *handler) deleteUserAPIKey(w http.ResponseWriter, r *http.Request) {
+	user := middleware.GetUser(r)
+	if user == nil {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+
+	idStr := r.PathValue("id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		http.Error(w, "Invalid API key ID", http.StatusBadRequest)
+		return
+	}
+
+	// Get the key to verify ownership
+	keys, err := h.authService.ListUserAPIKeys(r.Context(), user.ID)
+	if err != nil {
+		http.Error(w, "Failed to verify key ownership", http.StatusInternalServerError)
+		return
+	}
+
+	// Check if user owns this key
+	owned := false
+	for _, k := range keys {
+		if k.ID == id {
+			owned = true
+			break
+		}
+	}
+
+	if !owned && user.IsAdmin != 1 {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+
+	if err := h.authService.DeleteUserAPIKey(r.Context(), id); err != nil {
+		slog.Error("Failed to delete user API key", "error", err)
+		http.Error(w, "Failed to delete API key", http.StatusInternalServerError)
+		return
+	}
+
 	http.Redirect(w, r, "/settings/", http.StatusSeeOther)
 }
 
