@@ -310,4 +310,4 @@ Configuration remains the same, just point `panel_endpoint` to your centralized 
 - [x] Startup pattern detection
 - [ ] Slack/Discord notifications
 - [ ] Log search with full-text
-- [ ] Metrics collection (beyond logs)
+- [x] Metrics collection (beyond logs)
