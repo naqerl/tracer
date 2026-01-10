@@ -1,0 +1,29 @@
+{{define "dashboard-markdown"}}# Analytics Dashboard
+
+{{if .Collectors}}
+## Collectors
+
+{{range .Collectors}}
+{{$collectorName := .Name}}
+### {{.Name}}
+
+- **Status**: {{if .IsConnected}}✓ Connected{{else}}✗ Disconnected{{end}}
+{{if .Stats}}
+- **CPU Usage**: {{printf "%.1f" .Stats.CpuUsagePercent}}%
+- **Memory**: {{printf "%.0f" (toFloat .Stats.MemUsedMb)}}MB / {{printf "%.0f" (toFloat .Stats.MemTotalMb)}}MB ({{printf "%.1f" (divFloat (mulFloat (toFloat .Stats.MemUsedMb) 100.0) (toFloat .Stats.MemTotalMb))}}%)
+- **Disk**: {{printf "%.1f" (toFloat .Stats.DiskUsedGb)}}GB / {{printf "%.1f" (toFloat .Stats.DiskTotalGb)}}GB ({{printf "%.1f" (divFloat (mulFloat (toFloat .Stats.DiskUsedGb) 100.0) (toFloat .Stats.DiskTotalGb))}}%)
+- **Last Updated**: {{formatDateTime .Stats.CreatedAt}}
+{{end}}
+- **Apps** ({{len .Apps}}):
+{{range .Apps}}  - [{{.}}](/analytics/{{$collectorName}}/apps/{{urlEncode .}}.md)
+{{end}}
+[View Details](/analytics/{{.Name}}.md)
+
+---
+{{end}}
+
+Total collectors: {{len .Collectors}}
+{{else}}
+No collectors connected.
+{{end}}
+{{end}}

@@ -40,12 +40,12 @@ func InitMux(dbManager *dbmanager.Manager, authService *auth.Service, tracker *c
 
 	// Collector routes
 	m.HandleFunc("GET /{collector}", h.collectorOverview)
-	m.HandleFunc("GET /{collector}/data", h.collectorOverviewData)
 	m.HandleFunc("GET /{collector}/resources", h.collectorResources)
 	m.HandleFunc("GET /{collector}/resources/data", h.collectorResourcesData)
 	m.HandleFunc("GET /{collector}/apps", h.collectorApps)
 	m.HandleFunc("GET /{collector}/apps/data", h.collectorAppsData)
 	m.HandleFunc("GET /{collector}/apps/{app}", h.appAnalytics)
+	m.HandleFunc("GET /{collector}/apps/{app}/logs", h.appLogs)
 
 	return m
 }
@@ -75,7 +75,9 @@ func (h *handler) dashboard(w http.ResponseWriter, r *http.Request) {
 		"Collectors": collectorsWithStats,
 	}
 
-	if htmx.IsAjax(r) {
+	if middleware.IsMarkdownFormat(r) {
+		h.t.RenderMarkdown(w, r, "dashboard-markdown", data)
+	} else if htmx.IsAjax(r) {
 		h.t.RenderHTTP(w, r, "dashboard-content", data)
 	} else {
 		h.t.RenderHTTP(w, r, "dashboard", data)
@@ -128,38 +130,23 @@ func (h *handler) collectorOverview(w http.ResponseWriter, r *http.Request) {
 		Add(collectorName, collectorName).
 		Build()
 
-	data := map[string]any{
-		"Title":         collectorName,
-		"CollectorName": collectorName,
-		"User":          user,
-		"IsAdmin":       user.IsAdmin == 1,
-		"Nav":           nav,
-	}
-
-	if htmx.IsAjax(r) {
-		h.t.RenderHTTP(w, r, "collector-overview-content", data)
-	} else {
+	// Plain request: return skeleton only
+	if !htmx.IsAjax(r) && !middleware.IsMarkdownFormat(r) {
+		data := map[string]any{
+			"Title":         collectorName,
+			"CollectorName": collectorName,
+			"User":          user,
+			"IsAdmin":       user.IsAdmin == 1,
+			"Nav":           nav,
+		}
 		h.t.RenderHTTP(w, r, "collector-overview", data)
-	}
-}
-
-// collectorOverviewData returns lazy-loaded data for collector overview
-func (h *handler) collectorOverviewData(w http.ResponseWriter, r *http.Request) {
-	user := middleware.GetUser(r)
-	if user == nil {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 
-	collectorName := r.PathValue("collector")
-	if !h.userHasCollectorAccess(r, user, collectorName) {
-		http.Error(w, "Forbidden", http.StatusForbidden)
-		return
-	}
-
+	// AJAX or Markdown: fetch data
 	collector, exists := h.tracker.Get(collectorName)
 	if !exists {
-		http.Error(w, "Collector not found", http.StatusNotFound)
+		h.t.RenderError(w, r, "Error", "Collector not found", http.StatusNotFound)
 		return
 	}
 
@@ -176,14 +163,22 @@ func (h *handler) collectorOverviewData(w http.ResponseWriter, r *http.Request) 
 	apps := h.filterAppsByAccess(r, user, collector.Apps)
 
 	data := map[string]any{
+		"Title":         collectorName,
 		"CollectorName": collectorName,
 		"IsConnected":   collector.IsConnected,
 		"Stats":         stats,
 		"StatsDisplay":  statsDisplay,
 		"Apps":          apps,
+		"User":          user,
+		"IsAdmin":       user.IsAdmin == 1,
+		"Nav":           nav,
 	}
 
-	h.t.RenderHTTP(w, r, "collector-overview-data", data)
+	if middleware.IsMarkdownFormat(r) {
+		h.t.RenderMarkdown(w, r, "collector-overview-markdown", data)
+	} else {
+		h.t.RenderHTTP(w, r, "collector-overview-data", data)
+	}
 }
 
 // collectorResources shows resource usage charts (was collectorStats)
@@ -367,20 +362,6 @@ func (h *handler) appAnalytics(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	queries, err := h.dbManager.GetQueries(appName)
-	if err != nil {
-		h.t.RenderError(w, r, "Error", "App not found", http.StatusNotFound)
-		return
-	}
-
-	since := sql.NullTime{Time: time.Now().Add(-24 * time.Hour), Valid: true}
-
-	stats, err := queries.GetPercentiles(r.Context(), since)
-	if err != nil {
-		h.t.RenderError(w, r, "Error", "Failed to get stats", http.StatusInternalServerError)
-		return
-	}
-
 	nav := templates.NewNavBuilder().
 		Add("analytics", "analytics").
 		Add(collectorName, collectorName).
@@ -388,19 +369,53 @@ func (h *handler) appAnalytics(w http.ResponseWriter, r *http.Request) {
 		Add(appName, appName).
 		Build()
 
+	// Plain request: return skeleton only
+	if !htmx.IsAjax(r) && !middleware.IsMarkdownFormat(r) {
+		data := map[string]any{
+			"Title":         appName,
+			"AppName":       appName,
+			"CollectorName": collectorName,
+			"IsAdmin":       user.IsAdmin == 1,
+			"Nav":           nav,
+		}
+		h.t.RenderHTTP(w, r, "app-analytics", data)
+		return
+	}
+
+	// AJAX or Markdown: fetch data
+	queries, err := h.dbManager.GetQueries(appName)
+	if err != nil {
+		h.t.RenderError(w, r, "Error", "App not found", http.StatusNotFound)
+		return
+	}
+
+	since := sql.NullTime{Time: time.Now().Add(-24 * time.Hour), Valid: true}
+	stats, err := queries.GetPercentiles(r.Context(), since)
+	if err != nil {
+		h.t.RenderError(w, r, "Error", "Failed to get stats", http.StatusInternalServerError)
+		return
+	}
+
+	grouped, err := queries.CountLogsByMessage(r.Context(), 20)
+	if err != nil {
+		h.t.RenderError(w, r, "Error", "Failed to fetch grouped logs", http.StatusInternalServerError)
+		return
+	}
+
 	data := map[string]any{
 		"Title":         appName,
 		"AppName":       appName,
 		"CollectorName": collectorName,
 		"Stats":         stats,
+		"Grouped":       grouped,
 		"IsAdmin":       user.IsAdmin == 1,
 		"Nav":           nav,
 	}
 
-	if htmx.IsAjax(r) {
-		h.t.RenderHTTP(w, r, "app-analytics-content", data)
+	if middleware.IsMarkdownFormat(r) {
+		h.t.RenderMarkdown(w, r, "app-analytics-markdown", data)
 	} else {
-		h.t.RenderHTTP(w, r, "app-analytics", data)
+		h.t.RenderHTTP(w, r, "app-analytics-content", data)
 	}
 }
 
@@ -563,4 +578,99 @@ func (h *handler) filterAppsByAccess(r *http.Request, user *db.User, apps []stri
 	}
 
 	return filtered
+}
+
+// appLogs shows logs for a specific app
+func (h *handler) appLogs(w http.ResponseWriter, r *http.Request) {
+	user := middleware.GetUser(r)
+	if user == nil {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+
+	collectorName := r.PathValue("collector")
+	appName := r.PathValue("app")
+
+	// Check app access
+	hasAccess, err := h.authService.UserHasAppAccess(r.Context(), user.ID, appName)
+	if err != nil {
+		h.t.RenderError(w, r, "Error", "Failed to check access", http.StatusInternalServerError)
+		return
+	}
+	if !hasAccess {
+		h.t.RenderError(w, r, "Forbidden", "You don't have access to this app", http.StatusForbidden)
+		return
+	}
+
+	queries, err := h.dbManager.GetQueries(appName)
+	if err != nil {
+		h.t.RenderError(w, r, "Error", "App not found", http.StatusNotFound)
+		return
+	}
+
+	level := r.URL.Query().Get("level")
+	limit := int64(50)
+
+	// Fetch stats (counts by level)
+	since := sql.NullTime{Time: time.Now().Add(-24 * time.Hour), Valid: true}
+	stats, err := queries.GetPercentiles(r.Context(), since)
+	if err != nil {
+		h.t.RenderError(w, r, "Error", "Failed to get stats", http.StatusInternalServerError)
+		return
+	}
+
+	// Fetch grouped logs
+	var grouped []db.CountLogsByMessageRow
+	if level != "" {
+		groupedByLevel, err := queries.CountLogsByMessageAndLevel(r.Context(), db.CountLogsByMessageAndLevelParams{
+			LOWER: level,
+			Limit: limit,
+		})
+		if err != nil {
+			h.t.RenderError(w, r, "Error", "Failed to fetch logs", http.StatusInternalServerError)
+			return
+		}
+		for _, g := range groupedByLevel {
+			grouped = append(grouped, db.CountLogsByMessageRow{
+				Level:    g.Level,
+				Message:  g.Message,
+				Count:    g.Count,
+				LatestAt: g.LatestAt,
+				SampleID: g.SampleID,
+			})
+		}
+	} else {
+		grouped, err = queries.CountLogsByMessage(r.Context(), limit)
+		if err != nil {
+			h.t.RenderError(w, r, "Error", "Failed to fetch logs", http.StatusInternalServerError)
+			return
+		}
+	}
+
+	nav := templates.NewNavBuilder().
+		Add("analytics", "analytics").
+		Add(collectorName, collectorName).
+		Add("apps", "apps").
+		Add(appName, appName).
+		Add("logs", "logs").
+		Build()
+
+	data := map[string]any{
+		"Title":         appName + " Logs",
+		"AppName":       appName,
+		"CollectorName": collectorName,
+		"Stats":         stats,
+		"Grouped":       grouped,
+		"Level":         level,
+		"IsAdmin":       user.IsAdmin == 1,
+		"Nav":           nav,
+	}
+
+	if middleware.IsMarkdownFormat(r) {
+		h.t.RenderMarkdown(w, r, "app-logs-markdown", data)
+	} else if htmx.IsAjax(r) {
+		h.t.RenderHTTP(w, r, "app-logs-table", data)
+	} else {
+		h.t.RenderHTTP(w, r, "app-logs-page", data)
+	}
 }

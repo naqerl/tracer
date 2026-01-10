@@ -1,0 +1,29 @@
+{{define "app-logs-markdown"}}# Logs: {{.AppName}}
+
+**Collector**: {{.CollectorName}}
+
+## Statistics (Last 24 Hours)
+
+- **Total Logs**: {{.Stats.Total}}
+- **Errors**: {{.Stats.Errors}}
+- **Warnings**: {{.Stats.Warnings}}
+- **Info**: {{.Stats.Infos}}
+
+## Grouped Logs by Message
+
+{{if .Grouped}}
+{{range .Grouped}}
+### {{.Message}}
+
+- **Count**: {{.Count}}
+- **Level**: {{.Level}}
+- **Latest**: {{formatDateTime .LatestAt}}
+
+---
+{{end}}
+
+Total groups: {{len .Grouped}}
+{{else}}
+No logs available.
+{{end}}
+{{end}}

@@ -21,7 +21,7 @@
 {{template "navbar" .Nav}}
 
 <!-- Lazy Load Data Container -->
-<div hx-get="/analytics/{{.CollectorName}}/data" 
+<div hx-get="/analytics/{{.CollectorName}}"
      hx-trigger="load"
      hx-swap="innerHTML">
     <!-- Loading State -->
