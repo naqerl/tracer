@@ -1,0 +1,169 @@
+{{define "llm-docs-markdown"}}# Tracer Panel - LLM API Documentation
+
+Access tracer-panel logs and analytics programmatically using markdown-formatted endpoints.
+
+## Authentication
+
+All endpoints require authentication via API key.
+
+### Generate an API Key
+
+1. Navigate to Settings in the web UI
+2. Find the "LLM API Keys" section
+3. Enter a descriptive name (e.g., "Claude Desktop")
+4. Click "Generate Key"
+5. Copy the generated key
+
+### Using Your API Key
+
+**Preferred method (Header):**
+```bash
+curl -H "X-API-Key: YOUR_KEY" "https://panel.example.com/logs/myapp.md"
+```
+
+**Alternative method (Query parameter):**
+```bash
+curl "https://panel.example.com/logs/myapp.md?api_key=YOUR_KEY"
+```
+
+## Permissions
+
+API keys inherit your user's app access permissions:
+- **Admins**: Access all apps and collectors
+- **Regular users**: Access only assigned apps
+
+## Available Endpoints
+
+### Analytics
+
+#### Dashboard
+```
+GET /analytics.md
+```
+Lists all collectors with their status, system stats, and app counts.
+
+#### Collector Overview
+```
+GET /analytics/{collector}.md
+```
+Shows system stats and applications for a specific collector.
+
+**Example:**
+```
+GET /analytics/my-server.md
+```
+
+#### App Analytics
+```
+GET /analytics/{collector}/apps/{app}.md
+```
+Shows statistics for a specific application (last 24 hours).
+
+**Example:**
+```
+GET /analytics/my-server/apps/web-api.md
+```
+
+### Logs
+
+#### Recent Logs
+```
+GET /logs/{app}.md
+GET /logs/{app}.md?level=error
+GET /logs/{app}.md?limit=50
+```
+Returns recent logs for an application. Optionally filter by level (error, warn, info, debug).
+
+**Examples:**
+```
+GET /logs/web-api.md
+GET /logs/web-api.md?level=error
+GET /logs/web-api.md?limit=100
+```
+
+#### Grouped Logs
+```
+GET /logs/{app}/grouped.md
+GET /logs/{app}/grouped.md?level=error
+```
+Returns logs grouped by message with occurrence counts.
+
+**Example:**
+```
+GET /logs/web-api/grouped.md
+```
+
+#### Trace View
+```
+GET /logs/{app}/trace/{trace_id}.md
+```
+Returns all log entries for a specific trace ID.
+
+**Example:**
+```
+GET /logs/web-api/trace/abc-123-def.md
+```
+
+#### Single Log Entry
+```
+GET /logs/{app}/log/{id}.md
+```
+Returns details for a single log entry by ID.
+
+**Example:**
+```
+GET /logs/web-api/log/12345.md
+```
+
+## Response Format
+
+All endpoints return markdown-formatted text with:
+- Headers for sections
+- Bullet lists for structured data
+- Code blocks for JSON context
+- Links to related resources
+
+## Common Use Cases
+
+### Monitor Recent Errors
+```bash
+curl -H "X-API-Key: YOUR_KEY" \
+  "https://panel.example.com/logs/myapp.md?level=error&limit=20"
+```
+
+### Check System Health
+```bash
+curl -H "X-API-Key: YOUR_KEY" \
+  "https://panel.example.com/analytics.md"
+```
+
+### Investigate a Trace
+```bash
+curl -H "X-API-Key: YOUR_KEY" \
+  "https://panel.example.com/logs/myapp/trace/abc-123.md"
+```
+
+### View App Statistics
+```bash
+curl -H "X-API-Key: YOUR_KEY" \
+  "https://panel.example.com/analytics/my-server/apps/web-api.md"
+```
+
+## Rate Limits
+
+No rate limits are currently enforced, but please be respectful:
+- Cache responses when appropriate
+- Don't poll more frequently than once per minute
+- Use webhooks for real-time notifications (see notifiers in settings)
+
+## Security Notes
+
+- Keep your API keys secure and rotate them regularly
+- Each key is tied to your user account and inherits your permissions
+- You can delete keys at any time from the Settings page
+- Keys are displayed only once when generated
+
+## Need Help?
+
+Visit the web UI at `/llm` for an interactive version of this documentation.
+{{end}}
