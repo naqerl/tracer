@@ -379,7 +379,14 @@ func (h *handler) createNotifier(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var configJSON string
+	// Build request based on type
+	req := notify.AddNotifierRequest{
+		UserID:      user.ID,
+		Name:        name,
+		Type:        notifierType,
+		InitialApps: []string{}, // No apps initially
+	}
+
 	switch notifierType {
 	case "telegram":
 		token := r.FormValue("telegram_token")
@@ -391,23 +398,19 @@ func (h *handler) createNotifier(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		cfg := TelegramConfig{Token: token, ChatID: chatID}
-		cfgBytes, _ := json.Marshal(cfg)
-		configJSON = string(cfgBytes)
+		req.Token = token
+		req.ChatID = chatID
 	default:
 		http.Error(w, "Unknown notifier type", http.StatusBadRequest)
 		return
 	}
 
-	notifier, err := h.authService.CreateNotifier(r.Context(), user.ID, name, notifierType, configJSON, true)
-	if err != nil {
-		slog.Error("Failed to create notifier", "error", err)
+	// Create notifier through service (handles DB, welcome notification, registration)
+	if err := h.notifyService.AddNotifier(r.Context(), req, h.authService); err != nil {
+		slog.Error("Failed to add notifier", "error", err)
 		http.Error(w, "Failed to create notifier", http.StatusInternalServerError)
 		return
 	}
-
-	// Register the notifier with the notification service
-	h.registerNotifierWithUser(r.Context(), notifier.ID, user)
 
 	http.Redirect(w, r, "/settings/", http.StatusSeeOther)
 }
@@ -426,7 +429,7 @@ func (h *handler) getNotifier(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	notifier, err := h.authService.GetNotifier(r.Context(), id)
+	notifier, err := h.authService.GetNotifierDB(r.Context(), id)
 	if err != nil {
 		h.t.RenderError(w, r, "Error", "Notifier not found", http.StatusNotFound)
 		return
@@ -485,7 +488,7 @@ func (h *handler) updateNotifier(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	notifier, err := h.authService.GetNotifier(r.Context(), id)
+	notifier, err := h.authService.GetNotifierDB(r.Context(), id)
 	if err != nil {
 		http.Error(w, "Notifier not found", http.StatusNotFound)
 		return
@@ -549,7 +552,7 @@ func (h *handler) deleteNotifier(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	notifier, err := h.authService.GetNotifier(r.Context(), id)
+	notifier, err := h.authService.GetNotifierDB(r.Context(), id)
 	if err != nil {
 		http.Error(w, "Notifier not found", http.StatusNotFound)
 		return
@@ -584,7 +587,7 @@ func (h *handler) toggleNotifier(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	notifier, err := h.authService.GetNotifier(r.Context(), id)
+	notifier, err := h.authService.GetNotifierDB(r.Context(), id)
 	if err != nil {
 		http.Error(w, "Notifier not found", http.StatusNotFound)
 		return
@@ -625,7 +628,7 @@ func (h *handler) getNotifierApps(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	notifier, err := h.authService.GetNotifier(r.Context(), id)
+	notifier, err := h.authService.GetNotifierDB(r.Context(), id)
 	if err != nil {
 		h.t.RenderError(w, r, "Error", "Notifier not found", http.StatusNotFound)
 		return
@@ -685,7 +688,7 @@ func (h *handler) updateNotifierApps(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	notifier, err := h.authService.GetNotifier(r.Context(), id)
+	notifier, err := h.authService.GetNotifierDB(r.Context(), id)
 	if err != nil {
 		http.Error(w, "Notifier not found", http.StatusNotFound)
 		return
@@ -729,14 +732,12 @@ func (h *handler) updateNotifierApps(w http.ResponseWriter, r *http.Request) {
 		selectedApps = filteredApps
 	}
 
-	if err := h.authService.SetNotifierApps(r.Context(), id, selectedApps); err != nil {
+	// Update apps through service (handles DB, subscription notifications, re-registration)
+	if err := h.notifyService.UpdateNotifierApps(r.Context(), id, user.ID, selectedApps, h.authService); err != nil {
 		slog.Error("Failed to update notifier apps", "error", err)
 		http.Error(w, "Failed to update notifier apps", http.StatusInternalServerError)
 		return
 	}
-
-	// Re-register notifier with updated apps
-	h.registerNotifierWithUser(r.Context(), id, user)
 
 	http.Redirect(w, r, "/settings/", http.StatusSeeOther)
 }
@@ -774,7 +775,7 @@ func (h *handler) getAvailableApps(ctx context.Context, user *db.User) ([]string
 
 // registerNotifierWithUser creates and registers a notifier with the notification service
 func (h *handler) registerNotifierWithUser(ctx context.Context, notifierID int64, user *db.User) {
-	notifier, err := h.authService.GetNotifier(ctx, notifierID)
+	notifier, err := h.authService.GetNotifierDB(ctx, notifierID)
 	if err != nil {
 		slog.Error("Failed to get notifier for registration", "error", err)
 		return
