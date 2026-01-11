@@ -1,3 +1,4 @@
+// TODO: Rename to watchdog, cause it's uses not only files
 package filewatcher
 
 import (
@@ -32,6 +33,9 @@ type AppLogEntry struct {
 	IsStartup bool // true if this entry matches the startup pattern
 }
 
+// TODO: Instead of flat config with conditional field for different resources
+// use any type and create struct config per source
+// In the code use type safe check to determine what you've got
 type watchedSource struct {
 	sourceType sourceType
 	appName    string
@@ -201,7 +205,7 @@ func (s *Service) readJournalctl(ctx context.Context, ws *watchedSource) {
 
 		entry, err := ws.parser.Parse(line)
 		if err != nil {
-			slog.Debug("Failed to parse journalctl line", "error", err, "unit", ws.unit)
+			slog.Error("Failed to parse journalctl line", "error", err, "unit", ws.unit, "line", line)
 			continue
 		}
 
@@ -212,7 +216,7 @@ func (s *Service) readJournalctl(ctx context.Context, ws *watchedSource) {
 		}
 
 		select {
-		case s.LogChan <- AppLogEntry{AppName: ws.appName, Entry: *entry, IsStartup: isStartup}:
+		case s.LogChan <- AppLogEntry{AppName: ws.appName, Entry: entry, IsStartup: isStartup}:
 		case <-ctx.Done():
 			return
 		default:
@@ -226,12 +230,11 @@ func (s *Service) readJournalctl(ctx context.Context, ws *watchedSource) {
 }
 
 // isStartupEntry checks if the log entry matches the startup pattern
-func (ws *watchedSource) isStartupEntry(entry *logparser.LogEntry) bool {
+func (ws *watchedSource) isStartupEntry(entry logparser.LogEntry) bool {
 	if ws.startupRegex == nil {
 		return false
 	}
-	// Check against the message and the raw log line
-	return ws.startupRegex.MatchString(entry.Message) || ws.startupRegex.MatchString(entry.Raw)
+	return ws.startupRegex.MatchString(entry.Message)
 }
 
 func (s *Service) pollAll(ctx context.Context) {
@@ -294,7 +297,7 @@ func (s *Service) readNewLines(ctx context.Context, ws *watchedSource) {
 		}
 
 		select {
-		case s.LogChan <- AppLogEntry{AppName: ws.appName, Entry: *entry, IsStartup: isStartup}:
+		case s.LogChan <- AppLogEntry{AppName: ws.appName, Entry: entry, IsStartup: isStartup}:
 		default:
 			slog.Warn("Log channel full, dropping entry")
 		}

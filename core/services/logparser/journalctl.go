@@ -86,13 +86,13 @@ func newJournalctlParser(cfg config.App) (*journalctlParser, error) {
 	return p, nil
 }
 
-func (p *journalctlParser) Parse(line string) (*LogEntry, error) {
+func (p *journalctlParser) Parse(line string) (LogEntry, error) {
 	var data map[string]any
 	if err := json.Unmarshal([]byte(line), &data); err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrParseFailed, err)
+		return LogEntry{}, fmt.Errorf("%w: %v", ErrParseFailed, err)
 	}
 
-	entry := &LogEntry{
+	entry := LogEntry{
 		Source: p.source,
 		Raw:    line,
 		Extra:  make(map[string]string),
@@ -125,10 +125,10 @@ func (p *journalctlParser) Parse(line string) (*LogEntry, error) {
 
 		if p.messageFormat == "json" {
 			// Parse MESSAGE as JSON
-			p.parseJSONMessage(msgStr, entry)
+			p.parseJSONMessage(msgStr, &entry)
 		} else {
 			// Parse MESSAGE as text (with optional regex pattern)
-			p.parseTextMessage(msgStr, entry)
+			p.parseTextMessage(msgStr, &entry)
 		}
 	} else {
 		// If no message field found, use the entire raw log line

@@ -34,6 +34,7 @@ type AddNotifierRequest struct {
 	InitialApps []string
 }
 
+// TODO: I don't like it's name
 // AuthService provides access to auth/DB operations
 // This interface prevents circular dependencies
 type AuthService interface {
@@ -58,6 +59,7 @@ func New() *Service {
 	return &Service{
 		ch:           make(chan Notification, channelSize),
 		semaphore:    make(chan struct{}, maxWorkers),
+		// TODO: Use type alias for map key
 		appNotifiers: make(map[string][]Notifier),
 	}
 }

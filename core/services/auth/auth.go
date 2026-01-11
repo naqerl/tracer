@@ -1,3 +1,5 @@
+// FIXME: AUTH PACKAGE is for AUTH, not notify, stats or collectors
+// Decompose them into their own features and inject these services into handlers
 package auth
 
 import (
@@ -39,6 +41,7 @@ type Service struct {
 	sessionDuration time.Duration
 }
 
+// TODO: Panic (log.Fatalf) instead of error
 func New(dataDir string, sessionDuration time.Duration) (*Service, error) {
 	if err := os.MkdirAll(dataDir, 0755); err != nil {
 		return nil, fmt.Errorf("create data dir: %w", err)
@@ -412,27 +415,8 @@ func (s *Service) DeleteUserAPIKey(ctx context.Context, id int64) error {
 	return s.queries.DeleteUserAPIKey(ctx, id)
 }
 
-// Notifier management
-
-func (s *Service) CreateNotifierDB(ctx context.Context, userID int64, name, notifierType, config string, enabled bool) (*db.Notifier, error) {
-	var enabledInt int64
-	if enabled {
-		enabledInt = 1
-	}
-	notifier, err := s.queries.CreateNotifier(ctx, db.CreateNotifierParams{
-		UserID:  userID,
-		Name:    name,
-		Type:    notifierType,
-		Config:  config,
-		Enabled: enabledInt,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("create notifier: %w", err)
-	}
-	slog.Info("Notifier created", "name", name, "type", notifierType, "user_id", userID)
-	return &notifier, nil
-}
-
+// TODO: Notifier and auth are completely separate domains
+// Do not mix them like this
 func (s *Service) GetNotifierDB(ctx context.Context, id int64) (*db.Notifier, error) {
 	notifier, err := s.queries.GetNotifier(ctx, id)
 	if err != nil {

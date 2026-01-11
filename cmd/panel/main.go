@@ -182,6 +182,7 @@ func main() {
 	slog.Info("Server stopped")
 }
 
+// TODO: It should be in it's package, not here
 // TelegramConfig represents Telegram notifier configuration
 type TelegramConfig struct {
 	Token  string `json:"token"`

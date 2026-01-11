@@ -31,6 +31,7 @@ func BuildMarkdownMiddleware() func(http.Handler) http.Handler {
 				// Remove .md suffix from path
 				newPath := strings.TrimSuffix(path, ".md")
 
+				// TODO: This middleware should not know about any routes existing in the app at all
 				// For top-level section paths, add trailing slash to match router registration
 				// This prevents redirects that would lose the markdown context
 				if newPath == "/analytics" || newPath == "/logs" || newPath == "/settings" {

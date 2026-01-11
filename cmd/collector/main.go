@@ -1,3 +1,5 @@
+// TODO: Ajax requests return 303, cause they require HX-Request: true header
+// Only 200 codes should be accepts, if got 301, then new host should be tried
 package main
 
 import (

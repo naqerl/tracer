@@ -1,3 +1,4 @@
+// TODO: Decompose config package for collector and panel, they should not live in one package
 package config
 
 import (

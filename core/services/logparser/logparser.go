@@ -19,7 +19,7 @@ type LogEntry struct {
 
 // Parser parses log lines into structured LogEntry
 type Parser interface {
-	Parse(line string) (*LogEntry, error)
+	Parse(line string) (LogEntry, error)
 }
 
 // New creates a parser based on the app configuration
@@ -36,6 +36,7 @@ func New(cfg config.App) (Parser, error) {
 	}
 }
 
+// TODO: Simplify (at least case lol)
 // normalizeLevel converts various level formats to uppercase standard
 func normalizeLevel(level string) string {
 	switch level {

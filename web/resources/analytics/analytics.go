@@ -1,3 +1,5 @@
+// TODO: There is a function to require auth and redirect to /login route
+// Use it instead of hardcoded nil check and redirect to login
 package analytics
 
 import (
@@ -39,6 +41,8 @@ func InitMux(dbManager *dbmanager.Manager, authService *auth.Service, tracker *c
 	m.HandleFunc("GET /collectors", h.getCollectors)
 
 	// Collector routes
+	// TODO: "data" endpoints should not exist. data template should be returned
+	// if htmx.IsAjax Rework all of them to match this requirement
 	m.HandleFunc("GET /{collector}", h.collectorOverview)
 	m.HandleFunc("GET /{collector}/resources", h.collectorResources)
 	m.HandleFunc("GET /{collector}/resources/data", h.collectorResourcesData)
@@ -98,6 +102,8 @@ func (h *handler) getCollectors(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// TODO: You do not need a variable to only pass it to the call
+	// in the next line!
 	data := map[string]any{
 		"Collectors": collectorsWithStats,
 	}
@@ -132,10 +138,13 @@ func (h *handler) collectorOverview(w http.ResponseWriter, r *http.Request) {
 
 	// Plain request: return skeleton only
 	if !htmx.IsAjax(r) && !middleware.IsMarkdownFormat(r) {
+		// TODO: Define data ones and add fields to it for ajax or markdown
 		data := map[string]any{
 			"Title":         collectorName,
 			"CollectorName": collectorName,
 			"User":          user,
+			// TODO: So make IsAdmin be a boolean, it SHOULD be a boolean
+			// we would not let non binary people to be admins in this project
 			"IsAdmin":       user.IsAdmin == 1,
 			"Nav":           nav,
 		}
@@ -244,6 +253,7 @@ func (h *handler) collectorResourcesData(w http.ResponseWriter, r *http.Request)
 	rangeParam := r.URL.Query().Get("range")
 	var since time.Time
 
+	// TODO: Do not switch, parse number and type to make it generic
 	switch rangeParam {
 	case "1h":
 		since = time.Now().Add(-1 * time.Hour)
@@ -263,6 +273,8 @@ func (h *handler) collectorResourcesData(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	// TODO: Again do not declare data variable just to pass it as an
+	// argument on the next line
 	data := map[string]any{
 		"Stats": stats,
 	}

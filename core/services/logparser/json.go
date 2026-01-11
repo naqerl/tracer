@@ -28,13 +28,13 @@ func newJSONParser(cfg config.App) (*jsonParser, error) {
 	}, nil
 }
 
-func (p *jsonParser) Parse(line string) (*LogEntry, error) {
+func (p *jsonParser) Parse(line string) (LogEntry, error) {
 	var data map[string]any
 	if err := json.Unmarshal([]byte(line), &data); err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrParseFailed, err)
+		return LogEntry{}, fmt.Errorf("%w: %v", ErrParseFailed, err)
 	}
 
-	entry := &LogEntry{
+	entry := LogEntry{
 		Source: p.source,
 		Raw:    line,
 		Extra:  make(map[string]string),
@@ -74,6 +74,11 @@ func (p *jsonParser) Parse(line string) (*LogEntry, error) {
 	return entry, nil
 }
 
+// TODO: Timestamp parsing should be a single function in the logparser package
+// and it should accept value + format (format is a struct that support string, float and int)
+// format should be configured in the collector's toml
+// Also collector should have additional function to guess the timestamp format by itself on the first launch
+// if it was not provided and update config entry with it
 func parseTimestamp(v any) time.Time {
 	switch ts := v.(type) {
 	case string:

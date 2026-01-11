@@ -162,6 +162,7 @@ func formatDateTime(t any) string {
 	}
 }
 
+// TODO: Have you heard about strings.ToLower? (do not answer, fix it)
 func levelClass(level string) string {
 	switch level {
 	case "error", "ERROR":

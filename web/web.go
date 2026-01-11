@@ -14,7 +14,6 @@ import (
 	"github.com/ai-shift/tracer/web/resources/api"
 	authres "github.com/ai-shift/tracer/web/resources/auth"
 	"github.com/ai-shift/tracer/web/resources/llm"
-	"github.com/ai-shift/tracer/web/resources/logs"
 	"github.com/ai-shift/tracer/web/resources/settings"
 )
 
@@ -36,7 +35,6 @@ func Run(port string, dbManager *dbmanager.Manager, sampleRate float64, notifySe
 	mux.Handle("/api/", http.StripPrefix("/api", api.InitMux(dbManager, authService, sampleRate, notifyService.Chan(), tracker, panelURL)))
 
 	// UI routes (protected by auth middleware)
-	mux.Handle("/logs/", http.StripPrefix("/logs", logs.InitMux(dbManager, authService)))
 	mux.Handle("/analytics/", http.StripPrefix("/analytics", analytics.InitMux(dbManager, authService, tracker)))
 	mux.Handle("/settings/", http.StripPrefix("/settings", settings.InitMux(authService, dbManager, notifyService)))
 

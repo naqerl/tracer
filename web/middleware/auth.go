@@ -1,3 +1,4 @@
+// TODO: Remove hardcoded /login route and accept it dynamically
 package middleware
 
 import (
@@ -55,6 +56,9 @@ func IsAdmin(r *http.Request) bool {
 	return user != nil && user.IsAdmin == 1
 }
 
+// TODO: Instead of deciding what is public and what is not, delegate it
+// to the handlers itself. This middleware should only try to add session
+// to the request context and handler will ensure, if it's needed to it
 // BuildAuthMiddleware creates a middleware that requires authentication
 // It skips authentication for public paths (login, setup, api with key)
 func BuildAuthMiddleware(authService *auth.Service) func(http.Handler) http.Handler {
@@ -86,6 +90,7 @@ func BuildAuthMiddleware(authService *auth.Service) func(http.Handler) http.Hand
 	}
 }
 
+// TODO: This should not be present in the project
 func isPublicPath(path string) bool {
 	publicPaths := []string{
 		"/login",

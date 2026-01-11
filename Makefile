@@ -1,7 +1,7 @@
 include .env
 export
 
-.PHONY: build build-collector build-panel build-release clean test vet generate
+.PHONY: build build-collector build-panel build-release clean test vet generate test-endpoints
 
 # Build all binaries
 build: build-collector build-panel
@@ -40,6 +40,8 @@ vet:
 deps:
 	go mod tidy
 
+
+# TODO: Rename to sqlc
 # Generate SQLC code
 generate:
 	sqlc generate
@@ -97,6 +99,5 @@ dev-stop:
 dev-logs:
 	@tail -f /tmp/tracer-panel.log
 
-.PHONY: test-endpoints
 test-endpoints:
 	@TRACER_API_KEY=$${TRACER_API_KEY} go run cmd/crawler/main.go
