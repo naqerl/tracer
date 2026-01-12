@@ -2,28 +2,49 @@
 
 **Collector**: {{.CollectorName}}
 
-## Statistics (Last 24 Hours)
+## Log Groups
 
-- **Total Logs**: {{.Stats.Total}}
-- **Errors**: {{.Stats.Errors}}
-- **Warnings**: {{.Stats.Warnings}}
-- **Info**: {{.Stats.Infos}}
+{{if .Groups}}
+{{range .Groups}}
+### [{{.Level}}] {{.Message}}
 
-## Grouped Logs by Message
-
-{{if .Grouped}}
-{{range .Grouped}}
-### {{.Message}}
-
-- **Count**: {{.Count}}
 - **Level**: {{.Level}}
-- **Latest**: {{formatDateTime .LatestAt}}
+- **Count**: {{.Count}}
+- **View Details**: [/analytics/{{$.CollectorName}}/apps/{{$.AppName}}/logs?groupID={{.ID}}](/analytics/{{$.CollectorName}}/apps/{{$.AppName}}/logs?groupID={{.ID}})
 
 ---
 {{end}}
 
-Total groups: {{len .Grouped}}
+Total groups: {{len .Groups}}
 {{else}}
 No logs available.
+{{end}}
+{{end}}
+
+{{define "app-logs-detail-markdown"}}# Log Details: {{.AppName}}
+
+**Collector**: {{.CollectorName}}
+**Message**: {{.LogGroup.Message}}
+
+## Individual Logs
+
+{{if .Logs}}
+{{range .Logs}}
+### Log Entry
+
+- **Level**: {{.Level}}
+- **Time**: {{formatDateTime .CreatedAt}}
+
+**Context**:
+```json
+{{if .Context.Valid}}{{.Context.String}}{{else}}{}{{end}}
+```
+
+---
+{{end}}
+
+Total logs: {{len .Logs}}
+{{else}}
+No logs in this group.
 {{end}}
 {{end}}

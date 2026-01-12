@@ -9,30 +9,18 @@
     <div class="max-w-7xl mx-auto p-6">
         {{template "navbar" .Nav}}
 
-        <!-- Stats Row - Lazy loaded -->
-        <div hx-get="/analytics/{{.CollectorName}}/apps/{{.AppName}}/logs/summary" hx-trigger="load once" hx-swap="outerHTML">
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-                <div class="bg-bg-secondary p-4 text-center">
-                    <span class="block text-3xl font-bold text-fg-secondary">-</span>
-                    <span class="text-fg-secondary text-sm">Loading...</span>
-                </div>
-            </div>
-        </div>
-
         <!-- Logs Container - Lazy loaded -->
         <div class="bg-bg-secondary p-5">
-            <h2 class="text-lg font-medium mb-4">Grouped Logs</h2>
-            <div id="logs-content" hx-get="/analytics/{{.CollectorName}}/apps/{{.AppName}}/logs" hx-trigger="load once, every 5s" hx-swap="innerHTML">
+            <h2 class="text-lg font-medium mb-4">Log Groups</h2>
+            <div id="logs-content" hx-get="/analytics/{{.CollectorName}}/apps/{{.AppName}}/logs" hx-trigger="load once, every 10s" hx-swap="innerHTML">
                 <p class="text-fg-secondary text-center py-4">Loading logs...</p>
             </div>
         </div>
     </div>
 
     <script>
-    // Handle browser back/forward cache (bfcache) to fix missing styles
     window.addEventListener('pageshow', function(event) {
         if (event.persisted) {
-            // Page was restored from bfcache, force reload to ensure styles work
             window.location.reload();
         }
     });
@@ -41,60 +29,52 @@
 </html>
 {{end}}
 
-{{define "app-logs-summary"}}
-<div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-    <div class="bg-bg-secondary p-4 border-l-4 border-red-400 text-center">
-        <span class="block text-3xl font-bold">{{.Stats.Errors}}</span>
-        <span class="text-fg-secondary text-sm">Errors (24h)</span>
-    </div>
-    <div class="bg-bg-secondary p-4 border-l-4 border-yellow-400 text-center">
-        <span class="block text-3xl font-bold">{{.Stats.Warnings}}</span>
-        <span class="text-fg-secondary text-sm">Warnings (24h)</span>
-    </div>
-    <div class="bg-bg-secondary p-4 border-l-4 border-blue-400 text-center">
-        <span class="block text-3xl font-bold">{{.Stats.Infos}}</span>
-        <span class="text-fg-secondary text-sm">Info (24h)</span>
-    </div>
-    <div class="bg-bg-secondary p-4 text-center">
-        <span class="block text-3xl font-bold">{{.Stats.Total}}</span>
-        <span class="text-fg-secondary text-sm">Total (24h)</span>
-    </div>
-</div>
-{{end}}
-
 {{define "app-logs-table"}}
-<!-- Filter tabs -->
-<div class="flex items-center justify-between mb-4">
-    <div class="flex gap-2">
-        <a href="#" class="px-3 py-1.5 text-sm transition-colors {{if not .Level}}text-accent{{else}}text-fg-secondary hover:text-fg{{end}}" hx-get="/analytics/{{.CollectorName}}/apps/{{.AppName}}/logs" hx-swap="innerHTML" hx-target="#logs-content">All</a>
-        <a href="#" class="px-3 py-1.5 text-sm transition-colors {{if eq .Level "error"}}text-accent{{else}}text-fg-secondary hover:text-fg{{end}}" hx-get="/analytics/{{.CollectorName}}/apps/{{.AppName}}/logs?level=error" hx-swap="innerHTML" hx-target="#logs-content">Errors</a>
-        <a href="#" class="px-3 py-1.5 text-sm transition-colors {{if eq .Level "warn"}}text-accent{{else}}text-fg-secondary hover:text-fg{{end}}" hx-get="/analytics/{{.CollectorName}}/apps/{{.AppName}}/logs?level=warn" hx-swap="innerHTML" hx-target="#logs-content">Warnings</a>
-        <a href="#" class="px-3 py-1.5 text-sm transition-colors {{if eq .Level "info"}}text-accent{{else}}text-fg-secondary hover:text-fg{{end}}" hx-get="/analytics/{{.CollectorName}}/apps/{{.AppName}}/logs?level=info" hx-swap="innerHTML" hx-target="#logs-content">Info</a>
+<div id="logs-content">
+    <!-- Filter tabs -->
+    <div class="flex items-center justify-between mb-4">
+        <div class="flex gap-2">
+            <button type="button" class="px-3 py-1.5 text-sm transition-colors {{if not .Level}}text-accent{{else}}text-fg-secondary hover:text-fg{{end}}" hx-get="/analytics/{{.CollectorName}}/apps/{{.AppName}}/logs" hx-swap="innerHTML" hx-target="#logs-content">All</button>
+            <button type="button" class="px-3 py-1.5 text-sm transition-colors {{if eq .Level "error"}}text-accent{{else}}text-fg-secondary hover:text-fg{{end}}" hx-get="/analytics/{{.CollectorName}}/apps/{{.AppName}}/logs?level=error" hx-swap="innerHTML" hx-target="#logs-content">Errors</button>
+            <button type="button" class="px-3 py-1.5 text-sm transition-colors {{if eq .Level "warn"}}text-accent{{else}}text-fg-secondary hover:text-fg{{end}}" hx-get="/analytics/{{.CollectorName}}/apps/{{.AppName}}/logs?level=warn" hx-swap="innerHTML" hx-target="#logs-content">Warnings</button>
+            <button type="button" class="px-3 py-1.5 text-sm transition-colors {{if eq .Level "info"}}text-accent{{else}}text-fg-secondary hover:text-fg{{end}}" hx-get="/analytics/{{.CollectorName}}/apps/{{.AppName}}/logs?level=info" hx-swap="innerHTML" hx-target="#logs-content">Info</button>
+        </div>
     </div>
-</div>
 
 <!-- Desktop table view -->
-<div class="bg-bg overflow-hidden hidden md:block">
-    <table class="w-full">
+<div class="bg-bg overflow-x-auto hidden md:block">
+    <table class="w-full table-fixed">
+        {{if not .Level}}
+        <colgroup>
+            <col style="width: 100px;">
+            <col>
+            <col style="width: 100px;">
+        </colgroup>
+        {{else}}
+        <colgroup>
+            <col>
+            <col style="width: 100px;">
+        </colgroup>
+        {{end}}
         <thead>
             <tr class="border-b border-bg-secondary">
-                <th class="px-4 py-3 text-left text-fg-secondary text-sm font-medium">Level</th>
+                {{if not .Level}}<th class="px-4 py-3 text-left text-fg-secondary text-sm font-medium">Level</th>{{end}}
                 <th class="px-4 py-3 text-left text-fg-secondary text-sm font-medium">Message</th>
                 <th class="px-4 py-3 text-right text-fg-secondary text-sm font-medium">Count</th>
             </tr>
         </thead>
         <tbody>
-            {{range .Grouped}}
-            <tr class="border-b border-bg-secondary hover:bg-bg-secondary/50 transition-colors">
-                <td class="px-4 py-3"><span class="text-xs font-medium uppercase">{{.Level}}</span></td>
-                <td class="px-4 py-3 max-w-2xl truncate" title="{{.Message}}">{{truncate .Message 100}}</td>
-                <td class="px-4 py-3 text-right">
+            {{range .Groups}}
+            <tr class="border-b border-bg-secondary hover:bg-bg-secondary/50 transition-colors cursor-pointer" onclick="window.location.href='/analytics/{{$.CollectorName}}/apps/{{$.AppName}}/logs?groupID={{.ID}}'">
+                {{if not $.Level}}<td class="px-4 py-3"><span class="text-xs font-medium uppercase">{{.Level}}</span></td>{{end}}
+                <td class="px-4 py-3 truncate" title="{{.Message}}">{{.Message}}</td>
+                <td class="px-4 py-3 text-right whitespace-nowrap">
                     <span class="inline-flex items-center justify-center min-w-[2rem] px-2 py-0.5 text-sm font-medium bg-bg-secondary text-fg-secondary rounded">{{.Count}}</span>
                 </td>
             </tr>
             {{else}}
             <tr>
-                <td colspan="3" class="text-center text-fg-secondary py-8">No logs available</td>
+                <td colspan="{{if not $.Level}}3{{else}}2{{end}}" class="text-center text-fg-secondary py-8">No logs available</td>
             </tr>
             {{end}}
         </tbody>
@@ -103,19 +83,113 @@
 
 <!-- Mobile card view -->
 <div class="bg-bg space-y-3 md:hidden">
-    {{range .Grouped}}
-    <div class="block bg-bg-secondary p-4 border border-bg">
-        <div class="flex items-start justify-between mb-2">
-            <div><span class="text-xs font-medium uppercase">{{.Level}}</span></div>
+    {{range .Groups}}
+    <a href="/analytics/{{$.CollectorName}}/apps/{{$.AppName}}/logs?groupID={{.ID}}" class="block bg-bg-secondary p-4 border border-bg hover:border-accent/50 transition-colors">
+        <div class="flex items-center justify-between mb-2">
+            {{if not $.Level}}<span class="text-xs font-medium uppercase">{{.Level}}</span>{{end}}
             <span class="inline-flex items-center justify-center min-w-[2rem] px-2 py-0.5 text-sm font-medium bg-bg text-fg-secondary rounded">{{.Count}}</span>
         </div>
         <div>
-            <span class="text-fg-secondary text-xs font-medium block mb-1">Message</span>
             <p class="text-sm break-words">{{.Message}}</p>
         </div>
-    </div>
+    </a>
     {{else}}
     <div class="text-center text-fg-secondary py-8">No logs available</div>
     {{end}}
 </div>
+</div>
+{{end}}
+
+{{define "app-logs-detail-page"}}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    {{template "head"}}
+    <title>{{.AppName}} Log Details - Tracer</title>
+</head>
+<body>
+    <div class="max-w-7xl mx-auto p-6">
+        {{template "navbar" .Nav}}
+
+        <div class="bg-bg-secondary p-5">
+            <div class="mb-4">
+                <a href="/analytics/{{.CollectorName}}/apps/{{.AppName}}/logs" class="text-accent hover:underline text-sm">&larr; Back to Groups</a>
+            </div>
+
+            <h2 class="text-lg font-medium mb-2">Log Details</h2>
+            <p class="text-fg-secondary text-sm mb-4 break-words">{{.LogGroup.Message}}</p>
+
+            {{template "app-logs-detail" .}}
+        </div>
+    </div>
+</body>
+</html>
+{{end}}
+
+{{define "app-logs-detail"}}
+<!-- Desktop table view -->
+<div class="bg-bg overflow-hidden hidden md:block">
+    <table class="w-full">
+        <thead>
+            <tr class="border-b border-bg-secondary">
+                <th class="px-4 py-3 text-left text-fg-secondary text-sm font-medium">Level</th>
+                <th class="px-4 py-3 text-left text-fg-secondary text-sm font-medium">Context</th>
+                <th class="px-4 py-3 text-right text-fg-secondary text-sm font-medium">Time</th>
+            </tr>
+        </thead>
+        <tbody>
+            {{range .Logs}}
+            <tr class="border-b border-bg-secondary hover:bg-bg-secondary/50 transition-colors">
+                <td class="px-4 py-3 align-top"><span class="text-xs font-medium uppercase">{{.Level}}</span></td>
+                <td class="px-4 py-3">
+                    {{if .Context.Valid}}
+                    <pre class="bg-bg p-2 text-xs overflow-x-auto max-w-3xl whitespace-pre-wrap break-words"><code class="context-json">{{.Context.String}}</code></pre>
+                    {{else}}
+                    <pre class="bg-bg p-2 text-xs"><code>{}</code></pre>
+                    {{end}}
+                </td>
+                <td class="px-4 py-3 text-right text-fg-secondary text-sm align-top">{{formatDateTime .CreatedAt}}</td>
+            </tr>
+            {{else}}
+            <tr>
+                <td colspan="3" class="text-center text-fg-secondary py-8">No logs in this group</td>
+            </tr>
+            {{end}}
+        </tbody>
+    </table>
+</div>
+
+<!-- Mobile card view -->
+<div class="bg-bg space-y-3 md:hidden">
+    {{range .Logs}}
+    <div class="bg-bg-secondary p-4 border border-bg">
+        <div class="flex justify-between items-center mb-3">
+            <div><span class="text-fg-secondary">Level:</span> <span class="font-medium uppercase">{{.Level}}</span></div>
+            <div class="text-right text-fg-secondary text-sm">{{formatDateTime .CreatedAt}}</div>
+        </div>
+        {{if .Context.Valid}}
+        <div>
+            <span class="text-fg-secondary text-sm block mb-1">Context:</span>
+            <pre class="bg-bg p-2 text-xs overflow-x-auto whitespace-pre-wrap break-words"><code class="context-json">{{.Context.String}}</code></pre>
+        </div>
+        {{end}}
+    </div>
+    {{else}}
+    <div class="text-center text-fg-secondary py-8">No logs in this group</div>
+    {{end}}
+</div>
+
+<script>
+// Pretty-print JSON context
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.context-json').forEach(function(el) {
+        try {
+            const json = JSON.parse(el.textContent);
+            el.textContent = JSON.stringify(json, null, 2);
+        } catch(e) {
+            // If not valid JSON, leave as-is
+        }
+    });
+});
+</script>
 {{end}}

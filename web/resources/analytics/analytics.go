@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"embed"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/ai-shift/tracer/core/services/auth"
@@ -51,7 +52,6 @@ func InitMux(dbManager *dbmanager.Manager, authService *auth.Service, tracker *c
 	m.HandleFunc("GET /{collector}/apps/{app}", h.appAnalytics)
 	m.HandleFunc("GET /{collector}/apps/{app}/summary", h.appAnalyticsSummary)
 	m.HandleFunc("GET /{collector}/apps/{app}/logs", h.appLogs)
-	m.HandleFunc("GET /{collector}/apps/{app}/logs/summary", h.appLogsSummary)
 
 	return m
 }
@@ -381,7 +381,7 @@ func (h *handler) appAnalytics(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	grouped, err := queries.CountLogsByMessage(r.Context(), 20)
+	grouped, err := queries.ListLogGroups(r.Context(), 20)
 	if err != nil {
 		h.t.RenderError(w, r, "Error", "Failed to fetch grouped logs", http.StatusInternalServerError)
 		return
@@ -627,36 +627,89 @@ func (h *handler) appLogs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	level := r.URL.Query().Get("level")
-	limit := int64(50)
+	groupIDParam := r.URL.Query().Get("groupID")
+	nav := templates.NewNavBuilder().
+		Add("analytics", "analytics").
+		Add(collectorName, collectorName).
+		Add("apps", "apps").
+		Add(appName, appName).
+		Add("logs", "logs").
+		Build()
 
-	// Fetch grouped logs
-	var grouped []db.CountLogsByMessageRow
-	if level != "" {
-		groupedByLevel, err := queries.CountLogsByMessageAndLevel(r.Context(), db.CountLogsByMessageAndLevelParams{
-			LOWER: level,
-			Limit: limit,
+	// Detail view: show individual logs for a group
+	if groupIDParam != "" {
+		groupID, err := strconv.ParseInt(groupIDParam, 10, 64)
+		if err != nil {
+			h.t.RenderError(w, r, "Error", "Invalid group ID", http.StatusBadRequest)
+			return
+		}
+
+		// Get group info
+		logGroup, err := queries.GetLogGroupByID(r.Context(), groupID)
+		if err != nil {
+			h.t.RenderError(w, r, "Error", "Group not found", http.StatusNotFound)
+			return
+		}
+
+		// Get logs for this group
+		limit := int64(100)
+		logs, err := queries.GetLogsByGroupID(r.Context(), db.GetLogsByGroupIDParams{
+			GroupID: sql.NullInt64{Int64: groupID, Valid: true},
+			Limit:   limit,
 		})
 		if err != nil {
 			h.t.RenderError(w, r, "Error", "Failed to fetch logs", http.StatusInternalServerError)
 			return
 		}
-		for _, g := range groupedByLevel {
-			grouped = append(grouped, db.CountLogsByMessageRow(g))
+
+		data := map[string]any{
+			"Title":         appName + " Log Details",
+			"AppName":       appName,
+			"CollectorName": collectorName,
+			"LogGroup":      logGroup,
+			"Logs":          logs,
+			"User":          user,
+			"IsAdmin":       user.IsAdmin == 1,
+			"Nav":           nav,
 		}
+
+		if middleware.IsMarkdownFormat(r) {
+			h.t.RenderMarkdown(w, r, "app-logs-detail-markdown", data)
+		} else if htmx.IsAjax(r) {
+			h.t.RenderHTTP(w, r, "app-logs-detail", data)
+		} else {
+			h.t.RenderHTTP(w, r, "app-logs-detail-page", data)
+		}
+		return
+	}
+
+	// List view: show groups with counts
+	level := r.URL.Query().Get("level")
+	limit := int64(50)
+
+	var groups any
+	if level != "" {
+		groups, err = queries.ListLogGroupsByLevel(r.Context(), db.ListLogGroupsByLevelParams{
+			LOWER: level,
+			Limit: limit,
+		})
 	} else {
-		grouped, err = queries.CountLogsByMessage(r.Context(), limit)
-		if err != nil {
-			h.t.RenderError(w, r, "Error", "Failed to fetch logs", http.StatusInternalServerError)
-			return
-		}
+		groups, err = queries.ListLogGroups(r.Context(), limit)
+	}
+	if err != nil {
+		h.t.RenderError(w, r, "Error", "Failed to fetch log groups", http.StatusInternalServerError)
+		return
 	}
 
 	data := map[string]any{
+		"Title":         appName + " Logs",
 		"AppName":       appName,
 		"CollectorName": collectorName,
-		"Grouped":       grouped,
+		"Groups":        groups,
 		"Level":         level,
+		"User":          user,
+		"IsAdmin":       user.IsAdmin == 1,
+		"Nav":           nav,
 	}
 
 	if middleware.IsMarkdownFormat(r) {
@@ -664,61 +717,8 @@ func (h *handler) appLogs(w http.ResponseWriter, r *http.Request) {
 	} else if htmx.IsAjax(r) {
 		h.t.RenderHTTP(w, r, "app-logs-table", data)
 	} else {
-		// Full page render - add Nav data
-		nav := templates.NewNavBuilder().
-			Add("analytics", "analytics").
-			Add(collectorName, collectorName).
-			Add("apps", "apps").
-			Add(appName, appName).
-			Add("logs", "logs").
-			Build()
-		data["Title"] = appName + " Logs"
-		data["Nav"] = nav
-		data["IsAdmin"] = user.IsAdmin == 1
 		h.t.RenderHTTP(w, r, "app-logs-page", data)
 	}
-}
-
-// appLogsSummary returns just the stats summary for the app logs page
-func (h *handler) appLogsSummary(w http.ResponseWriter, r *http.Request) {
-	user := middleware.GetUser(r)
-	if user == nil {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return
-	}
-
-	appName := r.PathValue("app")
-
-	// Check app access
-	hasAccess, err := h.authService.UserHasAppAccess(r.Context(), user.ID, appName)
-	if err != nil {
-		http.Error(w, "Failed to check access", http.StatusInternalServerError)
-		return
-	}
-	if !hasAccess {
-		http.Error(w, "Forbidden", http.StatusForbidden)
-		return
-	}
-
-	queries, err := h.dbManager.GetQueries(appName)
-	if err != nil {
-		http.Error(w, "App not found", http.StatusNotFound)
-		return
-	}
-
-	// Fetch stats (counts by level)
-	since := sql.NullTime{Time: time.Now().Add(-24 * time.Hour), Valid: true}
-	stats, err := queries.GetPercentiles(r.Context(), since)
-	if err != nil {
-		http.Error(w, "Failed to get stats", http.StatusInternalServerError)
-		return
-	}
-
-	data := map[string]any{
-		"Stats": stats,
-	}
-
-	h.t.RenderHTTP(w, r, "app-logs-summary", data)
 }
 
 // parseTimeRange parses a time range string like "1h", "24h", "7d", "30d" and returns the time since
