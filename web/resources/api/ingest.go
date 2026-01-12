@@ -226,6 +226,16 @@ func (h *handler) processMessage(ctx context.Context, connID, remoteAddr string,
 		}
 	}
 
+	// Get or create log group for this message and level
+	logGroup, err := queries.GetOrCreateLogGroup(ctx, db.GetOrCreateLogGroupParams{
+		Message: msg.Entry.Message,
+		Level:   msg.Entry.Level,
+	})
+	if err != nil {
+		slog.Error("Failed to get/create log group", "error", err, "app_name", msg.AppName)
+		return
+	}
+
 	// Store log entry
 	ts := msg.Entry.Timestamp
 	if ts.IsZero() {
@@ -241,6 +251,7 @@ func (h *handler) processMessage(ctx context.Context, connID, remoteAddr string,
 		Source:    msg.Entry.Source,
 		Context:   sql.NullString{String: contextJSON, Valid: true},
 		Raw:       msg.Entry.Raw,
+		GroupID:   sql.NullInt64{Int64: logGroup.ID, Valid: true},
 		CreatedAt: sql.NullTime{Time: ts, Valid: true},
 	})
 	if err != nil {
@@ -292,6 +303,22 @@ func (h *handler) handleStartup(ctx context.Context, msg LogMessage) {
 		}
 	}
 
+	// Use "STARTUP" as the level for startup events
+	level := "STARTUP"
+	if msg.Entry.Level != "" {
+		level = msg.Entry.Level
+	}
+
+	// Get or create log group for this message and level
+	logGroup, err := queries.GetOrCreateLogGroup(ctx, db.GetOrCreateLogGroupParams{
+		Message: msg.Entry.Message,
+		Level:   level,
+	})
+	if err != nil {
+		slog.Error("Failed to get/create log group for startup", "error", err, "app_name", msg.AppName)
+		return
+	}
+
 	// Store startup entry (always persist, no sampling)
 	ts := msg.Entry.Timestamp
 	if ts.IsZero() {
@@ -300,12 +327,6 @@ func (h *handler) handleStartup(ctx context.Context, msg LogMessage) {
 	// Normalize to UTC for consistent storage
 	ts = ts.UTC()
 
-	// Use "STARTUP" as the level for startup events
-	level := "STARTUP"
-	if msg.Entry.Level != "" {
-		level = msg.Entry.Level
-	}
-
 	_, err = queries.InsertLog(ctx, db.InsertLogParams{
 		TraceID:   msg.Entry.TraceID,
 		Level:     level,
@@ -313,6 +334,7 @@ func (h *handler) handleStartup(ctx context.Context, msg LogMessage) {
 		Source:    msg.Entry.Source,
 		Context:   sql.NullString{String: contextJSON, Valid: true},
 		Raw:       msg.Entry.Raw,
+		GroupID:   sql.NullInt64{Int64: logGroup.ID, Valid: true},
 		CreatedAt: sql.NullTime{Time: ts, Valid: true},
 	})
 	if err != nil {
