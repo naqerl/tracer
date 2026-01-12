@@ -1,7 +1,7 @@
 include .env
 export
 
-.PHONY: build build-collector build-panel build-release clean test vet generate test-endpoints
+.PHONY: build build-collector build-panel build-release clean test vet sqlc generate test-endpoints
 
 # Build all binaries
 build: build-collector build-panel
@@ -41,10 +41,13 @@ deps:
 	go mod tidy
 
 
-# TODO: Rename to sqlc
 # Generate SQLC code
-generate:
+sqlc:
 	sqlc generate
+
+# Backward compatibility alias
+generate: sqlc
+	@echo "Note: 'make generate' is deprecated, use 'make sqlc'"
 
 # Development: run collector with example config
 run-collector:
