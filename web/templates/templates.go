@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 )
 
@@ -162,16 +163,15 @@ func formatDateTime(t any) string {
 	}
 }
 
-// TODO: Have you heard about strings.ToLower? (do not answer, fix it)
 func levelClass(level string) string {
-	switch level {
-	case "error", "ERROR":
+	switch strings.ToLower(level) {
+	case "error":
 		return "level-error"
-	case "warn", "WARN", "warning", "WARNING":
+	case "warn", "warning":
 		return "level-warn"
-	case "info", "INFO":
+	case "info":
 		return "level-info"
-	case "debug", "DEBUG":
+	case "debug":
 		return "level-debug"
 	default:
 		return "level-default"
