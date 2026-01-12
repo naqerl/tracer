@@ -45,112 +45,18 @@ func (q *Queries) CountByLevel(ctx context.Context, createdAt sql.NullTime) ([]C
 	return items, nil
 }
 
-const countLogsByMessage = `-- name: CountLogsByMessage :many
-SELECT 
-    level,
-    message,
-    COUNT(*) as count,
-    MAX(created_at) as latest_at,
-    MIN(id) as sample_id
+const countLogsByGroupID = `-- name: CountLogsByGroupID :one
+SELECT COUNT(*) as total
 FROM logs
-GROUP BY level, message
-ORDER BY count DESC, latest_at DESC
-LIMIT ?
+WHERE group_id = ?
 `
 
-type CountLogsByMessageRow struct {
-	Level    string
-	Message  string
-	Count    int64
-	LatestAt interface{}
-	SampleID interface{}
-}
-
-// Groups logs by message and returns counts, ordered by frequency (most frequent first)
-func (q *Queries) CountLogsByMessage(ctx context.Context, limit int64) ([]CountLogsByMessageRow, error) {
-	rows, err := q.db.QueryContext(ctx, countLogsByMessage, limit)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []CountLogsByMessageRow
-	for rows.Next() {
-		var i CountLogsByMessageRow
-		if err := rows.Scan(
-			&i.Level,
-			&i.Message,
-			&i.Count,
-			&i.LatestAt,
-			&i.SampleID,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const countLogsByMessageAndLevel = `-- name: CountLogsByMessageAndLevel :many
-SELECT 
-    level,
-    message,
-    COUNT(*) as count,
-    MAX(created_at) as latest_at,
-    MIN(id) as sample_id
-FROM logs
-WHERE LOWER(level) = LOWER(?)
-GROUP BY level, message
-ORDER BY count DESC, latest_at DESC
-LIMIT ?
-`
-
-type CountLogsByMessageAndLevelParams struct {
-	LOWER string
-	Limit int64
-}
-
-type CountLogsByMessageAndLevelRow struct {
-	Level    string
-	Message  string
-	Count    int64
-	LatestAt interface{}
-	SampleID interface{}
-}
-
-// Groups logs by message filtered by level, ordered by frequency
-func (q *Queries) CountLogsByMessageAndLevel(ctx context.Context, arg CountLogsByMessageAndLevelParams) ([]CountLogsByMessageAndLevelRow, error) {
-	rows, err := q.db.QueryContext(ctx, countLogsByMessageAndLevel, arg.LOWER, arg.Limit)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []CountLogsByMessageAndLevelRow
-	for rows.Next() {
-		var i CountLogsByMessageAndLevelRow
-		if err := rows.Scan(
-			&i.Level,
-			&i.Message,
-			&i.Count,
-			&i.LatestAt,
-			&i.SampleID,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+// Count total logs in a group
+func (q *Queries) CountLogsByGroupID(ctx context.Context, groupID sql.NullInt64) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countLogsByGroupID, groupID)
+	var total int64
+	err := row.Scan(&total)
+	return total, err
 }
 
 const deleteOldLogs = `-- name: DeleteOldLogs :exec
@@ -164,7 +70,7 @@ func (q *Queries) DeleteOldLogs(ctx context.Context, createdAt sql.NullTime) err
 }
 
 const findLogsByTraceID = `-- name: FindLogsByTraceID :many
-SELECT id, trace_id, level, message, source, context, raw, created_at FROM logs
+SELECT id, trace_id, level, message, source, context, raw, created_at, group_id FROM logs
 WHERE trace_id = ?
 ORDER BY created_at
 `
@@ -187,6 +93,7 @@ func (q *Queries) FindLogsByTraceID(ctx context.Context, traceID string) ([]Log,
 			&i.Context,
 			&i.Raw,
 			&i.CreatedAt,
+			&i.GroupID,
 		); err != nil {
 			return nil, err
 		}
@@ -202,7 +109,7 @@ func (q *Queries) FindLogsByTraceID(ctx context.Context, traceID string) ([]Log,
 }
 
 const getLogByID = `-- name: GetLogByID :one
-SELECT id, trace_id, level, message, source, context, raw, created_at FROM logs
+SELECT id, trace_id, level, message, source, context, raw, created_at, group_id FROM logs
 WHERE id = ?
 `
 
@@ -218,42 +125,63 @@ func (q *Queries) GetLogByID(ctx context.Context, id int64) (Log, error) {
 		&i.Context,
 		&i.Raw,
 		&i.CreatedAt,
+		&i.GroupID,
 	)
 	return i, err
 }
 
-const getLogsByLevelAndMessage = `-- name: GetLogsByLevelAndMessage :many
-SELECT id, trace_id, level, message, source, context, raw, created_at
+const getLogGroupByID = `-- name: GetLogGroupByID :one
+SELECT id, message, level, created_at FROM log_groups
+WHERE id = ?
+`
+
+// Lookup log group by ID
+func (q *Queries) GetLogGroupByID(ctx context.Context, id int64) (LogGroup, error) {
+	row := q.db.QueryRowContext(ctx, getLogGroupByID, id)
+	var i LogGroup
+	err := row.Scan(
+		&i.ID,
+		&i.Message,
+		&i.Level,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const getLogsByGroupID = `-- name: GetLogsByGroupID :many
+SELECT id, level, context, created_at
 FROM logs
-WHERE LOWER(level) = LOWER(?) AND message = ?
+WHERE group_id = ?
 ORDER BY created_at DESC
 LIMIT ?
 `
 
-type GetLogsByLevelAndMessageParams struct {
-	LOWER   string
-	Message string
+type GetLogsByGroupIDParams struct {
+	GroupID sql.NullInt64
 	Limit   int64
 }
 
-// Get all logs matching a specific level and message
-func (q *Queries) GetLogsByLevelAndMessage(ctx context.Context, arg GetLogsByLevelAndMessageParams) ([]Log, error) {
-	rows, err := q.db.QueryContext(ctx, getLogsByLevelAndMessage, arg.LOWER, arg.Message, arg.Limit)
+type GetLogsByGroupIDRow struct {
+	ID        int64
+	Level     string
+	Context   sql.NullString
+	CreatedAt sql.NullTime
+}
+
+// Get all individual logs for a specific group
+func (q *Queries) GetLogsByGroupID(ctx context.Context, arg GetLogsByGroupIDParams) ([]GetLogsByGroupIDRow, error) {
+	rows, err := q.db.QueryContext(ctx, getLogsByGroupID, arg.GroupID, arg.Limit)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []Log
+	var items []GetLogsByGroupIDRow
 	for rows.Next() {
-		var i Log
+		var i GetLogsByGroupIDRow
 		if err := rows.Scan(
 			&i.ID,
-			&i.TraceID,
 			&i.Level,
-			&i.Message,
-			&i.Source,
 			&i.Context,
-			&i.Raw,
 			&i.CreatedAt,
 		); err != nil {
 			return nil, err
@@ -267,6 +195,31 @@ func (q *Queries) GetLogsByLevelAndMessage(ctx context.Context, arg GetLogsByLev
 		return nil, err
 	}
 	return items, nil
+}
+
+const getOrCreateLogGroup = `-- name: GetOrCreateLogGroup :one
+INSERT INTO log_groups (message, level)
+VALUES (?, ?)
+ON CONFLICT(message, level) DO UPDATE SET message = message
+RETURNING id, message, level, created_at
+`
+
+type GetOrCreateLogGroupParams struct {
+	Message string
+	Level   string
+}
+
+// Get existing log group by message and level, or create if doesn't exist
+func (q *Queries) GetOrCreateLogGroup(ctx context.Context, arg GetOrCreateLogGroupParams) (LogGroup, error) {
+	row := q.db.QueryRowContext(ctx, getOrCreateLogGroup, arg.Message, arg.Level)
+	var i LogGroup
+	err := row.Scan(
+		&i.ID,
+		&i.Message,
+		&i.Level,
+		&i.CreatedAt,
+	)
+	return i, err
 }
 
 const getPercentiles = `-- name: GetPercentiles :one
@@ -299,9 +252,9 @@ func (q *Queries) GetPercentiles(ctx context.Context, createdAt sql.NullTime) (G
 }
 
 const insertLog = `-- name: InsertLog :one
-INSERT INTO logs (trace_id, level, message, source, context, raw, created_at)
-VALUES (?, ?, ?, ?, ?, ?, ?)
-RETURNING id, trace_id, level, message, source, context, raw, created_at
+INSERT INTO logs (trace_id, level, message, source, context, raw, group_id, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+RETURNING id, trace_id, level, message, source, context, raw, created_at, group_id
 `
 
 type InsertLogParams struct {
@@ -311,6 +264,7 @@ type InsertLogParams struct {
 	Source    string
 	Context   sql.NullString
 	Raw       string
+	GroupID   sql.NullInt64
 	CreatedAt sql.NullTime
 }
 
@@ -322,6 +276,7 @@ func (q *Queries) InsertLog(ctx context.Context, arg InsertLogParams) (Log, erro
 		arg.Source,
 		arg.Context,
 		arg.Raw,
+		arg.GroupID,
 		arg.CreatedAt,
 	)
 	var i Log
@@ -334,12 +289,129 @@ func (q *Queries) InsertLog(ctx context.Context, arg InsertLogParams) (Log, erro
 		&i.Context,
 		&i.Raw,
 		&i.CreatedAt,
+		&i.GroupID,
 	)
 	return i, err
 }
 
+const listLogGroups = `-- name: ListLogGroups :many
+SELECT
+    lg.id,
+    lg.message,
+    lg.level,
+    COUNT(l.id) as count,
+    MAX(l.created_at) as latest_at,
+    lg.created_at as group_created_at
+FROM log_groups lg
+LEFT JOIN logs l ON l.group_id = lg.id
+GROUP BY lg.id, lg.message, lg.level, lg.created_at
+ORDER BY count DESC, latest_at DESC
+LIMIT ?
+`
+
+type ListLogGroupsRow struct {
+	ID             int64
+	Message        string
+	Level          string
+	Count          int64
+	LatestAt       interface{}
+	GroupCreatedAt sql.NullTime
+}
+
+// List all log groups with their counts and latest timestamp
+func (q *Queries) ListLogGroups(ctx context.Context, limit int64) ([]ListLogGroupsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listLogGroups, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListLogGroupsRow
+	for rows.Next() {
+		var i ListLogGroupsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Message,
+			&i.Level,
+			&i.Count,
+			&i.LatestAt,
+			&i.GroupCreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listLogGroupsByLevel = `-- name: ListLogGroupsByLevel :many
+SELECT
+    lg.id,
+    lg.message,
+    lg.level,
+    COUNT(l.id) as count,
+    MAX(l.created_at) as latest_at,
+    lg.created_at as group_created_at
+FROM log_groups lg
+INNER JOIN logs l ON l.group_id = lg.id
+WHERE LOWER(lg.level) = LOWER(?)
+GROUP BY lg.id, lg.message, lg.level, lg.created_at
+ORDER BY count DESC, latest_at DESC
+LIMIT ?
+`
+
+type ListLogGroupsByLevelParams struct {
+	LOWER string
+	Limit int64
+}
+
+type ListLogGroupsByLevelRow struct {
+	ID             int64
+	Message        string
+	Level          string
+	Count          int64
+	LatestAt       interface{}
+	GroupCreatedAt sql.NullTime
+}
+
+// List log groups filtered by level with counts
+func (q *Queries) ListLogGroupsByLevel(ctx context.Context, arg ListLogGroupsByLevelParams) ([]ListLogGroupsByLevelRow, error) {
+	rows, err := q.db.QueryContext(ctx, listLogGroupsByLevel, arg.LOWER, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListLogGroupsByLevelRow
+	for rows.Next() {
+		var i ListLogGroupsByLevelRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Message,
+			&i.Level,
+			&i.Count,
+			&i.LatestAt,
+			&i.GroupCreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listLogsByLevel = `-- name: ListLogsByLevel :many
-SELECT id, trace_id, level, message, source, context, raw, created_at FROM logs
+SELECT id, trace_id, level, message, source, context, raw, created_at, group_id FROM logs
 WHERE level = ?
 ORDER BY created_at DESC
 LIMIT ?
@@ -368,6 +440,7 @@ func (q *Queries) ListLogsByLevel(ctx context.Context, arg ListLogsByLevelParams
 			&i.Context,
 			&i.Raw,
 			&i.CreatedAt,
+			&i.GroupID,
 		); err != nil {
 			return nil, err
 		}
@@ -383,7 +456,7 @@ func (q *Queries) ListLogsByLevel(ctx context.Context, arg ListLogsByLevelParams
 }
 
 const listRecentLogs = `-- name: ListRecentLogs :many
-SELECT id, trace_id, level, message, source, context, raw, created_at FROM logs
+SELECT id, trace_id, level, message, source, context, raw, created_at, group_id FROM logs
 ORDER BY created_at DESC
 LIMIT ?
 `
@@ -406,6 +479,7 @@ func (q *Queries) ListRecentLogs(ctx context.Context, limit int64) ([]Log, error
 			&i.Context,
 			&i.Raw,
 			&i.CreatedAt,
+			&i.GroupID,
 		); err != nil {
 			return nil, err
 		}
@@ -421,7 +495,7 @@ func (q *Queries) ListRecentLogs(ctx context.Context, limit int64) ([]Log, error
 }
 
 const searchLogs = `-- name: SearchLogs :many
-SELECT id, trace_id, level, message, source, context, raw, created_at FROM logs
+SELECT id, trace_id, level, message, source, context, raw, created_at, group_id FROM logs
 WHERE message LIKE ?
 ORDER BY created_at DESC
 LIMIT ?
@@ -450,6 +524,7 @@ func (q *Queries) SearchLogs(ctx context.Context, arg SearchLogsParams) ([]Log, 
 			&i.Context,
 			&i.Raw,
 			&i.CreatedAt,
+			&i.GroupID,
 		); err != nil {
 			return nil, err
 		}

@@ -1,7 +1,64 @@
 -- name: InsertLog :one
-INSERT INTO logs (trace_id, level, message, source, context, raw, created_at)
-VALUES (?, ?, ?, ?, ?, ?, ?)
+INSERT INTO logs (trace_id, level, message, source, context, raw, group_id, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING *;
+
+-- name: GetOrCreateLogGroup :one
+-- Get existing log group by message and level, or create if doesn't exist
+INSERT INTO log_groups (message, level)
+VALUES (?, ?)
+ON CONFLICT(message, level) DO UPDATE SET message = message
+RETURNING *;
+
+-- name: GetLogGroupByID :one
+-- Lookup log group by ID
+SELECT * FROM log_groups
+WHERE id = ?;
+
+-- name: ListLogGroups :many
+-- List all log groups with their counts and latest timestamp
+SELECT
+    lg.id,
+    lg.message,
+    lg.level,
+    COUNT(l.id) as count,
+    MAX(l.created_at) as latest_at,
+    lg.created_at as group_created_at
+FROM log_groups lg
+LEFT JOIN logs l ON l.group_id = lg.id
+GROUP BY lg.id, lg.message, lg.level, lg.created_at
+ORDER BY count DESC, latest_at DESC
+LIMIT ?;
+
+-- name: ListLogGroupsByLevel :many
+-- List log groups filtered by level with counts
+SELECT
+    lg.id,
+    lg.message,
+    lg.level,
+    COUNT(l.id) as count,
+    MAX(l.created_at) as latest_at,
+    lg.created_at as group_created_at
+FROM log_groups lg
+INNER JOIN logs l ON l.group_id = lg.id
+WHERE LOWER(lg.level) = LOWER(?)
+GROUP BY lg.id, lg.message, lg.level, lg.created_at
+ORDER BY count DESC, latest_at DESC
+LIMIT ?;
+
+-- name: GetLogsByGroupID :many
+-- Get all individual logs for a specific group
+SELECT id, level, context, created_at
+FROM logs
+WHERE group_id = ?
+ORDER BY created_at DESC
+LIMIT ?;
+
+-- name: CountLogsByGroupID :one
+-- Count total logs in a group
+SELECT COUNT(*) as total
+FROM logs
+WHERE group_id = ?;
 
 -- name: ListRecentLogs :many
 SELECT * FROM logs
@@ -48,37 +105,3 @@ SELECT
 FROM logs l1
 WHERE l1.created_at >= ?1;
 
--- name: CountLogsByMessage :many
--- Groups logs by message and returns counts, ordered by frequency (most frequent first)
-SELECT 
-    level,
-    message,
-    COUNT(*) as count,
-    MAX(created_at) as latest_at,
-    MIN(id) as sample_id
-FROM logs
-GROUP BY level, message
-ORDER BY count DESC, latest_at DESC
-LIMIT ?;
-
--- name: CountLogsByMessageAndLevel :many
--- Groups logs by message filtered by level, ordered by frequency
-SELECT 
-    level,
-    message,
-    COUNT(*) as count,
-    MAX(created_at) as latest_at,
-    MIN(id) as sample_id
-FROM logs
-WHERE LOWER(level) = LOWER(?)
-GROUP BY level, message
-ORDER BY count DESC, latest_at DESC
-LIMIT ?;
-
--- name: GetLogsByLevelAndMessage :many
--- Get all logs matching a specific level and message
-SELECT *
-FROM logs
-WHERE LOWER(level) = LOWER(?) AND message = ?
-ORDER BY created_at DESC
-LIMIT ?;

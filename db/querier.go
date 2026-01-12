@@ -14,10 +14,8 @@ type Querier interface {
 	AddNotifierApp(ctx context.Context, arg AddNotifierAppParams) error
 	AddUserApp(ctx context.Context, arg AddUserAppParams) error
 	CountByLevel(ctx context.Context, createdAt sql.NullTime) ([]CountByLevelRow, error)
-	// Groups logs by message and returns counts, ordered by frequency (most frequent first)
-	CountLogsByMessage(ctx context.Context, limit int64) ([]CountLogsByMessageRow, error)
-	// Groups logs by message filtered by level, ordered by frequency
-	CountLogsByMessageAndLevel(ctx context.Context, arg CountLogsByMessageAndLevelParams) ([]CountLogsByMessageAndLevelRow, error)
+	// Count total logs in a group
+	CountLogsByGroupID(ctx context.Context, groupID sql.NullInt64) (int64, error)
 	CountUsers(ctx context.Context) (int64, error)
 	// Notifier queries
 	CreateNotifier(ctx context.Context, arg CreateNotifierParams) (Notifier, error)
@@ -47,13 +45,17 @@ type Querier interface {
 	GetLatestStats(ctx context.Context, collectorName string) (SystemStat, error)
 	GetLatestStatsForAllCollectors(ctx context.Context) ([]SystemStat, error)
 	GetLogByID(ctx context.Context, id int64) (Log, error)
-	// Get all logs matching a specific level and message
-	GetLogsByLevelAndMessage(ctx context.Context, arg GetLogsByLevelAndMessageParams) ([]Log, error)
+	// Lookup log group by ID
+	GetLogGroupByID(ctx context.Context, id int64) (LogGroup, error)
+	// Get all individual logs for a specific group
+	GetLogsByGroupID(ctx context.Context, arg GetLogsByGroupIDParams) ([]GetLogsByGroupIDRow, error)
 	GetNotifier(ctx context.Context, id int64) (Notifier, error)
 	// Notifier app mapping queries
 	GetNotifierApps(ctx context.Context, notifierID int64) ([]string, error)
 	GetNotifierByName(ctx context.Context, name string) (Notifier, error)
 	GetNotifiersForApp(ctx context.Context, appName string) ([]Notifier, error)
+	// Get existing log group by message and level, or create if doesn't exist
+	GetOrCreateLogGroup(ctx context.Context, arg GetOrCreateLogGroupParams) (LogGroup, error)
 	GetPercentiles(ctx context.Context, createdAt sql.NullTime) (GetPercentilesRow, error)
 	GetSession(ctx context.Context, id string) (Session, error)
 	GetUserAPIKey(ctx context.Context, apiKey string) (UserApiKey, error)
@@ -67,6 +69,10 @@ type Querier interface {
 	InsertSystemStats(ctx context.Context, arg InsertSystemStatsParams) error
 	ListAppCollectors(ctx context.Context) ([]AppCollector, error)
 	ListEnabledNotifiers(ctx context.Context) ([]Notifier, error)
+	// List all log groups with their counts and latest timestamp
+	ListLogGroups(ctx context.Context, limit int64) ([]ListLogGroupsRow, error)
+	// List log groups filtered by level with counts
+	ListLogGroupsByLevel(ctx context.Context, arg ListLogGroupsByLevelParams) ([]ListLogGroupsByLevelRow, error)
 	ListLogsByLevel(ctx context.Context, arg ListLogsByLevelParams) ([]Log, error)
 	ListNotifiers(ctx context.Context) ([]Notifier, error)
 	ListNotifiersByUser(ctx context.Context, userID int64) ([]Notifier, error)

@@ -29,6 +29,14 @@ type Log struct {
 	Context   sql.NullString
 	Raw       string
 	CreatedAt sql.NullTime
+	GroupID   sql.NullInt64
+}
+
+type LogGroup struct {
+	ID        int64
+	Message   string
+	Level     string
+	CreatedAt sql.NullTime
 }
 
 type Notifier struct {
