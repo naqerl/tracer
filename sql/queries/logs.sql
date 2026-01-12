@@ -15,6 +15,17 @@ RETURNING *;
 SELECT * FROM log_groups
 WHERE id = ?;
 
+-- name: CountLogGroups :one
+-- Count total log groups
+SELECT COUNT(*) as total
+FROM log_groups;
+
+-- name: CountLogGroupsByLevel :one
+-- Count log groups filtered by level
+SELECT COUNT(*) as total
+FROM log_groups
+WHERE LOWER(level) = LOWER(?);
+
 -- name: ListLogGroups :many
 -- List all log groups with their counts and latest timestamp
 SELECT
@@ -28,7 +39,7 @@ FROM log_groups lg
 LEFT JOIN logs l ON l.group_id = lg.id
 GROUP BY lg.id, lg.message, lg.level, lg.created_at
 ORDER BY count DESC, latest_at DESC
-LIMIT ?;
+LIMIT ? OFFSET ?;
 
 -- name: ListLogGroupsByLevel :many
 -- List log groups filtered by level with counts
@@ -44,7 +55,7 @@ INNER JOIN logs l ON l.group_id = lg.id
 WHERE LOWER(lg.level) = LOWER(?)
 GROUP BY lg.id, lg.message, lg.level, lg.created_at
 ORDER BY count DESC, latest_at DESC
-LIMIT ?;
+LIMIT ? OFFSET ?;
 
 -- name: GetLogsByGroupID :many
 -- Get all individual logs for a specific group
@@ -52,7 +63,7 @@ SELECT id, level, context, created_at
 FROM logs
 WHERE group_id = ?
 ORDER BY created_at DESC
-LIMIT ?;
+LIMIT ? OFFSET ?;
 
 -- name: CountLogsByGroupID :one
 -- Count total logs in a group
