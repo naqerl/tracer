@@ -102,13 +102,9 @@ func (h *handler) getCollectors(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// TODO: You do not need a variable to only pass it to the call
-	// in the next line!
-	data := map[string]any{
+	h.t.RenderHTTP(w, r, "collectors-sections", map[string]any{
 		"Collectors": collectorsWithStats,
-	}
-
-	h.t.RenderHTTP(w, r, "collectors-sections", data)
+	})
 }
 
 // collectorOverview shows a single collector with stats and apps
@@ -251,21 +247,7 @@ func (h *handler) collectorResourcesData(w http.ResponseWriter, r *http.Request)
 	}
 
 	rangeParam := r.URL.Query().Get("range")
-	var since time.Time
-
-	// TODO: Do not switch, parse number and type to make it generic
-	switch rangeParam {
-	case "1h":
-		since = time.Now().Add(-1 * time.Hour)
-	case "6h":
-		since = time.Now().Add(-6 * time.Hour)
-	case "7d":
-		since = time.Now().Add(-7 * 24 * time.Hour)
-	case "30d":
-		since = time.Now().Add(-30 * 24 * time.Hour)
-	default:
-		since = time.Now().Add(-24 * time.Hour)
-	}
+	since := parseTimeRange(rangeParam)
 
 	stats, err := h.authService.GetCollectorStatsHistory(r.Context(), collectorName, since)
 	if err != nil {
@@ -273,13 +255,9 @@ func (h *handler) collectorResourcesData(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// TODO: Again do not declare data variable just to pass it as an
-	// argument on the next line
-	data := map[string]any{
+	h.t.RenderHTTP(w, r, "collector-stats-data", map[string]any{
 		"Stats": stats,
-	}
-
-	h.t.RenderHTTP(w, r, "collector-stats-data", data)
+	})
 }
 
 // collectorApps shows apps list for a collector
@@ -678,5 +656,39 @@ func (h *handler) appLogs(w http.ResponseWriter, r *http.Request) {
 		h.t.RenderHTTP(w, r, "app-logs-table", data)
 	} else {
 		h.t.RenderHTTP(w, r, "app-logs-page", data)
+	}
+}
+
+// parseTimeRange parses a time range string like "1h", "24h", "7d", "30d" and returns the time since
+func parseTimeRange(rangeParam string) time.Time {
+	if rangeParam == "" {
+		return time.Now().Add(-24 * time.Hour) // default: 24h
+	}
+
+	// Match pattern: digits followed by 'h' or 'd'
+	var value int
+	var unit byte
+
+	if len(rangeParam) < 2 {
+		return time.Now().Add(-24 * time.Hour)
+	}
+
+	// Simple parsing: extract number and unit
+	for i := 0; i < len(rangeParam); i++ {
+		if rangeParam[i] >= '0' && rangeParam[i] <= '9' {
+			value = value*10 + int(rangeParam[i]-'0')
+		} else {
+			unit = rangeParam[i]
+			break
+		}
+	}
+
+	switch unit {
+	case 'h':
+		return time.Now().Add(-time.Duration(value) * time.Hour)
+	case 'd':
+		return time.Now().Add(-time.Duration(value) * 24 * time.Hour)
+	default:
+		return time.Now().Add(-24 * time.Hour)
 	}
 }
