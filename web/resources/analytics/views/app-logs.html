@@ -8,46 +8,68 @@
 <body>
     <div class="max-w-7xl mx-auto p-6">
         {{template "navbar" .Nav}}
-        
-        <!-- Stats Row -->
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-            <div class="bg-bg-secondary p-4 border-l-4 border-red-400 text-center">
-                <span class="block text-3xl font-bold">{{.Stats.Errors}}</span>
-                <span class="text-fg-secondary text-sm">Errors (24h)</span>
-            </div>
-            <div class="bg-bg-secondary p-4 border-l-4 border-yellow-400 text-center">
-                <span class="block text-3xl font-bold">{{.Stats.Warnings}}</span>
-                <span class="text-fg-secondary text-sm">Warnings (24h)</span>
-            </div>
-            <div class="bg-bg-secondary p-4 border-l-4 border-blue-400 text-center">
-                <span class="block text-3xl font-bold">{{.Stats.Infos}}</span>
-                <span class="text-fg-secondary text-sm">Info (24h)</span>
-            </div>
-            <div class="bg-bg-secondary p-4 text-center">
-                <span class="block text-3xl font-bold">{{.Stats.Total}}</span>
-                <span class="text-fg-secondary text-sm">Total (24h)</span>
+
+        <!-- Stats Row - Lazy loaded -->
+        <div hx-get="/analytics/{{.CollectorName}}/apps/{{.AppName}}/logs/summary" hx-trigger="load once" hx-swap="outerHTML">
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                <div class="bg-bg-secondary p-4 text-center">
+                    <span class="block text-3xl font-bold text-fg-secondary">-</span>
+                    <span class="text-fg-secondary text-sm">Loading...</span>
+                </div>
             </div>
         </div>
 
-        <!-- Logs Container -->
+        <!-- Logs Container - Lazy loaded -->
         <div class="bg-bg-secondary p-5">
             <h2 class="text-lg font-medium mb-4">Grouped Logs</h2>
-            <div hx-get="/analytics/{{.CollectorName}}/apps/{{.AppName}}/logs" hx-trigger="load, every 5s" hx-swap="innerHTML">
+            <div id="logs-content" hx-get="/analytics/{{.CollectorName}}/apps/{{.AppName}}/logs" hx-trigger="load once, every 5s" hx-swap="innerHTML">
                 <p class="text-fg-secondary text-center py-4">Loading logs...</p>
             </div>
         </div>
     </div>
+
+    <script>
+    // Handle browser back/forward cache (bfcache) to fix missing styles
+    window.addEventListener('pageshow', function(event) {
+        if (event.persisted) {
+            // Page was restored from bfcache, force reload to ensure styles work
+            window.location.reload();
+        }
+    });
+    </script>
 </body>
 </html>
 {{end}}
 
+{{define "app-logs-summary"}}
+<div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+    <div class="bg-bg-secondary p-4 border-l-4 border-red-400 text-center">
+        <span class="block text-3xl font-bold">{{.Stats.Errors}}</span>
+        <span class="text-fg-secondary text-sm">Errors (24h)</span>
+    </div>
+    <div class="bg-bg-secondary p-4 border-l-4 border-yellow-400 text-center">
+        <span class="block text-3xl font-bold">{{.Stats.Warnings}}</span>
+        <span class="text-fg-secondary text-sm">Warnings (24h)</span>
+    </div>
+    <div class="bg-bg-secondary p-4 border-l-4 border-blue-400 text-center">
+        <span class="block text-3xl font-bold">{{.Stats.Infos}}</span>
+        <span class="text-fg-secondary text-sm">Info (24h)</span>
+    </div>
+    <div class="bg-bg-secondary p-4 text-center">
+        <span class="block text-3xl font-bold">{{.Stats.Total}}</span>
+        <span class="text-fg-secondary text-sm">Total (24h)</span>
+    </div>
+</div>
+{{end}}
+
 {{define "app-logs-table"}}
+<!-- Filter tabs -->
 <div class="flex items-center justify-between mb-4">
     <div class="flex gap-2">
-        <a href="#" class="px-3 py-1.5 text-sm transition-colors {{if not .Level}}text-accent{{else}}text-fg-secondary hover:text-fg{{end}}" hx-get="/analytics/{{.CollectorName}}/apps/{{.AppName}}/logs" hx-swap="outerHTML" hx-target="closest div">All</a>
-        <a href="#" class="px-3 py-1.5 text-sm transition-colors {{if eq .Level "error"}}text-accent{{else}}text-fg-secondary hover:text-fg{{end}}" hx-get="/analytics/{{.CollectorName}}/apps/{{.AppName}}/logs?level=error" hx-swap="outerHTML" hx-target="closest div">Errors</a>
-        <a href="#" class="px-3 py-1.5 text-sm transition-colors {{if eq .Level "warn"}}text-accent{{else}}text-fg-secondary hover:text-fg{{end}}" hx-get="/analytics/{{.CollectorName}}/apps/{{.AppName}}/logs?level=warn" hx-swap="outerHTML" hx-target="closest div">Warnings</a>
-        <a href="#" class="px-3 py-1.5 text-sm transition-colors {{if eq .Level "info"}}text-accent{{else}}text-fg-secondary hover:text-fg{{end}}" hx-get="/analytics/{{.CollectorName}}/apps/{{.AppName}}/logs?level=info" hx-swap="outerHTML" hx-target="closest div">Info</a>
+        <a href="#" class="px-3 py-1.5 text-sm transition-colors {{if not .Level}}text-accent{{else}}text-fg-secondary hover:text-fg{{end}}" hx-get="/analytics/{{.CollectorName}}/apps/{{.AppName}}/logs" hx-swap="innerHTML" hx-target="#logs-content">All</a>
+        <a href="#" class="px-3 py-1.5 text-sm transition-colors {{if eq .Level "error"}}text-accent{{else}}text-fg-secondary hover:text-fg{{end}}" hx-get="/analytics/{{.CollectorName}}/apps/{{.AppName}}/logs?level=error" hx-swap="innerHTML" hx-target="#logs-content">Errors</a>
+        <a href="#" class="px-3 py-1.5 text-sm transition-colors {{if eq .Level "warn"}}text-accent{{else}}text-fg-secondary hover:text-fg{{end}}" hx-get="/analytics/{{.CollectorName}}/apps/{{.AppName}}/logs?level=warn" hx-swap="innerHTML" hx-target="#logs-content">Warnings</a>
+        <a href="#" class="px-3 py-1.5 text-sm transition-colors {{if eq .Level "info"}}text-accent{{else}}text-fg-secondary hover:text-fg{{end}}" hx-get="/analytics/{{.CollectorName}}/apps/{{.AppName}}/logs?level=info" hx-swap="innerHTML" hx-target="#logs-content">Info</a>
     </div>
 </div>
 
@@ -63,7 +85,7 @@
         </thead>
         <tbody>
             {{range .Grouped}}
-            <tr class="border-b border-bg-secondary hover:bg-bg-secondary/50 transition-colors cursor-pointer" onclick="window.location.href='/logs/{{$.AppName}}/message?level={{.Level}}&message={{urlEncode .Message}}'">
+            <tr class="border-b border-bg-secondary hover:bg-bg-secondary/50 transition-colors">
                 <td class="px-4 py-3"><span class="text-xs font-medium uppercase">{{.Level}}</span></td>
                 <td class="px-4 py-3 max-w-2xl truncate" title="{{.Message}}">{{truncate .Message 100}}</td>
                 <td class="px-4 py-3 text-right">
@@ -82,7 +104,7 @@
 <!-- Mobile card view -->
 <div class="bg-bg space-y-3 md:hidden">
     {{range .Grouped}}
-    <a href="/logs/{{$.AppName}}/message?level={{.Level}}&message={{urlEncode .Message}}" class="block bg-bg-secondary p-4 border border-bg hover:border-accent/50 transition-colors">
+    <div class="block bg-bg-secondary p-4 border border-bg">
         <div class="flex items-start justify-between mb-2">
             <div><span class="text-xs font-medium uppercase">{{.Level}}</span></div>
             <span class="inline-flex items-center justify-center min-w-[2rem] px-2 py-0.5 text-sm font-medium bg-bg text-fg-secondary rounded">{{.Count}}</span>
@@ -91,7 +113,7 @@
             <span class="text-fg-secondary text-xs font-medium block mb-1">Message</span>
             <p class="text-sm break-words">{{.Message}}</p>
         </div>
-    </a>
+    </div>
     {{else}}
     <div class="text-center text-fg-secondary py-8">No logs available</div>
     {{end}}

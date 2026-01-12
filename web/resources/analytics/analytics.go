@@ -49,7 +49,9 @@ func InitMux(dbManager *dbmanager.Manager, authService *auth.Service, tracker *c
 	m.HandleFunc("GET /{collector}/apps", h.collectorApps)
 	m.HandleFunc("GET /{collector}/apps/data", h.collectorAppsData)
 	m.HandleFunc("GET /{collector}/apps/{app}", h.appAnalytics)
+	m.HandleFunc("GET /{collector}/apps/{app}/summary", h.appAnalyticsSummary)
 	m.HandleFunc("GET /{collector}/apps/{app}/logs", h.appLogs)
+	m.HandleFunc("GET /{collector}/apps/{app}/logs/summary", h.appLogsSummary)
 
 	return m
 }
@@ -359,8 +361,8 @@ func (h *handler) appAnalytics(w http.ResponseWriter, r *http.Request) {
 		Add(appName, appName).
 		Build()
 
-	// Plain request: return skeleton only
-	if !htmx.IsAjax(r) && !middleware.IsMarkdownFormat(r) {
+	// Plain request: return full page with lazy-loading containers
+	if !htmx.IsAjax(r) {
 		data := map[string]any{
 			"Title":         appName,
 			"AppName":       appName,
@@ -368,21 +370,14 @@ func (h *handler) appAnalytics(w http.ResponseWriter, r *http.Request) {
 			"IsAdmin":       user.IsAdmin == 1,
 			"Nav":           nav,
 		}
-		h.t.RenderHTTP(w, r, "app-analytics", data)
+		h.t.RenderHTTP(w, r, "app-page", data)
 		return
 	}
 
-	// AJAX or Markdown: fetch data
+	// AJAX request: fetch recent logs only
 	queries, err := h.dbManager.GetQueries(appName)
 	if err != nil {
 		h.t.RenderError(w, r, "Error", "App not found", http.StatusNotFound)
-		return
-	}
-
-	since := sql.NullTime{Time: time.Now().Add(-24 * time.Hour), Valid: true}
-	stats, err := queries.GetPercentiles(r.Context(), since)
-	if err != nil {
-		h.t.RenderError(w, r, "Error", "Failed to get stats", http.StatusInternalServerError)
 		return
 	}
 
@@ -393,20 +388,54 @@ func (h *handler) appAnalytics(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := map[string]any{
-		"Title":         appName,
 		"AppName":       appName,
 		"CollectorName": collectorName,
-		"Stats":         stats,
 		"Grouped":       grouped,
-		"IsAdmin":       user.IsAdmin == 1,
-		"Nav":           nav,
 	}
 
-	if middleware.IsMarkdownFormat(r) {
-		h.t.RenderMarkdown(w, r, "app-analytics-markdown", data)
-	} else {
-		h.t.RenderHTTP(w, r, "app-analytics-content", data)
+	h.t.RenderHTTP(w, r, "app-logs", data)
+}
+
+// appAnalyticsSummary returns just the stats summary for the app analytics page
+func (h *handler) appAnalyticsSummary(w http.ResponseWriter, r *http.Request) {
+	user := middleware.GetUser(r)
+	if user == nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
 	}
+
+	appName := r.PathValue("app")
+
+	// Check app access
+	hasAccess, err := h.authService.UserHasAppAccess(r.Context(), user.ID, appName)
+	if err != nil {
+		http.Error(w, "Failed to check access", http.StatusInternalServerError)
+		return
+	}
+	if !hasAccess {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+
+	queries, err := h.dbManager.GetQueries(appName)
+	if err != nil {
+		http.Error(w, "App not found", http.StatusNotFound)
+		return
+	}
+
+	// Fetch stats (counts by level)
+	since := sql.NullTime{Time: time.Now().Add(-24 * time.Hour), Valid: true}
+	stats, err := queries.GetPercentiles(r.Context(), since)
+	if err != nil {
+		http.Error(w, "Failed to get stats", http.StatusInternalServerError)
+		return
+	}
+
+	data := map[string]any{
+		"Stats": stats,
+	}
+
+	h.t.RenderHTTP(w, r, "app-summary", data)
 }
 
 // Helper types and functions
@@ -601,14 +630,6 @@ func (h *handler) appLogs(w http.ResponseWriter, r *http.Request) {
 	level := r.URL.Query().Get("level")
 	limit := int64(50)
 
-	// Fetch stats (counts by level)
-	since := sql.NullTime{Time: time.Now().Add(-24 * time.Hour), Valid: true}
-	stats, err := queries.GetPercentiles(r.Context(), since)
-	if err != nil {
-		h.t.RenderError(w, r, "Error", "Failed to get stats", http.StatusInternalServerError)
-		return
-	}
-
 	// Fetch grouped logs
 	var grouped []db.CountLogsByMessageRow
 	if level != "" {
@@ -631,23 +652,11 @@ func (h *handler) appLogs(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	nav := templates.NewNavBuilder().
-		Add("analytics", "analytics").
-		Add(collectorName, collectorName).
-		Add("apps", "apps").
-		Add(appName, appName).
-		Add("logs", "logs").
-		Build()
-
 	data := map[string]any{
-		"Title":         appName + " Logs",
 		"AppName":       appName,
 		"CollectorName": collectorName,
-		"Stats":         stats,
 		"Grouped":       grouped,
 		"Level":         level,
-		"IsAdmin":       user.IsAdmin == 1,
-		"Nav":           nav,
 	}
 
 	if middleware.IsMarkdownFormat(r) {
@@ -655,8 +664,61 @@ func (h *handler) appLogs(w http.ResponseWriter, r *http.Request) {
 	} else if htmx.IsAjax(r) {
 		h.t.RenderHTTP(w, r, "app-logs-table", data)
 	} else {
+		// Full page render - add Nav data
+		nav := templates.NewNavBuilder().
+			Add("analytics", "analytics").
+			Add(collectorName, collectorName).
+			Add("apps", "apps").
+			Add(appName, appName).
+			Add("logs", "logs").
+			Build()
+		data["Title"] = appName + " Logs"
+		data["Nav"] = nav
+		data["IsAdmin"] = user.IsAdmin == 1
 		h.t.RenderHTTP(w, r, "app-logs-page", data)
 	}
+}
+
+// appLogsSummary returns just the stats summary for the app logs page
+func (h *handler) appLogsSummary(w http.ResponseWriter, r *http.Request) {
+	user := middleware.GetUser(r)
+	if user == nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	appName := r.PathValue("app")
+
+	// Check app access
+	hasAccess, err := h.authService.UserHasAppAccess(r.Context(), user.ID, appName)
+	if err != nil {
+		http.Error(w, "Failed to check access", http.StatusInternalServerError)
+		return
+	}
+	if !hasAccess {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+
+	queries, err := h.dbManager.GetQueries(appName)
+	if err != nil {
+		http.Error(w, "App not found", http.StatusNotFound)
+		return
+	}
+
+	// Fetch stats (counts by level)
+	since := sql.NullTime{Time: time.Now().Add(-24 * time.Hour), Valid: true}
+	stats, err := queries.GetPercentiles(r.Context(), since)
+	if err != nil {
+		http.Error(w, "Failed to get stats", http.StatusInternalServerError)
+		return
+	}
+
+	data := map[string]any{
+		"Stats": stats,
+	}
+
+	h.t.RenderHTTP(w, r, "app-logs-summary", data)
 }
 
 // parseTimeRange parses a time range string like "1h", "24h", "7d", "30d" and returns the time since

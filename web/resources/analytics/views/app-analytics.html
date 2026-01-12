@@ -1,4 +1,4 @@
-{{define "app-analytics"}}
+{{define "app-page"}}
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -7,58 +7,73 @@
 </head>
 <body>
     <div class="max-w-5xl mx-auto p-6">
-        {{template "app-analytics-content" .}}
+        {{template "navbar" .Nav}}
+
+        <!-- Stats Summary - Lazy loaded once -->
+        <div hx-get="/analytics/{{.CollectorName}}/apps/{{.AppName}}/summary" hx-trigger="load once" hx-swap="outerHTML">
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                <div class="bg-bg-secondary p-4 text-center">
+                    <span class="block text-3xl font-bold text-fg-secondary">-</span>
+                    <span class="text-fg-secondary text-sm">Loading...</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Recent Logs Container - Lazy loaded with polling -->
+        <div hx-get="/analytics/{{.CollectorName}}/apps/{{.AppName}}/logs" hx-trigger="load once, every 30s" hx-swap="outerHTML">
+            <div class="bg-bg-secondary p-5">
+                <h2 class="text-lg font-medium mb-4">Recent Logs</h2>
+                <p class="text-fg-secondary text-center py-4">Loading logs...</p>
+            </div>
+        </div>
     </div>
+
 </body>
 </html>
 {{end}}
 
-{{define "app-analytics-content"}}
-{{template "navbar" .Nav}}
-
-<div hx-get="/analytics/{{.CollectorName}}/apps/{{.AppName}}" hx-trigger="load, every 30s" hx-swap="outerHTML">
-    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <div class="bg-bg-secondary p-4 border-l-4 border-red-400 text-center">
-            <span class="block text-3xl font-bold">{{.Stats.Errors}}</span>
-            <span class="text-fg-secondary text-sm">Errors (24h)</span>
-        </div>
-        <div class="bg-bg-secondary p-4 border-l-4 border-yellow-400 text-center">
-            <span class="block text-3xl font-bold">{{.Stats.Warnings}}</span>
-            <span class="text-fg-secondary text-sm">Warnings (24h)</span>
-        </div>
-        <div class="bg-bg-secondary p-4 border-l-4 border-blue-400 text-center">
-            <span class="block text-3xl font-bold">{{.Stats.Infos}}</span>
-            <span class="text-fg-secondary text-sm">Info (24h)</span>
-        </div>
-        <div class="bg-bg-secondary p-4 text-center">
-            <span class="block text-3xl font-bold">{{.Stats.Total}}</span>
-            <span class="text-fg-secondary text-sm">Total (24h)</span>
-        </div>
+{{define "app-summary"}}
+<div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+    <div class="bg-bg-secondary p-4 border-l-4 border-red-400 text-center">
+        <span class="block text-3xl font-bold">{{.Stats.Errors}}</span>
+        <span class="text-fg-secondary text-sm">Errors (24h)</span>
     </div>
-
-    <div class="bg-bg-secondary p-5">
-        <div class="flex items-center justify-between mb-4">
-            <h2 class="text-lg font-medium">Recent Logs</h2>
-            <a href="/analytics/{{.CollectorName}}/apps/{{.AppName}}/logs" class="text-accent hover:underline text-sm">View All &rarr;</a>
-        </div>
-        {{if .Grouped}}
-        <div class="space-y-2">
-            {{range .Grouped}}
-            <div class="bg-bg p-3 border border-bg-secondary hover:border-accent/50 transition-colors">
-                <div class="flex items-start justify-between">
-                    <div class="flex-1">
-                        <span class="text-sm">{{.Message}}</span>
-                    </div>
-                    <span class="ml-3 px-2 py-0.5 text-xs bg-bg-secondary rounded">{{.Count}}</span>
-                </div>
-            </div>
-            {{end}}
-        </div>
-        {{else}}
-        <p class="text-fg-secondary text-center py-4">No recent logs</p>
-        {{end}}
+    <div class="bg-bg-secondary p-4 border-l-4 border-yellow-400 text-center">
+        <span class="block text-3xl font-bold">{{.Stats.Warnings}}</span>
+        <span class="text-fg-secondary text-sm">Warnings (24h)</span>
+    </div>
+    <div class="bg-bg-secondary p-4 border-l-4 border-blue-400 text-center">
+        <span class="block text-3xl font-bold">{{.Stats.Infos}}</span>
+        <span class="text-fg-secondary text-sm">Info (24h)</span>
+    </div>
+    <div class="bg-bg-secondary p-4 text-center">
+        <span class="block text-3xl font-bold">{{.Stats.Total}}</span>
+        <span class="text-fg-secondary text-sm">Total (24h)</span>
     </div>
 </div>
 {{end}}
 
-
+{{define "app-logs"}}
+<div class="bg-bg-secondary p-5">
+    <div class="flex items-center justify-between mb-4">
+        <h2 class="text-lg font-medium">Recent Logs</h2>
+        <a href="/analytics/{{.CollectorName}}/apps/{{.AppName}}/logs" class="text-accent hover:underline text-sm">View All &rarr;</a>
+    </div>
+    {{if .Grouped}}
+    <div class="space-y-2">
+        {{range .Grouped}}
+        <div class="bg-bg p-3 border border-bg-secondary hover:border-accent/50 transition-colors">
+            <div class="flex items-start justify-between">
+                <div class="flex-1">
+                    <span class="text-sm">{{.Message}}</span>
+                </div>
+                <span class="ml-3 px-2 py-0.5 text-xs bg-bg-secondary rounded">{{.Count}}</span>
+            </div>
+        </div>
+        {{end}}
+    </div>
+    {{else}}
+    <p class="text-fg-secondary text-center py-4">No recent logs</p>
+    {{end}}
+</div>
+{{end}}

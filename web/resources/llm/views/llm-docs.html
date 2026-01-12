@@ -28,9 +28,9 @@
                 <h3 class="text-lg font-medium text-fg mb-3">Using Your API Key</h3>
                 <div class="bg-bg p-4 mb-6">
                     <p class="text-xs text-fg-secondary mb-2">Preferred method (Header):</p>
-                    <code class="text-green-400 text-sm">curl -H "X-API-Key: YOUR_KEY" "https://{{.BaseURL}}/logs/myapp.md"</code>
+                    <code class="text-green-400 text-sm">curl -H "X-API-Key: YOUR_KEY" "https://{{.BaseURL}}/analytics.md"</code>
                     <p class="text-xs text-fg-secondary mt-4 mb-2">Alternative (Query parameter):</p>
-                    <code class="text-green-400 text-sm">curl "https://{{.BaseURL}}/logs/myapp.md?api_key=YOUR_KEY"</code>
+                    <code class="text-green-400 text-sm">curl "https://{{.BaseURL}}/analytics.md?api_key=YOUR_KEY"</code>
                 </div>
 
                 <h2 class="text-xl font-semibold text-fg mt-8 mb-4">Available Endpoints</h2>
@@ -47,27 +47,7 @@
                     </li>
                     <li class="bg-bg p-3">
                         <code class="text-accent">GET /analytics/{collector}/apps/{app}.md</code>
-                        <p class="text-sm text-fg-secondary mt-1">App analytics with statistics</p>
-                    </li>
-                </ul>
-
-                <h3 class="text-lg font-medium text-fg mb-3">Logs</h3>
-                <ul class="space-y-3 mb-6">
-                    <li class="bg-bg p-3">
-                        <code class="text-accent">GET /logs/{app}.md</code>
-                        <p class="text-sm text-fg-secondary mt-1">Recent logs (optional: ?level=error&limit=50)</p>
-                    </li>
-                    <li class="bg-bg p-3">
-                        <code class="text-accent">GET /logs/{app}/grouped.md</code>
-                        <p class="text-sm text-fg-secondary mt-1">Grouped logs by message</p>
-                    </li>
-                    <li class="bg-bg p-3">
-                        <code class="text-accent">GET /logs/{app}/trace/{trace_id}.md</code>
-                        <p class="text-sm text-fg-secondary mt-1">All logs for a specific trace</p>
-                    </li>
-                    <li class="bg-bg p-3">
-                        <code class="text-accent">GET /logs/{app}/log/{id}.md</code>
-                        <p class="text-sm text-fg-secondary mt-1">Single log entry details</p>
+                        <p class="text-sm text-fg-secondary mt-1">App analytics with statistics and grouped logs</p>
                     </li>
                 </ul>
 
