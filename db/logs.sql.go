@@ -45,6 +45,33 @@ func (q *Queries) CountByLevel(ctx context.Context, createdAt sql.NullTime) ([]C
 	return items, nil
 }
 
+const countLogGroups = `-- name: CountLogGroups :one
+SELECT COUNT(*) as total
+FROM log_groups
+`
+
+// Count total log groups
+func (q *Queries) CountLogGroups(ctx context.Context) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countLogGroups)
+	var total int64
+	err := row.Scan(&total)
+	return total, err
+}
+
+const countLogGroupsByLevel = `-- name: CountLogGroupsByLevel :one
+SELECT COUNT(*) as total
+FROM log_groups
+WHERE LOWER(level) = LOWER(?)
+`
+
+// Count log groups filtered by level
+func (q *Queries) CountLogGroupsByLevel(ctx context.Context, lower string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countLogGroupsByLevel, lower)
+	var total int64
+	err := row.Scan(&total)
+	return total, err
+}
+
 const countLogsByGroupID = `-- name: CountLogsByGroupID :one
 SELECT COUNT(*) as total
 FROM logs
@@ -153,12 +180,13 @@ SELECT id, level, context, created_at
 FROM logs
 WHERE group_id = ?
 ORDER BY created_at DESC
-LIMIT ?
+LIMIT ? OFFSET ?
 `
 
 type GetLogsByGroupIDParams struct {
 	GroupID sql.NullInt64
 	Limit   int64
+	Offset  int64
 }
 
 type GetLogsByGroupIDRow struct {
@@ -170,7 +198,7 @@ type GetLogsByGroupIDRow struct {
 
 // Get all individual logs for a specific group
 func (q *Queries) GetLogsByGroupID(ctx context.Context, arg GetLogsByGroupIDParams) ([]GetLogsByGroupIDRow, error) {
-	rows, err := q.db.QueryContext(ctx, getLogsByGroupID, arg.GroupID, arg.Limit)
+	rows, err := q.db.QueryContext(ctx, getLogsByGroupID, arg.GroupID, arg.Limit, arg.Offset)
 	if err != nil {
 		return nil, err
 	}
@@ -306,8 +334,13 @@ FROM log_groups lg
 LEFT JOIN logs l ON l.group_id = lg.id
 GROUP BY lg.id, lg.message, lg.level, lg.created_at
 ORDER BY count DESC, latest_at DESC
-LIMIT ?
+LIMIT ? OFFSET ?
 `
+
+type ListLogGroupsParams struct {
+	Limit  int64
+	Offset int64
+}
 
 type ListLogGroupsRow struct {
 	ID             int64
@@ -319,8 +352,8 @@ type ListLogGroupsRow struct {
 }
 
 // List all log groups with their counts and latest timestamp
-func (q *Queries) ListLogGroups(ctx context.Context, limit int64) ([]ListLogGroupsRow, error) {
-	rows, err := q.db.QueryContext(ctx, listLogGroups, limit)
+func (q *Queries) ListLogGroups(ctx context.Context, arg ListLogGroupsParams) ([]ListLogGroupsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listLogGroups, arg.Limit, arg.Offset)
 	if err != nil {
 		return nil, err
 	}
@@ -362,12 +395,13 @@ INNER JOIN logs l ON l.group_id = lg.id
 WHERE LOWER(lg.level) = LOWER(?)
 GROUP BY lg.id, lg.message, lg.level, lg.created_at
 ORDER BY count DESC, latest_at DESC
-LIMIT ?
+LIMIT ? OFFSET ?
 `
 
 type ListLogGroupsByLevelParams struct {
-	LOWER string
-	Limit int64
+	LOWER  string
+	Limit  int64
+	Offset int64
 }
 
 type ListLogGroupsByLevelRow struct {
@@ -381,7 +415,7 @@ type ListLogGroupsByLevelRow struct {
 
 // List log groups filtered by level with counts
 func (q *Queries) ListLogGroupsByLevel(ctx context.Context, arg ListLogGroupsByLevelParams) ([]ListLogGroupsByLevelRow, error) {
-	rows, err := q.db.QueryContext(ctx, listLogGroupsByLevel, arg.LOWER, arg.Limit)
+	rows, err := q.db.QueryContext(ctx, listLogGroupsByLevel, arg.LOWER, arg.Limit, arg.Offset)
 	if err != nil {
 		return nil, err
 	}

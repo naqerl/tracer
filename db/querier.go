@@ -14,6 +14,10 @@ type Querier interface {
 	AddNotifierApp(ctx context.Context, arg AddNotifierAppParams) error
 	AddUserApp(ctx context.Context, arg AddUserAppParams) error
 	CountByLevel(ctx context.Context, createdAt sql.NullTime) ([]CountByLevelRow, error)
+	// Count total log groups
+	CountLogGroups(ctx context.Context) (int64, error)
+	// Count log groups filtered by level
+	CountLogGroupsByLevel(ctx context.Context, lower string) (int64, error)
 	// Count total logs in a group
 	CountLogsByGroupID(ctx context.Context, groupID sql.NullInt64) (int64, error)
 	CountUsers(ctx context.Context) (int64, error)
@@ -70,7 +74,7 @@ type Querier interface {
 	ListAppCollectors(ctx context.Context) ([]AppCollector, error)
 	ListEnabledNotifiers(ctx context.Context) ([]Notifier, error)
 	// List all log groups with their counts and latest timestamp
-	ListLogGroups(ctx context.Context, limit int64) ([]ListLogGroupsRow, error)
+	ListLogGroups(ctx context.Context, arg ListLogGroupsParams) ([]ListLogGroupsRow, error)
 	// List log groups filtered by level with counts
 	ListLogGroupsByLevel(ctx context.Context, arg ListLogGroupsByLevelParams) ([]ListLogGroupsByLevelRow, error)
 	ListLogsByLevel(ctx context.Context, arg ListLogsByLevelParams) ([]Log, error)
