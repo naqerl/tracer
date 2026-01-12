@@ -5,6 +5,7 @@ package analytics
 import (
 	"database/sql"
 	"embed"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"time"
@@ -50,7 +51,6 @@ func InitMux(dbManager *dbmanager.Manager, authService *auth.Service, tracker *c
 	m.HandleFunc("GET /{collector}/apps", h.collectorApps)
 	m.HandleFunc("GET /{collector}/apps/data", h.collectorAppsData)
 	m.HandleFunc("GET /{collector}/apps/{app}", h.appAnalytics)
-	m.HandleFunc("GET /{collector}/apps/{app}/summary", h.appAnalyticsSummary)
 	m.HandleFunc("GET /{collector}/apps/{app}/logs", h.appLogs)
 
 	return m
@@ -381,7 +381,10 @@ func (h *handler) appAnalytics(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	grouped, err := queries.ListLogGroups(r.Context(), 20)
+	grouped, err := queries.ListLogGroups(r.Context(), db.ListLogGroupsParams{
+		Limit:  20,
+		Offset: 0,
+	})
 	if err != nil {
 		h.t.RenderError(w, r, "Error", "Failed to fetch grouped logs", http.StatusInternalServerError)
 		return
@@ -394,48 +397,6 @@ func (h *handler) appAnalytics(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.t.RenderHTTP(w, r, "app-logs", data)
-}
-
-// appAnalyticsSummary returns just the stats summary for the app analytics page
-func (h *handler) appAnalyticsSummary(w http.ResponseWriter, r *http.Request) {
-	user := middleware.GetUser(r)
-	if user == nil {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return
-	}
-
-	appName := r.PathValue("app")
-
-	// Check app access
-	hasAccess, err := h.authService.UserHasAppAccess(r.Context(), user.ID, appName)
-	if err != nil {
-		http.Error(w, "Failed to check access", http.StatusInternalServerError)
-		return
-	}
-	if !hasAccess {
-		http.Error(w, "Forbidden", http.StatusForbidden)
-		return
-	}
-
-	queries, err := h.dbManager.GetQueries(appName)
-	if err != nil {
-		http.Error(w, "App not found", http.StatusNotFound)
-		return
-	}
-
-	// Fetch stats (counts by level)
-	since := sql.NullTime{Time: time.Now().Add(-24 * time.Hour), Valid: true}
-	stats, err := queries.GetPercentiles(r.Context(), since)
-	if err != nil {
-		http.Error(w, "Failed to get stats", http.StatusInternalServerError)
-		return
-	}
-
-	data := map[string]any{
-		"Stats": stats,
-	}
-
-	h.t.RenderHTTP(w, r, "app-summary", data)
 }
 
 // Helper types and functions
@@ -628,6 +589,15 @@ func (h *handler) appLogs(w http.ResponseWriter, r *http.Request) {
 	}
 
 	groupIDParam := r.URL.Query().Get("groupID")
+	offsetParam := r.URL.Query().Get("offset")
+
+	offset := int64(0)
+	if offsetParam != "" {
+		if parsedOffset, err := strconv.ParseInt(offsetParam, 10, 64); err == nil {
+			offset = parsedOffset
+		}
+	}
+
 	nav := templates.NewNavBuilder().
 		Add("analytics", "analytics").
 		Add(collectorName, collectorName).
@@ -651,15 +621,23 @@ func (h *handler) appLogs(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// Get logs for this group
-		limit := int64(100)
+		// Get logs for this group with pagination
+		limit := int64(50)
 		logs, err := queries.GetLogsByGroupID(r.Context(), db.GetLogsByGroupIDParams{
 			GroupID: sql.NullInt64{Int64: groupID, Valid: true},
 			Limit:   limit,
+			Offset:  offset,
 		})
 		if err != nil {
 			h.t.RenderError(w, r, "Error", "Failed to fetch logs", http.StatusInternalServerError)
 			return
+		}
+
+		// Get total count
+		totalCount, err := queries.CountLogsByGroupID(r.Context(), sql.NullInt64{Int64: groupID, Valid: true})
+		if err != nil {
+			slog.Error("Failed to count logs", "error", err)
+			totalCount = 0
 		}
 
 		data := map[string]any{
@@ -671,6 +649,10 @@ func (h *handler) appLogs(w http.ResponseWriter, r *http.Request) {
 			"User":          user,
 			"IsAdmin":       user.IsAdmin == 1,
 			"Nav":           nav,
+			"Offset":        offset,
+			"Limit":         limit,
+			"HasMore":       offset+int64(len(logs)) < totalCount,
+			"NextOffset":    offset + limit,
 		}
 
 		if middleware.IsMarkdownFormat(r) {
@@ -687,18 +669,64 @@ func (h *handler) appLogs(w http.ResponseWriter, r *http.Request) {
 	level := r.URL.Query().Get("level")
 	limit := int64(50)
 
+	// Fetch counts for each level
+	totalCount, err := queries.CountLogGroups(r.Context())
+	if err != nil {
+		slog.Error("Failed to count log groups", "error", err)
+		totalCount = 0
+	}
+
+	errorCount, err := queries.CountLogGroupsByLevel(r.Context(), "error")
+	if err != nil {
+		slog.Error("Failed to count error groups", "error", err)
+		errorCount = 0
+	}
+
+	warnCount, err := queries.CountLogGroupsByLevel(r.Context(), "warn")
+	if err != nil {
+		slog.Error("Failed to count warn groups", "error", err)
+		warnCount = 0
+	}
+
+	infoCount, err := queries.CountLogGroupsByLevel(r.Context(), "info")
+	if err != nil {
+		slog.Error("Failed to count info groups", "error", err)
+		infoCount = 0
+	}
+
 	var groups any
 	if level != "" {
 		groups, err = queries.ListLogGroupsByLevel(r.Context(), db.ListLogGroupsByLevelParams{
-			LOWER: level,
-			Limit: limit,
+			LOWER:  level,
+			Limit:  limit,
+			Offset: offset,
 		})
 	} else {
-		groups, err = queries.ListLogGroups(r.Context(), limit)
+		groups, err = queries.ListLogGroups(r.Context(), db.ListLogGroupsParams{
+			Limit:  limit,
+			Offset: offset,
+		})
 	}
 	if err != nil {
 		h.t.RenderError(w, r, "Error", "Failed to fetch log groups", http.StatusInternalServerError)
 		return
+	}
+
+	// Determine current count for HasMore calculation
+	var currentCount int64
+	if level != "" {
+		switch level {
+		case "error":
+			currentCount = errorCount
+		case "warn":
+			currentCount = warnCount
+		case "info":
+			currentCount = infoCount
+		default:
+			currentCount = totalCount
+		}
+	} else {
+		currentCount = totalCount
 	}
 
 	data := map[string]any{
@@ -710,6 +738,14 @@ func (h *handler) appLogs(w http.ResponseWriter, r *http.Request) {
 		"User":          user,
 		"IsAdmin":       user.IsAdmin == 1,
 		"Nav":           nav,
+		"TotalCount":    totalCount,
+		"ErrorCount":    errorCount,
+		"WarnCount":     warnCount,
+		"InfoCount":     infoCount,
+		"Offset":        offset,
+		"Limit":         limit,
+		"HasMore":       offset+limit < currentCount,
+		"NextOffset":    offset + limit,
 	}
 
 	if middleware.IsMarkdownFormat(r) {
