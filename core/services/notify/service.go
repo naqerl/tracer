@@ -15,13 +15,16 @@ const (
 	allAppsKey  = "*" // Special key meaning "all apps"
 )
 
+// AppName is a type alias for application names used in the notifier map
+type AppName string
+
 // Service manages notifications and dispatches them to appropriate notifiers
 type Service struct {
 	ch        chan Notification
 	semaphore chan struct{}
 
 	mu           sync.RWMutex
-	appNotifiers map[string][]Notifier // app name -> notifiers (use "*" for all apps)
+	appNotifiers map[AppName][]Notifier // app name -> notifiers (use "*" for all apps)
 }
 
 // AddNotifierRequest contains data for creating a new notifier
@@ -34,10 +37,9 @@ type AddNotifierRequest struct {
 	InitialApps []string
 }
 
-// TODO: I don't like it's name
-// AuthService provides access to auth/DB operations
-// This interface prevents circular dependencies
-type AuthService interface {
+// NotifierRepository provides access to notifier database operations
+// This interface prevents circular dependencies with the auth package
+type NotifierRepository interface {
 	CreateNotifier(ctx context.Context, userID int64, name, notifierType, config string, enabled bool) (NotifierData, error)
 	GetNotifier(ctx context.Context, id int64) (NotifierData, error)
 	SetNotifierApps(ctx context.Context, notifierID int64, apps []string) error
@@ -59,8 +61,7 @@ func New() *Service {
 	return &Service{
 		ch:           make(chan Notification, channelSize),
 		semaphore:    make(chan struct{}, maxWorkers),
-		// TODO: Use type alias for map key
-		appNotifiers: make(map[string][]Notifier),
+		appNotifiers: make(map[AppName][]Notifier),
 	}
 }
 
@@ -74,7 +75,8 @@ func (s *Service) Chan() NotificationChan {
 func (s *Service) RegisterNotifier(appName string, notifier Notifier) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.appNotifiers[appName] = append(s.appNotifiers[appName], notifier)
+	key := AppName(appName)
+	s.appNotifiers[key] = append(s.appNotifiers[key], notifier)
 	slog.Info("Notifier registered", "type", notifier.Type(), "name", notifier.Name(), "app", appName)
 }
 
@@ -83,10 +85,11 @@ func (s *Service) UnregisterNotifier(appName, notifierName string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	notifiers := s.appNotifiers[appName]
+	key := AppName(appName)
+	notifiers := s.appNotifiers[key]
 	for i, n := range notifiers {
 		if n.Name() == notifierName {
-			s.appNotifiers[appName] = append(notifiers[:i], notifiers[i+1:]...)
+			s.appNotifiers[key] = append(notifiers[:i], notifiers[i+1:]...)
 			slog.Info("Notifier unregistered", "name", notifierName, "app", appName)
 			return
 		}
@@ -97,7 +100,7 @@ func (s *Service) UnregisterNotifier(appName, notifierName string) {
 func (s *Service) ClearNotifiers(appName string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	delete(s.appNotifiers, appName)
+	delete(s.appNotifiers, AppName(appName))
 }
 
 // getNotifiersForApp returns all notifiers that should receive notifications for an app
@@ -108,12 +111,12 @@ func (s *Service) getNotifiersForApp(appName string) []Notifier {
 	var result []Notifier
 
 	// Add app-specific notifiers
-	if notifiers, ok := s.appNotifiers[appName]; ok {
+	if notifiers, ok := s.appNotifiers[AppName(appName)]; ok {
 		result = append(result, notifiers...)
 	}
 
 	// Add global notifiers (registered for all apps)
-	if notifiers, ok := s.appNotifiers[allAppsKey]; ok {
+	if notifiers, ok := s.appNotifiers[AppName(allAppsKey)]; ok {
 		result = append(result, notifiers...)
 	}
 
@@ -159,7 +162,7 @@ func (s *Service) dispatch(n Notification, notifiers []Notifier) {
 
 // AddNotifier creates a notifier, saves to DB, sends welcome notification, and registers it
 // This is the entry point for creating new notifiers from the UI
-func (s *Service) AddNotifier(ctx context.Context, req AddNotifierRequest, authService AuthService) error {
+func (s *Service) AddNotifier(ctx context.Context, req AddNotifierRequest, authService NotifierRepository) error {
 	// 1. Create config JSON based on type
 	var configJSON string
 	switch req.Type {
@@ -224,7 +227,7 @@ func (s *Service) AddNotifier(ctx context.Context, req AddNotifierRequest, authS
 }
 
 // UpdateNotifierApps updates apps for a notifier, sends subscription notifications for new apps
-func (s *Service) UpdateNotifierApps(ctx context.Context, notifierID int64, userID int64, newApps []string, authService AuthService) error {
+func (s *Service) UpdateNotifierApps(ctx context.Context, notifierID int64, userID int64, newApps []string, authService NotifierRepository) error {
 	// 1. Get current apps
 	currentApps, err := authService.GetNotifierApps(ctx, notifierID)
 	if err != nil {
