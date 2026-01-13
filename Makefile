@@ -1,4 +1,4 @@
-include .env
+-include .env
 export
 
 .PHONY: build build-collector build-panel build-release clean test vet sqlc generate test-endpoints
