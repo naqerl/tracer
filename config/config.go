@@ -67,9 +67,6 @@ func (c *Collector) validate() error {
 	if c.PanelEndpoint == "" {
 		return fmt.Errorf("panel_endpoint is required")
 	}
-	if len(c.Apps) == 0 {
-		return fmt.Errorf("at least one apps entry is required")
-	}
 
 	for i, app := range c.Apps {
 		if app.Name == "" {
