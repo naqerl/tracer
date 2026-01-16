@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
-	"time"
 )
 
 const (
@@ -15,16 +14,19 @@ const (
 	allAppsKey  = "*" // Special key meaning "all apps"
 )
 
-// AppName is a type alias for application names used in the notifier map
-type AppName string
+// CollectorApp represents a collector-app pair for subscription routing
+type CollectorApp struct {
+	CollectorName string
+	AppName       string
+}
 
 // Service manages notifications and dispatches them to appropriate notifiers
 type Service struct {
 	ch        chan Notification
 	semaphore chan struct{}
 
-	mu           sync.RWMutex
-	appNotifiers map[AppName][]Notifier // app name -> notifiers (use "*" for all apps)
+	mu            sync.RWMutex
+	subscriptions map[CollectorApp][]Notifier // (collector, app) -> notifiers
 }
 
 // AddNotifierRequest contains data for creating a new notifier
@@ -37,13 +39,19 @@ type AddNotifierRequest struct {
 	InitialApps []string
 }
 
+// NotifierAppSubscription represents a subscription to a specific collector-app pair
+type NotifierAppSubscription struct {
+	AppName       string
+	CollectorName string
+}
+
 // NotifierRepository provides access to notifier database operations
 // This interface prevents circular dependencies with the auth package
 type NotifierRepository interface {
 	CreateNotifier(ctx context.Context, userID int64, name, notifierType, config string, enabled bool) (NotifierData, error)
 	GetNotifier(ctx context.Context, id int64) (NotifierData, error)
-	SetNotifierApps(ctx context.Context, notifierID int64, apps []string) error
-	GetNotifierApps(ctx context.Context, notifierID int64) ([]string, error)
+	SetNotifierApps(ctx context.Context, notifierID int64, subscriptions []NotifierAppSubscription) error
+	GetNotifierApps(ctx context.Context, notifierID int64) ([]NotifierAppSubscription, error)
 }
 
 // NotifierData represents a notifier from the database
@@ -59,9 +67,9 @@ type NotifierData struct {
 // New creates a new notification service
 func New() *Service {
 	return &Service{
-		ch:           make(chan Notification, channelSize),
-		semaphore:    make(chan struct{}, maxWorkers),
-		appNotifiers: make(map[AppName][]Notifier),
+		ch:            make(chan Notification, channelSize),
+		semaphore:     make(chan struct{}, maxWorkers),
+		subscriptions: make(map[CollectorApp][]Notifier),
 	}
 }
 
@@ -70,53 +78,73 @@ func (s *Service) Chan() NotificationChan {
 	return s.ch
 }
 
-// RegisterNotifier registers a notifier for specific apps
-// Use "*" as appName to register for all apps
-func (s *Service) RegisterNotifier(appName string, notifier Notifier) {
+// RegisterNotifier registers a notifier for specific collector-app combination
+// Use "*" as appName to register for all apps from a collector
+// Use "*" as collectorName to register for an app from all collectors
+// Use "*" for both to register for all apps from all collectors
+func (s *Service) RegisterNotifier(collectorName, appName string, notifier Notifier) {
+	if collectorName == "" || appName == "" {
+		slog.Error("Cannot register notifier with empty collector or app name", "collector", collectorName, "app", appName, "notifier", notifier.Name())
+		return
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	key := AppName(appName)
-	s.appNotifiers[key] = append(s.appNotifiers[key], notifier)
-	slog.Info("Notifier registered", "type", notifier.Type(), "name", notifier.Name(), "app", appName)
+	key := CollectorApp{CollectorName: collectorName, AppName: appName}
+	s.subscriptions[key] = append(s.subscriptions[key], notifier)
+	slog.Info("Notifier registered", "type", notifier.Type(), "name", notifier.Name(), "collector", collectorName, "app", appName)
 }
 
-// UnregisterNotifier removes a notifier by name for an app
-func (s *Service) UnregisterNotifier(appName, notifierName string) {
+// UnregisterNotifier removes a notifier by name for a collector-app pair
+func (s *Service) UnregisterNotifier(collectorName, appName, notifierName string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	key := AppName(appName)
-	notifiers := s.appNotifiers[key]
+	key := CollectorApp{CollectorName: collectorName, AppName: appName}
+	notifiers := s.subscriptions[key]
 	for i, n := range notifiers {
 		if n.Name() == notifierName {
-			s.appNotifiers[key] = append(notifiers[:i], notifiers[i+1:]...)
-			slog.Info("Notifier unregistered", "name", notifierName, "app", appName)
+			s.subscriptions[key] = append(notifiers[:i], notifiers[i+1:]...)
+			slog.Info("Notifier unregistered", "name", notifierName, "collector", collectorName, "app", appName)
 			return
 		}
 	}
 }
 
-// ClearNotifiers removes all notifiers for an app
-func (s *Service) ClearNotifiers(appName string) {
+// ClearNotifiers removes all notifiers for a collector-app pair
+func (s *Service) ClearNotifiers(collectorName, appName string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	delete(s.appNotifiers, AppName(appName))
+	delete(s.subscriptions, CollectorApp{CollectorName: collectorName, AppName: appName})
 }
 
-// getNotifiersForApp returns all notifiers that should receive notifications for an app
-func (s *Service) getNotifiersForApp(appName string) []Notifier {
+// getNotifiersForApp returns all notifiers that should receive notifications for a collector-app pair
+func (s *Service) getNotifiersForApp(collectorName, appName string) []Notifier {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	var result []Notifier
 
-	// Add app-specific notifiers
-	if notifiers, ok := s.appNotifiers[AppName(appName)]; ok {
+	// 1. Exact match: collector + app
+	key := CollectorApp{CollectorName: collectorName, AppName: appName}
+	if notifiers, ok := s.subscriptions[key]; ok {
 		result = append(result, notifiers...)
 	}
 
-	// Add global notifiers (registered for all apps)
-	if notifiers, ok := s.appNotifiers[AppName(allAppsKey)]; ok {
+	// 2. Any collector for this app (collector = "*")
+	keyAnyCollector := CollectorApp{CollectorName: allAppsKey, AppName: appName}
+	if notifiers, ok := s.subscriptions[keyAnyCollector]; ok {
+		result = append(result, notifiers...)
+	}
+
+	// 3. All apps from this specific collector (app = "*", collector = specific)
+	keyCollectorWildcard := CollectorApp{CollectorName: collectorName, AppName: allAppsKey}
+	if notifiers, ok := s.subscriptions[keyCollectorWildcard]; ok {
+		result = append(result, notifiers...)
+	}
+
+	// 4. All apps from any collector (app = "*", collector = "*")
+	keyGlobalWildcard := CollectorApp{CollectorName: allAppsKey, AppName: allAppsKey}
+	if notifiers, ok := s.subscriptions[keyGlobalWildcard]; ok {
 		result = append(result, notifiers...)
 	}
 
@@ -133,7 +161,7 @@ func (s *Service) Start(ctx context.Context) {
 			slog.Info("Notification service stopping")
 			return
 		case notification := <-s.ch:
-			notifiers := s.getNotifiersForApp(notification.AppName)
+			notifiers := s.getNotifiersForApp(notification.CollectorName, notification.AppName)
 			if len(notifiers) == 0 {
 				continue
 			}
@@ -148,8 +176,34 @@ func (s *Service) Start(ctx context.Context) {
 }
 
 func (s *Service) dispatch(n Notification, notifiers []Notifier) {
+	// Map notification type to emoji prefix
+	var prefix string
+	switch n.Type {
+	case TypeAlert:
+		prefix = "⚠️ alert"
+	case TypeStartup:
+		prefix = "🚀 startup"
+	case TypeWelcome:
+		prefix = "👋 welcome"
+	case TypeSubscription:
+		prefix = "🔔 subscription"
+	default:
+		prefix = string(n.Type)
+	}
+
+	// Build final formatted message: {prefix} @{app}\n{message}
+	formattedMessage := fmt.Sprintf("%s @%s\n%s", prefix, n.AppName, n.Message)
+
+	// Create notification with formatted message for sending
+	finalNotification := Notification{
+		Type:          n.Type,
+		CollectorName: n.CollectorName,
+		AppName:       n.AppName,
+		Message:       formattedMessage,
+	}
+
 	for _, notifier := range notifiers {
-		if err := notifier.Notify(n); err != nil {
+		if err := notifier.Notify(finalNotification); err != nil {
 			slog.Error("Failed to send notification",
 				"notifier_type", notifier.Type(),
 				"notifier_name", notifier.Name(),
@@ -197,11 +251,10 @@ func (s *Service) AddNotifier(ctx context.Context, req AddNotifierRequest, authS
 
 	// 4. Send welcome notification
 	welcomeNotif := Notification{
-		Type:      TypeNotice,
-		Level:     "👋 welcome",
-		AppName:   "tracer",
-		Message:   "Cheers, love! The cavalry's here!",
-		Timestamp: time.Now(),
+		Type:          TypeWelcome,
+		CollectorName: "",
+		AppName:       "tracer",
+		Message:       "Cheers, love! The cavalry's here!",
 	}
 
 	if err := instance.Notify(welcomeNotif); err != nil {
@@ -211,14 +264,24 @@ func (s *Service) AddNotifier(ctx context.Context, req AddNotifierRequest, authS
 		slog.Info("Sent welcome notification", "notifier", req.Name)
 	}
 
-	// 5. Register notifier for apps
+	// 5. Register notifier for apps (if any)
+	// InitialApps is usually empty - users configure subscriptions later via UpdateNotifierApps
 	if len(req.InitialApps) > 0 {
-		if err := authService.SetNotifierApps(ctx, notifier.ID, req.InitialApps); err != nil {
+		// Convert string apps to subscriptions with wildcard collector (any collector)
+		var subscriptions []NotifierAppSubscription
+		for _, app := range req.InitialApps {
+			subscriptions = append(subscriptions, NotifierAppSubscription{
+				CollectorName: "*",
+				AppName:       app,
+			})
+		}
+
+		if err := authService.SetNotifierApps(ctx, notifier.ID, subscriptions); err != nil {
 			return fmt.Errorf("set notifier apps: %w", err)
 		}
 
-		for _, app := range req.InitialApps {
-			s.RegisterNotifier(app, instance)
+		for _, sub := range subscriptions {
+			s.RegisterNotifier(sub.CollectorName, sub.AppName, instance)
 		}
 	}
 
@@ -227,30 +290,32 @@ func (s *Service) AddNotifier(ctx context.Context, req AddNotifierRequest, authS
 }
 
 // UpdateNotifierApps updates apps for a notifier, sends subscription notifications for new apps
-func (s *Service) UpdateNotifierApps(ctx context.Context, notifierID int64, userID int64, newApps []string, authService NotifierRepository) error {
-	// 1. Get current apps
-	currentApps, err := authService.GetNotifierApps(ctx, notifierID)
+func (s *Service) UpdateNotifierApps(ctx context.Context, notifierID int64, userID int64, newSubscriptions []NotifierAppSubscription, authService NotifierRepository) error {
+	// 1. Get current subscriptions
+	currentSubscriptions, err := authService.GetNotifierApps(ctx, notifierID)
 	if err != nil {
-		return fmt.Errorf("get current apps: %w", err)
+		return fmt.Errorf("get current subscriptions: %w", err)
 	}
 
-	// 2. Build map for comparison
-	currentAppMap := make(map[string]bool)
-	for _, app := range currentApps {
-		currentAppMap[app] = true
+	// 2. Build map for comparison (key: "collector:app")
+	currentSubMap := make(map[string]bool)
+	for _, sub := range currentSubscriptions {
+		key := sub.CollectorName + ":" + sub.AppName
+		currentSubMap[key] = true
 	}
 
-	// 3. Identify newly added apps
-	var newlyAddedApps []string
-	for _, app := range newApps {
-		if !currentAppMap[app] {
-			newlyAddedApps = append(newlyAddedApps, app)
+	// 3. Identify newly added subscriptions
+	var newlyAdded []NotifierAppSubscription
+	for _, sub := range newSubscriptions {
+		key := sub.CollectorName + ":" + sub.AppName
+		if !currentSubMap[key] {
+			newlyAdded = append(newlyAdded, sub)
 		}
 	}
 
 	// 4. Update database
-	if err := authService.SetNotifierApps(ctx, notifierID, newApps); err != nil {
-		return fmt.Errorf("update notifier apps: %w", err)
+	if err := authService.SetNotifierApps(ctx, notifierID, newSubscriptions); err != nil {
+		return fmt.Errorf("update notifier subscriptions: %w", err)
 	}
 
 	// 5. Get notifier and create instance
@@ -269,37 +334,40 @@ func (s *Service) UpdateNotifierApps(ctx context.Context, notifierID int64, user
 		return fmt.Errorf("create notifier instance: %w", err)
 	}
 
-	// 6. Send subscription notifications for newly added apps
-	for _, app := range newlyAddedApps {
+	// 6. Send subscription notifications for newly added subscriptions
+	for _, sub := range newlyAdded {
 		var message string
 
-		if app == "*" {
-			message = "Subscribed to notifications from **all applications**"
+		if sub.CollectorName == "*" && sub.AppName == "*" {
+			message = "Subscribed to notifications from **all applications** on **all collectors**"
+		} else if sub.AppName == "*" {
+			message = fmt.Sprintf("Subscribed to notifications from **all applications** on collector **%s**", sub.CollectorName)
+		} else if sub.CollectorName == "*" {
+			message = fmt.Sprintf("Subscribed to notifications from **%s** on **any collector**", sub.AppName)
 		} else {
-			message = fmt.Sprintf("Subscribed to notifications from **%s**", app)
+			message = fmt.Sprintf("Subscribed to notifications from **%s** on collector **%s**", sub.AppName, sub.CollectorName)
 		}
 
 		subscriptionNotif := Notification{
-			Type:      TypeNotice,
-			Level:     "🔔 subscription",
-			AppName:   app,
-			Message:   message,
-			Timestamp: time.Now(),
+			Type:          TypeSubscription,
+			CollectorName: sub.CollectorName,
+			AppName:       sub.AppName,
+			Message:       message,
 		}
 
 		if err := instance.Notify(subscriptionNotif); err != nil {
-			slog.Error("Failed to send subscription notification", "app", app, "error", err)
+			slog.Error("Failed to send subscription notification", "collector", sub.CollectorName, "app", sub.AppName, "error", err)
 		} else {
-			slog.Info("Sent subscription notification", "notifier", notifier.Name, "app", app)
+			slog.Info("Sent subscription notification", "notifier", notifier.Name, "collector", sub.CollectorName, "app", sub.AppName)
 		}
 	}
 
 	// 7. Clear old registrations
 	s.clearNotifier(notifier.Name)
 
-	// 8. Re-register for new apps
-	for _, app := range newApps {
-		s.RegisterNotifier(app, instance)
+	// 8. Re-register for new subscriptions
+	for _, sub := range newSubscriptions {
+		s.RegisterNotifier(sub.CollectorName, sub.AppName, instance)
 	}
 
 	return nil
@@ -327,7 +395,7 @@ func (s *Service) clearNotifier(notifierName string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	for appName, notifiers := range s.appNotifiers {
+	for key, notifiers := range s.subscriptions {
 		var filtered []Notifier
 		for _, n := range notifiers {
 			if n.Name() != notifierName {
@@ -335,9 +403,9 @@ func (s *Service) clearNotifier(notifierName string) {
 			}
 		}
 		if len(filtered) > 0 {
-			s.appNotifiers[appName] = filtered
+			s.subscriptions[key] = filtered
 		} else {
-			delete(s.appNotifiers, appName)
+			delete(s.subscriptions, key)
 		}
 	}
 }

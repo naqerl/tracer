@@ -1,25 +1,21 @@
 package notify
 
-import "time"
-
 // NotificationType represents the type/severity of notification
 type NotificationType string
 
 const (
-	TypeAlert  NotificationType = "alert"  // Error alerts requiring attention
-	TypeNotice NotificationType = "notice" // Informational notices
+	TypeAlert        NotificationType = "alert"        // Error alerts requiring attention
+	TypeStartup      NotificationType = "startup"      // App startup notifications
+	TypeWelcome      NotificationType = "welcome"      // Welcome message for new notifiers
+	TypeSubscription NotificationType = "subscription" // Subscription confirmation
 )
 
 // Notification represents a notification to be sent
 type Notification struct {
-	Type      NotificationType
-	AppName   string // Which app this notification is from
-	TraceID   string
-	Level     string
-	Message   string
-	Source    string
-	Timestamp time.Time
-	PanelURL  string // Base URL of the panel for generating links
+	Type          NotificationType
+	CollectorName string
+	AppName       string
+	Message       string
 }
 
 // NotificationChan is a channel for sending notifications
