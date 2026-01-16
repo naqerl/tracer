@@ -37,11 +37,9 @@ func (t *TelegramNotifier) Name() string {
 }
 
 func (t *TelegramNotifier) Notify(n Notification) error {
-	// Simple format: {level} @{app}\n{text}
-	text := fmt.Sprintf("%s @%s\n%s", n.Level, n.AppName, n.Message)
-
-	// Convert standard markdown to Telegram MarkdownV2 format
-	telegramText := tgmd.Telegramify(text)
+	// Message is already fully formatted by service.dispatch()
+	// Just convert to Telegram MarkdownV2 format and send
+	telegramText := tgmd.Telegramify(n.Message)
 
 	msg := tgbotapi.NewMessage(t.chatID, telegramText)
 	msg.ParseMode = "MarkdownV2"
