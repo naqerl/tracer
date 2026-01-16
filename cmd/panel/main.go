@@ -201,14 +201,14 @@ func loadNotifiers(ctx context.Context, authService *auth.Service, notifyService
 			continue
 		}
 
-		apps, err := authService.GetNotifierApps(ctx, notifier.ID)
+		subscriptions, err := authService.GetNotifierApps(ctx, notifier.ID)
 		if err != nil {
-			slog.Error("Failed to get notifier apps", "notifier_id", notifier.ID, "error", err)
+			slog.Error("Failed to get notifier subscriptions", "notifier_id", notifier.ID, "error", err)
 			continue
 		}
 
-		if len(apps) == 0 {
-			continue // No apps configured, skip
+		if len(subscriptions) == 0 {
+			continue // No subscriptions configured, skip
 		}
 
 		// Get the owner user to check if they're admin
@@ -218,7 +218,7 @@ func loadNotifiers(ctx context.Context, authService *auth.Service, notifyService
 			continue
 		}
 
-		// For non-admin users, filter apps to only those they have access to
+		// For non-admin users, filter subscriptions to only apps they have access to
 		if owner.IsAdmin != 1 {
 			userApps, err := authService.GetUserApps(ctx, owner.ID)
 			if err != nil {
@@ -229,21 +229,21 @@ func loadNotifiers(ctx context.Context, authService *auth.Service, notifyService
 			for _, app := range userApps {
 				userAppMap[app] = true
 			}
-			var filtered []string
-			for _, app := range apps {
-				if app == "*" {
+			var filtered []notify.NotifierAppSubscription
+			for _, sub := range subscriptions {
+				if sub.AppName == "*" {
 					// Non-admins can't use wildcard
 					continue
 				}
-				if userAppMap[app] {
-					filtered = append(filtered, app)
+				if userAppMap[sub.AppName] {
+					filtered = append(filtered, sub)
 				}
 			}
-			apps = filtered
+			subscriptions = filtered
 		}
 
-		if len(apps) == 0 {
-			continue // No accessible apps after filtering
+		if len(subscriptions) == 0 {
+			continue // No accessible subscriptions after filtering
 		}
 
 		var n notify.Notifier
@@ -265,12 +265,12 @@ func loadNotifiers(ctx context.Context, authService *auth.Service, notifyService
 			continue
 		}
 
-		// Register for each app
-		for _, app := range apps {
-			notifyService.RegisterNotifier(app, n)
+		// Register for each subscription
+		for _, sub := range subscriptions {
+			notifyService.RegisterNotifier(sub.CollectorName, sub.AppName, n)
 		}
 
-		slog.Info("Loaded notifier", "name", notifier.Name, "type", notifier.Type, "apps", apps, "owner", owner.Username)
+		slog.Info("Loaded notifier", "name", notifier.Name, "type", notifier.Type, "subscriptions", len(subscriptions), "owner", owner.Username)
 	}
 
 	return nil
