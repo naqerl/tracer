@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/ai-shift/tracer/core/services/auth"
 	"github.com/ai-shift/tracer/core/services/dbmanager"
@@ -522,9 +523,9 @@ func (h *handler) getNotifier(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	apps, err := h.authService.GetNotifierApps(r.Context(), id)
+	subscriptions, err := h.authService.GetNotifierApps(r.Context(), id)
 	if err != nil {
-		h.t.RenderError(w, r, "Error", "Failed to get notifier apps", http.StatusInternalServerError)
+		h.t.RenderError(w, r, "Error", "Failed to get notifier subscriptions", http.StatusInternalServerError)
 		return
 	}
 
@@ -535,17 +536,19 @@ func (h *handler) getNotifier(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	notifierAppMap := make(map[string]bool)
-	for _, app := range apps {
-		notifierAppMap[app] = true
+	// Build subscription map with "collector:app" keys for display
+	subscriptionMap := make(map[string]bool)
+	for _, sub := range subscriptions {
+		key := sub.CollectorName + ":" + sub.AppName
+		subscriptionMap[key] = true
 	}
 
 	data := map[string]any{
-		"Title":        "Edit Notifier - Tracer",
-		"Notifier":     notifier,
-		"NotifierApps": notifierAppMap,
-		"AllApps":      allApps,
-		"IsAdmin":      user.IsAdmin == 1,
+		"Title":         "Edit Notifier - Tracer",
+		"Notifier":      notifier,
+		"Subscriptions": subscriptionMap,
+		"AllApps":       allApps,
+		"IsAdmin":       user.IsAdmin == 1,
 	}
 
 	if htmx.IsAjax(r) {
@@ -721,31 +724,70 @@ func (h *handler) getNotifierApps(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	apps, err := h.authService.GetNotifierApps(r.Context(), id)
+	// Get subscriptions with collector info
+	subscriptions, err := h.authService.GetNotifierApps(r.Context(), id)
 	if err != nil {
-		h.t.RenderError(w, r, "Error", "Failed to get notifier apps", http.StatusInternalServerError)
+		h.t.RenderError(w, r, "Error", "Failed to get notifier subscriptions", http.StatusInternalServerError)
 		return
 	}
 
-	// Get available apps based on user access
-	allApps, err := h.getAvailableApps(r.Context(), user)
+	// Build subscription map with "collector:app" keys
+	subscriptionMap := make(map[string]bool)
+	for _, sub := range subscriptions {
+		key := sub.CollectorName + ":" + sub.AppName
+		subscriptionMap[key] = true
+	}
+
+	// Get app-collector mappings
+	appCollectors, err := h.authService.ListAppCollectors(r.Context())
 	if err != nil {
-		h.t.RenderError(w, r, "Error", "Failed to list apps", http.StatusInternalServerError)
+		slog.Error("Failed to get app collectors", "error", err)
+		h.t.RenderError(w, r, "Error", "Failed to list collectors", http.StatusInternalServerError)
 		return
 	}
 
-	notifierAppMap := make(map[string]bool)
-	for _, app := range apps {
-		notifierAppMap[app] = true
+	// Build structured data: map[collector][]app
+	collectorApps := make(map[string][]string)
+	for _, ac := range appCollectors {
+		collectorApps[ac.CollectorName] = append(collectorApps[ac.CollectorName], ac.AppName)
+	}
+
+	// Filter by user access for non-admins
+	if user.IsAdmin != 1 {
+		userApps, err := h.authService.GetUserApps(r.Context(), user.ID)
+		if err != nil {
+			h.t.RenderError(w, r, "Error", "Failed to get user apps", http.StatusInternalServerError)
+			return
+		}
+		userAppSet := make(map[string]bool)
+		for _, app := range userApps {
+			userAppSet[app] = true
+		}
+
+		// Filter collector apps to only show apps user has access to
+		filtered := make(map[string][]string)
+		for collector, apps := range collectorApps {
+			var allowedApps []string
+			for _, app := range apps {
+				if userAppSet[app] {
+					allowedApps = append(allowedApps, app)
+				}
+			}
+			if len(allowedApps) > 0 {
+				filtered[collector] = allowedApps
+			}
+		}
+		collectorApps = filtered
 	}
 
 	data := map[string]any{
-		"Title":        "Edit Notifier Apps - Tracer",
-		"Notifier":     notifier,
-		"NotifierApps": notifierAppMap,
-		"AllApps":      allApps,
-		"IsAdmin":      user.IsAdmin == 1,
-		"Nav":          templates.NewNavData("Configure Notifier Apps", "settings", user.Username),
+		"Title":         "Edit Notifier Apps - Tracer",
+		"Notifier":      notifier,
+		"NotifierID":    id,
+		"Subscriptions": subscriptionMap,   // map[string]bool (key: "collector:app")
+		"CollectorApps": collectorApps,     // map[string][]string
+		"IsAdmin":       user.IsAdmin == 1,
+		"Nav":           templates.NewNavData("Configure Notifier Apps", "settings", user.Username),
 	}
 
 	if htmx.IsAjax(r) {
@@ -786,37 +828,58 @@ func (h *handler) updateNotifierApps(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	selectedApps := r.Form["apps"]
+	// Parse form values: "collector:app" format
+	selectedPairs := r.Form["apps"]
 	allApps := r.FormValue("all_apps") == "on"
 
-	// Only admins can select "all apps"
+	var subscriptions []notify.NotifierAppSubscription
+
 	if allApps && user.IsAdmin == 1 {
-		selectedApps = []string{"*"}
-	} else if user.IsAdmin != 1 {
-		// Non-admins can only select from their allowed apps
-		userApps, err := h.authService.GetUserApps(r.Context(), user.ID)
-		if err != nil {
-			http.Error(w, "Failed to get user apps", http.StatusInternalServerError)
-			return
-		}
-		userAppMap := make(map[string]bool)
-		for _, app := range userApps {
-			userAppMap[app] = true
-		}
-		// Filter selected apps to only those the user has access to
-		var filteredApps []string
-		for _, app := range selectedApps {
-			if userAppMap[app] {
-				filteredApps = append(filteredApps, app)
+		// Global wildcard subscription (all apps from all collectors)
+		subscriptions = append(subscriptions, notify.NotifierAppSubscription{
+			AppName:       "*",
+			CollectorName: "*",
+		})
+	} else {
+		// Parse collector:app pairs
+		for _, pair := range selectedPairs {
+			parts := strings.Split(pair, ":")
+			if len(parts) != 2 {
+				continue // Skip invalid format
 			}
+			subscriptions = append(subscriptions, notify.NotifierAppSubscription{
+				CollectorName: parts[0],
+				AppName:       parts[1],
+			})
 		}
-		selectedApps = filteredApps
+
+		// For non-admins: filter to only apps they have access to
+		if user.IsAdmin != 1 {
+			userApps, err := h.authService.GetUserApps(r.Context(), user.ID)
+			if err != nil {
+				http.Error(w, "Failed to get user apps", http.StatusInternalServerError)
+				return
+			}
+			userAppSet := make(map[string]bool)
+			for _, app := range userApps {
+				userAppSet[app] = true
+			}
+
+			var filtered []notify.NotifierAppSubscription
+			for _, sub := range subscriptions {
+				// Allow wildcards or check app access
+				if sub.AppName == "*" || userAppSet[sub.AppName] {
+					filtered = append(filtered, sub)
+				}
+			}
+			subscriptions = filtered
+		}
 	}
 
-	// Update apps through service (handles DB, subscription notifications, re-registration)
-	if err := h.notifyService.UpdateNotifierApps(r.Context(), id, user.ID, selectedApps, h.authService); err != nil {
-		slog.Error("Failed to update notifier apps", "error", err)
-		http.Error(w, "Failed to update notifier apps", http.StatusInternalServerError)
+	// Update subscriptions through service (handles DB, subscription notifications, re-registration)
+	if err := h.notifyService.UpdateNotifierApps(r.Context(), id, user.ID, subscriptions, h.authService); err != nil {
+		slog.Error("Failed to update notifier subscriptions", "error", err)
+		http.Error(w, "Failed to update notifier subscriptions", http.StatusInternalServerError)
 		return
 	}
 
@@ -866,13 +929,13 @@ func (h *handler) registerNotifierWithUser(ctx context.Context, notifierID int64
 		return
 	}
 
-	apps, err := h.authService.GetNotifierApps(ctx, notifierID)
+	subscriptions, err := h.authService.GetNotifierApps(ctx, notifierID)
 	if err != nil {
-		slog.Error("Failed to get notifier apps", "error", err)
+		slog.Error("Failed to get notifier subscriptions", "error", err)
 		return
 	}
 
-	// For non-admins, filter apps to only those they have access to
+	// For non-admins, filter subscriptions to only apps they have access to
 	if user != nil && user.IsAdmin != 1 {
 		userApps, err := h.authService.GetUserApps(ctx, user.ID)
 		if err != nil {
@@ -883,20 +946,20 @@ func (h *handler) registerNotifierWithUser(ctx context.Context, notifierID int64
 		for _, app := range userApps {
 			userAppMap[app] = true
 		}
-		var filtered []string
-		for _, app := range apps {
-			if app == "*" {
+		var filtered []notify.NotifierAppSubscription
+		for _, sub := range subscriptions {
+			if sub.AppName == "*" {
 				// Non-admins can't use wildcard, skip
 				continue
 			}
-			if userAppMap[app] {
-				filtered = append(filtered, app)
+			if userAppMap[sub.AppName] {
+				filtered = append(filtered, sub)
 			}
 		}
-		apps = filtered
+		subscriptions = filtered
 	}
 
-	if len(apps) == 0 {
+	if len(subscriptions) == 0 {
 		return
 	}
 
@@ -919,8 +982,8 @@ func (h *handler) registerNotifierWithUser(ctx context.Context, notifierID int64
 		return
 	}
 
-	// Register for each app
-	for _, app := range apps {
-		h.notifyService.RegisterNotifier(app, n)
+	// Register for each subscription
+	for _, sub := range subscriptions {
+		h.notifyService.RegisterNotifier(sub.CollectorName, sub.AppName, n)
 	}
 }
