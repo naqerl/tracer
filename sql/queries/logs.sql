@@ -108,11 +108,31 @@ ORDER BY created_at DESC
 LIMIT ?;
 
 -- name: GetPercentiles :one
-SELECT 
+SELECT
     COUNT(*) as total,
     (SELECT COUNT(*) FROM logs l2 WHERE LOWER(l2.level) = 'error' AND l2.created_at >= ?1) as errors,
     (SELECT COUNT(*) FROM logs l3 WHERE LOWER(l3.level) = 'warn' AND l3.created_at >= ?1) as warnings,
     (SELECT COUNT(*) FROM logs l4 WHERE LOWER(l4.level) = 'info' AND l4.created_at >= ?1) as infos
 FROM logs l1
 WHERE l1.created_at >= ?1;
+
+-- name: GetLogVolumeTimeSeries :many
+-- Get log volume over time bucketed by intervals and grouped by level
+SELECT
+    CASE
+        WHEN sqlc.arg(granularity) = '1min' THEN strftime('%Y-%m-%d %H:%M:00', substr(created_at, 1, 19))
+        WHEN sqlc.arg(granularity) = '5min' THEN
+            strftime('%Y-%m-%d %H:', substr(created_at, 1, 19)) ||
+            printf('%02d', (CAST(strftime('%M', substr(created_at, 1, 19)) AS INTEGER) / 5) * 5) || ':00'
+        WHEN sqlc.arg(granularity) = '15min' THEN
+            strftime('%Y-%m-%d %H:', substr(created_at, 1, 19)) ||
+            printf('%02d', (CAST(strftime('%M', substr(created_at, 1, 19)) AS INTEGER) / 15) * 15) || ':00'
+        WHEN sqlc.arg(granularity) = '1hour' THEN strftime('%Y-%m-%d %H:00:00', substr(created_at, 1, 19))
+    END as time_bucket,
+    LOWER(level) as level,
+    COUNT(*) as count
+FROM logs
+WHERE created_at >= sqlc.arg(since)
+GROUP BY time_bucket, LOWER(level)
+ORDER BY time_bucket ASC, level;
 
