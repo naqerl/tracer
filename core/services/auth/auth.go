@@ -479,8 +479,25 @@ func (s *Service) DisableNotifier(ctx context.Context, id int64) error {
 
 // Notifier app mappings
 
-func (s *Service) GetNotifierApps(ctx context.Context, notifierID int64) ([]string, error) {
-	return s.queries.GetNotifierApps(ctx, notifierID)
+func (s *Service) GetNotifierApps(ctx context.Context, notifierID int64) ([]notify.NotifierAppSubscription, error) {
+	rows, err := s.db.QueryContext(ctx,
+		"SELECT app_name, collector_name FROM notifier_app WHERE notifier_id = ?",
+		notifierID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var subscriptions []notify.NotifierAppSubscription
+	for rows.Next() {
+		var sub notify.NotifierAppSubscription
+		if err := rows.Scan(&sub.AppName, &sub.CollectorName); err != nil {
+			return nil, err
+		}
+		subscriptions = append(subscriptions, sub)
+	}
+
+	return subscriptions, rows.Err()
 }
 
 func (s *Service) AddNotifierApp(ctx context.Context, notifierID int64, appName string) error {
@@ -497,16 +514,38 @@ func (s *Service) RemoveNotifierApp(ctx context.Context, notifierID int64, appNa
 	})
 }
 
-func (s *Service) SetNotifierApps(ctx context.Context, notifierID int64, apps []string) error {
-	if err := s.queries.RemoveAllNotifierApps(ctx, notifierID); err != nil {
-		return err
+func (s *Service) SetNotifierApps(ctx context.Context, notifierID int64, subscriptions []notify.NotifierAppSubscription) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin transaction: %w", err)
 	}
-	for _, app := range apps {
-		if err := s.AddNotifierApp(ctx, notifierID, app); err != nil {
-			return err
+	defer tx.Rollback()
+
+	// Delete existing subscriptions
+	_, err = tx.ExecContext(ctx, "DELETE FROM notifier_app WHERE notifier_id = ?", notifierID)
+	if err != nil {
+		return fmt.Errorf("delete old apps: %w", err)
+	}
+
+	// Insert new subscriptions with validation
+	for _, sub := range subscriptions {
+		// Validate: no empty strings allowed
+		if sub.AppName == "" {
+			return fmt.Errorf("app_name cannot be empty")
+		}
+		if sub.CollectorName == "" {
+			return fmt.Errorf("collector_name cannot be empty (use '*' for wildcard)")
+		}
+
+		_, err = tx.ExecContext(ctx,
+			"INSERT INTO notifier_app (notifier_id, app_name, collector_name) VALUES (?, ?, ?)",
+			notifierID, sub.AppName, sub.CollectorName)
+		if err != nil {
+			return fmt.Errorf("insert app: %w", err)
 		}
 	}
-	return nil
+
+	return tx.Commit()
 }
 
 func (s *Service) GetNotifiersForApp(ctx context.Context, appName string) ([]db.Notifier, error) {
