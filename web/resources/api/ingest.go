@@ -261,16 +261,22 @@ func (h *handler) processMessage(ctx context.Context, connID, remoteAddr string,
 
 	// Send notification for errors
 	if isError && h.notifyChan != nil {
+		// Build the alert message with markdown link
+		alertMessage := fmt.Sprintf("```%s```", msg.Entry.Message)
+		if h.panelURL != "" {
+			logsURL := fmt.Sprintf("%s/analytics/%s/apps/%s/logs",
+				h.panelURL,
+				msg.CollectorName,
+				msg.AppName)
+			alertMessage += fmt.Sprintf("\n\n[view logs](%s)", logsURL)
+		}
+
 		select {
 		case h.notifyChan <- notify.Notification{
-			Type:      notify.TypeAlert,
-			AppName:   msg.AppName,
-			TraceID:   msg.Entry.TraceID,
-			Level:     "⚠️ alert",
-			Message:   fmt.Sprintf("```%s```", msg.Entry.Message),
-			Source:    msg.Entry.Source,
-			Timestamp: ts,
-			PanelURL:  h.panelURL,
+			Type:          notify.TypeAlert,
+			CollectorName: msg.CollectorName,
+			AppName:       msg.AppName,
+			Message:       alertMessage,
 		}:
 		default:
 			slog.Warn("Notification channel full, dropping notification")
@@ -344,16 +350,22 @@ func (h *handler) handleStartup(ctx context.Context, msg LogMessage) {
 
 	// Send startup notification
 	if h.notifyChan != nil {
+		// Build the startup message with markdown link
+		startupMessage := msg.Entry.Message
+		if h.panelURL != "" {
+			logsURL := fmt.Sprintf("%s/analytics/%s/apps/%s/logs",
+				h.panelURL,
+				msg.CollectorName,
+				msg.AppName)
+			startupMessage += fmt.Sprintf("\n\n[view logs](%s)", logsURL)
+		}
+
 		select {
 		case h.notifyChan <- notify.Notification{
-			Type:      notify.TypeNotice,
-			AppName:   msg.AppName,
-			TraceID:   msg.Entry.TraceID,
-			Level:     "🚀 startup",
-			Message:   msg.Entry.Message,
-			Source:    msg.Entry.Source,
-			Timestamp: ts,
-			PanelURL:  h.panelURL,
+			Type:          notify.TypeStartup,
+			CollectorName: msg.CollectorName,
+			AppName:       msg.AppName,
+			Message:       startupMessage,
 		}:
 		default:
 			slog.Warn("Notification channel full, dropping startup notification")
