@@ -52,6 +52,7 @@ func InitMux(dbManager *dbmanager.Manager, authService *auth.Service, tracker *c
 	m.HandleFunc("GET /{collector}/apps/data", h.collectorAppsData)
 	m.HandleFunc("GET /{collector}/apps/{app}", h.appAnalytics)
 	m.HandleFunc("GET /{collector}/apps/{app}/logs", h.appLogs)
+	m.HandleFunc("GET /{collector}/apps/{app}/logs/chart-data", h.appLogsChartData)
 
 	return m
 }
@@ -757,6 +758,62 @@ func (h *handler) appLogs(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// appLogsChartData returns time-series data for log volume chart
+func (h *handler) appLogsChartData(w http.ResponseWriter, r *http.Request) {
+	user := middleware.GetUser(r)
+	if user == nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	collectorName := r.PathValue("collector")
+	appName := r.PathValue("app")
+
+	// Check app access
+	hasAccess, err := h.authService.UserHasAppAccess(r.Context(), user.ID, appName)
+	if err != nil {
+		http.Error(w, "Failed to check access", http.StatusInternalServerError)
+		return
+	}
+	if !hasAccess {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+
+	queries, err := h.dbManager.GetQueries(appName)
+	if err != nil {
+		http.Error(w, "App not found", http.StatusNotFound)
+		return
+	}
+
+	rangeParam := r.URL.Query().Get("range")
+	if rangeParam == "" {
+		rangeParam = "24h"
+	}
+
+	since := parseTimeRange(rangeParam)
+	granularity := getBucketGranularity(rangeParam)
+
+	// Get time-series data
+	timeSeriesData, err := queries.GetLogVolumeTimeSeries(r.Context(), db.GetLogVolumeTimeSeriesParams{
+		Since:       sql.NullTime{Time: since, Valid: true},
+		Granularity: granularity,
+	})
+	if err != nil {
+		http.Error(w, "Failed to fetch chart data", http.StatusInternalServerError)
+		return
+	}
+
+	data := map[string]any{
+		"AppName":       appName,
+		"CollectorName": collectorName,
+		"TimeSeries":    timeSeriesData,
+		"RangeParam":    rangeParam,
+	}
+
+	h.t.RenderHTTP(w, r, "app-logs-chart-data", data)
+}
+
 // parseTimeRange parses a time range string like "1h", "24h", "7d", "30d" and returns the time since
 func parseTimeRange(rangeParam string) time.Time {
 	if rangeParam == "" {
@@ -788,5 +845,21 @@ func parseTimeRange(rangeParam string) time.Time {
 		return time.Now().Add(-time.Duration(value) * 24 * time.Hour)
 	default:
 		return time.Now().Add(-24 * time.Hour)
+	}
+}
+
+// getBucketGranularity returns the bucket granularity parameter for the SQL query
+func getBucketGranularity(rangeParam string) string {
+	switch rangeParam {
+	case "1h":
+		return "1min"
+	case "6h", "24h":
+		return "5min"
+	case "7d":
+		return "15min"
+	case "30d":
+		return "1hour"
+	default:
+		return "5min" // default: 24h
 	}
 }
