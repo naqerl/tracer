@@ -51,6 +51,8 @@ type Querier interface {
 	GetLogByID(ctx context.Context, id int64) (Log, error)
 	// Lookup log group by ID
 	GetLogGroupByID(ctx context.Context, id int64) (LogGroup, error)
+	// Get log volume over time bucketed by intervals and grouped by level
+	GetLogVolumeTimeSeries(ctx context.Context, arg GetLogVolumeTimeSeriesParams) ([]GetLogVolumeTimeSeriesRow, error)
 	// Get all individual logs for a specific group
 	GetLogsByGroupID(ctx context.Context, arg GetLogsByGroupIDParams) ([]GetLogsByGroupIDRow, error)
 	GetNotifier(ctx context.Context, id int64) (Notifier, error)

@@ -175,6 +175,61 @@ func (q *Queries) GetLogGroupByID(ctx context.Context, id int64) (LogGroup, erro
 	return i, err
 }
 
+const getLogVolumeTimeSeries = `-- name: GetLogVolumeTimeSeries :many
+SELECT
+    CASE
+        WHEN ?1 = '1min' THEN strftime('%Y-%m-%d %H:%M:00', substr(created_at, 1, 19))
+        WHEN ?1 = '5min' THEN
+            strftime('%Y-%m-%d %H:', substr(created_at, 1, 19)) ||
+            printf('%02d', (CAST(strftime('%M', substr(created_at, 1, 19)) AS INTEGER) / 5) * 5) || ':00'
+        WHEN ?1 = '15min' THEN
+            strftime('%Y-%m-%d %H:', substr(created_at, 1, 19)) ||
+            printf('%02d', (CAST(strftime('%M', substr(created_at, 1, 19)) AS INTEGER) / 15) * 15) || ':00'
+        WHEN ?1 = '1hour' THEN strftime('%Y-%m-%d %H:00:00', substr(created_at, 1, 19))
+    END as time_bucket,
+    LOWER(level) as level,
+    COUNT(*) as count
+FROM logs
+WHERE created_at >= ?2
+GROUP BY time_bucket, LOWER(level)
+ORDER BY time_bucket ASC, level
+`
+
+type GetLogVolumeTimeSeriesParams struct {
+	Granularity interface{}
+	Since       sql.NullTime
+}
+
+type GetLogVolumeTimeSeriesRow struct {
+	TimeBucket interface{}
+	Level      string
+	Count      int64
+}
+
+// Get log volume over time bucketed by intervals and grouped by level
+func (q *Queries) GetLogVolumeTimeSeries(ctx context.Context, arg GetLogVolumeTimeSeriesParams) ([]GetLogVolumeTimeSeriesRow, error) {
+	rows, err := q.db.QueryContext(ctx, getLogVolumeTimeSeries, arg.Granularity, arg.Since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetLogVolumeTimeSeriesRow
+	for rows.Next() {
+		var i GetLogVolumeTimeSeriesRow
+		if err := rows.Scan(&i.TimeBucket, &i.Level, &i.Count); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getLogsByGroupID = `-- name: GetLogsByGroupID :many
 SELECT id, level, context, created_at
 FROM logs
@@ -251,7 +306,7 @@ func (q *Queries) GetOrCreateLogGroup(ctx context.Context, arg GetOrCreateLogGro
 }
 
 const getPercentiles = `-- name: GetPercentiles :one
-SELECT 
+SELECT
     COUNT(*) as total,
     (SELECT COUNT(*) FROM logs l2 WHERE LOWER(l2.level) = 'error' AND l2.created_at >= ?1) as errors,
     (SELECT COUNT(*) FROM logs l3 WHERE LOWER(l3.level) = 'warn' AND l3.created_at >= ?1) as warnings,
