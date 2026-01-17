@@ -80,7 +80,7 @@ func main() {
 				dataDir = "/" // Default to root for disk monitoring
 			}
 			statsCollector := sysstats.New(dataDir)
-			wsClient.WithStats(statsCollector, interval)
+			wsClient.WithStats(statsCollector, interval).WithAlerts(cfg.CPUAlertPercent, cfg.MemAlertPercent, cfg.DiskAlertPercent)
 			slog.Info("System stats enabled", "interval", interval, "data_dir", dataDir)
 		}
 	}
