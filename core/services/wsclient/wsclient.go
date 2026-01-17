@@ -23,12 +23,19 @@ const (
 )
 
 type Message struct {
-	Type          string             `json:"type"` // "register", "log", "startup", or "stats"
+	Type          string             `json:"type"` // "register", "log", "startup", "stats"
 	AppName       string             `json:"app_name"`
 	Apps          []string           `json:"apps,omitempty"`           // for registration
 	CollectorName string             `json:"collector_name,omitempty"` // for registration and stats
 	Entry         logparser.LogEntry `json:"entry,omitempty"`
-	Stats         *sysstats.Stats    `json:"stats,omitempty"` // for stats messages
+	Stats         *sysstats.Stats    `json:"stats,omitempty"`      // for stats messages
+	Thresholds    *Thresholds        `json:"thresholds,omitempty"` // for registration
+}
+
+type Thresholds struct {
+	CPU  float64 `json:"cpu"`
+	Mem  float64 `json:"mem"`
+	Disk float64 `json:"disk"`
 }
 
 type Service struct {
@@ -40,6 +47,11 @@ type Service struct {
 	// System stats
 	statsCollector *sysstats.Collector
 	statsInterval  time.Duration
+
+	// Alert thresholds (sent to panel)
+	cpuAlert  float64
+	memAlert  float64
+	diskAlert float64
 
 	conn   *websocket.Conn
 	connMu sync.Mutex
@@ -58,6 +70,14 @@ func New(endpoint, collectorName string, appNames []string, logChan <-chan filew
 func (s *Service) WithStats(collector *sysstats.Collector, interval time.Duration) *Service {
 	s.statsCollector = collector
 	s.statsInterval = interval
+	return s
+}
+
+// WithAlerts configures alert thresholds for resource usage (sent to panel)
+func (s *Service) WithAlerts(cpuAlert, memAlert, diskAlert float64) *Service {
+	s.cpuAlert = cpuAlert
+	s.memAlert = memAlert
+	s.diskAlert = diskAlert
 	return s
 }
 
@@ -213,6 +233,11 @@ func (s *Service) sendRegistration() {
 		Type:          "register",
 		Apps:          s.appNames,
 		CollectorName: s.collectorName,
+		Thresholds: &Thresholds{
+			CPU:  s.cpuAlert,
+			Mem:  s.memAlert,
+			Disk: s.diskAlert,
+		},
 	}
 
 	data, err := json.Marshal(msg)
@@ -337,4 +362,6 @@ func (s *Service) sendStats(stats *sysstats.Stats) {
 		slog.Warn("Failed to send stats", "error", err)
 		// Don't close connection on stats failure, let ping handle it
 	}
+
+	slog.Debug("Sent system stats", "collector", s.collectorName, "cpu", stats.CPUUsagePercent)
 }
