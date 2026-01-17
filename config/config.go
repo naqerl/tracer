@@ -38,8 +38,7 @@ type App struct {
 	MessageField   string `toml:"message_field"`
 
 	// Journalctl-specific settings
-	Unit          string `toml:"unit,omitempty"`           // systemd unit name for journalctl format
-	MessageFormat string `toml:"message_format,omitempty"` // "text" (default) or "json" - format of MESSAGE field in journalctl
+	Unit string `toml:"unit,omitempty"` // systemd unit name for journalctl format
 
 	// Optional: regex pattern to detect app startup
 	// When a log line matches this pattern, a startup notification is sent
@@ -87,14 +86,6 @@ func (c *Collector) validate() error {
 		if app.Format == "journalctl" {
 			if app.Unit == "" {
 				return fmt.Errorf("apps[%d].unit is required for journalctl format", i)
-			}
-			// Validate message_format if specified
-			if app.MessageFormat != "" && app.MessageFormat != "text" && app.MessageFormat != "json" && app.MessageFormat != "raw" {
-				return fmt.Errorf("apps[%d].message_format must be 'text', 'json', or 'raw'", i)
-			}
-			// Pattern is only for text-based MESSAGE (default or explicit "text")
-			if app.Pattern != "" && (app.MessageFormat == "json" || app.MessageFormat == "raw") {
-				return fmt.Errorf("apps[%d].pattern cannot be used with message_format='json' or 'raw'", i)
 			}
 		}
 	}

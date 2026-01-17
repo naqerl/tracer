@@ -3,7 +3,6 @@ package logparser
 import (
 	"encoding/json"
 	"fmt"
-	"regexp"
 	"strconv"
 	"time"
 
@@ -14,29 +13,12 @@ import (
 // Use with: journalctl -u <service> -f -o json
 //
 // The parser extracts timestamp from __REALTIME_TIMESTAMP and level from PRIORITY.
-// The MESSAGE field can be further parsed using an optional regex pattern with named groups.
-//
-// Example pattern for uvicorn logs:
-//
-//	`(?P<level>\w+):\s+[\d.:]+\s+-\s+(?P<message>.+)`
-//
-// This extracts level and message from: "INFO:     127.0.0.1:8000 - "GET /health HTTP/1.1" 200"
+// The MESSAGE field is stored as-is without additional parsing.
 type journalctlParser struct {
-	source         string
-	unit           string
-	levelField     string
-	messageField   string
-	pattern        *regexp.Regexp
-	patternNames   []string
-	timestampField string
-	traceIDField   string
-	messageFormat  string // "text" (default) or "json"
-
-	// Field mappings for JSON MESSAGE (when message_format = "json")
-	jsonLevelField     string
-	jsonMessageField   string
-	jsonTimestampField string
-	jsonTraceIDField   string
+	source       string
+	unit         string
+	levelField   string
+	messageField string
 }
 
 var _ Parser = (*journalctlParser)(nil)
@@ -55,34 +37,11 @@ var journalctlPriorityToLevel = map[string]string{
 
 func newJournalctlParser(cfg config.App) (*journalctlParser, error) {
 	p := &journalctlParser{
-		source:        cfg.Path,
-		unit:          cfg.Unit,
-		levelField:    "PRIORITY", // Always from journalctl envelope
-		messageField:  "MESSAGE",  // Always from journalctl envelope
-		messageFormat: withDefault(cfg.MessageFormat, "text"),
+		source:       cfg.Path,
+		unit:         cfg.Unit,
+		levelField:   "PRIORITY", // Always from journalctl envelope
+		messageField: "MESSAGE",  // Always from journalctl envelope
 	}
-
-	if p.messageFormat == "json" {
-		// When MESSAGE contains JSON, use field mappings for inner JSON
-		p.jsonLevelField = withDefault(cfg.LevelField, "level")
-		p.jsonMessageField = withDefault(cfg.MessageField, "message")
-		p.jsonTimestampField = cfg.TimestampField
-		p.jsonTraceIDField = cfg.TraceIDField
-	} else {
-		// For text MESSAGE, pattern is optional for parsing
-		p.timestampField = cfg.TimestampField
-		p.traceIDField = cfg.TraceIDField
-
-		if cfg.Pattern != "" {
-			re, err := regexp.Compile(cfg.Pattern)
-			if err != nil {
-				return nil, fmt.Errorf("invalid pattern: %w", err)
-			}
-			p.pattern = re
-			p.patternNames = re.SubexpNames()
-		}
-	}
-
 	return p, nil
 }
 
@@ -118,30 +77,16 @@ func (p *journalctlParser) Parse(line string) (LogEntry, error) {
 		delete(data, p.levelField)
 	}
 
-	// Extract and parse MESSAGE
+	// Extract and use raw MESSAGE
 	if msg, ok := data[p.messageField]; ok {
-		msgStr := fmt.Sprintf("%v", msg)
+		entry.Message = fmt.Sprintf("%v", msg)
 		delete(data, p.messageField)
-
-		if p.messageFormat == "json" {
-			// Parse MESSAGE as JSON
-			p.parseJSONMessage(msgStr, &entry)
-		} else if p.messageFormat == "raw" {
-			// Use raw MESSAGE without any parsing
-			entry.Message = msgStr
-		} else {
-			// Parse MESSAGE as text (with optional regex pattern)
-			p.parseTextMessage(msgStr, &entry)
-		}
 	} else {
 		// If no message field found, use the entire raw log line
 		entry.Message = line
 	}
 
-	// Use journalctl level if not set from pattern
-	if entry.Level == "" {
-		entry.Level = journalLevel
-	}
+	entry.Level = journalLevel
 
 	// Extract useful metadata from journalctl
 	usefulFields := []string{
@@ -191,114 +136,6 @@ func (p *journalctlParser) Parse(line string) (LogEntry, error) {
 	}
 
 	return entry, nil
-}
-
-// parseTextMessage parses MESSAGE as text using optional regex pattern
-func (p *journalctlParser) parseTextMessage(msgStr string, entry *LogEntry) {
-	// If pattern is configured, parse the message content
-	if p.pattern != nil {
-		if parsed := p.parseMessagePattern(msgStr); parsed != nil {
-			// Extract level from pattern (overrides journalctl PRIORITY)
-			if level, ok := parsed["level"]; ok && level != "" {
-				entry.Level = normalizeLevel(level)
-				delete(parsed, "level")
-			}
-			// Extract message from pattern
-			if message, ok := parsed["message"]; ok {
-				entry.Message = message
-				delete(parsed, "message")
-			}
-			// Extract timestamp from pattern (overrides journalctl timestamp)
-			if p.timestampField != "" {
-				if ts, ok := parsed[p.timestampField]; ok {
-					// Try to parse timestamp
-					delete(parsed, p.timestampField)
-					_ = ts // TODO: parse if needed
-				}
-			}
-			// Extract trace_id from pattern
-			if p.traceIDField != "" {
-				if traceID, ok := parsed[p.traceIDField]; ok {
-					entry.TraceID = traceID
-					delete(parsed, p.traceIDField)
-				}
-			}
-			// Store remaining parsed fields as extra
-			for k, v := range parsed {
-				if v != "" {
-					entry.Extra[k] = v
-				}
-			}
-		} else {
-			// Pattern didn't match, use raw message
-			entry.Message = msgStr
-		}
-	} else {
-		// No pattern, use raw message
-		entry.Message = msgStr
-	}
-}
-
-// parseJSONMessage parses MESSAGE field as JSON and extracts fields
-func (p *journalctlParser) parseJSONMessage(msgStr string, entry *LogEntry) {
-	var msgData map[string]any
-	if err := json.Unmarshal([]byte(msgStr), &msgData); err != nil {
-		// If MESSAGE is not valid JSON, use it as-is
-		entry.Message = msgStr
-		return
-	}
-
-	// Extract level from JSON MESSAGE
-	if level, ok := msgData[p.jsonLevelField].(string); ok {
-		entry.Level = normalizeLevel(level)
-		delete(msgData, p.jsonLevelField)
-	}
-
-	// Extract message from JSON MESSAGE
-	if msg, ok := msgData[p.jsonMessageField].(string); ok {
-		entry.Message = msg
-		delete(msgData, p.jsonMessageField)
-	} else {
-		// If no message field, use raw MESSAGE
-		entry.Message = msgStr
-	}
-
-	// Extract timestamp from JSON MESSAGE (overrides journalctl timestamp)
-	if p.jsonTimestampField != "" {
-		if ts, ok := msgData[p.jsonTimestampField]; ok {
-			entry.Timestamp = parseTimestamp(ts)
-			delete(msgData, p.jsonTimestampField)
-		}
-	}
-
-	// Extract trace_id from JSON MESSAGE
-	if p.jsonTraceIDField != "" {
-		if traceID, ok := msgData[p.jsonTraceIDField].(string); ok {
-			entry.TraceID = traceID
-			delete(msgData, p.jsonTraceIDField)
-		}
-	}
-
-	// Store remaining JSON fields as extra
-	for k, v := range msgData {
-		entry.Extra[k] = fmt.Sprintf("%v", v)
-	}
-}
-
-// parseMessagePattern applies the regex pattern to extract named groups from message
-func (p *journalctlParser) parseMessagePattern(msg string) map[string]string {
-	match := p.pattern.FindStringSubmatch(msg)
-	if match == nil {
-		return nil
-	}
-
-	result := make(map[string]string)
-	for i, name := range p.patternNames {
-		if name != "" && i < len(match) {
-			result[name] = match[i]
-		}
-	}
-	return result
 }
 
 func parseJournalctlTimestamp(v any) time.Time {

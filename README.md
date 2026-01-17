@@ -223,31 +223,11 @@ pattern = '(?P<timestamp>...)\s+\[(?P<level>\w+)\]\s+(?P<message>.*)'
 name = "my-service"
 format = "journalctl"
 unit = "my-service.service"
-# optional: parse MESSAGE field content - "text" (default), "json", or "raw"
-message_format = "text"
-# optional: parse MESSAGE field content with regex (only for message_format="text")
-pattern = '^(?P<level>\w+):\s+(?P<message>.+)$'
 ```
 
-**MESSAGE field formats:**
-- `text` (default): Use MESSAGE as plain text, optionally with `pattern` for extraction
-- `json`: Parse MESSAGE as JSON and extract fields using `level_field`, `message_field`, etc.
-- `raw`: Store the raw MESSAGE content without any parsing
+The journalctl format reads logs from systemd services using `journalctl -u <unit> -f -o json`. The MESSAGE field is stored as-is without additional parsing.
 
 Syslog priority levels (0-7) are converted to standard levels (EMERG/ALERT/CRIT/ERROR/WARN/NOTICE/INFO/DEBUG).
-
-**MESSAGE field parsing**: The `message_format` field controls how the MESSAGE content is parsed:
-- `text` (default): Use MESSAGE as plain text, optionally with `pattern` for extraction
-- `json`: Parse MESSAGE as JSON and extract fields using `level_field`, `message_field`, etc.
-- `raw`: Store the raw MESSAGE content without any parsing (recommended when MESSAGE contains JSON you want preserved)
-
-When `message_format = "text"`, the optional `pattern` field allows extracting structured data from the MESSAGE content using named groups:
-- `(?P<level>...)` - override syslog priority with application-specific level
-- `(?P<message>...)` - extract clean message without metadata
-- `(?P<timestamp>...)` - override journal timestamp with application timestamp
-- `(?P<trace_id>...)` - extract trace ID for request correlation
-
-This is useful for applications that log structured content to journalctl (e.g., uvicorn, gunicorn). Use `message_format = "raw"` when you want to store the raw MESSAGE without any extraction.
 
 ## Development
 
