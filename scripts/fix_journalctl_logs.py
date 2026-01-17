@@ -6,10 +6,8 @@ This script:
 1. Backs up all app databases
 2. Fixes journalctl log entries by extracting raw MESSAGE from the journalctl JSON
 3. Updates the message column with the raw MESSAGE content
-4. Cleans up the context to only contain useful metadata
-
-The issue: Previously, journalctl entries had their MESSAGE field parsed/extracted,
-losing the raw content. This script restores the raw MESSAGE and cleans up context.
+4. For apps with JSON MESSAGE (like cyberpass), extracts Python fields into context
+5. Removes journalctl internal fields from context
 """
 
 import json
@@ -24,16 +22,15 @@ DATA_DIR = "/var/lib/tracer"
 APPS_DIR = os.path.join(DATA_DIR, "apps")
 BACKUP_DIR = os.path.join(DATA_DIR, "backups")
 
-# Fields to keep in context (useful metadata)
-USEFUL_CONTEXT_FIELDS = {
-    "SYSLOG_IDENTIFIER",
-    "_SYSTEMD_UNIT",
-    "_PID",
-    "_HOSTNAME",
-    "_COMM",
+# Apps that log JSON to journalctl MESSAGE field (Python JSON logs)
+JSON_MESSAGE_APPS = {
+    "cyberpass-backend-production",
+    "cyberpass-backend-staging",
+    "mimi",
+    "lumicare",
 }
 
-# Journalctl internal fields to skip
+# Journalctl internal fields to remove from context
 JOURNALCTL_INTERNAL_FIELDS = {
     "__CURSOR",
     "__MONOTONIC_TIMESTAMP",
@@ -151,23 +148,50 @@ def extract_raw_message(raw: str) -> str | None:
     return None
 
 
-def build_context(raw: str) -> str:
-    """Build a clean context from journalctl raw data."""
+def build_context(raw: str, app_name: str = None) -> str:
+    """Build a clean context from journalctl raw data.
+
+    For JSON MESSAGE apps (cyberpass, mimi, lumicare):
+    - Extract Python JSON fields from MESSAGE into context
+    - Remove journalctl internal fields
+
+    For other apps:
+    - Keep context minimal/empty (no journalctl wrapper data)
+    """
     try:
         data = json.loads(raw)
-
-        # Build context with only useful fields
         context = {}
-        for key in USEFUL_CONTEXT_FIELDS:
-            if key in data:
-                context[key] = str(data[key])
+
+        # Check if MESSAGE contains JSON (common for Python apps)
+        message = data.get("MESSAGE")
+        if message:
+            try:
+                msg_data = json.loads(str(message))
+                # Extract useful fields from Python JSON log
+                if isinstance(msg_data, dict):
+                    for key, value in msg_data.items():
+                        if key in ("message", "msg"):
+                            continue  # Skip duplicate of message field
+                        if isinstance(value, (str, int, float, bool)):
+                            context[key] = value
+                        else:
+                            context[key] = str(value)
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+        # Remove journalctl internal fields
+        for field in JOURNALCTL_INTERNAL_FIELDS:
+            data.pop(field, None)
+
+        # For non-JSON apps, context stays empty
+        # For JSON apps, context now has Python fields
 
         return json.dumps(context) if context else "{}"
     except (json.JSONDecodeError, TypeError):
         return "{}"
 
 
-def fix_database(db_path: str) -> tuple[int, int]:
+def fix_database(db_path: str, app_name: str = None) -> tuple[int, int]:
     """
     Fix journalctl entries in a database.
 
@@ -178,6 +202,11 @@ def fix_database(db_path: str) -> tuple[int, int]:
 
     fixed = 0
     total = 0
+
+    # Extract app name from filename
+    if app_name is None:
+        db_name = os.path.basename(db_path).replace(".db", "")
+        app_name = db_name
 
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
@@ -205,20 +234,31 @@ def fix_database(db_path: str) -> tuple[int, int]:
             continue
 
         # Build clean context
-        new_context = build_context(raw)
+        new_context = build_context(raw, app_name)
 
-        # Check if message needs fixing (raw message differs from stored message)
-        # Also fix context if it contains too many internal fields
-        needs_fix = raw_message != current_message
+        # Check if entry needs fixing
+        needs_fix = False
 
-        # Also fix if context looks like it has internal journalctl fields
+        # Fix 1: Message differs from raw MESSAGE
+        if raw_message != current_message:
+            needs_fix = True
+
+        # Fix 2: Context still has journalctl internal fields
         try:
             ctx_data = json.loads(current_context) if current_context else {}
-            has_internal = any(
+            has_journalctl_fields = any(
                 field in ctx_data
-                for field in ["__CURSOR", "_TRANSPORT", "_SYSTEMD_CGROUP", "MESSAGE"]
+                for field in [
+                    "_COMM",
+                    "SYSLOG_IDENTIFIER",
+                    "_HOSTNAME",
+                    "_PID",
+                    "_SYSTEMD_UNIT",
+                    "_TRANSPORT",
+                ]
             )
-            needs_fix = needs_fix or has_internal
+            if has_journalctl_fields:
+                needs_fix = True
         except json.JSONDecodeError:
             needs_fix = True
 
@@ -272,7 +312,7 @@ def run_migration():
 
     for name, db_path, size in sorted(databases):
         print(f"\n  Processing {name}...", end=" ", flush=True)
-        processed, fixed = fix_database(db_path)
+        processed, fixed = fix_database(db_path, name.replace(".db", ""))
         total_processed += processed
         total_fixed += fixed
         print(f"checked {processed}, fixed {fixed}")
