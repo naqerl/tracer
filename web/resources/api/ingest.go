@@ -32,12 +32,13 @@ var upgrader = websocket.Upgrader{
 
 // LogMessage is the message format from collectors
 type LogMessage struct {
-	Type          string          `json:"type"` // "register", "log", "startup", or "stats"
-	AppName       string          `json:"app_name"`
-	Apps          []string        `json:"apps,omitempty"`           // for registration
-	CollectorName string          `json:"collector_name,omitempty"` // for registration and stats
-	Entry         LogEntry        `json:"entry,omitempty"`
-	Stats         *sysstats.Stats `json:"stats,omitempty"` // for stats messages
+	Type          string                 `json:"type"` // "register", "log", "startup", "stats"
+	AppName       string                 `json:"app_name"`
+	Apps          []string               `json:"apps,omitempty"`           // for registration
+	CollectorName string                 `json:"collector_name,omitempty"` // for registration and stats
+	Entry         LogEntry               `json:"entry,omitempty"`
+	Stats         *sysstats.Stats        `json:"stats,omitempty"`      // for stats messages
+	Thresholds    *collectors.Thresholds `json:"thresholds,omitempty"` // for registration
 }
 
 type LogEntry struct {
@@ -134,11 +135,11 @@ func extractIP(remoteAddr string) string {
 	return remoteAddr
 }
 
-func (h *handler) handleRegistration(ctx context.Context, connID, remoteAddr, collectorName string, apps []string) {
+func (h *handler) handleRegistration(ctx context.Context, connID, remoteAddr, collectorName string, apps []string, thresholds collectors.Thresholds) {
 	slog.Info("Received app registration", "collector", collectorName, "remote", remoteAddr, "apps", apps, "count", len(apps))
 
 	// Register collector with tracker
-	h.tracker.Register(connID, collectorName, remoteAddr, apps)
+	h.tracker.Register(connID, collectorName, remoteAddr, apps, thresholds)
 
 	// Pre-create databases for registered apps and track app-collector mapping
 	for _, appName := range apps {
@@ -178,7 +179,11 @@ func (h *handler) processMessage(ctx context.Context, connID, remoteAddr string,
 
 	// Handle registration messages
 	if msg.Type == "register" {
-		h.handleRegistration(ctx, connID, remoteAddr, msg.CollectorName, msg.Apps)
+		thresholds := collectors.Thresholds{}
+		if msg.Thresholds != nil {
+			thresholds = *msg.Thresholds
+		}
+		h.handleRegistration(ctx, connID, remoteAddr, msg.CollectorName, msg.Apps, thresholds)
 		return
 	}
 
@@ -414,4 +419,42 @@ func (h *handler) handleStats(ctx context.Context, msg LogMessage) {
 	}
 
 	slog.Debug("Stored system stats", "collector", msg.CollectorName, "cpu", msg.Stats.CPUUsagePercent)
+
+	// Check for alerts based on collector thresholds
+	if collector, exists := h.tracker.Get(msg.CollectorName); exists && collector.IsConnected {
+		alerts := []string{}
+
+		if collector.Thresholds.CPU > 0 && msg.Stats.CPUUsagePercent > collector.Thresholds.CPU {
+			alerts = append(alerts, fmt.Sprintf("CPU: %.1f%% (threshold: %.1f%%)", msg.Stats.CPUUsagePercent, collector.Thresholds.CPU))
+		}
+
+		memUsagePercent := float64(msg.Stats.MemUsedMB) / float64(msg.Stats.MemTotalMB) * 100
+		if collector.Thresholds.Mem > 0 && memUsagePercent > collector.Thresholds.Mem {
+			alerts = append(alerts, fmt.Sprintf("Memory: %.1f%% (threshold: %.1f%%)", memUsagePercent, collector.Thresholds.Mem))
+		}
+
+		diskUsagePercent := float64(msg.Stats.DiskUsedGB) / float64(msg.Stats.DiskTotalGB) * 100
+		if collector.Thresholds.Disk > 0 && diskUsagePercent > collector.Thresholds.Disk {
+			alerts = append(alerts, fmt.Sprintf("Disk: %.1f%% (threshold: %.1f%%)", diskUsagePercent, collector.Thresholds.Disk))
+		}
+
+		if len(alerts) > 0 && h.notifyChan != nil {
+			alertMessage := fmt.Sprintf("🚨 Resource alerts on %s:\n%s", msg.CollectorName, strings.Join(alerts, "\n"))
+			if h.panelURL != "" {
+				resourcesURL := fmt.Sprintf("%s/analytics/%s/resources", h.panelURL, msg.CollectorName)
+				alertMessage += fmt.Sprintf("\n\n[view resources](%s)", resourcesURL)
+			}
+
+			select {
+			case h.notifyChan <- notify.Notification{
+				Type:          notify.TypeAlert,
+				CollectorName: msg.CollectorName,
+				AppName:       "resources",
+				Message:       alertMessage,
+			}:
+			default:
+				slog.Warn("Notification channel full, dropping resource alert")
+			}
+		}
+	}
 }
