@@ -15,11 +15,14 @@ const (
 )
 
 type Collector struct {
-	Name          string `toml:"name"` // Optional collector name, uses IP if not set
-	PanelEndpoint string `toml:"panel_endpoint"`
-	StatsInterval string `toml:"stats_interval"` // How often to send system stats (e.g., "30s", "1m")
-	DataDir       string `toml:"data_dir"`       // Directory to monitor for disk usage
-	Apps          []App  `toml:"apps"`
+	Name             string  `toml:"name"` // Optional collector name, uses IP if not set
+	PanelEndpoint    string  `toml:"panel_endpoint"`
+	StatsInterval    string  `toml:"stats_interval"`     // How often to send system stats (e.g., "30s", "1m")
+	DataDir          string  `toml:"data_dir"`           // Directory to monitor for disk usage
+	CPUAlertPercent  float64 `toml:"cpu_alert_percent"`  // CPU usage alert threshold (percentage)
+	MemAlertPercent  float64 `toml:"mem_alert_percent"`  // Memory usage alert threshold (percentage)
+	DiskAlertPercent float64 `toml:"disk_alert_percent"` // Disk usage alert threshold (percentage)
+	Apps             []App   `toml:"apps"`
 }
 
 type App struct {

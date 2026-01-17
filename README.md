@@ -55,6 +55,9 @@ name = "my-server"            # optional, defaults to outbound IP
 panel_endpoint = "ws://localhost:8080/api/ws/ingest?api_key=YOUR_API_KEY"
 stats_interval = "30s"        # optional, system stats collection interval (default: 30s)
 data_dir = "/var/lib/tracer"  # optional, data directory for offsets (default: /var/lib/tracer)
+cpu_alert_percent = 80.0      # optional, CPU usage alert threshold (percentage)
+mem_alert_percent = 85.0      # optional, memory usage alert threshold (percentage)
+disk_alert_percent = 90.0     # optional, disk usage alert threshold (percentage)
 
 # JSON application logs
 [[apps]]
