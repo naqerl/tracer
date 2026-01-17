@@ -126,6 +126,9 @@ func (p *journalctlParser) Parse(line string) (LogEntry, error) {
 		if p.messageFormat == "json" {
 			// Parse MESSAGE as JSON
 			p.parseJSONMessage(msgStr, &entry)
+		} else if p.messageFormat == "raw" {
+			// Use raw MESSAGE without any parsing
+			entry.Message = msgStr
 		} else {
 			// Parse MESSAGE as text (with optional regex pattern)
 			p.parseTextMessage(msgStr, &entry)

@@ -89,12 +89,12 @@ func (c *Collector) validate() error {
 				return fmt.Errorf("apps[%d].unit is required for journalctl format", i)
 			}
 			// Validate message_format if specified
-			if app.MessageFormat != "" && app.MessageFormat != "text" && app.MessageFormat != "json" {
-				return fmt.Errorf("apps[%d].message_format must be 'text' or 'json'", i)
+			if app.MessageFormat != "" && app.MessageFormat != "text" && app.MessageFormat != "json" && app.MessageFormat != "raw" {
+				return fmt.Errorf("apps[%d].message_format must be 'text', 'json', or 'raw'", i)
 			}
 			// Pattern is only for text-based MESSAGE (default or explicit "text")
-			if app.Pattern != "" && app.MessageFormat == "json" {
-				return fmt.Errorf("apps[%d].pattern cannot be used with message_format='json'", i)
+			if app.Pattern != "" && (app.MessageFormat == "json" || app.MessageFormat == "raw") {
+				return fmt.Errorf("apps[%d].pattern cannot be used with message_format='json' or 'raw'", i)
 			}
 		}
 	}
