@@ -13,6 +13,7 @@ import (
 	"github.com/ai-shift/tracer/web/resources/analytics"
 	"github.com/ai-shift/tracer/web/resources/api"
 	authres "github.com/ai-shift/tracer/web/resources/auth"
+	"github.com/ai-shift/tracer/web/resources/landing"
 	"github.com/ai-shift/tracer/web/resources/llm"
 	"github.com/ai-shift/tracer/web/resources/settings"
 )
@@ -20,13 +21,11 @@ import (
 func Run(port string, dbManager *dbmanager.Manager, sampleRate float64, notifyService *notify.Service, authService *auth.Service, tracker *collectors.Tracker, sessionDurationSec int, panelURL string) *http.Server {
 	mux := http.NewServeMux()
 
-	// Root redirects to analytics dashboard
-	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, "/analytics/", http.StatusTemporaryRedirect)
-	})
-
 	// Auth routes (public)
 	mux.Handle("/", authres.InitMux(authService, sessionDurationSec))
+
+	// Landing page
+	mux.HandleFunc("GET /{$}", landing.InitHandler(authService))
 
 	// Documentation routes
 	mux.Handle("/llm", llm.InitMux())

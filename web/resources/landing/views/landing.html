@@ -1,0 +1,269 @@
+{{define "landing"}}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    {{template "head"}}
+    <title>{{.Title}}</title>
+</head>
+<body class="min-h-screen">
+    <!-- Hero Section -->
+    <div class="bg-bg py-20 px-4">
+        <div class="max-w-6xl mx-auto text-center">
+            <h1 class="text-6xl font-bold mb-4">Tracer</h1>
+            <p class="text-2xl text-accent mb-2">Lightweight, self-hosted log aggregation and alerting</p>
+            <p class="text-lg text-fg-secondary mb-8 max-w-3xl mx-auto">
+                OpenTelemetry is overkill for small projects. Tracer gets you error alerts and context—without the complexity.
+            </p>
+            <div class="flex gap-4 justify-center items-center flex-wrap">
+                {{if .IsAuthenticated}}
+                    <a href="/analytics/" class="bg-accent hover:bg-accent/80 text-fg font-medium transition-colors py-2.5 px-6 inline-block">
+                        Go to Dashboard
+                    </a>
+                {{else}}
+                    <a href="/setup" class="bg-accent hover:bg-accent/80 text-fg font-medium transition-colors py-2.5 px-6 inline-block">
+                        Get Started
+                    </a>
+                    <a href="/login" class="border border-accent text-accent hover:bg-accent/10 transition-colors py-2.5 px-6 inline-block">
+                        Sign In
+                    </a>
+                {{end}}
+            </div>
+        </div>
+    </div>
+
+    <!-- Problem/Solution Section -->
+    <div class="bg-bg-secondary py-16 px-4">
+        <div class="max-w-6xl mx-auto">
+            <div class="grid md:grid-cols-2 gap-8">
+                <div>
+                    <h2 class="text-2xl font-semibold mb-4 text-red-400">The Problem</h2>
+                    <ul class="text-fg-secondary space-y-2">
+                        <li>• Complex setup with steep learning curves</li>
+                        <li>• Expensive infrastructure and recurring costs</li>
+                        <li>• Over-engineering for simple monitoring needs</li>
+                        <li>• Vendor lock-in with hosted solutions</li>
+                    </ul>
+                </div>
+                <div>
+                    <h2 class="text-2xl font-semibold mb-4 text-accent">The Solution</h2>
+                    <ul class="text-fg-secondary space-y-2">
+                        <li>• Single binary with SQLite storage</li>
+                        <li>• Instant Telegram alerts for errors</li>
+                        <li>• Trace ID grouping for request context</li>
+                        <li>• Full control with self-hosting</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Features Grid -->
+    <div class="py-16 px-4">
+        <div class="max-w-6xl mx-auto">
+            <h2 class="text-3xl font-bold text-center mb-12">Features</h2>
+            <div class="grid md:grid-cols-2 gap-8">
+                <!-- Collector Features -->
+                <div class="bg-bg-secondary p-6">
+                    <h3 class="text-xl font-semibold mb-4 text-accent">Collector Features</h3>
+                    <ul class="space-y-3 text-fg-secondary">
+                        <li class="flex items-start">
+                            <span class="mr-2">📊</span>
+                            <span>Multiple log formats (JSON, regex, journalctl)</span>
+                        </li>
+                        <li class="flex items-start">
+                            <span class="mr-2">🔄</span>
+                            <span>Auto-reconnect with WebSocket transport</span>
+                        </li>
+                        <li class="flex items-start">
+                            <span class="mr-2">📈</span>
+                            <span>System stats (CPU, RAM, disk) monitoring</span>
+                        </li>
+                        <li class="flex items-start">
+                            <span class="mr-2">🎯</span>
+                            <span>Smart sampling (100% errors, configurable for others)</span>
+                        </li>
+                        <li class="flex items-start">
+                            <span class="mr-2">🚀</span>
+                            <span>Startup pattern detection</span>
+                        </li>
+                        <li class="flex items-start">
+                            <span class="mr-2">🔔</span>
+                            <span>Alert thresholds for resources</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <!-- Panel Features -->
+                <div class="bg-bg-secondary p-6">
+                    <h3 class="text-xl font-semibold mb-4 text-accent">Panel Features</h3>
+                    <ul class="space-y-3 text-fg-secondary">
+                        <li class="flex items-start">
+                            <span class="mr-2">🔐</span>
+                            <span>Session-based authentication</span>
+                        </li>
+                        <li class="flex items-start">
+                            <span class="mr-2">👥</span>
+                            <span>User management with role-based access</span>
+                        </li>
+                        <li class="flex items-start">
+                            <span class="mr-2">📱</span>
+                            <span>Telegram notifications per user/app</span>
+                        </li>
+                        <li class="flex items-start">
+                            <span class="mr-2">🔍</span>
+                            <span>Trace ID grouping for request context</span>
+                        </li>
+                        <li class="flex items-start">
+                            <span class="mr-2">📊</span>
+                            <span>Real-time analytics dashboard</span>
+                        </li>
+                        <li class="flex items-start">
+                            <span class="mr-2">🗄️</span>
+                            <span>Per-app SQLite databases</span>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Architecture Diagram -->
+    <div class="bg-bg-secondary py-16 px-4">
+        <div class="max-w-6xl mx-auto">
+            <h2 class="text-3xl font-bold text-center mb-8">Architecture</h2>
+            <pre class="text-fg-secondary text-center text-sm md:text-base">
+[Collectors] --WebSocket--> [Panel] --> [SQLite DBs]
+     |                         |
+[Log Files]              [Telegram Alerts]
+            </pre>
+        </div>
+    </div>
+
+    <!-- Deployment Options -->
+    <div class="py-16 px-4">
+        <div class="max-w-6xl mx-auto">
+            <h2 class="text-3xl font-bold text-center mb-12">Deployment Options</h2>
+            <div class="grid md:grid-cols-2 gap-8">
+                <!-- Self-Hosted -->
+                <div class="bg-bg-secondary p-6">
+                    <h3 class="text-xl font-semibold mb-2 text-accent">Self-Hosted</h3>
+                    <p class="text-sm text-secondary mb-4">(Recommended for full control)</p>
+                    <ul class="space-y-3 text-fg-secondary mb-6">
+                        <li>• One-line install via curl script</li>
+                        <li>• Full data ownership</li>
+                        <li>• No recurring costs</li>
+                        <li>• Systemd service management</li>
+                        <li>• Configurable retention and sampling</li>
+                        <li>• Collector-only mode for distributed setups</li>
+                    </ul>
+                    <div class="bg-bg p-3 text-sm overflow-x-auto">
+                        <code class="text-fg-secondary">curl -fsSL https://raw.githubusercontent.com/ai-shift/tracer/main/install.sh | sudo bash</code>
+                    </div>
+                </div>
+
+                <!-- Managed Hosting -->
+                <div class="bg-bg-secondary p-6 opacity-60">
+                    <h3 class="text-xl font-semibold mb-2 text-fg-secondary">Managed Hosting</h3>
+                    <p class="text-sm text-fg-secondary mb-4">
+                        <span class="bg-bg px-2 py-1 text-xs">Coming Soon</span>
+                    </p>
+                    <p class="text-fg-secondary">
+                        Hosted infrastructure for teams who want the benefits of Tracer without managing their own servers.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Pricing Section -->
+    <div class="bg-bg-secondary py-16 px-4">
+        <div class="max-w-6xl mx-auto">
+            <h2 class="text-3xl font-bold text-center mb-12">Pricing</h2>
+            <div class="grid md:grid-cols-4 gap-6">
+                <!-- Self-Hosted -->
+                <div class="bg-bg p-6 border-2 border-accent">
+                    <h3 class="text-xl font-semibold mb-2 text-accent">Self-Hosted</h3>
+                    <p class="text-3xl font-bold mb-4">FREE</p>
+                    <p class="text-sm text-fg-secondary mb-6">Forever</p>
+                    <ul class="space-y-2 text-fg-secondary text-sm mb-6">
+                        <li>• Unlimited collectors</li>
+                        <li>• Unlimited apps</li>
+                        <li>• Unlimited storage</li>
+                        <li>• Full feature access</li>
+                    </ul>
+                    {{if .IsAuthenticated}}
+                        <a href="/analytics/" class="block text-center w-full py-2 bg-accent hover:bg-accent/80 text-fg font-medium transition-colors">
+                            Dashboard
+                        </a>
+                    {{else}}
+                        <a href="/setup" class="block text-center w-full py-2 bg-accent hover:bg-accent/80 text-fg font-medium transition-colors">
+                            Get Started
+                        </a>
+                    {{end}}
+                </div>
+
+                <!-- Managed Plans - Placeholders -->
+                <div class="bg-bg p-6 opacity-50">
+                    <h3 class="text-xl font-semibold mb-2 text-fg-secondary">Starter</h3>
+                    <p class="text-3xl font-bold mb-4 text-fg-secondary">TBD</p>
+                    <p class="text-sm text-fg-secondary mb-6">Coming Soon</p>
+                    <p class="text-sm text-fg-secondary mb-6">Details coming soon</p>
+                    <button disabled class="block w-full py-2 bg-bg-secondary text-fg-secondary cursor-not-allowed">
+                        Coming Soon
+                    </button>
+                </div>
+
+                <div class="bg-bg p-6 opacity-50">
+                    <h3 class="text-xl font-semibold mb-2 text-fg-secondary">Professional</h3>
+                    <p class="text-3xl font-bold mb-4 text-fg-secondary">TBD</p>
+                    <p class="text-sm text-fg-secondary mb-6">Coming Soon</p>
+                    <p class="text-sm text-fg-secondary mb-6">Details coming soon</p>
+                    <button disabled class="block w-full py-2 bg-bg-secondary text-fg-secondary cursor-not-allowed">
+                        Coming Soon
+                    </button>
+                </div>
+
+                <div class="bg-bg p-6 opacity-50">
+                    <h3 class="text-xl font-semibold mb-2 text-fg-secondary">Enterprise</h3>
+                    <p class="text-3xl font-bold mb-4 text-fg-secondary">TBD</p>
+                    <p class="text-sm text-fg-secondary mb-6">Coming Soon</p>
+                    <p class="text-sm text-fg-secondary mb-6">Details coming soon</p>
+                    <button disabled class="block w-full py-2 bg-bg-secondary text-fg-secondary cursor-not-allowed">
+                        Coming Soon
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick Start Section -->
+    <div class="py-16 px-4">
+        <div class="max-w-4xl mx-auto">
+            <h2 class="text-3xl font-bold text-center mb-8">Quick Start</h2>
+            <div class="bg-bg-secondary p-6">
+                <p class="text-fg-secondary mb-4">Install Tracer on your server:</p>
+                <div class="bg-bg p-4 mb-6 overflow-x-auto">
+                    <code class="text-accent">curl -fsSL https://raw.githubusercontent.com/ai-shift/tracer/main/install.sh | sudo bash</code>
+                </div>
+                <div class="flex gap-4 flex-wrap">
+                    <a href="/llm" class="text-accent hover:underline">📚 Documentation</a>
+                    <a href="https://github.com/ai-shift/tracer" target="_blank" class="text-accent hover:underline">💻 GitHub Repository</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="bg-bg-secondary py-8 px-4">
+        <div class="max-w-6xl mx-auto text-center">
+            <div class="flex gap-6 justify-center items-center flex-wrap text-fg-secondary">
+                <a href="https://github.com/ai-shift/tracer" target="_blank" class="hover:text-accent transition-colors">GitHub</a>
+                <a href="/llm" class="hover:text-accent transition-colors">Documentation</a>
+                <span class="text-fg-secondary/50">|</span>
+                <span class="text-sm">Built for developers who value simplicity</span>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
+{{end}}
