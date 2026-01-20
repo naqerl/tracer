@@ -33,3 +33,6 @@ restart-collector:
 
 restart: restart-panel restart-collector
 	@echo "All services restarted"
+
+logs:
+	@ssh $(TARGET_HOST) "journalctl -u tracer-panel --no-pager -n 100"

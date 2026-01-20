@@ -2,17 +2,17 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    {{template "head"}}
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/animejs/3.2.1/anime.min.js" defer></script>
+     {{template "head"}}
     <title>{{.Title}}</title>
 </head>
 <body class="min-h-screen">
     <!-- LLM Friendly Badge -->
     <div class="fixed top-4 right-4 z-50 group">
-        <a href="/index.md" class="bg-green-500 text-white px-3 py-1 rounded-full text-sm font-medium shadow-lg hover:bg-green-600 transition-all duration-200 block group-hover:px-4 group-hover:py-2 group-hover:rounded-lg">
+        <a href="/index.md" class="bg-secondary text-bg px-3 py-1 text-sm font-medium shadow-lg transition-all duration-200 block group-hover:px-4 group-hover:py-2 cursor-pointer">
             <span class="group-hover:hidden">LLM friendly</span>
             <span class="hidden group-hover:block text-xs max-w-xs leading-relaxed">
                 This resource can be accessed by LLMs via usual HTTP requests. Any functions visible and available to humans in the browser, LLMs can easily reproduce and access.
+                <p class="text-right">click to preview</p>
             </span>
         </a>
     </div>
@@ -22,10 +22,10 @@
             <h1 class="text-6xl font-bold mb-4">Tracer</h1>
             <p class="text-xl mb-6 text-fg-secondary">Self-hosted logs and traces without the overhead.</p>
             <div class="flex gap-4 justify-center items-center flex-wrap">
-                <a href="#deployment-options" class="bg-accent hover:bg-accent text-fg font-medium transition-colors py-2.5 px-6 inline-block">
-                    Get started
+                <a href="#deployment-options" class="group hover:bg-accent hover:text-bg text-accent font-medium transition-colors py-2.5 px-6 inline-block">
+                    <span class="group-hover:opacity-0 transition-opacity">[</span>Get started<span class="group-hover:opacity-0 transition-opacity">]</span>
                 </a>
-                <a href="https://github.com/ai-shift/tracer" target="_blank" class="border border-gray-600 text-gray-600 hover:bg-gray-100 transition-colors py-2.5 px-6 inline-block flex items-center">
+                <a href="https://github.com/ai-shift/tracer" target="_blank" class="text-gray-600 hover:bg-gray-100 transition-colors py-2.5 px-6 inline-block flex items-center">
                     <svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 24 24">
                         <path d="M12 0C5.374 0 0 5.373 0 12 0 17.302 3.438 21.8 8.207 23.387c.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0112 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.3 24 12c0-6.627-5.373-12-12-12z"/>
                     </svg>
@@ -84,88 +84,30 @@
         </div>
     </div>
 
-    <!-- Architecture Diagram -->
-    <div class="py-16 px-4">
-        <div class="max-w-6xl mx-auto space-y-6">
-            <h2 class="text-3xl font-bold text-center">Architecture</h2>
-            <p class="text-center text-fg-secondary max-w-3xl mx-auto">
-                Multiple site collectors ingest log files and journalctl output, funneling structured records into the panel before persisting to SQLite, mirroring raw archives, and alerting Telegram.
-            </p>
-            <div class="px-6 py-8 bg-transparent text-white">
-                <div id="architecture-graph" role="img" aria-label="Collectors pulling from log files and journalctl feed the panel, which distributes to SQLite, raw archives, and Telegram alerts in a strictly grid-aligned topology.">
-                    <svg viewBox="0 0 700 320" class="w-full h-[320px] text-white" shape-rendering="crispEdges">
-                        <g>
-                            <rect x="30" y="40" width="150" height="36" rx="4" fill="none" stroke="currentColor" stroke-width="1" />
-                            <text x="105" y="64" text-anchor="middle" font-size="14" font-weight="600" fill="currentColor">Collector A</text>
-                            <rect x="30" y="90" width="150" height="36" rx="4" fill="none" stroke="currentColor" stroke-width="1" />
-                            <text x="105" y="114" text-anchor="middle" font-size="14" font-weight="600" fill="currentColor">Collector B</text>
-                            <rect x="30" y="140" width="150" height="36" rx="4" fill="none" stroke="currentColor" stroke-width="1" />
-                            <text x="105" y="164" text-anchor="middle" font-size="14" font-weight="600" fill="currentColor">Collector C</text>
-                        </g>
-                        <g>
-                            <rect x="230" y="100" width="200" height="70" rx="6" fill="none" stroke="currentColor" stroke-width="1.2" />
-                            <text x="330" y="132" text-anchor="middle" font-size="16" font-weight="700" fill="currentColor">Panel</text>
-                            <text x="330" y="148" text-anchor="middle" font-size="12" fill="currentColor">Trace grouping · deduplication</text>
-                        </g>
-                        <g>
-                            <rect x="460" y="40" width="160" height="36" rx="4" fill="none" stroke="currentColor" stroke-width="1" />
-                            <text x="540" y="64" text-anchor="middle" font-size="14" font-weight="600" fill="currentColor">SQLite DBs</text>
-                            <rect x="460" y="90" width="160" height="36" rx="4" fill="none" stroke="currentColor" stroke-width="1" />
-                            <text x="540" y="114" text-anchor="middle" font-size="14" font-weight="600" fill="currentColor">Raw Archive</text>
-                            <text x="540" y="130" text-anchor="middle" font-size="10" fill="currentColor">Log files & journalctl</text>
-                            <rect x="460" y="140" width="160" height="36" rx="4" fill="none" stroke="currentColor" stroke-width="1" />
-                            <text x="540" y="164" text-anchor="middle" font-size="14" font-weight="600" fill="currentColor">Telegram Alerts</text>
-                        </g>
-                        <polyline class="edge" points="180,58 230,58 230,118" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="square" />
-                        <polyline class="edge" points="180,108 230,108 230,118" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="square" />
-                        <polyline class="edge" points="180,158 230,158 230,118" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="square" />
-                        <polyline class="edge" points="430,135 460,135 460,60" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="square" />
-                        <polyline class="edge" points="430,150 460,150 460,104" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="square" />
-                        <polyline class="edge" points="430,160 460,160 460,120" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="square" />
-                        <polyline class="edge" points="430,190 460,190 460,154" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="square" />
-                    </svg>
-                    <noscript class="mt-4 text-sm text-fg-secondary">
-                        Collectors pull from log files and journalctl, feed the panel, and the panel fans out to SQLite, raw archives, and Telegram alerts.
-                    </noscript>
-                </div>
-                <div class="mt-6 grid gap-4 md:grid-cols-3 text-sm text-fg-secondary">
-                    <div>
-                        <p class="text-xs uppercase tracking-[0.3em]">Collectors</p>
-                        <p>Multiple collectors per host ingest JSON, regex, log files, and journalctl tracks over WebSocket.</p>
-                    </div>
-                    <div>
-                        <p class="text-xs uppercase tracking-[0.3em]">Panel</p>
-                        <p>Panel handles trace grouping, deduplication, and mirrored alert delivery.</p>
-                    </div>
-                    <div>
-                        <p class="text-xs uppercase tracking-[0.3em]">Persistence</p>
-                        <p>Data lands in SQLite while raw archives and Telegram alerts stay in sync.</p>
-                    </div>
-                </div>
-            </div>
-            <script>
-                document.addEventListener('DOMContentLoaded', () => {
-                    if (typeof anime === 'undefined') {
-                        return;
-                    }
-                    const edges = document.querySelectorAll('#architecture-graph .edge');
-                    edges.forEach((edge, index) => {
-                        const length = edge.getTotalLength();
-                        edge.style.strokeDasharray = length;
-                        edge.style.strokeDashoffset = length;
-                        anime({
-                            targets: edge,
-                            strokeDashoffset: [length, 0],
-                            duration: 2000,
-                            delay: index * 200,
-                            easing: 'linear',
-                            loop: true,
-                        });
-                    });
-                });
-            </script>
-        </div>
-    </div>
+     <!-- Architecture Diagram -->
+     <div class="py-16 px-4">
+         <div class="max-w-6xl mx-auto space-y-6">
+             <h2 class="text-3xl font-bold text-center">Architecture</h2>
+             <p class="text-center text-fg-secondary max-w-3xl mx-auto">
+                 Multiple site collectors ingest log files and journalctl output, funneling structured records into the panel before persisting to SQLite, mirroring raw archives, and alerting Telegram.
+             </p>
+              {{template "architecture-diagram"}}
+             <div class="mt-6 grid gap-4 md:grid-cols-3 text-sm text-fg-secondary">
+                 <div>
+                     <p class="text-xs uppercase tracking-[0.3em]">Collectors</p>
+                     <p>Multiple collectors per host ingest JSON, regex, log files, and journalctl tracks over WebSocket.</p>
+                 </div>
+                 <div>
+                     <p class="text-xs uppercase tracking-[0.3em]">Panel</p>
+                     <p>Panel handles trace grouping, deduplication, and mirrored alert delivery.</p>
+                 </div>
+                 <div>
+                     <p class="text-xs uppercase tracking-[0.3em]">Persistence</p>
+                     <p>Data lands in SQLite while raw archives and Telegram alerts stay in sync.</p>
+                 </div>
+             </div>
+         </div>
+     </div>
 
     <!-- Deployment Options -->
     <div id="deployment-options" class="py-16 px-4">
@@ -223,6 +165,49 @@
             </div>
         </div>
     </div>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const badge = document.querySelector('a[href="/index.md"]');
+            const shortText = badge.querySelector('.group-hover\\:hidden');
+            const longText = badge.querySelector('.hidden');
+            let expanded = false;
+
+            function expand() {
+                if (!expanded) {
+                    expanded = true;
+                    badge.classList.add('px-4', 'py-2');
+                    badge.classList.remove('px-3', 'py-1');
+                    shortText.classList.add('hidden');
+                    longText.classList.remove('hidden');
+                }
+            }
+
+            function collapse() {
+                if (expanded) {
+                    expanded = false;
+                    badge.classList.remove('px-4', 'py-2');
+                    badge.classList.add('px-3', 'py-1');
+                    shortText.classList.remove('hidden');
+                    longText.classList.add('hidden');
+                }
+            }
+
+            // Handle touch events for mobile
+            badge.addEventListener('touchstart', function(e) {
+                if (!expanded) {
+                    e.preventDefault();
+                    expand();
+                } else {
+                    // Allow the second tap to follow the link
+                    collapse();
+                }
+            });
+
+            // Handle mouse events for desktop
+            badge.addEventListener('mouseenter', expand);
+            badge.addEventListener('mouseleave', collapse);
+        });
+    </script>
 </body>
 </html>
 {{end}}
