@@ -9,7 +9,7 @@ import (
 
 	"github.com/gorilla/websocket"
 
-	"github.com/ai-shift/tracer/core/services/filewatcher"
+    "github.com/ai-shift/tracer/core/services/watchdog"
 	"github.com/ai-shift/tracer/core/services/logparser"
 	"github.com/ai-shift/tracer/core/services/sysstats"
 )
@@ -42,7 +42,7 @@ type Service struct {
 	endpoint      string
 	collectorName string
 	appNames      []string
-	logChan       <-chan filewatcher.AppLogEntry
+    logChan       <-chan watchdog.AppLogEntry
 
 	// System stats
 	statsCollector *sysstats.Collector
@@ -57,7 +57,7 @@ type Service struct {
 	connMu sync.Mutex
 }
 
-func New(endpoint, collectorName string, appNames []string, logChan <-chan filewatcher.AppLogEntry) *Service {
+func New(endpoint, collectorName string, appNames []string, logChan <-chan watchdog.AppLogEntry) *Service {
 	return &Service{
 		endpoint:      endpoint,
 		collectorName: collectorName,
@@ -259,7 +259,7 @@ func (s *Service) sendRegistration() {
 	}
 }
 
-func (s *Service) sendLog(appLog filewatcher.AppLogEntry) {
+func (s *Service) sendLog(appLog watchdog.AppLogEntry) {
 	// Determine message type based on whether this is a startup entry
 	msgType := "log"
 	if appLog.IsStartup {
