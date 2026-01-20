@@ -1,4 +1,3 @@
-// TODO: Remove hardcoded /login route and accept it dynamically
 package middleware
 
 import (
@@ -13,8 +12,10 @@ import (
 type contextKey string
 
 const (
-	userContextKey contextKey = "user"
-	sessionCookie  string     = "tracer_session"
+	userContextKey      contextKey = "user"
+	loginPathContextKey contextKey = "login_path"
+	sessionCookie       string     = "tracer_session"
+	defaultLoginPath    string     = "/login"
 )
 
 // GetUser returns the authenticated user from the request context
@@ -31,6 +32,15 @@ func RequireAuth(w http.ResponseWriter, r *http.Request) *db.User {
 	user := GetUser(r)
 	if user == nil {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return nil
+	}
+	return user
+}
+
+func RequireAuthRedirect(w http.ResponseWriter, r *http.Request) *db.User {
+	user := GetUser(r)
+	if user == nil {
+		RedirectToLogin(w, r)
 		return nil
 	}
 	return user
@@ -54,6 +64,29 @@ func RequireAdmin(w http.ResponseWriter, r *http.Request) *db.User {
 func IsAdmin(r *http.Request) bool {
 	user := GetUser(r)
 	return user != nil && user.IsAdmin == 1
+}
+
+func BuildLoginPathMiddleware(loginPath string) func(http.Handler) http.Handler {
+	if loginPath == "" {
+		loginPath = defaultLoginPath
+	}
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx := context.WithValue(r.Context(), loginPathContextKey, loginPath)
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
+}
+
+func LoginPath(r *http.Request) string {
+	if path, ok := r.Context().Value(loginPathContextKey).(string); ok && path != "" {
+		return path
+	}
+	return defaultLoginPath
+}
+
+func RedirectToLogin(w http.ResponseWriter, r *http.Request) {
+	http.Redirect(w, r, LoginPath(r), http.StatusSeeOther)
 }
 
 // BuildAuthMiddleware enriches requests with auth context.
