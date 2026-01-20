@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -19,7 +20,6 @@ import (
 	_ "modernc.org/sqlite"
 
 	"github.com/ai-shift/tracer/core/services/auth/migrations"
-	"github.com/ai-shift/tracer/core/services/notify"
 	"github.com/ai-shift/tracer/db"
 )
 
@@ -41,10 +41,9 @@ type Service struct {
 	sessionDuration time.Duration
 }
 
-// TODO: Panic (log.Fatalf) instead of error
-func New(dataDir string, sessionDuration time.Duration) (*Service, error) {
+func New(dataDir string, sessionDuration time.Duration) *Service {
 	if err := os.MkdirAll(dataDir, 0755); err != nil {
-		return nil, fmt.Errorf("create data dir: %w", err)
+		log.Fatalf("create data dir: %v", err)
 	}
 
 	dbPath := filepath.Join(dataDir, "auth.db")
@@ -52,7 +51,7 @@ func New(dataDir string, sessionDuration time.Duration) (*Service, error) {
 
 	sqlDB, err := sql.Open("sqlite", dsn)
 	if err != nil {
-		return nil, fmt.Errorf("open auth database: %w", err)
+		log.Fatalf("open auth database: %v", err)
 	}
 
 	sqlDB.SetMaxOpenConns(1)
@@ -60,14 +59,14 @@ func New(dataDir string, sessionDuration time.Duration) (*Service, error) {
 
 	if err := runMigrations(sqlDB); err != nil {
 		sqlDB.Close()
-		return nil, fmt.Errorf("run auth migrations: %w", err)
+		log.Fatalf("run auth migrations: %v", err)
 	}
 
 	return &Service{
 		db:              sqlDB,
 		queries:         db.New(sqlDB),
 		sessionDuration: sessionDuration,
-	}, nil
+	}
 }
 
 func runMigrations(sqlDB *sql.DB) error {
@@ -86,6 +85,10 @@ func runMigrations(sqlDB *sql.DB) error {
 
 func (s *Service) Close() error {
 	return s.db.Close()
+}
+
+func (s *Service) DB() *sql.DB {
+	return s.db
 }
 
 // Password hashing
@@ -415,147 +418,6 @@ func (s *Service) DeleteUserAPIKey(ctx context.Context, id int64) error {
 	return s.queries.DeleteUserAPIKey(ctx, id)
 }
 
-// TODO: Notifier and auth are completely separate domains
-// Do not mix them like this
-func (s *Service) GetNotifierDB(ctx context.Context, id int64) (*db.Notifier, error) {
-	notifier, err := s.queries.GetNotifier(ctx, id)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, fmt.Errorf("notifier not found")
-		}
-		return nil, err
-	}
-	return &notifier, nil
-}
-
-func (s *Service) GetNotifierByName(ctx context.Context, name string) (*db.Notifier, error) {
-	notifier, err := s.queries.GetNotifierByName(ctx, name)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, fmt.Errorf("notifier not found")
-		}
-		return nil, err
-	}
-	return &notifier, nil
-}
-
-func (s *Service) ListNotifiers(ctx context.Context) ([]db.Notifier, error) {
-	return s.queries.ListNotifiers(ctx)
-}
-
-func (s *Service) ListNotifiersByUser(ctx context.Context, userID int64) ([]db.Notifier, error) {
-	return s.queries.ListNotifiersByUser(ctx, userID)
-}
-
-func (s *Service) ListEnabledNotifiers(ctx context.Context) ([]db.Notifier, error) {
-	return s.queries.ListEnabledNotifiers(ctx)
-}
-
-func (s *Service) UpdateNotifier(ctx context.Context, id int64, name, notifierType, config string, enabled bool) error {
-	var enabledInt int64
-	if enabled {
-		enabledInt = 1
-	}
-	return s.queries.UpdateNotifier(ctx, db.UpdateNotifierParams{
-		ID:      id,
-		Name:    name,
-		Type:    notifierType,
-		Config:  config,
-		Enabled: enabledInt,
-	})
-}
-
-func (s *Service) DeleteNotifier(ctx context.Context, id int64) error {
-	return s.queries.DeleteNotifier(ctx, id)
-}
-
-func (s *Service) EnableNotifier(ctx context.Context, id int64) error {
-	return s.queries.EnableNotifier(ctx, id)
-}
-
-func (s *Service) DisableNotifier(ctx context.Context, id int64) error {
-	return s.queries.DisableNotifier(ctx, id)
-}
-
-// Notifier app mappings
-
-func (s *Service) GetNotifierApps(ctx context.Context, notifierID int64) ([]notify.NotifierAppSubscription, error) {
-	rows, err := s.db.QueryContext(ctx,
-		"SELECT app_name, collector_name FROM notifier_app WHERE notifier_id = ?",
-		notifierID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var subscriptions []notify.NotifierAppSubscription
-	for rows.Next() {
-		var sub notify.NotifierAppSubscription
-		if err := rows.Scan(&sub.AppName, &sub.CollectorName); err != nil {
-			return nil, err
-		}
-		subscriptions = append(subscriptions, sub)
-	}
-
-	return subscriptions, rows.Err()
-}
-
-func (s *Service) AddNotifierApp(ctx context.Context, notifierID int64, appName string) error {
-	return s.queries.AddNotifierApp(ctx, db.AddNotifierAppParams{
-		NotifierID: notifierID,
-		AppName:    appName,
-	})
-}
-
-func (s *Service) RemoveNotifierApp(ctx context.Context, notifierID int64, appName string) error {
-	return s.queries.RemoveNotifierApp(ctx, db.RemoveNotifierAppParams{
-		NotifierID: notifierID,
-		AppName:    appName,
-	})
-}
-
-func (s *Service) SetNotifierApps(ctx context.Context, notifierID int64, subscriptions []notify.NotifierAppSubscription) error {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("begin transaction: %w", err)
-	}
-	defer tx.Rollback()
-
-	// Delete existing subscriptions
-	_, err = tx.ExecContext(ctx, "DELETE FROM notifier_app WHERE notifier_id = ?", notifierID)
-	if err != nil {
-		return fmt.Errorf("delete old apps: %w", err)
-	}
-
-	// Insert new subscriptions with validation
-	for _, sub := range subscriptions {
-		// Validate: no empty strings allowed
-		if sub.AppName == "" {
-			return fmt.Errorf("app_name cannot be empty")
-		}
-		if sub.CollectorName == "" {
-			return fmt.Errorf("collector_name cannot be empty (use '*' for wildcard)")
-		}
-
-		_, err = tx.ExecContext(ctx,
-			"INSERT INTO notifier_app (notifier_id, app_name, collector_name) VALUES (?, ?, ?)",
-			notifierID, sub.AppName, sub.CollectorName)
-		if err != nil {
-			return fmt.Errorf("insert app: %w", err)
-		}
-	}
-
-	return tx.Commit()
-}
-
-func (s *Service) GetNotifiersForApp(ctx context.Context, appName string) ([]db.Notifier, error) {
-	return s.queries.GetNotifiersForApp(ctx, appName)
-}
-
-func (s *Service) GetGlobalNotifiers(ctx context.Context) ([]db.Notifier, error) {
-	return s.queries.GetGlobalNotifiers(ctx)
-}
-
 // System stats methods
 
 func (s *Service) InsertSystemStats(ctx context.Context, params db.InsertSystemStatsParams) error {
@@ -601,51 +463,4 @@ func (s *Service) ListAppCollectors(ctx context.Context) ([]db.AppCollector, err
 
 func (s *Service) GetAppsByCollector(ctx context.Context, collectorName string) ([]string, error) {
 	return s.queries.GetAppsByCollector(ctx, collectorName)
-}
-
-// Adapter methods for notify.AuthService interface
-
-// CreateNotifier creates a notifier and returns data suitable for notify service
-func (s *Service) CreateNotifier(ctx context.Context, userID int64, name, notifierType, config string, enabled bool) (notify.NotifierData, error) {
-	enabledInt := int64(0)
-	if enabled {
-		enabledInt = 1
-	}
-
-	notifier, err := s.queries.CreateNotifier(ctx, db.CreateNotifierParams{
-		UserID:  userID,
-		Name:    name,
-		Type:    notifierType,
-		Config:  config,
-		Enabled: enabledInt,
-	})
-	if err != nil {
-		return notify.NotifierData{}, err
-	}
-
-	return notify.NotifierData{
-		ID:      notifier.ID,
-		UserID:  notifier.UserID,
-		Name:    notifier.Name,
-		Type:    notifier.Type,
-		Config:  notifier.Config,
-		Enabled: notifier.Enabled == 1,
-	}, nil
-}
-
-// GetNotifier gets a notifier and returns data suitable for notify service
-func (s *Service) GetNotifier(ctx context.Context, id int64) (notify.NotifierData, error) {
-	notifier, err := s.queries.GetNotifier(ctx, id)
-	if err != nil {
-		return notify.NotifierData{}, err
-	}
-
-	return notify.NotifierData{
-		ID:      notifier.ID,
-		UserID:  notifier.UserID,
-		Name:    notifier.Name,
-		Type:    notifier.Type,
-		Config:  notifier.Config,
-		Enabled: notifier.Enabled == 1,
-	}, nil
 }
