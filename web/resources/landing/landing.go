@@ -40,5 +40,9 @@ func (h handler) landingPage(w http.ResponseWriter, r *http.Request) {
 		"Username":        username,
 	}
 
-	h.t.RenderHTTP(w, r, "landing", data)
+	if middleware.IsMarkdownFormat(r) {
+		h.t.RenderMarkdown(w, r, "landing-markdown", data)
+	} else {
+		h.t.RenderHTTP(w, r, "landing", data)
+	}
 }

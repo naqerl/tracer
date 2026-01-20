@@ -27,6 +27,7 @@ func Run(port string, dbManager *dbmanager.Manager, sampleRate float64, notifySe
 
 	// Landing page
 	mux.HandleFunc("GET /{$}", landing.InitHandler(authService))
+	mux.HandleFunc("GET /index", landing.InitHandler(authService))
 
 	// Documentation routes
 	mux.Handle("/llm", llm.InitMux())
