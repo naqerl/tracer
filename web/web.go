@@ -8,6 +8,7 @@ import (
 	"github.com/ai-shift/tracer/core/services/auth"
 	"github.com/ai-shift/tracer/core/services/collectors"
 	"github.com/ai-shift/tracer/core/services/dbmanager"
+	"github.com/ai-shift/tracer/core/services/notifierstore"
 	"github.com/ai-shift/tracer/core/services/notify"
 	"github.com/ai-shift/tracer/web/middleware"
 	"github.com/ai-shift/tracer/web/resources/analytics"
@@ -18,7 +19,7 @@ import (
 	"github.com/ai-shift/tracer/web/resources/settings"
 )
 
-func Run(port string, dbManager *dbmanager.Manager, sampleRate float64, notifyService *notify.Service, authService *auth.Service, tracker *collectors.Tracker, sessionDurationSec int, panelURL string) *http.Server {
+func Run(port string, dbManager *dbmanager.Manager, sampleRate float64, notifyService *notify.Service, authService *auth.Service, notifierStore *notifierstore.Store, tracker *collectors.Tracker, sessionDurationSec int, panelURL string) *http.Server {
 	mux := http.NewServeMux()
 
 	// Auth routes (public)
@@ -35,12 +36,13 @@ func Run(port string, dbManager *dbmanager.Manager, sampleRate float64, notifySe
 
 	// UI routes (protected by auth middleware)
 	mux.Handle("/analytics/", http.StripPrefix("/analytics", analytics.InitMux(dbManager, authService, tracker)))
-	mux.Handle("/settings/", http.StripPrefix("/settings", settings.InitMux(authService, dbManager, notifyService)))
+	mux.Handle("/settings/", http.StripPrefix("/settings", settings.InitMux(authService, notifierStore, dbManager, notifyService)))
 
 	// Apply middleware (order matters: logging → markdown → auth → router)
 	markdownMiddleware := middleware.BuildMarkdownMiddleware()
+	loginPathMiddleware := middleware.BuildLoginPathMiddleware("/login")
 	authMiddleware := middleware.BuildAuthMiddleware(authService)
-	handler := loggingMiddleware(markdownMiddleware(authMiddleware(mux)))
+	handler := loggingMiddleware(markdownMiddleware(loginPathMiddleware(authMiddleware(mux))))
 
 	return &http.Server{
 		Addr:         ":" + port,

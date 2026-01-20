@@ -90,7 +90,7 @@ func (h *handler) logout(w http.ResponseWriter, r *http.Request) {
 	}
 
 	middleware.ClearSessionCookie(w)
-	http.Redirect(w, r, "/login", http.StatusSeeOther)
+	middleware.RedirectToLogin(w, r)
 }
 
 // Setup handlers
@@ -104,7 +104,7 @@ func (h *handler) setupPage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if hasUsers {
-		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		middleware.RedirectToLogin(w, r)
 		return
 	}
 
@@ -131,7 +131,7 @@ func (h *handler) setup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if hasUsers {
-		w.Header().Set("HX-Redirect", "/login")
+		w.Header().Set("HX-Redirect", middleware.LoginPath(r))
 		w.WriteHeader(http.StatusOK)
 		return
 	}

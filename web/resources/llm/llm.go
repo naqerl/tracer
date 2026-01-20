@@ -29,9 +29,8 @@ func InitMux() *http.ServeMux {
 
 // llmDocs serves documentation about available markdown endpoints for LLM tools
 func (h *handler) llmDocs(w http.ResponseWriter, r *http.Request) {
-	user := middleware.GetUser(r)
+	user := middleware.RequireAuthRedirect(w, r)
 	if user == nil {
-		http.Redirect(w, r, "/login", http.StatusSeeOther)
 		return
 	}
 
