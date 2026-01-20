@@ -56,21 +56,12 @@ func IsAdmin(r *http.Request) bool {
 	return user != nil && user.IsAdmin == 1
 }
 
-// TODO: Instead of deciding what is public and what is not, delegate it
-// to the handlers itself. This middleware should only try to add session
-// to the request context and handler will ensure, if it's needed to it
-// BuildAuthMiddleware creates a middleware that requires authentication
-// It skips authentication for public paths (login, setup, api with key)
+// BuildAuthMiddleware enriches requests with auth context.
+// Handlers are responsible for enforcing access (redirect/401/403).
 func BuildAuthMiddleware(authService *auth.Service) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			path := r.URL.Path
-
-			// Public paths that don't require authentication
-			if isPublicPath(path) {
-				next.ServeHTTP(w, r)
-				return
-			}
 
 			// API paths use API key authentication
 			if strings.HasPrefix(path, "/api/") {
@@ -80,30 +71,14 @@ func BuildAuthMiddleware(authService *auth.Service) func(http.Handler) http.Hand
 
 			// Markdown format paths can use either session or API key auth
 			if IsMarkdownFormat(r) {
-				handleMarkdownAuth(w, r, next, authService)
+				attachMarkdownContext(w, r, next, authService)
 				return
 			}
 
-			// All other paths require session authentication
-			handleSessionAuth(w, r, next, authService)
+			// All other paths attempt to attach session context; handlers decide on access control
+			attachSessionContext(w, r, next, authService)
 		})
 	}
-}
-
-// TODO: This should not be present in the project
-func isPublicPath(path string) bool {
-	publicPaths := []string{
-		"/login",
-		"/setup",
-	}
-
-	for _, p := range publicPaths {
-		if path == p || strings.HasPrefix(path, p+"/") {
-			return true
-		}
-	}
-
-	return false
 }
 
 func handleAPIAuth(w http.ResponseWriter, r *http.Request, next http.Handler, authService *auth.Service) {
@@ -142,7 +117,7 @@ func handleAPIAuth(w http.ResponseWriter, r *http.Request, next http.Handler, au
 	next.ServeHTTP(w, r)
 }
 
-func handleMarkdownAuth(w http.ResponseWriter, r *http.Request, next http.Handler, authService *auth.Service) {
+func attachMarkdownContext(w http.ResponseWriter, r *http.Request, next http.Handler, authService *auth.Service) {
 	// Try API key first (from header or query)
 	apiKey := r.Header.Get("X-API-Key")
 	if apiKey == "" {
@@ -158,14 +133,14 @@ func handleMarkdownAuth(w http.ResponseWriter, r *http.Request, next http.Handle
 		}
 	}
 
-	// Fall back to session auth
-	handleSessionAuth(w, r, next, authService)
+	// Fall back to session auth for context attachment
+	attachSessionContext(w, r, next, authService)
 }
 
-func handleSessionAuth(w http.ResponseWriter, r *http.Request, next http.Handler, authService *auth.Service) {
+func attachSessionContext(w http.ResponseWriter, r *http.Request, next http.Handler, authService *auth.Service) {
 	cookie, err := r.Cookie(sessionCookie)
 	if err != nil {
-		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		next.ServeHTTP(w, r)
 		return
 	}
 
@@ -178,7 +153,7 @@ func handleSessionAuth(w http.ResponseWriter, r *http.Request, next http.Handler
 			Path:   "/",
 			MaxAge: -1,
 		})
-		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		next.ServeHTTP(w, r)
 		return
 	}
 
