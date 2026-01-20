@@ -5,33 +5,35 @@ import (
 	"regexp"
 	"time"
 
-	"github.com/ai-shift/tracer/config"
+	collectorconfig "github.com/ai-shift/tracer/config/collector"
 )
 
 type regexParser struct {
-	source         string
-	pattern        *regexp.Regexp
-	timestampField string
-	levelField     string
-	traceIDField   string
-	messageField   string
+	source          string
+	pattern         *regexp.Regexp
+	timestampField  string
+	timestampFormat string
+	levelField      string
+	traceIDField    string
+	messageField    string
 }
 
 var _ Parser = (*regexParser)(nil)
 
-func newRegexParser(cfg config.App) (*regexParser, error) {
+func newRegexParser(cfg collectorconfig.App) (*regexParser, error) {
 	pattern, err := regexp.Compile(cfg.Pattern)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrInvalidPattern, err)
 	}
 
 	return &regexParser{
-		source:         cfg.Path,
-		pattern:        pattern,
-		timestampField: withDefault(cfg.TimestampField, "timestamp"),
-		levelField:     withDefault(cfg.LevelField, "level"),
-		traceIDField:   withDefault(cfg.TraceIDField, "trace_id"),
-		messageField:   withDefault(cfg.MessageField, "message"),
+		source:          cfg.Path,
+		pattern:         pattern,
+		timestampField:  withDefault(cfg.TimestampField, "timestamp"),
+		timestampFormat: cfg.TimestampFormat,
+		levelField:      withDefault(cfg.LevelField, "level"),
+		traceIDField:    withDefault(cfg.TraceIDField, "trace_id"),
+		messageField:    withDefault(cfg.MessageField, "message"),
 	}, nil
 }
 
@@ -57,7 +59,7 @@ func (p *regexParser) Parse(line string) (LogEntry, error) {
 
 	// Extract known fields
 	if ts, ok := groups[p.timestampField]; ok {
-		entry.Timestamp = parseTimestampString(ts)
+		entry.Timestamp = parseTimestampString(ts, p.timestampFormat)
 		delete(groups, p.timestampField)
 	} else {
 		entry.Timestamp = time.Now()
@@ -87,29 +89,4 @@ func (p *regexParser) Parse(line string) (LogEntry, error) {
 	}
 
 	return entry, nil
-}
-
-// TODO: Force user to set timestamp format in collector's config
-func parseTimestampString(ts string) time.Time {
-	// TODO: Do not declare on each call, move to package level
-	formats := []string{
-		time.RFC3339,
-		time.RFC3339Nano,
-		"2006-01-02T15:04:05",
-		"2006-01-02 15:04:05",
-		"2006/01/02 15:04:05",         // Go stdlib log
-		"2006-01-02 15:04:05,000",     // Python logging
-		"02/Jan/2006:15:04:05 -0700",  // nginx access
-		"2006/01/02 15:04:05",         // nginx error
-		"Jan 02 15:04:05",             // syslog
-		"Jan  2 15:04:05",             // syslog (single digit day)
-		"2006-01-02 15:04:05.000 MST", // PostgreSQL
-	}
-
-	for _, f := range formats {
-		if t, err := time.Parse(f, ts); err == nil {
-			return t
-		}
-	}
-	return time.Now()
 }

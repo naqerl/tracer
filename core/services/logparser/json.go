@@ -5,26 +5,28 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/ai-shift/tracer/config"
+	collectorconfig "github.com/ai-shift/tracer/config/collector"
 )
 
 type jsonParser struct {
-	source         string
-	timestampField string
-	levelField     string
-	traceIDField   string
-	messageField   string
+	source          string
+	timestampField  string
+	timestampFormat string
+	levelField      string
+	traceIDField    string
+	messageField    string
 }
 
 var _ Parser = (*jsonParser)(nil)
 
-func newJSONParser(cfg config.App) (*jsonParser, error) {
+func newJSONParser(cfg collectorconfig.App) (*jsonParser, error) {
 	return &jsonParser{
-		source:         cfg.Path,
-		timestampField: withDefault(cfg.TimestampField, "timestamp"),
-		levelField:     withDefault(cfg.LevelField, "level"),
-		traceIDField:   withDefault(cfg.TraceIDField, "trace_id"),
-		messageField:   withDefault(cfg.MessageField, "message"),
+		source:          cfg.Path,
+		timestampField:  withDefault(cfg.TimestampField, "timestamp"),
+		timestampFormat: cfg.TimestampFormat,
+		levelField:      withDefault(cfg.LevelField, "level"),
+		traceIDField:    withDefault(cfg.TraceIDField, "trace_id"),
+		messageField:    withDefault(cfg.MessageField, "message"),
 	}, nil
 }
 
@@ -42,7 +44,7 @@ func (p *jsonParser) Parse(line string) (LogEntry, error) {
 
 	// Extract known fields
 	if ts, ok := data[p.timestampField]; ok {
-		entry.Timestamp = parseTimestamp(ts)
+		entry.Timestamp = parseTimestampValue(ts, p.timestampFormat)
 		delete(data, p.timestampField)
 	} else {
 		entry.Timestamp = time.Now()
@@ -72,52 +74,6 @@ func (p *jsonParser) Parse(line string) (LogEntry, error) {
 	}
 
 	return entry, nil
-}
-
-// TODO: Timestamp parsing should be a single function in the logparser package
-// and it should accept value + format (format is a struct that support string, float and int)
-// format should be configured in the collector's toml
-// Also collector should have additional function to guess the timestamp format by itself on the first launch
-// if it was not provided and update config entry with it
-func parseTimestamp(v any) time.Time {
-	switch ts := v.(type) {
-	case string:
-		// Try common formats
-		formats := []string{
-			time.RFC3339,
-			time.RFC3339Nano,
-			"2006-01-02T15:04:05",
-			"2006-01-02 15:04:05",
-		}
-		for _, f := range formats {
-			if t, err := time.Parse(f, ts); err == nil {
-				return t
-			}
-		}
-	case float64:
-		// Unix timestamp (seconds with fractional nanoseconds, or milliseconds)
-		if ts > 1e12 {
-			// Milliseconds
-			return time.UnixMilli(int64(ts))
-		}
-		// Seconds with fractional part (e.g., 1765738232.4949203 from Caddy)
-		sec := int64(ts)
-		nsec := int64((ts - float64(sec)) * 1e9)
-		return time.Unix(sec, nsec)
-	case int64:
-		// Unix timestamp in seconds or milliseconds
-		if ts > 1e12 {
-			return time.UnixMilli(ts)
-		}
-		return time.Unix(ts, 0)
-	case int:
-		// Unix timestamp in seconds or milliseconds
-		if ts > 1e12 {
-			return time.UnixMilli(int64(ts))
-		}
-		return time.Unix(int64(ts), 0)
-	}
-	return time.Now()
 }
 
 func withDefault(val, def string) string {

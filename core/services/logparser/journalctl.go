@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/ai-shift/tracer/config"
+	collectorconfig "github.com/ai-shift/tracer/config/collector"
 )
 
 // journalctlParser parses journalctl JSON output
@@ -35,7 +35,7 @@ var journalctlPriorityToLevel = map[string]string{
 	"7": "DEBUG",
 }
 
-func newJournalctlParser(cfg config.App) (*journalctlParser, error) {
+func newJournalctlParser(cfg collectorconfig.App) (*journalctlParser, error) {
 	p := &journalctlParser{
 		source:       cfg.Path,
 		unit:         cfg.Unit,

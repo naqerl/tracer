@@ -1,20 +1,21 @@
-// TODO: Ajax requests return 303, cause they require HX-Request: true header
-// Only 200 codes should be accepts, if got 301, then new host should be tried
 package main
 
 import (
 	"context"
 	"flag"
+	"fmt"
 	"log/slog"
 	"net"
+	"net/url"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
-	"github.com/ai-shift/tracer/config"
-	"github.com/ai-shift/tracer/core/services/filewatcher"
+	collectorconfig "github.com/ai-shift/tracer/config/collector"
 	"github.com/ai-shift/tracer/core/services/sysstats"
+	"github.com/ai-shift/tracer/core/services/watchdog"
 	"github.com/ai-shift/tracer/core/services/wsclient"
 )
 
@@ -28,9 +29,15 @@ func main() {
 	})))
 
 	// Load configuration
-	cfg, err := config.LoadCollector(*configPath)
+	cfg, err := collectorconfig.Load(*configPath)
 	if err != nil {
 		slog.Error("Failed to load config", "error", err)
+		os.Exit(1)
+	}
+
+	panelEndpoint, err := normalizePanelEndpoint(cfg.PanelEndpoint)
+	if err != nil {
+		slog.Error("Invalid panel endpoint", "error", err)
 		os.Exit(1)
 	}
 
@@ -42,7 +49,7 @@ func main() {
 
 	slog.Info("Starting collector",
 		"name", collectorName,
-		"panel_endpoint", cfg.PanelEndpoint,
+		"panel_endpoint", panelEndpoint,
 		"apps", len(cfg.Apps),
 	)
 
@@ -60,14 +67,14 @@ func main() {
 	}()
 
 	// Initialize file watcher
-	watcher, err := filewatcher.New(cfg.Apps)
+	watcher, err := watchdog.New(cfg.Apps)
 	if err != nil {
 		slog.Error("Failed to create file watcher", "error", err)
 		os.Exit(1)
 	}
 
 	// Initialize WebSocket client
-	wsClient := wsclient.New(cfg.PanelEndpoint, collectorName, watcher.GetAppNames(), watcher.LogChan)
+	wsClient := wsclient.New(panelEndpoint, collectorName, watcher.GetAppNames(), watcher.LogChan)
 
 	// Configure system stats if interval is set
 	if cfg.StatsInterval != "" {
@@ -107,4 +114,32 @@ func getOutboundIP() string {
 
 	localAddr := conn.LocalAddr().(*net.UDPAddr)
 	return localAddr.IP.String()
+}
+
+func normalizePanelEndpoint(endpoint string) (string, error) {
+	parsed, err := url.Parse(endpoint)
+	if err != nil {
+		return "", err
+	}
+
+	switch parsed.Scheme {
+	case "http":
+		parsed.Scheme = "ws"
+	case "https":
+		parsed.Scheme = "wss"
+	case "ws", "wss":
+	default:
+		return "", fmt.Errorf("unsupported scheme: %s", parsed.Scheme)
+	}
+
+	cleanPath := strings.TrimSuffix(parsed.Path, "/")
+	if cleanPath == "" {
+		parsed.Path = "/api/ws/ingest"
+	} else if cleanPath == "/api/ws/ingest" {
+		parsed.Path = cleanPath
+	} else {
+		parsed.Path = cleanPath + "/api/ws/ingest"
+	}
+
+	return parsed.String(), nil
 }

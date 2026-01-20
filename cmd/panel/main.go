@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -12,10 +11,12 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/ai-shift/tracer/config"
+	panelconfig "github.com/ai-shift/tracer/config/panel"
 	"github.com/ai-shift/tracer/core/services/auth"
 	"github.com/ai-shift/tracer/core/services/collectors"
 	"github.com/ai-shift/tracer/core/services/dbmanager"
+	"github.com/ai-shift/tracer/core/services/notifierloader"
+	"github.com/ai-shift/tracer/core/services/notifierstore"
 	"github.com/ai-shift/tracer/core/services/notify"
 	"github.com/ai-shift/tracer/core/services/retention"
 	"github.com/ai-shift/tracer/web"
@@ -31,7 +32,7 @@ func main() {
 	})))
 
 	// Load configuration
-	cfg, err := config.LoadPanel(*configPath)
+	cfg, err := panelconfig.Load(*configPath)
 	if err != nil {
 		slog.Error("Failed to load config", "error", err)
 		os.Exit(1)
@@ -58,12 +59,10 @@ func main() {
 
 	// Initialize auth service
 	sessionDuration := cfg.SessionDurationParsed()
-	authService, err := auth.New(cfg.DataDir, sessionDuration)
-	if err != nil {
-		slog.Error("Failed to create auth service", "error", err)
-		os.Exit(1)
-	}
+	authService := auth.New(cfg.DataDir, sessionDuration)
 	defer authService.Close()
+
+	notifierStore := notifierstore.New(authService.DB())
 
 	// Check if first run (no users exist)
 	hasUsers, err := authService.HasUsers(ctx)
@@ -90,7 +89,7 @@ func main() {
 	go notifyService.Start(ctx)
 
 	// Load and register enabled notifiers from database
-	if err := loadNotifiers(ctx, authService, notifyService); err != nil {
+	if err := notifierloader.LoadEnabled(ctx, notifierStore, authService, notifyService); err != nil {
 		slog.Error("Failed to load notifiers", "error", err)
 		// Continue anyway - notifiers can be added via UI
 	}
@@ -153,7 +152,7 @@ func main() {
 
 	// Initialize HTTP server
 	sessionDurationSec := int(sessionDuration.Seconds())
-	server := web.Run(cfg.Port, dbManager, cfg.SampleRate, notifyService, authService, tracker, sessionDurationSec, cfg.PanelURL)
+	server := web.Run(cfg.Port, dbManager, cfg.SampleRate, notifyService, authService, notifierStore, tracker, sessionDurationSec, cfg.PanelURL)
 
 	// Handle shutdown signals
 	sigChan := make(chan os.Signal, 1)
@@ -180,98 +179,4 @@ func main() {
 	}
 
 	slog.Info("Server stopped")
-}
-
-// TODO: It should be in it's package, not here
-// TelegramConfig represents Telegram notifier configuration
-type TelegramConfig struct {
-	Token  string `json:"token"`
-	ChatID int64  `json:"chat_id"`
-}
-
-// loadNotifiers loads enabled notifiers from the database and registers them
-func loadNotifiers(ctx context.Context, authService *auth.Service, notifyService *notify.Service) error {
-	notifiers, err := authService.ListNotifiers(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to list notifiers: %w", err)
-	}
-
-	for _, notifier := range notifiers {
-		if notifier.Enabled != 1 {
-			continue
-		}
-
-		subscriptions, err := authService.GetNotifierApps(ctx, notifier.ID)
-		if err != nil {
-			slog.Error("Failed to get notifier subscriptions", "notifier_id", notifier.ID, "error", err)
-			continue
-		}
-
-		if len(subscriptions) == 0 {
-			continue // No subscriptions configured, skip
-		}
-
-		// Get the owner user to check if they're admin
-		owner, err := authService.GetUserByID(ctx, notifier.UserID)
-		if err != nil {
-			slog.Error("Failed to get notifier owner", "notifier_id", notifier.ID, "error", err)
-			continue
-		}
-
-		// For non-admin users, filter subscriptions to only apps they have access to
-		if owner.IsAdmin != 1 {
-			userApps, err := authService.GetUserApps(ctx, owner.ID)
-			if err != nil {
-				slog.Error("Failed to get user apps", "user_id", owner.ID, "error", err)
-				continue
-			}
-			userAppMap := make(map[string]bool)
-			for _, app := range userApps {
-				userAppMap[app] = true
-			}
-			var filtered []notify.NotifierAppSubscription
-			for _, sub := range subscriptions {
-				if sub.AppName == "*" {
-					// Non-admins can't use wildcard
-					continue
-				}
-				if userAppMap[sub.AppName] {
-					filtered = append(filtered, sub)
-				}
-			}
-			subscriptions = filtered
-		}
-
-		if len(subscriptions) == 0 {
-			continue // No accessible subscriptions after filtering
-		}
-
-		var n notify.Notifier
-		switch notifier.Type {
-		case "telegram":
-			var cfg TelegramConfig
-			if err := json.Unmarshal([]byte(notifier.Config), &cfg); err != nil {
-				slog.Error("Failed to parse telegram config", "notifier_id", notifier.ID, "error", err)
-				continue
-			}
-			tg, err := notify.NewTelegramNotifier(notifier.Name, cfg.Token, cfg.ChatID)
-			if err != nil {
-				slog.Error("Failed to create telegram notifier", "notifier_id", notifier.ID, "error", err)
-				continue
-			}
-			n = tg
-		default:
-			slog.Warn("Unknown notifier type", "type", notifier.Type, "notifier_id", notifier.ID)
-			continue
-		}
-
-		// Register for each subscription
-		for _, sub := range subscriptions {
-			notifyService.RegisterNotifier(sub.CollectorName, sub.AppName, n)
-		}
-
-		slog.Info("Loaded notifier", "name", notifier.Name, "type", notifier.Type, "subscriptions", len(subscriptions), "owner", owner.Username)
-	}
-
-	return nil
 }

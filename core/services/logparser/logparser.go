@@ -1,9 +1,10 @@
 package logparser
 
 import (
+	"strings"
 	"time"
 
-	"github.com/ai-shift/tracer/config"
+	collectorconfig "github.com/ai-shift/tracer/config/collector"
 )
 
 // LogEntry represents a parsed log line
@@ -23,7 +24,7 @@ type Parser interface {
 }
 
 // New creates a parser based on the app configuration
-func New(cfg config.App) (Parser, error) {
+func New(cfg collectorconfig.App) (Parser, error) {
 	switch cfg.Format {
 	case "json":
 		return newJSONParser(cfg)
@@ -36,23 +37,15 @@ func New(cfg config.App) (Parser, error) {
 	}
 }
 
-// TODO: Simplify (at least case lol)
 // normalizeLevel converts various level formats to uppercase standard
 func normalizeLevel(level string) string {
-	switch level {
-	case "INFO", "info":
-		return "INFO"
-	case "WARN", "warn", "WARNING", "warning":
+	normalized := strings.ToUpper(level)
+	switch normalized {
+	case "WARNING":
 		return "WARN"
-	case "ERROR", "error":
-		return "ERROR"
-	case "DEBUG", "debug":
-		return "DEBUG"
-	case "TRACE", "trace":
-		return "TRACE"
-	case "FATAL", "fatal", "CRITICAL", "critical":
+	case "CRITICAL":
 		return "FATAL"
 	default:
-		return level
+		return normalized
 	}
 }
