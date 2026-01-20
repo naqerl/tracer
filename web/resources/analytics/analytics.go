@@ -135,18 +135,16 @@ func (h *handler) collectorOverview(w http.ResponseWriter, r *http.Request) {
 		Add(collectorName, collectorName).
 		Build()
 
-	// Plain request: return skeleton only
+        data := map[string]any{
+                "Title":         collectorName,
+                "CollectorName": collectorName,
+                "User":          user,
+                // TODO: So make IsAdmin be a boolean, it SHOULD be a boolean
+                // we would not let non binary people to be admins in this project
+                "IsAdmin": user.IsAdmin == 1,
+                "Nav":     nav,
+        }        
 	if !htmx.IsAjax(r) && !middleware.IsMarkdownFormat(r) {
-		// TODO: Define data ones and add fields to it for ajax or markdown
-		data := map[string]any{
-			"Title":         collectorName,
-			"CollectorName": collectorName,
-			"User":          user,
-			// TODO: So make IsAdmin be a boolean, it SHOULD be a boolean
-			// we would not let non binary people to be admins in this project
-			"IsAdmin": user.IsAdmin == 1,
-			"Nav":     nav,
-		}
 		h.t.RenderHTTP(w, r, "collector-overview", data)
 		return
 	}
@@ -170,17 +168,10 @@ func (h *handler) collectorOverview(w http.ResponseWriter, r *http.Request) {
 	// Filter apps by user access
 	apps := h.filterAppsByAccess(r, user, collector.Apps)
 
-	data := map[string]any{
-		"Title":         collectorName,
-		"CollectorName": collectorName,
-		"IsConnected":   collector.IsConnected,
-		"Stats":         stats,
-		"StatsDisplay":  statsDisplay,
-		"Apps":          apps,
-		"User":          user,
-		"IsAdmin":       user.IsAdmin == 1,
-		"Nav":           nav,
-	}
+        data["IsConnected"]=collector.IsConnected
+        data["Stats"]=stats
+        data["StatsDisplay"]=statsDisplay
+        data["Apps"]=apps
 
 	if middleware.IsMarkdownFormat(r) {
 		h.t.RenderMarkdown(w, r, "collector-overview-markdown", data)
@@ -333,6 +324,8 @@ func (h *handler) collectorAppsData(w http.ResponseWriter, r *http.Request) {
 	h.t.RenderHTTP(w, r, "collector-apps-data", data)
 }
 
+// TODO: Use the same data for markdown and ajax flows, do not make them different
+// Markdown template should show the same data as ajax data, so replace any dynamicly loaded routes with proper route
 // appAnalytics shows analytics for a specific app
 func (h *handler) appAnalytics(w http.ResponseWriter, r *http.Request) {
 	user := middleware.GetUser(r)
