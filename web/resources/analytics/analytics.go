@@ -1,8 +1,7 @@
-// TODO: There is a function to require auth and redirect to /login route
-// Use it instead of hardcoded nil check and redirect to login
 package analytics
 
 import (
+	"context"
 	"database/sql"
 	"embed"
 	"log/slog"
@@ -43,13 +42,9 @@ func InitMux(dbManager *dbmanager.Manager, authService *auth.Service, tracker *c
 	m.HandleFunc("GET /collectors", h.getCollectors)
 
 	// Collector routes
-	// TODO: "data" endpoints should not exist. data template should be returned
-	// if htmx.IsAjax Rework all of them to match this requirement
 	m.HandleFunc("GET /{collector}", h.collectorOverview)
 	m.HandleFunc("GET /{collector}/resources", h.collectorResources)
-	m.HandleFunc("GET /{collector}/resources/data", h.collectorResourcesData)
 	m.HandleFunc("GET /{collector}/apps", h.collectorApps)
-	m.HandleFunc("GET /{collector}/apps/data", h.collectorAppsData)
 	m.HandleFunc("GET /{collector}/apps/{app}", h.appAnalytics)
 	m.HandleFunc("GET /{collector}/apps/{app}/logs", h.appLogs)
 	m.HandleFunc("GET /{collector}/apps/{app}/logs/chart-data", h.appLogsChartData)
@@ -59,9 +54,8 @@ func InitMux(dbManager *dbmanager.Manager, authService *auth.Service, tracker *c
 
 // dashboard shows all collectors overview
 func (h *handler) dashboard(w http.ResponseWriter, r *http.Request) {
-	user := middleware.GetUser(r)
+	user := middleware.RequireAuthRedirect(w, r)
 	if user == nil {
-		http.Redirect(w, r, "/login", http.StatusSeeOther)
 		return
 	}
 
@@ -74,10 +68,12 @@ func (h *handler) dashboard(w http.ResponseWriter, r *http.Request) {
 
 	nav := templates.NewNavBuilder().Add("analytics", "analytics").Build()
 
+	isAdmin := user.IsAdmin == 1
+
 	data := map[string]any{
 		"Title":      "Analytics",
 		"User":       user,
-		"IsAdmin":    user.IsAdmin == 1,
+		"IsAdmin":    isAdmin,
 		"Nav":        nav,
 		"Collectors": collectorsWithStats,
 	}
@@ -112,9 +108,8 @@ func (h *handler) getCollectors(w http.ResponseWriter, r *http.Request) {
 
 // collectorOverview shows a single collector with stats and apps
 func (h *handler) collectorOverview(w http.ResponseWriter, r *http.Request) {
-	user := middleware.GetUser(r)
+	user := middleware.RequireAuthRedirect(w, r)
 	if user == nil {
-		http.Redirect(w, r, "/login", http.StatusSeeOther)
 		return
 	}
 
@@ -135,15 +130,15 @@ func (h *handler) collectorOverview(w http.ResponseWriter, r *http.Request) {
 		Add(collectorName, collectorName).
 		Build()
 
-        data := map[string]any{
-                "Title":         collectorName,
-                "CollectorName": collectorName,
-                "User":          user,
-                // TODO: So make IsAdmin be a boolean, it SHOULD be a boolean
-                // we would not let non binary people to be admins in this project
-                "IsAdmin": user.IsAdmin == 1,
-                "Nav":     nav,
-        }        
+	isAdmin := user.IsAdmin == 1
+
+	data := map[string]any{
+		"Title":         collectorName,
+		"CollectorName": collectorName,
+		"User":          user,
+		"IsAdmin":       isAdmin,
+		"Nav":           nav,
+	}
 	if !htmx.IsAjax(r) && !middleware.IsMarkdownFormat(r) {
 		h.t.RenderHTTP(w, r, "collector-overview", data)
 		return
@@ -168,10 +163,10 @@ func (h *handler) collectorOverview(w http.ResponseWriter, r *http.Request) {
 	// Filter apps by user access
 	apps := h.filterAppsByAccess(r, user, collector.Apps)
 
-        data["IsConnected"]=collector.IsConnected
-        data["Stats"]=stats
-        data["StatsDisplay"]=statsDisplay
-        data["Apps"]=apps
+	data["IsConnected"] = collector.IsConnected
+	data["Stats"] = stats
+	data["StatsDisplay"] = statsDisplay
+	data["Apps"] = apps
 
 	if middleware.IsMarkdownFormat(r) {
 		h.t.RenderMarkdown(w, r, "collector-overview-markdown", data)
@@ -182,9 +177,8 @@ func (h *handler) collectorOverview(w http.ResponseWriter, r *http.Request) {
 
 // collectorResources shows resource usage charts (was collectorStats)
 func (h *handler) collectorResources(w http.ResponseWriter, r *http.Request) {
-	user := middleware.GetUser(r)
+	user := middleware.RequireAuthRedirect(w, r)
 	if user == nil {
-		http.Redirect(w, r, "/login", http.StatusSeeOther)
 		return
 	}
 
@@ -210,6 +204,13 @@ func (h *handler) collectorResources(w http.ResponseWriter, r *http.Request) {
 		Add("resources", "resources").
 		Build()
 
+	since := parseTimeRange(rangeParam)
+	stats, err := h.authService.GetCollectorStatsHistory(r.Context(), collectorName, since)
+	if err != nil {
+		h.t.RenderError(w, r, "Error", "Failed to get stats history", http.StatusInternalServerError)
+		return
+	}
+
 	data := map[string]any{
 		"Title":         collectorName + " Resources",
 		"CollectorName": collectorName,
@@ -217,6 +218,7 @@ func (h *handler) collectorResources(w http.ResponseWriter, r *http.Request) {
 		"User":          user,
 		"IsAdmin":       user.IsAdmin == 1,
 		"Nav":           nav,
+		"Stats":         stats,
 	}
 
 	if htmx.IsAjax(r) {
@@ -226,39 +228,10 @@ func (h *handler) collectorResources(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// collectorResourcesData returns lazy-loaded resource data (was collectorStatsData)
-func (h *handler) collectorResourcesData(w http.ResponseWriter, r *http.Request) {
-	user := middleware.GetUser(r)
-	if user == nil {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return
-	}
-
-	collectorName := r.PathValue("collector")
-	if !h.userHasCollectorAccess(r, user, collectorName) {
-		http.Error(w, "Forbidden", http.StatusForbidden)
-		return
-	}
-
-	rangeParam := r.URL.Query().Get("range")
-	since := parseTimeRange(rangeParam)
-
-	stats, err := h.authService.GetCollectorStatsHistory(r.Context(), collectorName, since)
-	if err != nil {
-		http.Error(w, "Failed to get stats history", http.StatusInternalServerError)
-		return
-	}
-
-	h.t.RenderHTTP(w, r, "collector-stats-data", map[string]any{
-		"Stats": stats,
-	})
-}
-
 // collectorApps shows apps list for a collector
 func (h *handler) collectorApps(w http.ResponseWriter, r *http.Request) {
-	user := middleware.GetUser(r)
+	user := middleware.RequireAuthRedirect(w, r)
 	if user == nil {
-		http.Redirect(w, r, "/login", http.StatusSeeOther)
 		return
 	}
 
@@ -279,12 +252,21 @@ func (h *handler) collectorApps(w http.ResponseWriter, r *http.Request) {
 		Add("apps", "apps").
 		Build()
 
+	collector, exists := h.tracker.Get(collectorName)
+	if !exists {
+		h.t.RenderError(w, r, "Error", "Collector not found", http.StatusNotFound)
+		return
+	}
+
+	apps := h.filterAppsByAccess(r, user, collector.Apps)
+
 	data := map[string]any{
 		"Title":         collectorName + " Apps",
 		"CollectorName": collectorName,
 		"User":          user,
 		"IsAdmin":       user.IsAdmin == 1,
 		"Nav":           nav,
+		"Apps":          apps,
 	}
 
 	if htmx.IsAjax(r) {
@@ -294,43 +276,10 @@ func (h *handler) collectorApps(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// collectorAppsData returns lazy-loaded apps list
-func (h *handler) collectorAppsData(w http.ResponseWriter, r *http.Request) {
-	user := middleware.GetUser(r)
-	if user == nil {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return
-	}
-
-	collectorName := r.PathValue("collector")
-	if !h.userHasCollectorAccess(r, user, collectorName) {
-		http.Error(w, "Forbidden", http.StatusForbidden)
-		return
-	}
-
-	collector, exists := h.tracker.Get(collectorName)
-	if !exists {
-		http.Error(w, "Collector not found", http.StatusNotFound)
-		return
-	}
-
-	apps := h.filterAppsByAccess(r, user, collector.Apps)
-
-	data := map[string]any{
-		"CollectorName": collectorName,
-		"Apps":          apps,
-	}
-
-	h.t.RenderHTTP(w, r, "collector-apps-data", data)
-}
-
-// TODO: Use the same data for markdown and ajax flows, do not make them different
-// Markdown template should show the same data as ajax data, so replace any dynamicly loaded routes with proper route
 // appAnalytics shows analytics for a specific app
 func (h *handler) appAnalytics(w http.ResponseWriter, r *http.Request) {
-	user := middleware.GetUser(r)
+	user := middleware.RequireAuthRedirect(w, r)
 	if user == nil {
-		http.Redirect(w, r, "/login", http.StatusSeeOther)
 		return
 	}
 
@@ -348,61 +297,21 @@ func (h *handler) appAnalytics(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	stats, grouped, err := h.getAppAnalyticsData(r.Context(), appName)
+	if err != nil {
+		h.t.RenderError(w, r, "Error", "App not found", http.StatusNotFound)
+		return
+	}
+
+	data := map[string]any{
+		"Title":         appName + " Analytics",
+		"AppName":       appName,
+		"CollectorName": collectorName,
+		"Stats":         stats,
+		"Grouped":       grouped,
+	}
+
 	if middleware.IsMarkdownFormat(r) {
-		queries, err := h.dbManager.GetQueries(appName)
-		if err != nil {
-			h.t.RenderError(w, r, "Error", "App not found", http.StatusNotFound)
-			return
-		}
-
-		totalCount, err := queries.CountLogGroups(r.Context())
-		if err != nil {
-			slog.Error("Failed to count log groups", "error", err)
-			totalCount = 0
-		}
-
-		errorCount, err := queries.CountLogGroupsByLevel(r.Context(), "error")
-		if err != nil {
-			slog.Error("Failed to count error groups", "error", err)
-			errorCount = 0
-		}
-
-		warnCount, err := queries.CountLogGroupsByLevel(r.Context(), "warn")
-		if err != nil {
-			slog.Error("Failed to count warn groups", "error", err)
-			warnCount = 0
-		}
-
-		infoCount, err := queries.CountLogGroupsByLevel(r.Context(), "info")
-		if err != nil {
-			slog.Error("Failed to count info groups", "error", err)
-			infoCount = 0
-		}
-
-		grouped, err := queries.ListLogGroups(r.Context(), db.ListLogGroupsParams{
-			Limit:  20,
-			Offset: 0,
-		})
-		if err != nil {
-			h.t.RenderError(w, r, "Error", "Failed to fetch grouped logs", http.StatusInternalServerError)
-			return
-		}
-
-		stats := &appStats{
-			Total:    totalCount,
-			Errors:   errorCount,
-			Warnings: warnCount,
-			Infos:    infoCount,
-		}
-
-		data := map[string]any{
-			"Title":         appName + " Analytics",
-			"AppName":       appName,
-			"CollectorName": collectorName,
-			"Stats":         stats,
-			"Grouped":       grouped,
-		}
-
 		h.t.RenderMarkdown(w, r, "app-analytics-markdown", data)
 		return
 	}
@@ -414,42 +323,15 @@ func (h *handler) appAnalytics(w http.ResponseWriter, r *http.Request) {
 		Add(appName, appName).
 		Build()
 
-	// Plain request: return full page with lazy-loading containers
-	if !htmx.IsAjax(r) {
-		data := map[string]any{
-			"Title":         appName,
-			"AppName":       appName,
-			"CollectorName": collectorName,
-			"IsAdmin":       user.IsAdmin == 1,
-			"Nav":           nav,
-		}
-		h.t.RenderHTTP(w, r, "app-page", data)
+	data["IsAdmin"] = user.IsAdmin == 1
+	data["Nav"] = nav
+
+	if htmx.IsAjax(r) {
+		h.t.RenderHTTP(w, r, "app-logs", data)
 		return
 	}
 
-	// AJAX request: fetch recent logs only
-	queries, err := h.dbManager.GetQueries(appName)
-	if err != nil {
-		h.t.RenderError(w, r, "Error", "App not found", http.StatusNotFound)
-		return
-	}
-
-	grouped, err := queries.ListLogGroups(r.Context(), db.ListLogGroupsParams{
-		Limit:  20,
-		Offset: 0,
-	})
-	if err != nil {
-		h.t.RenderError(w, r, "Error", "Failed to fetch grouped logs", http.StatusInternalServerError)
-		return
-	}
-
-	data := map[string]any{
-		"AppName":       appName,
-		"CollectorName": collectorName,
-		"Grouped":       grouped,
-	}
-
-	h.t.RenderHTTP(w, r, "app-logs", data)
+	h.t.RenderHTTP(w, r, "app-page", data)
 }
 
 // Helper types and functions
@@ -623,9 +505,8 @@ func (h *handler) filterAppsByAccess(r *http.Request, user *db.User, apps []stri
 
 // appLogs shows logs for a specific app
 func (h *handler) appLogs(w http.ResponseWriter, r *http.Request) {
-	user := middleware.GetUser(r)
+	user := middleware.RequireAuthRedirect(w, r)
 	if user == nil {
-		http.Redirect(w, r, "/login", http.StatusSeeOther)
 		return
 	}
 
@@ -872,6 +753,54 @@ func (h *handler) appLogsChartData(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.t.RenderHTTP(w, r, "app-logs-chart-data", data)
+}
+
+func (h *handler) getAppAnalyticsData(ctx context.Context, appName string) (*appStats, any, error) {
+	queries, err := h.dbManager.GetQueries(appName)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	totalCount, err := queries.CountLogGroups(ctx)
+	if err != nil {
+		slog.Error("Failed to count log groups", "error", err)
+		totalCount = 0
+	}
+
+	errorCount, err := queries.CountLogGroupsByLevel(ctx, "error")
+	if err != nil {
+		slog.Error("Failed to count error groups", "error", err)
+		errorCount = 0
+	}
+
+	warnCount, err := queries.CountLogGroupsByLevel(ctx, "warn")
+	if err != nil {
+		slog.Error("Failed to count warn groups", "error", err)
+		warnCount = 0
+	}
+
+	infoCount, err := queries.CountLogGroupsByLevel(ctx, "info")
+	if err != nil {
+		slog.Error("Failed to count info groups", "error", err)
+		infoCount = 0
+	}
+
+	grouped, err := queries.ListLogGroups(ctx, db.ListLogGroupsParams{
+		Limit:  20,
+		Offset: 0,
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+
+	stats := &appStats{
+		Total:    totalCount,
+		Errors:   errorCount,
+		Warnings: warnCount,
+		Infos:    infoCount,
+	}
+
+	return stats, grouped, nil
 }
 
 // parseTimeRange parses a time range string like "1h", "24h", "7d", "30d" and returns the time since
