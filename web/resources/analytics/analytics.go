@@ -144,8 +144,8 @@ func (h *handler) collectorOverview(w http.ResponseWriter, r *http.Request) {
 			"User":          user,
 			// TODO: So make IsAdmin be a boolean, it SHOULD be a boolean
 			// we would not let non binary people to be admins in this project
-			"IsAdmin":       user.IsAdmin == 1,
-			"Nav":           nav,
+			"IsAdmin": user.IsAdmin == 1,
+			"Nav":     nav,
 		}
 		h.t.RenderHTTP(w, r, "collector-overview", data)
 		return
@@ -355,6 +355,65 @@ func (h *handler) appAnalytics(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if middleware.IsMarkdownFormat(r) {
+		queries, err := h.dbManager.GetQueries(appName)
+		if err != nil {
+			h.t.RenderError(w, r, "Error", "App not found", http.StatusNotFound)
+			return
+		}
+
+		totalCount, err := queries.CountLogGroups(r.Context())
+		if err != nil {
+			slog.Error("Failed to count log groups", "error", err)
+			totalCount = 0
+		}
+
+		errorCount, err := queries.CountLogGroupsByLevel(r.Context(), "error")
+		if err != nil {
+			slog.Error("Failed to count error groups", "error", err)
+			errorCount = 0
+		}
+
+		warnCount, err := queries.CountLogGroupsByLevel(r.Context(), "warn")
+		if err != nil {
+			slog.Error("Failed to count warn groups", "error", err)
+			warnCount = 0
+		}
+
+		infoCount, err := queries.CountLogGroupsByLevel(r.Context(), "info")
+		if err != nil {
+			slog.Error("Failed to count info groups", "error", err)
+			infoCount = 0
+		}
+
+		grouped, err := queries.ListLogGroups(r.Context(), db.ListLogGroupsParams{
+			Limit:  20,
+			Offset: 0,
+		})
+		if err != nil {
+			h.t.RenderError(w, r, "Error", "Failed to fetch grouped logs", http.StatusInternalServerError)
+			return
+		}
+
+		stats := &appStats{
+			Total:    totalCount,
+			Errors:   errorCount,
+			Warnings: warnCount,
+			Infos:    infoCount,
+		}
+
+		data := map[string]any{
+			"Title":         appName + " Analytics",
+			"AppName":       appName,
+			"CollectorName": collectorName,
+			"Stats":         stats,
+			"Grouped":       grouped,
+		}
+
+		h.t.RenderMarkdown(w, r, "app-analytics-markdown", data)
+		return
+	}
+
 	nav := templates.NewNavBuilder().
 		Add("analytics", "analytics").
 		Add(collectorName, collectorName).
@@ -407,6 +466,14 @@ type StatsDisplay struct {
 	*db.SystemStat
 	TimestampFormatted string // Formatted timestamp
 	Staleness          string // "fresh", "warning", "stale", "old"
+}
+
+// appStats holds aggregated app-level counts
+type appStats struct {
+	Total    int64
+	Errors   int64
+	Warnings int64
+	Infos    int64
 }
 
 // CollectorWithStats combines collector info with latest system stats

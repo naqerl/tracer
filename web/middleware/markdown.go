@@ -29,7 +29,14 @@ func BuildMarkdownMiddleware() func(http.Handler) http.Handler {
 			// Check if path ends with .md
 			if strings.HasSuffix(path, ".md") {
 				// Remove .md suffix from path and update request
-				r.URL.Path = strings.TrimSuffix(path, ".md")
+				trimmed := strings.TrimSuffix(path, ".md")
+
+				// Avoid ServeMux trailing slash redirect for analytics root
+				if trimmed == "/analytics" {
+					trimmed = "/analytics/"
+				}
+
+				r.URL.Path = trimmed
 
 				// Store format flag in context
 				ctx := context.WithValue(r.Context(), formatContextKey, "markdown")

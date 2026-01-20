@@ -12,6 +12,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/ai-shift/tracer/web/middleware"
 )
 
 //go:embed shared/*.html
@@ -56,6 +58,13 @@ func (t Templates) RenderHTTP(w http.ResponseWriter, r *http.Request, name strin
 }
 
 func (t Templates) RenderError(w http.ResponseWriter, r *http.Request, title, message string, status int) {
+	if middleware.IsMarkdownFormat(r) {
+		w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
+		w.WriteHeader(status)
+		fmt.Fprintf(w, "# %s\n\n%s\n", title, message)
+		return
+	}
+
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(status)
 	data := map[string]any{
