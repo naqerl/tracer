@@ -14,7 +14,7 @@ import (
 	"github.com/pressly/goose/v3"
 	_ "modernc.org/sqlite"
 
-	collectormigrations "github.com/ai-shift/tracer/sql/collector/migrations"
+	collectormigrations "github.com/ai-shift/tracer/sql/collector"
 )
 
 type InsertSystemStatsParams struct {

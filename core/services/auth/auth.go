@@ -18,7 +18,7 @@ import (
 	_ "modernc.org/sqlite"
 
 	"github.com/ai-shift/tracer/db"
-	panelmigrations "github.com/ai-shift/tracer/sql/panel/migrations"
+	panelmigrations "github.com/ai-shift/tracer/sql/panel"
 )
 
 const (

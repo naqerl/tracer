@@ -16,7 +16,7 @@ import (
 	_ "modernc.org/sqlite"
 
 	"github.com/ai-shift/tracer/db"
-	appmigrations "github.com/ai-shift/tracer/sql/app/migrations"
+	appmigrations "github.com/ai-shift/tracer/sql/app"
 )
 
 type Manager struct {
