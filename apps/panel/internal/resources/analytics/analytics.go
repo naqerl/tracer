@@ -4,8 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"embed"
-	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -796,7 +796,7 @@ func (h *handler) getLogByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log, err := queries.GetLogByID(r.Context(), id)
+	logEntry, err := queries.GetLogByID(r.Context(), id)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			http.Error(w, "Log not found", http.StatusNotFound)
@@ -807,10 +807,26 @@ func (h *handler) getLogByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(log); err != nil {
-		slog.Error("Failed to encode log", "error", err)
+	nav := templates.NewNavBuilder().
+		Add("analytics", "analytics").
+		Add(collectorName, collectorName).
+		Add("apps", "apps").
+		Add(appName, appName).
+		Add("logs", "logs").
+		Add("log", fmt.Sprintf("log-%d", logEntry.ID)).
+		Build()
+
+	data := map[string]any{
+		"Title":         fmt.Sprintf("Log #%d", logEntry.ID),
+		"AppName":       appName,
+		"CollectorName": collectorName,
+		"Log":           logEntry,
+		"User":          user,
+		"IsAdmin":       user.IsAdmin == 1,
+		"Nav":           nav,
 	}
+
+	h.t.RenderHTTP(w, r, "app-log-detail-page", data)
 }
 
 func (h *handler) getAppAnalyticsData(ctx context.Context, collectorName, appName string) (*appStats, any, error) {

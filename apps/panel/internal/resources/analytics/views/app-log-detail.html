@@ -1,0 +1,95 @@
+{{define "app-log-detail-page"}}
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        {{template "head"}}
+        <title>Log #{{.Log.ID}} - {{.AppName}} - Tracer</title>
+        <style>
+            .log-field { margin-bottom: 1rem; }
+            .log-label { color: #808080; font-size: 0.875rem; margin-bottom: 0.25rem; }
+            .log-value { word-break: break-word; }
+            .log-raw { background: #0A0A0A; padding: 1rem; border-radius: 0.375rem; overflow-x: auto; }
+            .log-context { background: #0A0A0A; padding: 1rem; border-radius: 0.375rem; overflow-x: auto; }
+            pre { margin: 0; white-space: pre-wrap; word-break: break-word; }
+            code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 0.875rem; }
+        </style>
+    </head>
+    <body>
+        <div class="max-w-7xl mx-auto p-6">
+            {{template "navbar" .Nav}}
+
+            <div class="bg-bg-secondary p-5">
+                <div class="mb-4 flex items-center justify-between">
+                    <a href="/analytics/{{.CollectorName}}/apps/{{.AppName}}/logs?groupID={{.Log.GroupID.Int64}}" class="text-accent hover:underline text-sm">&larr; Back to Group</a>
+                    <span class="text-fg-secondary text-sm">Log #{{.Log.ID}}</span>
+                </div>
+
+                <h2 class="text-lg font-medium mb-4">Log Details</h2>
+
+                <div class="grid gap-4">
+                    <div class="log-field">
+                        <div class="log-label">Level</div>
+                        <div class="log-value">
+                            <span class="text-xs font-medium uppercase px-2 py-1 rounded bg-bg">{{.Log.Level}}</span>
+                        </div>
+                    </div>
+
+                    <div class="log-field">
+                        <div class="log-label">Message</div>
+                        <div class="log-value text-fg">{{.Log.Message}}</div>
+                    </div>
+
+                    {{if .Log.TraceID}}
+                    <div class="log-field">
+                        <div class="log-label">Trace ID</div>
+                        <div class="log-value">
+                            <a href="/analytics/{{.CollectorName}}/apps/{{.AppName}}/logs?traceID={{.Log.TraceID}}" class="text-accent hover:underline">{{.Log.TraceID}}</a>
+                        </div>
+                    </div>
+                    {{end}}
+
+                    <div class="log-field">
+                        <div class="log-label">Source</div>
+                        <div class="log-value text-fg-secondary">{{.Log.Source}}</div>
+                    </div>
+
+                    <div class="log-field">
+                        <div class="log-label">Time</div>
+                        <div class="log-value text-fg-secondary">{{formatDateTime .Log.CreatedAt}}</div>
+                    </div>
+
+                    {{if .Log.Context.Valid}}
+                    <div class="log-field">
+                        <div class="log-label">Context</div>
+                        <div class="log-context">
+                            <pre><code class="context-json">{{.Log.Context.String}}</code></pre>
+                        </div>
+                    </div>
+                    {{end}}
+
+                    <div class="log-field">
+                        <div class="log-label">Raw Log</div>
+                        <div class="log-raw">
+                            <pre><code>{{.Log.Raw}}</code></pre>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <script>
+        // Pretty-print JSON context
+        document.addEventListener('DOMContentLoaded', function() {
+            document.querySelectorAll('.context-json').forEach(function(el) {
+                try {
+                    const json = JSON.parse(el.textContent);
+                    el.textContent = JSON.stringify(json, null, 2);
+                } catch(e) {
+                    // If not valid JSON, leave as-is
+                }
+            });
+        });
+        </script>
+    </body>
+</html>
+{{end}}
