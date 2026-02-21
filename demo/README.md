@@ -5,7 +5,7 @@ This demo runs fully in Podman with one panel and two collector/generator bundle
 ## Run
 
 ```bash
-make demo-up
+make -C demo up
 ```
 
 Panel is exposed at `http://localhost:18081`.
@@ -14,13 +14,13 @@ Default credentials: `demo` / `demo123`.
 ## Stop
 
 ```bash
-make demo-down
+make -C demo down
 ```
 
 ## Reset all demo data
 
 ```bash
-make demo-reset
+make -C demo reset
 ```
 
 ## Notes

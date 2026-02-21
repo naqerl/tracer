@@ -17,7 +17,7 @@ message_field = "message"
 name = "alpha-regex"
 path = "/demo/logs/alpha-regex.log"
 format = "regex"
-pattern = '^(?P<timestamp>[^ ]+ [^ ]+) \[(?P<level>[A-Z]+)\] trace=(?P<trace_id>[^ ]+) msg=(?P<message>.+)$'
+pattern = '^(?P<timestamp>[^ ]+ [^ ]+) \[(?P<level>[A-Z]+)\] trace=(?P<trace_id>[^ ]+) msg="(?P<message>[^"]+)" user=(?P<user_id>[^ ]+) request=(?P<request_id>[^ ]+) amount=(?P<amount_usd>[^ ]+)$'
 timestamp_field = "timestamp"
 timestamp_format = "2006-01-02 15:04:05"
 level_field = "level"

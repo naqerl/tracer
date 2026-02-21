@@ -17,7 +17,7 @@ message_field = "msg"
 name = "beta-regex"
 path = "/demo/logs/beta-regex.log"
 format = "regex"
-pattern = '^(?P<timestamp>[0-9T:+-]+)\\|(?P<level>[A-Z]+)\\|trace=(?P<trace_id>[^|]+)\\|(?P<message>.+)$'
+pattern = '^(?P<timestamp>[0-9T:+-]+)\|(?P<level>[A-Z]+)\|trace=(?P<trace_id>[^|]+)\|msg=(?P<message>[^|]+)\|channel=(?P<channel>[^|]+)\|target=(?P<target>[^|]+)\|attempt=(?P<attempt>[^|]+)$'
 timestamp_field = "timestamp"
 timestamp_format = "2006-01-02T15:04:05Z07:00"
 level_field = "level"
