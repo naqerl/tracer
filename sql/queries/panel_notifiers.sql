@@ -45,13 +45,13 @@ UPDATE notifier SET enabled = 0 WHERE id = ?;
 -- Notifier app mapping queries
 
 -- name: GetNotifierApps :many
-SELECT app_name FROM notifier_app
+SELECT DISTINCT app_name FROM notifier_app
 WHERE notifier_id = ?
 ORDER BY app_name;
 
 -- name: AddNotifierApp :exec
-INSERT OR IGNORE INTO notifier_app (notifier_id, app_name)
-VALUES (?, ?);
+INSERT OR IGNORE INTO notifier_app (notifier_id, app_name, collector_name)
+VALUES (?, ?, '*');
 
 -- name: RemoveNotifierApp :exec
 DELETE FROM notifier_app

@@ -3,8 +3,8 @@ sql:
   - engine: "sqlite"
     queries: "sql/queries"
     schema:
-      - "sql/panel/migrations"
-      - "sql/app/migrations"
+      - "sql/panel"
+      - "sql/app"
     gen:
       go:
         package: "db"
