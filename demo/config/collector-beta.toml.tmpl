@@ -1,0 +1,25 @@
+name = "demo-beta"
+panel_endpoint = "ws://localhost:8080/api/ws/ingest?api_key=__API_KEY__"
+stats_interval = "30s"
+data_dir = "/demo/data"
+
+[[apps]]
+name = "beta-json"
+path = "/demo/logs/beta-json.log"
+format = "json"
+timestamp_field = "time"
+timestamp_format = "2006-01-02T15:04:05Z07:00"
+level_field = "severity"
+trace_id_field = "trace"
+message_field = "msg"
+
+[[apps]]
+name = "beta-regex"
+path = "/demo/logs/beta-regex.log"
+format = "regex"
+pattern = '^(?P<timestamp>[0-9T:+-]+)\\|(?P<level>[A-Z]+)\\|trace=(?P<trace_id>[^|]+)\\|(?P<message>.+)$'
+timestamp_field = "timestamp"
+timestamp_format = "2006-01-02T15:04:05Z07:00"
+level_field = "level"
+trace_id_field = "trace_id"
+message_field = "message"

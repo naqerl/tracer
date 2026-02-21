@@ -1,0 +1,9 @@
+# Tracer Panel demo configuration
+port = "8080"
+data_dir = "/demo/data"
+sample_rate = 1.0
+retention_days = 14
+panel_url = "http://localhost:8080"
+
+[auth]
+session_duration = "24h"
