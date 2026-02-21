@@ -14,7 +14,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 
-	"github.com/ai-shift/tracer/core/services/auth"
+	"github.com/ai-shift/tracer/core/services/collectordb"
 	"github.com/ai-shift/tracer/core/services/collectors"
 	"github.com/ai-shift/tracer/core/services/dbmanager"
 	"github.com/ai-shift/tracer/core/services/notify"
@@ -52,23 +52,23 @@ type LogEntry struct {
 }
 
 type handler struct {
-	dbManager   *dbmanager.Manager
-	authService *auth.Service
-	sampleRate  float64
-	notifyChan  notify.NotificationChan
-	tracker     *collectors.Tracker
-	panelURL    string
+	dbManager          *dbmanager.Manager
+	collectorDBManager *collectordb.Manager
+	sampleRate         float64
+	notifyChan         notify.NotificationChan
+	tracker            *collectors.Tracker
+	panelURL           string
 }
 
-func InitMux(dbManager *dbmanager.Manager, authService *auth.Service, sampleRate float64, notifyChan notify.NotificationChan, tracker *collectors.Tracker, panelURL string) *http.ServeMux {
+func InitMux(dbManager *dbmanager.Manager, collectorDBManager *collectordb.Manager, sampleRate float64, notifyChan notify.NotificationChan, tracker *collectors.Tracker, panelURL string) *http.ServeMux {
 	m := http.NewServeMux()
 	h := &handler{
-		dbManager:   dbManager,
-		authService: authService,
-		sampleRate:  sampleRate,
-		notifyChan:  notifyChan,
-		tracker:     tracker,
-		panelURL:    panelURL,
+		dbManager:          dbManager,
+		collectorDBManager: collectorDBManager,
+		sampleRate:         sampleRate,
+		notifyChan:         notifyChan,
+		tracker:            tracker,
+		panelURL:           panelURL,
 	}
 
 	m.HandleFunc("GET /ws/ingest", h.handleWebSocket)
@@ -136,6 +136,11 @@ func extractIP(remoteAddr string) string {
 }
 
 func (h *handler) handleRegistration(ctx context.Context, connID, remoteAddr, collectorName string, apps []string, thresholds collectors.Thresholds) {
+	if collectorName == "" {
+		slog.Warn("Registration rejected: missing collector_name", "remote", remoteAddr, "conn_id", connID)
+		return
+	}
+
 	slog.Info("Received app registration", "collector", collectorName, "remote", remoteAddr, "apps", apps, "count", len(apps))
 
 	// Register collector with tracker
@@ -146,14 +151,14 @@ func (h *handler) handleRegistration(ctx context.Context, connID, remoteAddr, co
 		if appName == "" {
 			continue
 		}
-		if _, err := h.dbManager.GetQueries(appName); err != nil {
+		if _, err := h.dbManager.GetQueries(collectorName, appName); err != nil {
 			slog.Error("Failed to register app", "app_name", appName, "error", err)
 		} else {
 			slog.Info("Registered app", "app_name", appName)
 		}
 
 		// Track which collector serves this app
-		if err := h.authService.UpsertAppCollector(ctx, appName, collectorName); err != nil {
+		if err := h.collectorDBManager.UpsertCollectorApp(ctx, collectorName, appName); err != nil {
 			slog.Error("Failed to upsert app collector", "app_name", appName, "collector", collectorName, "error", err)
 		}
 	}
@@ -207,6 +212,10 @@ func (h *handler) processMessage(ctx context.Context, connID, remoteAddr string,
 		slog.Warn("Received log without app_name")
 		return
 	}
+	if msg.CollectorName == "" {
+		slog.Warn("Received log without collector_name", "app_name", msg.AppName)
+		return
+	}
 
 	// Sampling logic: always persist errors, sample others
 	isError := msg.Entry.Level == "error" || msg.Entry.Level == "ERROR"
@@ -217,9 +226,9 @@ func (h *handler) processMessage(ctx context.Context, connID, remoteAddr string,
 	}
 
 	// Get queries for this app
-	queries, err := h.dbManager.GetQueries(msg.AppName)
+	queries, err := h.dbManager.GetQueries(msg.CollectorName, msg.AppName)
 	if err != nil {
-		slog.Error("Failed to get queries", "error", err, "app_name", msg.AppName)
+		slog.Error("Failed to get queries", "error", err, "collector_name", msg.CollectorName, "app_name", msg.AppName)
 		return
 	}
 
@@ -296,13 +305,17 @@ func (h *handler) handleStartup(ctx context.Context, msg LogMessage) {
 		slog.Warn("Received startup without app_name")
 		return
 	}
+	if msg.CollectorName == "" {
+		slog.Warn("Received startup without collector_name", "app_name", msg.AppName)
+		return
+	}
 
 	slog.Info("App startup detected", "app", msg.AppName, "message", msg.Entry.Message)
 
 	// Get queries for this app
-	queries, err := h.dbManager.GetQueries(msg.AppName)
+	queries, err := h.dbManager.GetQueries(msg.CollectorName, msg.AppName)
 	if err != nil {
-		slog.Error("Failed to get queries for startup", "error", err, "app_name", msg.AppName)
+		slog.Error("Failed to get queries for startup", "error", err, "collector_name", msg.CollectorName, "app_name", msg.AppName)
 		return
 	}
 
@@ -402,7 +415,7 @@ func (h *handler) handleStats(ctx context.Context, msg LogMessage) {
 	// Normalize to UTC for consistent storage
 	ts = ts.UTC()
 
-	err := h.authService.InsertSystemStats(ctx, db.InsertSystemStatsParams{
+	err := h.collectorDBManager.InsertSystemStats(ctx, msg.CollectorName, collectordb.InsertSystemStatsParams{
 		CollectorName:   msg.CollectorName,
 		CpuUsagePercent: msg.Stats.CPUUsagePercent,
 		MemTotalMb:      int64(msg.Stats.MemTotalMB),

@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/ai-shift/tracer/core/services/auth"
+	"github.com/ai-shift/tracer/core/services/collectordb"
 	"github.com/ai-shift/tracer/core/services/dbmanager"
 	"github.com/ai-shift/tracer/core/services/notifierloader"
 	"github.com/ai-shift/tracer/core/services/notifierstore"
@@ -24,21 +25,23 @@ import (
 var views embed.FS
 
 type handler struct {
-	t             templates.Templates
-	authService   *auth.Service
-	notifierStore *notifierstore.Store
-	dbManager     *dbmanager.Manager
-	notifyService *notify.Service
+	t                  templates.Templates
+	authService        *auth.Service
+	collectorDBManager *collectordb.Manager
+	notifierStore      *notifierstore.Store
+	dbManager          *dbmanager.Manager
+	notifyService      *notify.Service
 }
 
-func InitMux(authService *auth.Service, notifierStore *notifierstore.Store, dbManager *dbmanager.Manager, notifyService *notify.Service) *http.ServeMux {
+func InitMux(authService *auth.Service, collectorDBManager *collectordb.Manager, notifierStore *notifierstore.Store, dbManager *dbmanager.Manager, notifyService *notify.Service) *http.ServeMux {
 	m := http.NewServeMux()
 	h := handler{
-		t:             templates.New(views),
-		authService:   authService,
-		notifierStore: notifierStore,
-		dbManager:     dbManager,
-		notifyService: notifyService,
+		t:                  templates.New(views),
+		authService:        authService,
+		collectorDBManager: collectorDBManager,
+		notifierStore:      notifierStore,
+		dbManager:          dbManager,
+		notifyService:      notifyService,
 	}
 
 	// Users management
@@ -737,7 +740,7 @@ func (h *handler) getNotifierApps(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get app-collector mappings
-	appCollectors, err := h.authService.ListAppCollectors(r.Context())
+	appCollectors, err := h.collectorDBManager.ListAppCollectors(r.Context())
 	if err != nil {
 		slog.Error("Failed to get app collectors", "error", err)
 		h.t.RenderError(w, r, "Error", "Failed to list collectors", http.StatusInternalServerError)

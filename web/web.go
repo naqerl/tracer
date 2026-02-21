@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/ai-shift/tracer/core/services/auth"
+	"github.com/ai-shift/tracer/core/services/collectordb"
 	"github.com/ai-shift/tracer/core/services/collectors"
 	"github.com/ai-shift/tracer/core/services/dbmanager"
 	"github.com/ai-shift/tracer/core/services/notifierstore"
@@ -19,7 +20,7 @@ import (
 	"github.com/ai-shift/tracer/web/resources/settings"
 )
 
-func Run(port string, dbManager *dbmanager.Manager, sampleRate float64, notifyService *notify.Service, authService *auth.Service, notifierStore *notifierstore.Store, tracker *collectors.Tracker, sessionDurationSec int, panelURL string) *http.Server {
+func Run(port string, dbManager *dbmanager.Manager, collectorDBManager *collectordb.Manager, sampleRate float64, notifyService *notify.Service, authService *auth.Service, notifierStore *notifierstore.Store, tracker *collectors.Tracker, sessionDurationSec int, panelURL string) *http.Server {
 	mux := http.NewServeMux()
 
 	// Auth routes (public)
@@ -33,11 +34,11 @@ func Run(port string, dbManager *dbmanager.Manager, sampleRate float64, notifySe
 	mux.Handle("/llm", llm.InitMux())
 
 	// API routes (uses API key auth via middleware)
-	mux.Handle("/api/", http.StripPrefix("/api", api.InitMux(dbManager, authService, sampleRate, notifyService.Chan(), tracker, panelURL)))
+	mux.Handle("/api/", http.StripPrefix("/api", api.InitMux(dbManager, collectorDBManager, sampleRate, notifyService.Chan(), tracker, panelURL)))
 
 	// UI routes (protected by auth middleware)
-	mux.Handle("/analytics/", http.StripPrefix("/analytics", analytics.InitMux(dbManager, authService, tracker)))
-	mux.Handle("/settings/", http.StripPrefix("/settings", settings.InitMux(authService, notifierStore, dbManager, notifyService)))
+	mux.Handle("/analytics/", http.StripPrefix("/analytics", analytics.InitMux(dbManager, authService, collectorDBManager, tracker)))
+	mux.Handle("/settings/", http.StripPrefix("/settings", settings.InitMux(authService, collectorDBManager, notifierStore, dbManager, notifyService)))
 
 	// Apply middleware (order matters: logging → markdown → auth → router)
 	markdownMiddleware := middleware.BuildMarkdownMiddleware()
