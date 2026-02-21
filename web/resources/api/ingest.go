@@ -249,7 +249,7 @@ func (h *handler) processMessage(ctx context.Context, connID, remoteAddr string,
 	// Normalize to UTC for consistent storage
 	ts = ts.UTC()
 
-	_, err = queries.InsertLog(ctx, db.InsertLogParams{
+	savedLog, err := queries.InsertLog(ctx, db.InsertLogParams{
 		TraceID:   msg.Entry.TraceID,
 		Level:     msg.Entry.Level,
 		Message:   msg.Entry.Message,
@@ -269,10 +269,11 @@ func (h *handler) processMessage(ctx context.Context, connID, remoteAddr string,
 		// Build the alert message with markdown link
 		alertMessage := fmt.Sprintf("```%s```", msg.Entry.Message)
 		if h.panelURL != "" {
-			logsURL := fmt.Sprintf("%s/analytics/%s/apps/%s/logs",
+			logsURL := fmt.Sprintf("%s/analytics/%s/apps/%s/logs/%d",
 				h.panelURL,
 				msg.CollectorName,
-				msg.AppName)
+				msg.AppName,
+				savedLog.ID)
 			alertMessage += fmt.Sprintf("\n\n[view logs](%s)", logsURL)
 		}
 
