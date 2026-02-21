@@ -1,0 +1,128 @@
+{{define "app-log-page"}}
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        {{template "head"}}
+        <title>{{.Title}} - Tracer</title>
+    </head>
+    <body>
+        <div class="max-w-7xl mx-auto p-6">
+            {{template "navbar" .Nav}}
+
+            <div class="bg-bg-secondary p-5">
+                {{if .Log.GroupID.Valid}}
+                <div class="mb-4">
+                    <a href="/analytics/{{.CollectorName}}/apps/{{.AppName}}/logs?groupID={{.Log.GroupID.Int64}}" 
+                       class="text-accent hover:underline text-sm">&larr; Back to Group</a>
+                </div>
+                {{end}}
+
+				<div class="flex justify-between items-center">
+					<h1 class="text-xl font-medium break-words">{{.Log.Message}}</h1>
+					<span class="text-fg-secondary">{{formatDateTime .Log.CreatedAt}}</span>
+				</div>
+
+                {{template "app-log" .}}
+            </div>
+        </div>
+    </body>
+</html>
+{{end}}
+
+{{define "app-log"}}
+<!-- Header with Level, Trace ID, and Timestamp -->
+<div class="grid grid-cols-[auto_1fr] gap-3 mb-6">
+            <span class="text-fg-secondary mr-2">Level:</span>
+            <span class="font-medium uppercase">
+                {{.Log.Level}}
+            </span>
+            <span class="text-fg-secondary mr-2">Trace ID:</span>
+            <span class="text-fg font-mono break-all">{{.Log.TraceID}}</span>
+</div>
+
+<!-- Context Section -->
+<div class="mb-6">
+    <h3 class="text-sm font-medium text-fg-secondary mb-2">Context</h3>
+    {{if .Log.Context.Valid}}
+    <div class="bg-bg overflow-x-auto">
+        <table class="w-full context-table">
+            <tbody id="context-tbody">
+                <!-- JavaScript will populate this -->
+            </tbody>
+        </table>
+    </div>
+    {{else}}
+    <div class="bg-bg p-4">
+        <span class="text-xs text-fg-secondary">No context data</span>
+    </div>
+    {{end}}
+</div>
+
+<script>
+// Parse JSON context and render as table
+document.addEventListener('DOMContentLoaded', function() {
+    {{if .Log.Context.Valid}}
+    const contextData = {{.Log.Context.String}};
+    try {
+        const json = JSON.parse(contextData);
+        const tbody = document.getElementById('context-tbody');
+        
+        // Render JSON as key-value table
+        function renderTable(obj, tbody) {
+            Object.keys(obj).forEach(function(key) {
+                const tr = document.createElement('tr');
+                tr.className = 'border-b border-bg-secondary';
+                
+                const tdKey = document.createElement('td');
+                tdKey.className = 'px-4 py-3 text-fg-secondary text-sm font-medium align-top';
+                tdKey.textContent = key;
+                
+                const tdValue = document.createElement('td');
+                tdValue.className = 'px-4 py-3 text-fg text-sm break-words';
+                
+                const value = obj[key];
+                if (typeof value === 'object' && value !== null) {
+                    tdValue.innerHTML = '<pre class="text-xs overflow-x-auto">' + JSON.stringify(value, null, 2) + '</pre>';
+                } else {
+                    tdValue.textContent = value;
+                }
+                
+                tr.appendChild(tdKey);
+                tr.appendChild(tdValue);
+                tbody.appendChild(tr);
+            });
+        }
+        
+        renderTable(json, tbody);
+    } catch(e) {
+        // If not valid JSON, show as plain text
+        const tr = document.createElement('tr');
+        const td = document.createElement('td');
+        td.className = 'px-4 py-3 text-fg text-sm';
+        td.textContent = contextData;
+        tr.appendChild(td);
+        tbody.appendChild(tr);
+    }
+    {{end}}
+});
+</script>
+{{end}}
+
+{{define "app-log-markdown"}}
+# {{.Log.Message}}
+
+**Level:** {{.Log.Level}} | **Trace ID:** {{.Log.TraceID}} | **Timestamp:** {{formatDateTime .Log.CreatedAt}}
+
+## Details
+
+- **Source:** {{.Log.Source}}
+- **Group ID:** {{if .Log.GroupID.Valid}}{{.Log.GroupID.Int64}}{{else}}None{{end}}
+
+## Context
+
+{{if .Log.Context.Valid}}
+{{.Log.Context.String}}
+{{else}}
+No context data
+{{end}}
+{{end}}
