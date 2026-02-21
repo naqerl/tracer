@@ -2,21 +2,13 @@ package logparser
 
 import (
 	"strings"
-	"time"
 
 	collectorconfig "github.com/ai-shift/tracer/apps/collector/internal/config"
+	"github.com/ai-shift/tracer/libs/types"
 )
 
-// LogEntry represents a parsed log line
-type LogEntry struct {
-	Timestamp time.Time         `json:"timestamp"`
-	Level     string            `json:"level"`
-	TraceID   string            `json:"trace_id"`
-	Message   string            `json:"message"`
-	Source    string            `json:"source"`
-	Raw       string            `json:"raw"`
-	Extra     map[string]string `json:"extra,omitempty"`
-}
+// LogEntry is an alias to types.LogEntry for backward compatibility
+type LogEntry = types.LogEntry
 
 // Parser parses log lines into structured LogEntry
 type Parser interface {

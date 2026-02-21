@@ -9,9 +9,9 @@ import (
 
 	"github.com/gorilla/websocket"
 
-	"github.com/ai-shift/tracer/apps/collector/internal/parsing"
 	"github.com/ai-shift/tracer/apps/collector/internal/stats"
 	"github.com/ai-shift/tracer/apps/collector/internal/watch"
+	"github.com/ai-shift/tracer/libs/types"
 )
 
 const (
@@ -22,21 +22,11 @@ const (
 	maxReconnectWait = 5 * time.Minute
 )
 
-type Message struct {
-	Type          string             `json:"type"` // "register", "log", "startup", "stats"
-	AppName       string             `json:"app_name"`
-	Apps          []string           `json:"apps,omitempty"`           // for registration
-	CollectorName string             `json:"collector_name,omitempty"` // for all message types
-	Entry         logparser.LogEntry `json:"entry,omitempty"`
-	Stats         *sysstats.Stats    `json:"stats,omitempty"`      // for stats messages
-	Thresholds    *Thresholds        `json:"thresholds,omitempty"` // for registration
-}
+// Message is an alias to types.LogMessage for backward compatibility
+type Message = types.LogMessage
 
-type Thresholds struct {
-	CPU  float64 `json:"cpu"`
-	Mem  float64 `json:"mem"`
-	Disk float64 `json:"disk"`
-}
+// Thresholds is an alias to types.CollectorThresholds for backward compatibility
+type Thresholds = types.CollectorThresholds
 
 type Service struct {
 	endpoint      string

@@ -14,13 +14,19 @@ import (
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 
+	"github.com/ai-shift/tracer/apps/panel/db"
 	"github.com/ai-shift/tracer/apps/panel/internal/collectordb"
 	"github.com/ai-shift/tracer/apps/panel/internal/collectors"
 	"github.com/ai-shift/tracer/apps/panel/internal/dbmanager"
 	"github.com/ai-shift/tracer/apps/panel/internal/notify"
 	"github.com/ai-shift/tracer/libs/types"
-	"github.com/ai-shift/tracer/apps/panel/db"
 )
+
+// LogMessage is an alias to types.LogMessage for backward compatibility
+type LogMessage = types.LogMessage
+
+// LogEntry is an alias to types.LogEntry for backward compatibility
+type LogEntry = types.LogEntry
 
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
@@ -28,27 +34,6 @@ var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool {
 		return true // Configure for production
 	},
-}
-
-// LogMessage is the message format from collectors
-type LogMessage struct {
-	Type          string                 `json:"type"` // "register", "log", "startup", "stats"
-	AppName       string                 `json:"app_name"`
-	Apps          []string               `json:"apps,omitempty"`           // for registration
-	CollectorName string                 `json:"collector_name,omitempty"` // for registration and stats
-	Entry         LogEntry               `json:"entry,omitempty"`
-	Stats         *types.Stats        `json:"stats,omitempty"`      // for stats messages
-	Thresholds    *collectors.Thresholds `json:"thresholds,omitempty"` // for registration
-}
-
-type LogEntry struct {
-	Timestamp time.Time         `json:"timestamp"`
-	Level     string            `json:"level"`
-	TraceID   string            `json:"trace_id"`
-	Message   string            `json:"message"`
-	Source    string            `json:"source"`
-	Raw       string            `json:"raw"`
-	Extra     map[string]string `json:"extra,omitempty"`
 }
 
 type handler struct {

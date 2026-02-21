@@ -4,14 +4,12 @@ import (
 	"sort"
 	"sync"
 	"time"
+
+	"github.com/ai-shift/tracer/libs/types"
 )
 
-// Thresholds represents alert thresholds
-type Thresholds struct {
-	CPU  float64
-	Mem  float64
-	Disk float64
-}
+// Thresholds is an alias to types.CollectorThresholds for backward compatibility
+type Thresholds = types.CollectorThresholds
 
 // Collector represents a connected collector instance
 type Collector struct {
