@@ -169,3 +169,9 @@ make restart          # Restart services
     - It may require creating it's own page
     - In the opened page there should be a button to open log group
 - [ ] tracer-collector CLI to add apps
+
+### FIXME
+- [ ] Fix auth for panel
+    - Decompose the auth.go file
+    - Review data layer
+- [ ] Review notifier
