@@ -2,9 +2,9 @@ package main
 
 import (
 	"context"
+	"log/slog"
 	"flag"
 	"fmt"
-	"log/slog"
 	"net"
 	"net/url"
 	"os"
@@ -14,6 +14,7 @@ import (
 	"time"
 
 	collectorconfig "github.com/ai-shift/tracer/apps/collector/internal/config"
+	"github.com/ai-shift/tracer/libs/logx"
 	"github.com/ai-shift/tracer/apps/collector/internal/stats"
 	"github.com/ai-shift/tracer/apps/collector/internal/watch"
 	"github.com/ai-shift/tracer/apps/collector/internal/transport"
@@ -24,9 +25,7 @@ func main() {
 	flag.Parse()
 
 	// Setup structured logging
-	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-		Level: slog.LevelInfo,
-	})))
+	logx.SetDefault()
 
 	// Load configuration
 	cfg, err := collectorconfig.Load(*configPath)

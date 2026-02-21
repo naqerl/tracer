@@ -13,6 +13,7 @@ import (
 
 	panelconfig "github.com/ai-shift/tracer/apps/panel/internal/config"
 	"github.com/ai-shift/tracer/apps/panel/internal/auth"
+	"github.com/ai-shift/tracer/libs/logx"
 	"github.com/ai-shift/tracer/apps/panel/internal/collectordb"
 	"github.com/ai-shift/tracer/apps/panel/internal/collectors"
 	"github.com/ai-shift/tracer/apps/panel/internal/dbmanager"
@@ -28,9 +29,7 @@ func main() {
 	flag.Parse()
 
 	// Setup structured logging
-	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-		Level: slog.LevelInfo,
-	})))
+	logx.SetDefault()
 
 	// Load configuration
 	cfg, err := panelconfig.Load(*configPath)

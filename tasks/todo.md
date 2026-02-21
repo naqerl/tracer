@@ -125,3 +125,42 @@ Must move out of root:
 
 ## Handoff Note
 Execution agent should prioritize Phase B first (panel DB ownership), since it enforces the core requirement that SQL/DB/sqlc are panel-only.
+
+## TODO/FIXME Inventory (from codebase scan)
+Scan command used: `rg -n --hidden --glob '!.git' "TODO|FIXME"`
+
+### Migration-related TODOs in code
+1. `libs/httpx/httpx.go`: `TODO: Migrate shared HTTP utilities here`
+2. `libs/configx/configx.go`: `TODO: Migrate shared config utilities here`
+3. `libs/types/types.go`: `TODO: Migrate shared types here`
+4. `libs/logx/logx.go`: `TODO: Migrate shared logging utilities here`
+
+### TODO/FIXME in product roadmap docs
+1. `README.md`: login error UX TODO
+2. `README.md`: direct log-entry link TODO
+3. `README.md`: collector CLI TODO
+4. `README.md`: panel auth decomposition FIXME
+5. `README.md`: notifier review FIXME
+
+## Closure Plan for TODO/FIXME Items
+1. Finalize shared package migration:
+2. Move reusable middleware helpers to `libs/httpx`.
+3. Move common config parsing/validation helpers to `libs/configx`.
+4. Consolidate shared DTOs in `libs/types` and remove duplicate domain-local copies where appropriate.
+5. Move shared logger setup/wrappers to `libs/logx`, then adopt in `apps/panel` and `apps/collector`.
+6. After each move, remove TODO comment from the touched file in same PR.
+7. Track unresolved items from README in issues and reference IDs in README instead of raw TODO/FIXME bullets.
+8. For auth FIXME, split `apps/panel/internal/auth/auth.go` into focused files:
+9. `service.go`, `users.go`, `sessions.go`, `apikeys.go`, `passwords.go`, `store.go`.
+10. For notifier FIXME, review and isolate notifier transport implementations from subscription orchestration.
+11. Add acceptance checks to prevent regressions:
+12. `go test ./...`
+13. `make vet`
+14. `./scripts/check_boundaries.sh`
+15. `make -C demo down clean-volumes up`
+16. `make test-endpoints`
+
+## Definition of Done for TODO/FIXME Cleanup
+1. `rg -n "TODO|FIXME"` returns no migration placeholders in `libs/*`.
+2. Shared helpers are actually used by at least panel and collector where applicable.
+3. `README.md` TODO/FIXME entries are either completed or moved to tracked issues with links.
