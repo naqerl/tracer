@@ -1,4 +1,3 @@
 package httpx
 
-// TODO: Migrate shared HTTP utilities here
-
+// HTTP utilities for shared use across applications.

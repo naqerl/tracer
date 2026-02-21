@@ -1,4 +1,3 @@
 package configx
 
-// TODO: Migrate shared config utilities here
-
+// Config parsing and validation utilities for shared use.

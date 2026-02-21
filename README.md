@@ -161,17 +161,11 @@ make restart          # Restart services
 - [ ] Log search with full-text
 - [x] Metrics collection (beyond logs)
 
-### TODO
+### Roadmap
 
+See [GitHub Issues](https://github.com/ai-shift/tracer/issues) for upcoming features and enhancements.
+
+#### Planned Features
 - [ ] Show error for wrong credentials on /login page
-- [ ] Link to a direct log entry in error notification 
-    - Use path param `/analytics/{collector}/apps/{provider}/logs/{ID}`
-    - It may require creating it's own page
-    - In the opened page there should be a button to open log group
+- [ ] Link to a direct log entry in error notification
 - [ ] tracer-collector CLI to add apps
-
-### FIXME
-- [ ] Fix auth for panel
-    - Decompose the auth.go file
-    - Review data layer
-- [ ] Review notifier

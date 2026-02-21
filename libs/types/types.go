@@ -1,4 +1,3 @@
 package types
 
-// TODO: Migrate shared types here
-
+// Shared types used across multiple applications.
