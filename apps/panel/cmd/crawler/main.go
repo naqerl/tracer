@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/cookiejar"
 	"net/url"
 	"os"
 	"regexp"
@@ -20,27 +21,34 @@ type EndpointTest struct {
 }
 
 var (
-	baseURL    string
-	apiKey     string
-	visited    = make(map[string]bool)
-	results    []EndpointTest
-	client     *http.Client
+	baseURL  string
+	username string
+	password string
+	apiKey   string
+	visited  = make(map[string]bool)
+	results  []EndpointTest
+	client   *http.Client
 	// Extract links from markdown: [text](/path) or href="/path"
-	linkRegex  = regexp.MustCompile(`(?:\[.*?\]\(|href=")(/[^)\s"]+)`)
+	linkRegex = regexp.MustCompile(`(?:\[.*?\]\(|href=")(/[^)\s"]+)`)
 )
 
 func main() {
-	flag.StringVar(&baseURL, "url", "https://tracer.aishift.co", "Base URL to crawl")
+	flag.StringVar(&baseURL, "url", "http://localhost:18081", "Base URL to crawl")
+	flag.StringVar(&username, "username", "demo", "Username for login")
+	flag.StringVar(&password, "password", "demo123", "Password for login")
 	flag.Parse()
 
 	apiKey = os.Getenv("TRACER_API_KEY")
-	if apiKey == "" {
-		fmt.Println("Error: TRACER_API_KEY environment variable not set")
+
+	jar, err := cookiejar.New(nil)
+	if err != nil {
+		fmt.Printf("Error creating cookie jar: %v\n", err)
 		os.Exit(1)
 	}
 
 	client = &http.Client{
 		Timeout: 10 * time.Second,
+		Jar:     jar,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			return http.ErrUseLastResponse // Don't follow redirects
 		},
@@ -50,11 +58,22 @@ func main() {
 	fmt.Printf("Base URL: %s\n", baseURL)
 	fmt.Println("---")
 
-	// Start crawling from /analytics
-	crawl("/analytics")
+	if err := login(); err != nil {
+		fmt.Printf("Login failed: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Start crawling from authenticated analytics root
+	crawl("/analytics/")
 
 	// Test some additional known endpoints
 	testEndpoint("/llm")
+	testEndpoint("/")
+
+	// Test API endpoint only if API key is provided
+	if apiKey != "" {
+		testAPIEndpoint("/api/collectors")
+	}
 
 	// Print results
 	fmt.Println("\n=== Test Results ===")
@@ -98,11 +117,14 @@ func crawl(path string) {
 	testEndpoint(path)
 
 	// Get HTML content to extract links
-	req, err := http.NewRequest("GET", baseURL+path+".md", nil)
+	mdPath := markdownPath(path)
+	req, err := http.NewRequest("GET", baseURL+mdPath, nil)
 	if err != nil {
 		return
 	}
-	req.Header.Set("X-API-Key", apiKey)
+	if apiKey != "" {
+		req.Header.Set("X-API-Key", apiKey)
+	}
 
 	resp, err := client.Do(req)
 	if err != nil || resp.StatusCode >= 400 {
@@ -146,10 +168,44 @@ func testEndpoint(path string) {
 	testRequest(path, "html", false)
 
 	// Test Markdown
-	testRequest(path+".md", "markdown", false)
+	testRequest(markdownPath(path), "markdown", false)
 
 	// Test AJAX
 	testRequest(path, "ajax", true)
+}
+
+func markdownPath(path string) string {
+	clean := strings.TrimSuffix(path, "/")
+	if clean == "" {
+		return "/index.md"
+	}
+	return clean + ".md"
+}
+
+func login() error {
+	form := url.Values{}
+	form.Set("username", username)
+	form.Set("password", password)
+
+	req, err := http.NewRequest("POST", baseURL+"/login", strings.NewReader(form.Encode()))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("HX-Request", "true")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+
+	return nil
 }
 
 func testRequest(path string, testType string, ajax bool) {
@@ -163,7 +219,9 @@ func testRequest(path string, testType string, ajax bool) {
 		return
 	}
 
-	req.Header.Set("X-API-Key", apiKey)
+	if apiKey != "" {
+		req.Header.Set("X-API-Key", apiKey)
+	}
 
 	if ajax {
 		req.Header.Set("HX-Request", "true")
@@ -186,6 +244,37 @@ func testRequest(path string, testType string, ajax bool) {
 	results = append(results, EndpointTest{
 		URL:        path,
 		Type:       testType,
+		StatusCode: resp.StatusCode,
+	})
+}
+
+func testAPIEndpoint(path string) {
+	req, err := http.NewRequest("GET", baseURL+path, nil)
+	if err != nil {
+		results = append(results, EndpointTest{
+			URL:   path,
+			Type:  "api",
+			Error: err,
+		})
+		return
+	}
+	req.Header.Set("X-API-Key", apiKey)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		results = append(results, EndpointTest{
+			URL:   path,
+			Type:  "api",
+			Error: err,
+		})
+		return
+	}
+	defer resp.Body.Close()
+	io.ReadAll(resp.Body)
+
+	results = append(results, EndpointTest{
+		URL:        path,
+		Type:       "api",
 		StatusCode: resp.StatusCode,
 	})
 }
