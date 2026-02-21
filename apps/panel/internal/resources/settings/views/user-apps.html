@@ -1,0 +1,45 @@
+{{define "user-apps"}}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    {{template "head"}}
+    <title>{{.Title}}</title>
+</head>
+<body>
+    <div class="max-w-2xl mx-auto p-6">
+        {{template "navbar" .Nav}}
+        {{template "user-apps-content" .}}
+    </div>
+</body>
+</html>
+{{end}}
+
+{{define "user-apps-content"}}
+<a href="/settings/" class="text-accent hover:underline text-sm mb-4 inline-block">&larr; Back to Settings</a>
+<p class="text-fg-secondary mb-6">User: <strong class="text-fg">{{.User.Username}}</strong></p>
+
+<div class="bg-bg-secondary p-5">
+    {{if .HasNoApps}}
+    <div class="text-center text-fg-secondary py-8">
+        <p>No applications available yet.</p>
+        <p class="text-sm mt-2">Start a collector to begin receiving logs and create applications.</p>
+    </div>
+    {{else}}
+    <form action="/settings/users/{{.User.ID}}/apps" method="POST">
+        <p class="text-fg-secondary text-sm mb-4">Select the applications this user can access:</p>
+        <div class="space-y-2 mb-6">
+            {{range .AllApps}}
+            <label class="flex items-center gap-3 p-3 bg-bg cursor-pointer hover:bg-bg/80 transition-colors">
+                <input type="checkbox" name="apps" value="{{.}}" {{if index $.UserApps .}}checked{{end}} class="w-5 h-5">
+                <span>{{.}}</span>
+            </label>
+            {{end}}
+        </div>
+        <div class="flex gap-3">
+            <button type="submit" class="px-5 py-2.5 bg-accent hover:bg-accent/80 text-fg transition-colors">Save Changes</button>
+            <a href="/settings/" class="px-5 py-2.5 bg-bg hover:bg-bg/80 text-fg-secondary hover:text-fg transition-colors">Cancel</a>
+        </div>
+    </form>
+    {{end}}
+</div>
+{{end}}

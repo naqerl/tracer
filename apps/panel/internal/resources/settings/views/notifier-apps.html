@@ -1,0 +1,116 @@
+{{define "notifier-apps"}}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    {{template "head"}}
+    <title>{{.Title}}</title>
+</head>
+<body>
+    <div class="max-w-2xl mx-auto p-6">
+        {{template "navbar" .Nav}}
+        {{template "notifier-apps-content" .}}
+    </div>
+</body>
+</html>
+{{end}}
+
+{{define "notifier-apps-content"}}
+<a href="/settings/" class="text-accent hover:underline text-sm mb-4 inline-block">&larr; Back to Settings</a>
+<p class="text-fg-secondary mb-6">Notifier: <strong class="text-fg">{{.Notifier.Name}}</strong> <span class="text-fg-secondary">({{.Notifier.Type}})</span></p>
+
+<div class="bg-bg-secondary p-5">
+    <form action="/settings/notifiers/{{.NotifierID}}/apps" method="POST">
+        <p class="text-fg-secondary text-sm mb-4">Select which applications this notifier should receive alerts from:</p>
+
+        {{if .IsAdmin}}
+        <!-- Global All Apps Option (Admin only) -->
+        <label class="flex items-center gap-3 p-3 bg-blue-900/30 border border-accent cursor-pointer mb-4">
+            <input type="checkbox" id="all-apps-checkbox" name="all_apps" {{if index $.Subscriptions "*:*"}}checked{{end}} class="w-5 h-5">
+            <span><strong>All Applications</strong> <span class="text-fg-secondary text-sm">(from all collectors)</span></span>
+        </label>
+
+        <div class="border-t border-bg my-4"></div>
+        <p class="text-fg-secondary text-sm mb-4">Or select specific collectors and applications:</p>
+        {{end}}
+
+        {{if .CollectorApps}}
+        <!-- Apps grouped by collector -->
+        <div id="apps-container" class="space-y-4 mb-6">
+            {{range $collector, $apps := .CollectorApps}}
+            <div class="border border-bg p-4 bg-bg">
+                <div class="flex items-center justify-between mb-3">
+                    <h3 class="text-fg font-medium">Collector: {{$collector}}</h3>
+                    {{$wildcardKey := printf "%s:*" $collector}}
+                    <label class="flex items-center gap-2 text-sm">
+                        <input type="checkbox" name="apps" value="{{$wildcardKey}}"
+                               {{if index $.Subscriptions $wildcardKey}}checked{{end}}
+                               class="app-checkbox collector-wildcard w-4 h-4"
+                               data-collector="{{$collector}}">
+                        <span class="text-fg-secondary">All apps from this collector</span>
+                    </label>
+                </div>
+                <div class="space-y-2 ml-4">
+                    {{range $apps}}
+                    {{$key := printf "%s:%s" $collector .}}
+                    <label class="flex items-center gap-3 p-2 hover:bg-bg-secondary transition-colors cursor-pointer">
+                        <input type="checkbox" name="apps" value="{{$key}}"
+                               {{if index $.Subscriptions $key}}checked{{end}}
+                               class="app-checkbox collector-app w-4 h-4"
+                               data-collector="{{$collector}}">
+                        <span>{{.}}</span>
+                    </label>
+                    {{end}}
+                </div>
+            </div>
+            {{end}}
+        </div>
+        {{else}}
+        <div class="text-center text-fg-secondary py-8">
+            <p>No applications available yet.</p>
+            <p class="text-sm mt-2">Start a collector to begin receiving logs and create applications.</p>
+        </div>
+        {{end}}
+
+        <div class="flex gap-3">
+            <button type="submit" class="px-5 py-2.5 bg-accent hover:bg-accent/80 text-fg transition-colors">Save Changes</button>
+            <a href="/settings/" class="px-5 py-2.5 bg-bg hover:bg-bg/80 text-fg-secondary hover:text-fg transition-colors">Cancel</a>
+        </div>
+    </form>
+</div>
+
+<script>
+// Disable all app checkboxes when "All Applications" (global) is checked
+document.getElementById('all-apps-checkbox')?.addEventListener('change', function(e) {
+    const appCheckboxes = document.querySelectorAll('.app-checkbox');
+    appCheckboxes.forEach(cb => cb.disabled = e.target.checked);
+});
+
+// Disable individual app checkboxes for a collector when its wildcard is checked
+document.querySelectorAll('.collector-wildcard').forEach(wildcard => {
+    wildcard.addEventListener('change', function(e) {
+        const collector = e.target.dataset.collector;
+        const collectorApps = document.querySelectorAll(`.collector-app[data-collector="${collector}"]`);
+        collectorApps.forEach(cb => cb.disabled = e.target.checked);
+    });
+});
+
+// Initialize states on page load
+document.addEventListener('DOMContentLoaded', function() {
+    // Check if global wildcard is checked
+    const globalCheckbox = document.getElementById('all-apps-checkbox');
+    if (globalCheckbox && globalCheckbox.checked) {
+        const appCheckboxes = document.querySelectorAll('.app-checkbox');
+        appCheckboxes.forEach(cb => cb.disabled = true);
+    }
+
+    // Check if any collector wildcards are checked
+    document.querySelectorAll('.collector-wildcard').forEach(wildcard => {
+        if (wildcard.checked) {
+            const collector = wildcard.dataset.collector;
+            const collectorApps = document.querySelectorAll(`.collector-app[data-collector="${collector}"]`);
+            collectorApps.forEach(cb => cb.disabled = true);
+        }
+    });
+});
+</script>
+{{end}}
