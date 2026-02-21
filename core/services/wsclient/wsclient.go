@@ -9,9 +9,9 @@ import (
 
 	"github.com/gorilla/websocket"
 
-    "github.com/ai-shift/tracer/core/services/watchdog"
 	"github.com/ai-shift/tracer/core/services/logparser"
 	"github.com/ai-shift/tracer/core/services/sysstats"
+	"github.com/ai-shift/tracer/core/services/watchdog"
 )
 
 const (
@@ -26,7 +26,7 @@ type Message struct {
 	Type          string             `json:"type"` // "register", "log", "startup", "stats"
 	AppName       string             `json:"app_name"`
 	Apps          []string           `json:"apps,omitempty"`           // for registration
-	CollectorName string             `json:"collector_name,omitempty"` // for registration and stats
+	CollectorName string             `json:"collector_name,omitempty"` // for all message types
 	Entry         logparser.LogEntry `json:"entry,omitempty"`
 	Stats         *sysstats.Stats    `json:"stats,omitempty"`      // for stats messages
 	Thresholds    *Thresholds        `json:"thresholds,omitempty"` // for registration
@@ -42,7 +42,7 @@ type Service struct {
 	endpoint      string
 	collectorName string
 	appNames      []string
-    logChan       <-chan watchdog.AppLogEntry
+	logChan       <-chan watchdog.AppLogEntry
 
 	// System stats
 	statsCollector *sysstats.Collector
@@ -267,9 +267,10 @@ func (s *Service) sendLog(appLog watchdog.AppLogEntry) {
 	}
 
 	msg := Message{
-		Type:    msgType,
-		AppName: appLog.AppName,
-		Entry:   appLog.Entry,
+		Type:          msgType,
+		AppName:       appLog.AppName,
+		CollectorName: s.collectorName,
+		Entry:         appLog.Entry,
 	}
 
 	data, err := json.Marshal(msg)
