@@ -13,6 +13,7 @@ import (
 
 	panelconfig "github.com/ai-shift/tracer/config/panel"
 	"github.com/ai-shift/tracer/core/services/auth"
+	"github.com/ai-shift/tracer/core/services/collectordb"
 	"github.com/ai-shift/tracer/core/services/collectors"
 	"github.com/ai-shift/tracer/core/services/dbmanager"
 	"github.com/ai-shift/tracer/core/services/notifierloader"
@@ -57,6 +58,13 @@ func main() {
 	}
 	defer dbManager.Close()
 
+	collectorDBManager, err := collectordb.New(cfg.DataDir)
+	if err != nil {
+		slog.Error("Failed to create collector database manager", "error", err)
+		os.Exit(1)
+	}
+	defer collectorDBManager.Close()
+
 	// Initialize auth service
 	sessionDuration := cfg.SessionDurationParsed()
 	authService := auth.New(cfg.DataDir, sessionDuration)
@@ -95,7 +103,7 @@ func main() {
 	}
 
 	// Initialize retention service
-	retentionService := retention.New(dbManager, authService, cfg.RetentionDays)
+	retentionService := retention.New(dbManager, collectorDBManager, cfg.RetentionDays)
 	go retentionService.Start(ctx)
 
 	// Initialize collector tracker
@@ -141,7 +149,7 @@ func main() {
 				return
 			case <-ticker.C:
 				cutoff := time.Now().Add(-time.Duration(cfg.RetentionDays) * 24 * time.Hour)
-				if err := authService.DeleteOldStats(ctx, cutoff); err != nil {
+				if err := collectorDBManager.DeleteOldStats(ctx, cutoff); err != nil {
 					slog.Error("Failed to cleanup old stats", "error", err)
 				} else {
 					slog.Info("Cleaned up old stats", "cutoff", cutoff.Format(time.RFC3339))
@@ -152,7 +160,7 @@ func main() {
 
 	// Initialize HTTP server
 	sessionDurationSec := int(sessionDuration.Seconds())
-	server := web.Run(cfg.Port, dbManager, cfg.SampleRate, notifyService, authService, notifierStore, tracker, sessionDurationSec, cfg.PanelURL)
+	server := web.Run(cfg.Port, dbManager, collectorDBManager, cfg.SampleRate, notifyService, authService, notifierStore, tracker, sessionDurationSec, cfg.PanelURL)
 
 	// Handle shutdown signals
 	sigChan := make(chan os.Signal, 1)

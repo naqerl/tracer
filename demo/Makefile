@@ -1,7 +1,7 @@
 -include ../.env
 export
 
-.PHONY: build up down logs volumes-rm reset
+.PHONY: build up down logs volumes-rm clean-volumes reset
 
 ROOT_DIR := $(abspath $(CURDIR)/..)
 DEMO_DIR := $(ROOT_DIR)/demo
@@ -81,9 +81,11 @@ logs:
 	@podman logs --tail=80 $(DEMO_POD)-collector-beta || true
 
 reset: down
-	@$(MAKE) volumes-rm
+	@$(MAKE) clean-volumes
 	@echo "Demo reset complete"
 
 volumes-rm:
 	@podman volume rm -f $(DEMO_VOL_PANEL) $(DEMO_VOL_SHARED) $(DEMO_VOL_ALPHA) $(DEMO_VOL_BETA) >/dev/null || true
 	@echo "Demo data removed"
+
+clean-volumes: volumes-rm
