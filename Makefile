@@ -46,7 +46,7 @@ sqlc:
 
 # Build mock logger (kept in cmd/ for now)
 build-mock:
-	go build -o bin/mock-logger ./cmd/mock-logger
+	go build -o bin/mock-logger ./demo/mock-logger
 
 test-endpoints:
 	go run cmd/crawler/main.go
