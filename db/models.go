@@ -9,12 +9,6 @@ import (
 	"time"
 )
 
-type AppCollector struct {
-	AppName       string
-	CollectorName string
-	LastSeenAt    time.Time
-}
-
 type Config struct {
 	Key   string
 	Value string
@@ -28,8 +22,8 @@ type Log struct {
 	Source    string
 	Context   sql.NullString
 	Raw       string
-	CreatedAt sql.NullTime
 	GroupID   sql.NullInt64
+	CreatedAt sql.NullTime
 }
 
 type LogGroup struct {
@@ -50,8 +44,9 @@ type Notifier struct {
 }
 
 type NotifierApp struct {
-	NotifierID int64
-	AppName    string
+	NotifierID    int64
+	AppName       string
+	CollectorName string
 }
 
 type Session struct {
@@ -59,19 +54,6 @@ type Session struct {
 	UserID    int64
 	ExpiresAt time.Time
 	CreatedAt sql.NullTime
-}
-
-type SystemStat struct {
-	ID              int64
-	CollectorName   string
-	CpuUsagePercent float64
-	MemTotalMb      int64
-	MemUsedMb       int64
-	MemAvailableMb  int64
-	DiskTotalGb     int64
-	DiskUsedGb      int64
-	DiskAvailGb     int64
-	CreatedAt       time.Time
 }
 
 type User struct {

@@ -32,7 +32,6 @@ type Querier interface {
 	DeleteExpiredSessions(ctx context.Context, expiresAt time.Time) error
 	DeleteNotifier(ctx context.Context, id int64) error
 	DeleteOldLogs(ctx context.Context, createdAt sql.NullTime) error
-	DeleteOldStats(ctx context.Context, createdAt time.Time) error
 	DeleteSession(ctx context.Context, id string) error
 	DeleteUser(ctx context.Context, id int64) error
 	DeleteUserAPIKey(ctx context.Context, id int64) error
@@ -40,14 +39,9 @@ type Querier interface {
 	DisableNotifier(ctx context.Context, id int64) error
 	EnableNotifier(ctx context.Context, id int64) error
 	FindLogsByTraceID(ctx context.Context, traceID string) ([]Log, error)
-	GetAppsByCollector(ctx context.Context, collectorName string) ([]string, error)
-	GetCollectorStatsHistory(ctx context.Context, arg GetCollectorStatsHistoryParams) ([]SystemStat, error)
-	GetCollectorsByApp(ctx context.Context, appName string) ([]string, error)
-	// Config queries
+	// Settings/config queries
 	GetConfig(ctx context.Context, key string) (string, error)
 	GetGlobalNotifiers(ctx context.Context) ([]Notifier, error)
-	GetLatestStats(ctx context.Context, collectorName string) (SystemStat, error)
-	GetLatestStatsForAllCollectors(ctx context.Context) ([]SystemStat, error)
 	GetLogByID(ctx context.Context, id int64) (Log, error)
 	// Lookup log group by ID
 	GetLogGroupByID(ctx context.Context, id int64) (LogGroup, error)
@@ -71,9 +65,6 @@ type Querier interface {
 	GetUserByID(ctx context.Context, id int64) (User, error)
 	GetUserByUsername(ctx context.Context, username string) (User, error)
 	InsertLog(ctx context.Context, arg InsertLogParams) (Log, error)
-	// System stats queries
-	InsertSystemStats(ctx context.Context, arg InsertSystemStatsParams) error
-	ListAppCollectors(ctx context.Context) ([]AppCollector, error)
 	ListEnabledNotifiers(ctx context.Context) ([]Notifier, error)
 	// List all log groups with their counts and latest timestamp
 	ListLogGroups(ctx context.Context, arg ListLogGroupsParams) ([]ListLogGroupsRow, error)
@@ -92,8 +83,6 @@ type Querier interface {
 	SetConfig(ctx context.Context, arg SetConfigParams) error
 	UpdateNotifier(ctx context.Context, arg UpdateNotifierParams) error
 	UpdateUserAPIKeyLastUsed(ctx context.Context, arg UpdateUserAPIKeyLastUsedParams) error
-	// App-collector mapping queries
-	UpsertAppCollector(ctx context.Context, arg UpsertAppCollectorParams) error
 }
 
 var _ Querier = (*Queries)(nil)
