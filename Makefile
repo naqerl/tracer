@@ -49,7 +49,7 @@ build-mock:
 	go build -o bin/mock-logger ./demo/mock-logger
 
 test-endpoints:
-	go run cmd/crawler/main.go
+	go run apps/panel/cmd/crawler/main.go
 
 # Check import boundaries
 check-boundaries:
