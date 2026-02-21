@@ -124,13 +124,17 @@
                 </tr>
                 {{end}}
                 {{range .Groups}}
-                <tr class="flex flex-col mb-2 sm:table-row sm:border-b sm:border-bg-secondary hover:bg-bg-secondary/50 transition-colors cursor-pointer" onclick="window.location.href='/analytics/{{$.CollectorName}}/apps/{{$.AppName}}/logs?groupID={{.ID}}'">
+                <tr class="flex flex-col mb-2 sm:table-row sm:border-b sm:border-bg-secondary hover:bg-bg-secondary/50 transition-colors">
                     {{if not $.Level}}<td class="hidden sm:table-cell px-4 py-3"><span class="text-xs font-medium uppercase">{{.Level}}</span></td>{{end}}
-                    <td class="px-4 py-3 bg-bg-secondary sm:bg-transparent first:rounded-t-lg last:rounded-b-lg sm:first:rounded-none sm:last:rounded-none break-words overflow-hidden" title="{{.Message}}">
-                        {{if not $.Level}}<span class="text-xs font-medium uppercase text-fg-secondary sm:hidden">{{.Level}}: </span>{{end}}{{.Message}}
+                    <td class="px-4 py-3 bg-bg-secondary sm:bg-transparent first:rounded-t-lg last:rounded-b-lg sm:first:rounded-none sm:last:rounded-none break-words overflow-hidden">
+                        <a href="/analytics/{{$.CollectorName}}/apps/{{$.AppName}}/logs?groupID={{.ID}}" class="block text-fg hover:text-accent transition-colors" title="View log details">
+                            {{if not $.Level}}<span class="text-xs font-medium uppercase text-fg-secondary sm:hidden">{{.Level}}: </span>{{end}}{{.Message}}
+                        </a>
                     </td>
                     <td class="px-4 py-3 bg-bg-secondary sm:bg-transparent text-left sm:text-right first:rounded-t-lg last:rounded-b-lg sm:first:rounded-none sm:last:rounded-none whitespace-nowrap">
-                        <span class="text-fg-secondary text-sm sm:hidden">Count: </span><span class="inline-flex items-center justify-center min-w-[2rem] px-2 py-0.5 text-sm font-medium bg-bg sm:bg-bg-secondary text-fg-secondary rounded">{{.Count}}</span>
+                        <a href="/analytics/{{$.CollectorName}}/apps/{{$.AppName}}/logs?groupID={{.ID}}" class="inline-flex items-center justify-center min-w-[2rem] px-2 py-0.5 text-sm font-medium bg-bg sm:bg-bg-secondary text-fg-secondary rounded hover:bg-accent hover:text-bg transition-colors" title="View log details">
+                            {{.Count}}
+                        </a>
                     </td>
                 </tr>
                 {{end}}
@@ -151,13 +155,17 @@
 </div>
 {{else}}
 {{range .Groups}}
-<tr class="flex flex-col mb-2 sm:table-row sm:border-b sm:border-bg-secondary hover:bg-bg-secondary/50 transition-colors cursor-pointer" onclick="window.location.href='/analytics/{{$.CollectorName}}/apps/{{$.AppName}}/logs?groupID={{.ID}}'">
+<tr class="flex flex-col mb-2 sm:table-row sm:border-b sm:border-bg-secondary hover:bg-bg-secondary/50 transition-colors">
     {{if not $.Level}}<td class="hidden sm:table-cell px-4 py-3"><span class="text-xs font-medium uppercase">{{.Level}}</span></td>{{end}}
-    <td class="px-4 py-3 bg-bg-secondary sm:bg-transparent first:rounded-t-lg last:rounded-b-lg sm:first:rounded-none sm:last:rounded-none break-words overflow-hidden" title="{{.Message}}">
-        {{if not $.Level}}<span class="text-xs font-medium uppercase text-fg-secondary sm:hidden">{{.Level}}: </span>{{end}}{{.Message}}
+    <td class="px-4 py-3 bg-bg-secondary sm:bg-transparent first:rounded-t-lg last:rounded-b-lg sm:first:rounded-none sm:last:rounded-none break-words overflow-hidden">
+        <a href="/analytics/{{$.CollectorName}}/apps/{{$.AppName}}/logs?groupID={{.ID}}" class="block text-fg hover:text-accent transition-colors" title="View log details">
+            {{if not $.Level}}<span class="text-xs font-medium uppercase text-fg-secondary sm:hidden">{{.Level}}: </span>{{end}}{{.Message}}
+        </a>
     </td>
     <td class="px-4 py-3 bg-bg-secondary sm:bg-transparent text-left sm:text-right first:rounded-t-lg last:rounded-b-lg sm:first:rounded-none sm:last:rounded-none whitespace-nowrap">
-        <span class="text-fg-secondary text-sm sm:hidden">Count: </span><span class="inline-flex items-center justify-center min-w-[2rem] px-2 py-0.5 text-sm font-medium bg-bg sm:bg-bg-secondary text-fg-secondary rounded">{{.Count}}</span>
+        <a href="/analytics/{{$.CollectorName}}/apps/{{$.AppName}}/logs?groupID={{.ID}}" class="inline-flex items-center justify-center min-w-[2rem] px-2 py-0.5 text-sm font-medium bg-bg sm:bg-bg-secondary text-fg-secondary rounded hover:bg-accent hover:text-bg transition-colors" title="View log details">
+            {{.Count}}
+        </a>
     </td>
 </tr>
 {{end}}
