@@ -537,12 +537,20 @@ func (h *handler) appLogs(w http.ResponseWriter, r *http.Request) {
 	}
 
 	groupIDParam := r.URL.Query().Get("groupID")
+	logIDParam := r.URL.Query().Get("logID")
 	offsetParam := r.URL.Query().Get("offset")
 
 	offset := int64(0)
 	if offsetParam != "" {
 		if parsedOffset, err := strconv.ParseInt(offsetParam, 10, 64); err == nil {
 			offset = parsedOffset
+		}
+	}
+
+	highlightLogID := int64(0)
+	if logIDParam != "" {
+		if parsedLogID, err := strconv.ParseInt(logIDParam, 10, 64); err == nil {
+			highlightLogID = parsedLogID
 		}
 	}
 
@@ -589,18 +597,19 @@ func (h *handler) appLogs(w http.ResponseWriter, r *http.Request) {
 		}
 
 		data := map[string]any{
-			"Title":         appName + " Log Details",
-			"AppName":       appName,
-			"CollectorName": collectorName,
-			"LogGroup":      logGroup,
-			"Logs":          logs,
-			"User":          user,
-			"IsAdmin":       user.IsAdmin == 1,
-			"Nav":           nav,
-			"Offset":        offset,
-			"Limit":         limit,
-			"HasMore":       offset+int64(len(logs)) < totalCount,
-			"NextOffset":    offset + limit,
+			"Title":          appName + " Log Details",
+			"AppName":        appName,
+			"CollectorName":  collectorName,
+			"LogGroup":       logGroup,
+			"Logs":           logs,
+			"User":           user,
+			"IsAdmin":        user.IsAdmin == 1,
+			"Nav":            nav,
+			"Offset":         offset,
+			"Limit":          limit,
+			"HasMore":        offset+int64(len(logs)) < totalCount,
+			"NextOffset":     offset + limit,
+			"HighlightLogID": highlightLogID,
 		}
 
 		if middleware.IsMarkdownFormat(r) {
@@ -807,26 +816,8 @@ func (h *handler) getLogByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	nav := templates.NewNavBuilder().
-		Add("analytics", "analytics").
-		Add(collectorName, collectorName).
-		Add("apps", "apps").
-		Add(appName, appName).
-		Add("logs", "logs").
-		Add("log", fmt.Sprintf("log-%d", logEntry.ID)).
-		Build()
-
-	data := map[string]any{
-		"Title":         fmt.Sprintf("Log #%d", logEntry.ID),
-		"AppName":       appName,
-		"CollectorName": collectorName,
-		"Log":           logEntry,
-		"User":          user,
-		"IsAdmin":       user.IsAdmin == 1,
-		"Nav":           nav,
-	}
-
-	h.t.RenderHTTP(w, r, "app-log-detail-page", data)
+	// Redirect to group view with the specific log highlighted
+	http.Redirect(w, r, fmt.Sprintf("/analytics/%s/apps/%s/logs?groupID=%d&logID=%d", collectorName, appName, logEntry.GroupID.Int64, logEntry.ID), http.StatusSeeOther)
 }
 
 func (h *handler) getAppAnalyticsData(ctx context.Context, collectorName, appName string) (*appStats, any, error) {

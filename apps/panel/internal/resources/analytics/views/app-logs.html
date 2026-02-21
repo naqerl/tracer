@@ -234,7 +234,7 @@
             </tr>
             {{end}}
             {{range .Logs}}
-            <tr class="flex flex-col mb-2 sm:table-row sm:border-b sm:border-bg-secondary hover:bg-bg-secondary/50 transition-colors">
+            <tr class="flex flex-col mb-2 sm:table-row sm:border-b sm:border-bg-secondary hover:bg-bg-secondary/50 transition-colors {{if eq .ID $.HighlightLogID}}bg-accent/10 border-l-2 border-accent{{end}}" id="log-{{.ID}}">
                 <td class="px-4 py-3 bg-bg-secondary sm:bg-transparent first:rounded-t-lg last:rounded-b-lg sm:first:rounded-none sm:last:rounded-none sm:align-top">
                     <a href="/analytics/{{$.CollectorName}}/apps/{{$.AppName}}/logs/{{.ID}}" class="text-fg hover:text-accent transition-colors" title="View log details">
                         <span class="text-fg-secondary text-sm sm:hidden">Level: </span><span class="text-xs font-medium uppercase">{{.Level}}</span>
@@ -287,7 +287,7 @@ document.addEventListener('DOMContentLoaded', function() {
 </script>
 {{else}}
 {{range .Logs}}
-<tr class="flex flex-col mb-2 sm:table-row sm:border-b sm:border-bg-secondary hover:bg-bg-secondary/50 transition-colors">
+<tr class="flex flex-col mb-2 sm:table-row sm:border-b sm:border-bg-secondary hover:bg-bg-secondary/50 transition-colors {{if eq .ID $.HighlightLogID}}bg-accent/10 border-l-2 border-accent{{end}}" id="log-{{.ID}}">
     <td class="px-4 py-3 bg-bg-secondary sm:bg-transparent first:rounded-t-lg last:rounded-b-lg sm:first:rounded-none sm:last:rounded-none sm:align-top">
         <a href="/analytics/{{$.CollectorName}}/apps/{{$.AppName}}/logs/{{.ID}}" class="text-fg hover:text-accent transition-colors" title="View log details">
             <span class="text-fg-secondary text-sm sm:hidden">Level: </span><span class="text-xs font-medium uppercase">{{.Level}}</span>
