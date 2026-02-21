@@ -268,6 +268,7 @@ func (s *Service) sendLog(appLog watchdog.AppLogEntry) {
 
 	msg := Message{
 		Type:    msgType,
+		CollectorName: s.collectorName,
 		AppName: appLog.AppName,
 		Entry:   appLog.Entry,
 	}
