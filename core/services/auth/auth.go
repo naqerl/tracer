@@ -1,5 +1,3 @@
-// FIXME: AUTH PACKAGE is for AUTH, not notify, stats or collectors
-// Decompose them into their own features and inject these services into handlers
 package auth
 
 import (
@@ -19,8 +17,8 @@ import (
 	"golang.org/x/crypto/bcrypt"
 	_ "modernc.org/sqlite"
 
-	"github.com/ai-shift/tracer/core/services/auth/migrations"
 	"github.com/ai-shift/tracer/db"
+	panelmigrations "github.com/ai-shift/tracer/sql/panel/migrations"
 )
 
 const (
@@ -46,12 +44,12 @@ func New(dataDir string, sessionDuration time.Duration) *Service {
 		log.Fatalf("create data dir: %v", err)
 	}
 
-	dbPath := filepath.Join(dataDir, "auth.db")
+	dbPath := filepath.Join(dataDir, "panel.db")
 	dsn := fmt.Sprintf("file:%s?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=synchronous(NORMAL)&_pragma=foreign_keys(ON)", dbPath)
 
 	sqlDB, err := sql.Open("sqlite", dsn)
 	if err != nil {
-		log.Fatalf("open auth database: %v", err)
+		log.Fatalf("open panel database: %v", err)
 	}
 
 	sqlDB.SetMaxOpenConns(1)
@@ -70,7 +68,7 @@ func New(dataDir string, sessionDuration time.Duration) *Service {
 }
 
 func runMigrations(sqlDB *sql.DB) error {
-	gooseProvider, err := goose.NewProvider(goose.DialectSQLite3, sqlDB, migrations.Embed)
+	gooseProvider, err := goose.NewProvider(goose.DialectSQLite3, sqlDB, panelmigrations.Embed)
 	if err != nil {
 		return fmt.Errorf("create goose provider: %w", err)
 	}
@@ -416,51 +414,4 @@ func (s *Service) ListUserAPIKeys(ctx context.Context, userID int64) ([]db.UserA
 
 func (s *Service) DeleteUserAPIKey(ctx context.Context, id int64) error {
 	return s.queries.DeleteUserAPIKey(ctx, id)
-}
-
-// System stats methods
-
-func (s *Service) InsertSystemStats(ctx context.Context, params db.InsertSystemStatsParams) error {
-	return s.queries.InsertSystemStats(ctx, params)
-}
-
-func (s *Service) GetLatestStats(ctx context.Context, collectorName string) (*db.SystemStat, error) {
-	stat, err := s.queries.GetLatestStats(ctx, collectorName)
-	if err != nil {
-		return nil, err
-	}
-	return &stat, nil
-}
-
-func (s *Service) GetLatestStatsForAllCollectors(ctx context.Context) ([]db.SystemStat, error) {
-	return s.queries.GetLatestStatsForAllCollectors(ctx)
-}
-
-func (s *Service) DeleteOldStats(ctx context.Context, before time.Time) error {
-	return s.queries.DeleteOldStats(ctx, before)
-}
-
-func (s *Service) GetCollectorStatsHistory(ctx context.Context, collectorName string, since time.Time) ([]db.SystemStat, error) {
-	return s.queries.GetCollectorStatsHistory(ctx, db.GetCollectorStatsHistoryParams{
-		CollectorName: collectorName,
-		CreatedAt:     since,
-	})
-}
-
-// App-collector mapping methods
-
-func (s *Service) UpsertAppCollector(ctx context.Context, appName, collectorName string) error {
-	return s.queries.UpsertAppCollector(ctx, db.UpsertAppCollectorParams{
-		AppName:       appName,
-		CollectorName: collectorName,
-		LastSeenAt:    time.Now(),
-	})
-}
-
-func (s *Service) ListAppCollectors(ctx context.Context) ([]db.AppCollector, error) {
-	return s.queries.ListAppCollectors(ctx)
-}
-
-func (s *Service) GetAppsByCollector(ctx context.Context, collectorName string) ([]string, error) {
-	return s.queries.GetAppsByCollector(ctx, collectorName)
 }
