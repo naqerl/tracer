@@ -1,12 +1,12 @@
 version: "2"
 sql:
   - engine: "sqlite"
-    queries: "sql/queries"
+    queries: "apps/panel/sql/queries"
     schema:
-      - "sql/panel"
-      - "sql/app"
+      - "apps/panel/sql/panel"
+      - "apps/panel/sql/app"
     gen:
       go:
         package: "db"
-        out: "db"
+        out: "apps/panel/db"
         emit_interface: true
