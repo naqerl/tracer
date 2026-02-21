@@ -12,6 +12,7 @@ import (
 
 	collectorconfig "github.com/ai-shift/tracer/apps/collector/internal/config"
 	"github.com/ai-shift/tracer/apps/collector/internal/parsing"
+	"github.com/ai-shift/tracer/libs/types"
 )
 
 const (
@@ -57,7 +58,7 @@ func (c journalctlSourceConfig) label() string {
 
 type AppLogEntry struct {
 	AppName   string
-	Entry     logparser.LogEntry
+	Entry     types.LogEntry
 	IsStartup bool
 }
 
@@ -247,7 +248,7 @@ func (s *Service) readJournalctl(ctx context.Context, ws *watchedSource, unit st
 	}
 }
 
-func (ws *watchedSource) isStartupEntry(entry logparser.LogEntry) bool {
+func (ws *watchedSource) isStartupEntry(entry types.LogEntry) bool {
 	if ws.startupRegex == nil {
 		return false
 	}

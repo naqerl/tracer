@@ -7,6 +7,7 @@ import (
 	"time"
 
 	collectorconfig "github.com/ai-shift/tracer/apps/collector/internal/config"
+	"github.com/ai-shift/tracer/libs/types"
 )
 
 // journalctlParser parses journalctl JSON output
@@ -45,13 +46,13 @@ func newJournalctlParser(cfg collectorconfig.App) (*journalctlParser, error) {
 	return p, nil
 }
 
-func (p *journalctlParser) Parse(line string) (LogEntry, error) {
+func (p *journalctlParser) Parse(line string) (types.LogEntry, error) {
 	var data map[string]any
 	if err := json.Unmarshal([]byte(line), &data); err != nil {
-		return LogEntry{}, fmt.Errorf("%w: %v", ErrParseFailed, err)
+		return types.LogEntry{}, fmt.Errorf("%w: %v", ErrParseFailed, err)
 	}
 
-	entry := LogEntry{
+	entry := types.LogEntry{
 		Source: p.source,
 		Raw:    line,
 		Extra:  make(map[string]string),

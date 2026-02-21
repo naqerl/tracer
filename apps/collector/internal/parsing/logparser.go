@@ -7,12 +7,9 @@ import (
 	"github.com/ai-shift/tracer/libs/types"
 )
 
-// LogEntry is an alias to types.LogEntry for backward compatibility
-type LogEntry = types.LogEntry
-
 // Parser parses log lines into structured LogEntry
 type Parser interface {
-	Parse(line string) (LogEntry, error)
+	Parse(line string) (types.LogEntry, error)
 }
 
 // New creates a parser based on the app configuration

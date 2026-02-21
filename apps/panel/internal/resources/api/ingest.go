@@ -22,12 +22,6 @@ import (
 	"github.com/ai-shift/tracer/libs/types"
 )
 
-// LogMessage is an alias to types.LogMessage for backward compatibility
-type LogMessage = types.LogMessage
-
-// LogEntry is an alias to types.LogEntry for backward compatibility
-type LogEntry = types.LogEntry
-
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
@@ -120,7 +114,7 @@ func extractIP(remoteAddr string) string {
 	return remoteAddr
 }
 
-func (h *handler) handleRegistration(ctx context.Context, connID, remoteAddr, collectorName string, apps []string, thresholds collectors.Thresholds) {
+func (h *handler) handleRegistration(ctx context.Context, connID, remoteAddr, collectorName string, apps []string, thresholds types.CollectorThresholds) {
 	if collectorName == "" {
 		slog.Warn("Registration rejected: missing collector_name", "remote", remoteAddr, "conn_id", connID)
 		return
@@ -161,7 +155,7 @@ func (h *handler) pingLoop(conn *websocket.Conn) {
 }
 
 func (h *handler) processMessage(ctx context.Context, connID, remoteAddr string, message []byte) {
-	var msg LogMessage
+	var msg types.LogMessage
 	if err := json.Unmarshal(message, &msg); err != nil {
 		slog.Error("Failed to parse log message", "error", err)
 		return
@@ -169,7 +163,7 @@ func (h *handler) processMessage(ctx context.Context, connID, remoteAddr string,
 
 	// Handle registration messages
 	if msg.Type == "register" {
-		thresholds := collectors.Thresholds{}
+		thresholds := types.CollectorThresholds{}
 		if msg.Thresholds != nil {
 			thresholds = *msg.Thresholds
 		}
@@ -285,7 +279,7 @@ func (h *handler) processMessage(ctx context.Context, connID, remoteAddr string,
 
 // handleStartup processes app startup notifications
 // Startup messages are always persisted and trigger a notification
-func (h *handler) handleStartup(ctx context.Context, msg LogMessage) {
+func (h *handler) handleStartup(ctx context.Context, msg types.LogMessage) {
 	if msg.AppName == "" {
 		slog.Warn("Received startup without app_name")
 		return
@@ -387,7 +381,7 @@ func (h *handler) listCollectors(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleStats processes system statistics from collectors
-func (h *handler) handleStats(ctx context.Context, msg LogMessage) {
+func (h *handler) handleStats(ctx context.Context, msg types.LogMessage) {
 	if msg.Stats == nil || msg.CollectorName == "" {
 		slog.Warn("Received stats without stats data or collector name")
 		return

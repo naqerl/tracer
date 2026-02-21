@@ -6,6 +6,7 @@ import (
 	"time"
 
 	collectorconfig "github.com/ai-shift/tracer/apps/collector/internal/config"
+	"github.com/ai-shift/tracer/libs/types"
 )
 
 type jsonParser struct {
@@ -30,13 +31,13 @@ func newJSONParser(cfg collectorconfig.App) (*jsonParser, error) {
 	}, nil
 }
 
-func (p *jsonParser) Parse(line string) (LogEntry, error) {
+func (p *jsonParser) Parse(line string) (types.LogEntry, error) {
 	var data map[string]any
 	if err := json.Unmarshal([]byte(line), &data); err != nil {
-		return LogEntry{}, fmt.Errorf("%w: %v", ErrParseFailed, err)
+		return types.LogEntry{}, fmt.Errorf("%w: %v", ErrParseFailed, err)
 	}
 
-	entry := LogEntry{
+	entry := types.LogEntry{
 		Source: p.source,
 		Raw:    line,
 		Extra:  make(map[string]string),

@@ -8,15 +8,12 @@ import (
 	"github.com/ai-shift/tracer/libs/types"
 )
 
-// Thresholds is an alias to types.CollectorThresholds for backward compatibility
-type Thresholds = types.CollectorThresholds
-
 // Collector represents a connected collector instance
 type Collector struct {
 	Name        string     `json:"name"`
 	RemoteAddr  string     `json:"remote_addr"`
 	Apps        []string   `json:"apps"`
-	Thresholds  Thresholds `json:"thresholds"`
+	Thresholds types.CollectorThresholds `json:"thresholds"`
 	ConnectedAt time.Time  `json:"connected_at"`
 	LastSeenAt  time.Time  `json:"last_seen_at"`
 	IsConnected bool       `json:"is_connected"`
@@ -38,7 +35,7 @@ func NewTracker() *Tracker {
 
 // Register adds or updates a collector connection
 // Uses collector name as key, so reconnections update the existing entry
-func (t *Tracker) Register(connID, name, remoteAddr string, apps []string, thresholds Thresholds) {
+func (t *Tracker) Register(connID, name, remoteAddr string, apps []string, thresholds types.CollectorThresholds) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 

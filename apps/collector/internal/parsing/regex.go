@@ -6,6 +6,7 @@ import (
 	"time"
 
 	collectorconfig "github.com/ai-shift/tracer/apps/collector/internal/config"
+	"github.com/ai-shift/tracer/libs/types"
 )
 
 type regexParser struct {
@@ -37,10 +38,10 @@ func newRegexParser(cfg collectorconfig.App) (*regexParser, error) {
 	}, nil
 }
 
-func (p *regexParser) Parse(line string) (LogEntry, error) {
+func (p *regexParser) Parse(line string) (types.LogEntry, error) {
 	matches := p.pattern.FindStringSubmatch(line)
 	if matches == nil {
-		return LogEntry{}, fmt.Errorf("%w: no match", ErrParseFailed)
+		return types.LogEntry{}, fmt.Errorf("%w: no match", ErrParseFailed)
 	}
 
 	// Build map of named groups
@@ -51,7 +52,7 @@ func (p *regexParser) Parse(line string) (LogEntry, error) {
 		}
 	}
 
-	entry := LogEntry{
+	entry := types.LogEntry{
 		Source: p.source,
 		Raw:    line,
 		Extra:  make(map[string]string),

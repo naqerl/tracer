@@ -22,11 +22,7 @@ const (
 	maxReconnectWait = 5 * time.Minute
 )
 
-// Message is an alias to types.LogMessage for backward compatibility
-type Message = types.LogMessage
 
-// Thresholds is an alias to types.CollectorThresholds for backward compatibility
-type Thresholds = types.CollectorThresholds
 
 type Service struct {
 	endpoint      string
@@ -219,11 +215,11 @@ func (s *Service) processLogs(ctx context.Context) {
 }
 
 func (s *Service) sendRegistration() {
-	msg := Message{
+	msg := types.LogMessage{
 		Type:          "register",
 		Apps:          s.appNames,
 		CollectorName: s.collectorName,
-		Thresholds: &Thresholds{
+		Thresholds: &types.CollectorThresholds{
 			CPU:  s.cpuAlert,
 			Mem:  s.memAlert,
 			Disk: s.diskAlert,
@@ -256,7 +252,7 @@ func (s *Service) sendLog(appLog watchdog.AppLogEntry) {
 		msgType = "startup"
 	}
 
-	msg := Message{
+	msg := types.LogMessage{
 		Type:          msgType,
 		AppName:       appLog.AppName,
 		CollectorName: s.collectorName,
@@ -329,7 +325,7 @@ func (s *Service) collectAndSendStats() {
 }
 
 func (s *Service) sendStats(stats *sysstats.Stats) {
-	msg := Message{
+	msg := types.LogMessage{
 		Type:          "stats",
 		CollectorName: s.collectorName,
 		Stats:         stats,
