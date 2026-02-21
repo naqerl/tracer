@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"embed"
+	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -50,6 +52,7 @@ func InitMux(dbManager *dbmanager.Manager, authService *auth.Service, collectorD
 	m.HandleFunc("GET /{collector}/apps", h.collectorApps)
 	m.HandleFunc("GET /{collector}/apps/{app}", h.appAnalytics)
 	m.HandleFunc("GET /{collector}/apps/{app}/logs", h.appLogs)
+	m.HandleFunc("GET /{collector}/apps/{app}/logs/{id}", h.getLogByID)
 	m.HandleFunc("GET /{collector}/apps/{app}/logs/chart-data", h.appLogsChartData)
 
 	return m
@@ -756,6 +759,58 @@ func (h *handler) appLogsChartData(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.t.RenderHTTP(w, r, "app-logs-chart-data", data)
+}
+
+// getLogByID returns a single log entry by ID
+func (h *handler) getLogByID(w http.ResponseWriter, r *http.Request) {
+	user := middleware.GetUser(r)
+	if user == nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	collectorName := r.PathValue("collector")
+	appName := r.PathValue("app")
+	idStr := r.PathValue("id")
+
+	// Check app access
+	hasAccess, err := h.authService.UserHasAppAccess(r.Context(), user.ID, appName)
+	if err != nil {
+		http.Error(w, "Failed to check access", http.StatusInternalServerError)
+		return
+	}
+	if !hasAccess {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+
+	queries, err := h.dbManager.GetQueries(collectorName, appName)
+	if err != nil {
+		http.Error(w, "App not found", http.StatusNotFound)
+		return
+	}
+
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		http.Error(w, "Invalid log ID", http.StatusBadRequest)
+		return
+	}
+
+	log, err := queries.GetLogByID(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			http.Error(w, "Log not found", http.StatusNotFound)
+			return
+		}
+		slog.Error("Failed to get log", "error", err)
+		http.Error(w, "Failed to get log", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(log); err != nil {
+		slog.Error("Failed to encode log", "error", err)
+	}
 }
 
 func (h *handler) getAppAnalyticsData(ctx context.Context, collectorName, appName string) (*appStats, any, error) {
