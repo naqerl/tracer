@@ -4,7 +4,7 @@ import (
 	"embed"
 	"net/http"
 
-	"github.com/ai-shift/tracer/web/middleware"
+	"github.com/ai-shift/tracer/apps/panel/internal/middleware"
 	"github.com/ai-shift/tracer/apps/panel/internal/templates"
 )
 

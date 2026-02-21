@@ -7,7 +7,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/ai-shift/tracer/core/services/auth"
+	"github.com/ai-shift/tracer/apps/panel/internal/auth"
 )
 
 func main() {

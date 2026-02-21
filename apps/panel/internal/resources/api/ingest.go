@@ -18,7 +18,7 @@ import (
 	"github.com/ai-shift/tracer/apps/panel/internal/collectors"
 	"github.com/ai-shift/tracer/apps/panel/internal/dbmanager"
 	"github.com/ai-shift/tracer/apps/panel/internal/notify"
-	"github.com/ai-shift/tracer/core/services/sysstats"
+	"github.com/ai-shift/tracer/libs/shared/types"
 	"github.com/ai-shift/tracer/apps/panel/db"
 )
 
@@ -37,7 +37,7 @@ type LogMessage struct {
 	Apps          []string               `json:"apps,omitempty"`           // for registration
 	CollectorName string                 `json:"collector_name,omitempty"` // for registration and stats
 	Entry         LogEntry               `json:"entry,omitempty"`
-	Stats         *sysstats.Stats        `json:"stats,omitempty"`      // for stats messages
+	Stats         *types.Stats        `json:"stats,omitempty"`      // for stats messages
 	Thresholds    *collectors.Thresholds `json:"thresholds,omitempty"` // for registration
 }
 
