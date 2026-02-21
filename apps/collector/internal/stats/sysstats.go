@@ -8,7 +8,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/ai-shift/tracer/libs/shared/types"
+	"github.com/ai-shift/tracer/libs/types"
 )
 
 // Stats is an alias to the shared types.Stats for backward compatibility

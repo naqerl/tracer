@@ -18,7 +18,7 @@ import (
 	"github.com/ai-shift/tracer/apps/panel/internal/collectors"
 	"github.com/ai-shift/tracer/apps/panel/internal/dbmanager"
 	"github.com/ai-shift/tracer/apps/panel/internal/notify"
-	"github.com/ai-shift/tracer/libs/shared/types"
+	"github.com/ai-shift/tracer/libs/types"
 	"github.com/ai-shift/tracer/apps/panel/db"
 )
 
