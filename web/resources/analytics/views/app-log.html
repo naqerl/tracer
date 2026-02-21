@@ -17,7 +17,7 @@
                 </div>
                 {{end}}
 
-				<div class="flex justify-between items-center">
+				<div class="py-3 flex flex-col sm:flex-row justify-between items-start sm:items-center">
 					<h1 class="text-xl font-medium break-words">{{.Log.Message}}</h1>
 					<span class="text-fg-secondary">{{formatDateTime .Log.CreatedAt}}</span>
 				</div>
@@ -74,11 +74,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 tr.className = 'border-b border-bg-secondary';
                 
                 const tdKey = document.createElement('td');
-                tdKey.className = 'px-4 py-3 text-fg-secondary text-sm font-medium align-top';
+                tdKey.className = 'px-4 py-3 text-fg-secondary text-sm font-medium align-top whitespace-nowrap w-auto';
                 tdKey.textContent = key;
                 
                 const tdValue = document.createElement('td');
-                tdValue.className = 'px-4 py-3 text-fg text-sm break-words';
+                tdValue.className = 'px-4 py-3 text-fg text-sm break-words w-full';
                 
                 const value = obj[key];
                 if (typeof value === 'object' && value !== null) {
