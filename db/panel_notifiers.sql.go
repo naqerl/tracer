@@ -10,8 +10,8 @@ import (
 )
 
 const addNotifierApp = `-- name: AddNotifierApp :exec
-INSERT OR IGNORE INTO notifier_app (notifier_id, app_name)
-VALUES (?, ?)
+INSERT OR IGNORE INTO notifier_app (notifier_id, app_name, collector_name)
+VALUES (?, ?, '*')
 `
 
 type AddNotifierAppParams struct {
@@ -148,7 +148,7 @@ func (q *Queries) GetNotifier(ctx context.Context, id int64) (Notifier, error) {
 
 const getNotifierApps = `-- name: GetNotifierApps :many
 
-SELECT app_name FROM notifier_app
+SELECT DISTINCT app_name FROM notifier_app
 WHERE notifier_id = ?
 ORDER BY app_name
 `
