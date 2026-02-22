@@ -46,7 +46,7 @@
 
             <!-- Chart Data Container (Lazy Loaded) -->
             <div id="chart-data-container"
-                 hx-get="/panel/{{.CollectorName}}/apps/{{.AppName}}/logs/volume?range=24h"
+                 hx-get="/panel/collectors/{{.CollectorName}}/apps/{{.AppName}}/logs/volume?range=24h"
                  hx-trigger="load"
                  hx-swap="innerHTML">
                 <div class="flex items-center justify-center py-12">
@@ -60,7 +60,7 @@
         </div>
 
         <!-- Recent Logs Container - Lazy loaded with polling -->
-        <div hx-get="/panel/{{.CollectorName}}/apps/{{.AppName}}/logs/recent" hx-trigger="load once, every 30s" hx-swap="outerHTML">
+        <div hx-get="/panel/collectors/{{.CollectorName}}/apps/{{.AppName}}/logs/recent" hx-trigger="load once, every 30s" hx-swap="outerHTML">
             <div class="bg-bg-secondary p-5">
                 <h2 class="text-lg font-medium mb-4">Recent Logs</h2>
                 <p class="text-fg-secondary text-center py-4">Loading logs...</p>
@@ -82,7 +82,7 @@
                 this.classList.add('active');
 
                 // Trigger HTMX load
-                htmx.ajax('GET', `/panel/{{.CollectorName}}/apps/{{.AppName}}/logs/volume?range=${range}`, {
+                htmx.ajax('GET', `/panel/collectors/{{.CollectorName}}/apps/{{.AppName}}/logs/volume?range=${range}`, {
                     target: '#chart-data-container',
                     swap: 'innerHTML'
                 });
@@ -98,7 +98,7 @@
 <div class="bg-bg-secondary p-5">
     <div class="flex items-center justify-between mb-4">
         <h2 class="text-lg font-medium">Recent Logs</h2>
-        <a href="/panel/{{.CollectorName}}/apps/{{.AppName}}/logs" class="text-accent hover:underline text-sm">View All &rarr;</a>
+        <a href="/panel/collectors/{{.CollectorName}}/apps/{{.AppName}}/logs" class="text-accent hover:underline text-sm">View All &rarr;</a>
     </div>
     {{if .Grouped}}
     <div class="space-y-2">

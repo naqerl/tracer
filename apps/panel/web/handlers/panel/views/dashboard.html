@@ -20,7 +20,7 @@
 {{define "dashboard-content"}}
 {{template "navbar" .Nav}}
 
-<div hx-get="/panel/collectors" hx-trigger="every 10s" hx-swap="innerHTML">
+<div hx-get="/panel/collectors/entries" hx-trigger="every 10s" hx-swap="innerHTML">
     {{template "collectors-sections" .}}
 </div>
 {{end}}
@@ -42,7 +42,7 @@
 <div class="mb-10">
     <!-- Collector Header -->
     <div class="flex items-center mb-2">
-        <a href="/panel/{{.Name}}" class="flex items-center hover:opacity-80 transition-opacity">
+        <a href="/panel/collectors/{{.Name}}" class="flex items-center hover:opacity-80 transition-opacity">
             <span class="text-fg-secondary text-xl mr-1">[</span>
             <h2 class="text-xl font-semibold">{{.Name}}</h2>
             <span class="text-fg-secondary text-xl ml-1">]</span>
@@ -60,7 +60,7 @@
         <span class="text-fg-secondary text-xs ml-1">]</span>
         {{end}}
         <span class="text-xs text-fg-secondary mx-1">[</span>
-        <a href="/panel/{{.Name}}/resources?range=24h" 
+        <a href="/panel/collectors/{{.Name}}/resources?range=24h" 
            class="text-xs text-accent hover:underline"
            title="View resource usage history">
             resources
@@ -102,7 +102,7 @@
     {{if .Apps}}
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
         {{range .Apps}}
-        <a href="/panel/{{$.Name}}/apps/{{.}}" class="block bg-bg-secondary hover:bg-bg-secondary/80 p-4 transition-all hover:-translate-y-0.5">
+        <a href="/panel/collectors/{{$.Name}}/apps/{{.}}" class="block bg-bg-secondary hover:bg-bg-secondary/80 p-4 transition-all hover:-translate-y-0.5">
             <span class="font-medium">{{.}}</span>
         </a>
         {{end}}

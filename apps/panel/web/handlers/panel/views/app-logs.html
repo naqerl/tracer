@@ -46,7 +46,7 @@
 
                 <!-- Chart Data Container (Lazy Loaded) -->
                 <div id="chart-data-container"
-                     hx-get="/panel/{{.CollectorName}}/apps/{{.AppName}}/logs/volume?range=24h"
+                     hx-get="/panel/collectors/{{.CollectorName}}/apps/{{.AppName}}/logs/volume?range=24h"
                      hx-trigger="load"
                      hx-swap="innerHTML">
                     <div class="flex items-center justify-center py-12">
@@ -62,7 +62,7 @@
             <!-- Logs Container - Lazy loaded -->
             <div class="bg-bg-secondary p-5">
                 <h2 class="text-lg font-medium mb-4">Log Groups</h2>
-                <div id="logs-content" hx-get="/panel/{{.CollectorName}}/apps/{{.AppName}}/logs/entries" hx-trigger="load once, every 10s" hx-swap="innerHTML">
+                <div id="logs-content" hx-get="/panel/collectors/{{.CollectorName}}/apps/{{.AppName}}/logs/entries" hx-trigger="load once, every 10s" hx-swap="innerHTML">
                     <p class="text-fg-secondary text-center py-4">Loading logs...</p>
                 </div>
             </div>
@@ -82,7 +82,7 @@
                     this.classList.add('active');
 
                     // Trigger HTMX load
-                    htmx.ajax('GET', `/panel/{{.CollectorName}}/apps/{{.AppName}}/logs/volume?range=${range}`, {
+                    htmx.ajax('GET', `/panel/collectors/{{.CollectorName}}/apps/{{.AppName}}/logs/volume?range=${range}`, {
                         target: '#chart-data-container',
                         swap: 'innerHTML'
                     });
@@ -100,10 +100,10 @@
     <!-- Filter tabs -->
     <div class="flex items-center justify-between mb-4">
         <div class="flex gap-2">
-            <button type="button" class="px-3 py-1.5 text-sm transition-colors {{if not .Level}}text-fg font-medium{{else}}text-fg-secondary hover:text-fg{{end}}" hx-get="/panel/{{.CollectorName}}/apps/{{.AppName}}/logs/entries" hx-swap="innerHTML" hx-target="#logs-content">All ({{.TotalCount}})</button>
-            <button type="button" class="px-3 py-1.5 text-sm transition-colors {{if eq .Level "error"}}text-red-500 font-medium{{else}}text-fg-secondary hover:text-red-400{{end}}" hx-get="/panel/{{.CollectorName}}/apps/{{.AppName}}/logs/entries?level=error" hx-swap="innerHTML" hx-target="#logs-content">Errors ({{.ErrorCount}})</button>
-            <button type="button" class="px-3 py-1.5 text-sm transition-colors {{if eq .Level "warn"}}text-yellow-500 font-medium{{else}}text-fg-secondary hover:text-yellow-400{{end}}" hx-get="/panel/{{.CollectorName}}/apps/{{.AppName}}/logs/entries?level=warn" hx-swap="innerHTML" hx-target="#logs-content">Warnings ({{.WarnCount}})</button>
-            <button type="button" class="px-3 py-1.5 text-sm transition-colors {{if eq .Level "info"}}text-blue-500 font-medium{{else}}text-fg-secondary hover:text-blue-400{{end}}" hx-get="/panel/{{.CollectorName}}/apps/{{.AppName}}/logs/entries?level=info" hx-swap="innerHTML" hx-target="#logs-content">Info ({{.InfoCount}})</button>
+            <button type="button" class="px-3 py-1.5 text-sm transition-colors {{if not .Level}}text-fg font-medium{{else}}text-fg-secondary hover:text-fg{{end}}" hx-get="/panel/collectors/{{.CollectorName}}/apps/{{.AppName}}/logs/entries" hx-swap="innerHTML" hx-target="#logs-content">All ({{.TotalCount}})</button>
+            <button type="button" class="px-3 py-1.5 text-sm transition-colors {{if eq .Level "error"}}text-red-500 font-medium{{else}}text-fg-secondary hover:text-red-400{{end}}" hx-get="/panel/collectors/{{.CollectorName}}/apps/{{.AppName}}/logs/entries?level=error" hx-swap="innerHTML" hx-target="#logs-content">Errors ({{.ErrorCount}})</button>
+            <button type="button" class="px-3 py-1.5 text-sm transition-colors {{if eq .Level "warn"}}text-yellow-500 font-medium{{else}}text-fg-secondary hover:text-yellow-400{{end}}" hx-get="/panel/collectors/{{.CollectorName}}/apps/{{.AppName}}/logs/entries?level=warn" hx-swap="innerHTML" hx-target="#logs-content">Warnings ({{.WarnCount}})</button>
+            <button type="button" class="px-3 py-1.5 text-sm transition-colors {{if eq .Level "info"}}text-blue-500 font-medium{{else}}text-fg-secondary hover:text-blue-400{{end}}" hx-get="/panel/collectors/{{.CollectorName}}/apps/{{.AppName}}/logs/entries?level=info" hx-swap="innerHTML" hx-target="#logs-content">Info ({{.InfoCount}})</button>
         </div>
     </div>
 
@@ -127,12 +127,12 @@
                 <tr class="flex flex-col mb-2 sm:table-row sm:border-b sm:border-bg-secondary hover:bg-bg-secondary/50 transition-colors">
                     {{if not $.Level}}<td class="hidden sm:table-cell px-4 py-3"><span class="text-xs font-medium uppercase">{{.Level}}</span></td>{{end}}
                     <td class="px-4 py-3 bg-bg-secondary sm:bg-transparent first:rounded-t-lg last:rounded-b-lg sm:first:rounded-none sm:last:rounded-none break-words overflow-hidden">
-                        <a href="/panel/{{$.CollectorName}}/apps/{{$.AppName}}/logs/groups/{{.ID}}" class="block text-fg hover:text-accent transition-colors" title="View log details">
+                        <a href="/panel/collectors/{{$.CollectorName}}/apps/{{$.AppName}}/logs/groups/{{.ID}}" class="block text-fg hover:text-accent transition-colors" title="View log details">
                             {{if not $.Level}}<span class="text-xs font-medium uppercase text-fg-secondary sm:hidden">{{.Level}}: </span>{{end}}{{.Message}}
                         </a>
                     </td>
                     <td class="px-4 py-3 bg-bg-secondary sm:bg-transparent text-left sm:text-right first:rounded-t-lg last:rounded-b-lg sm:first:rounded-none sm:last:rounded-none whitespace-nowrap">
-                        <a href="/panel/{{$.CollectorName}}/apps/{{$.AppName}}/logs/groups/{{.ID}}" class="inline-flex items-center justify-center min-w-[2rem] px-2 py-0.5 text-sm font-medium bg-bg sm:bg-bg-secondary text-fg-secondary rounded hover:bg-accent hover:text-bg transition-colors" title="View log details">
+                        <a href="/panel/collectors/{{$.CollectorName}}/apps/{{$.AppName}}/logs/groups/{{.ID}}" class="inline-flex items-center justify-center min-w-[2rem] px-2 py-0.5 text-sm font-medium bg-bg sm:bg-bg-secondary text-fg-secondary rounded hover:bg-accent hover:text-bg transition-colors" title="View log details">
                             {{.Count}}
                         </a>
                     </td>
@@ -140,7 +140,7 @@
                 {{end}}
                 {{if .HasMore}}
                 <tr id="load-more-trigger"
-                    hx-get="/panel/{{.CollectorName}}/apps/{{$.AppName}}/logs/entries?{{if .Level}}level={{.Level}}&{{end}}offset={{.NextOffset}}"
+                    hx-get="/panel/collectors/{{.CollectorName}}/apps/{{$.AppName}}/logs/entries?{{if .Level}}level={{.Level}}&{{end}}offset={{.NextOffset}}"
                     hx-trigger="revealed"
                     hx-swap="outerHTML"
                     class="sm:table-row">
@@ -158,12 +158,12 @@
 <tr class="flex flex-col mb-2 sm:table-row sm:border-b sm:border-bg-secondary hover:bg-bg-secondary/50 transition-colors">
     {{if not $.Level}}<td class="hidden sm:table-cell px-4 py-3"><span class="text-xs font-medium uppercase">{{.Level}}</span></td>{{end}}
     <td class="px-4 py-3 bg-bg-secondary sm:bg-transparent first:rounded-t-lg last:rounded-b-lg sm:first:rounded-none sm:last:rounded-none break-words overflow-hidden">
-        <a href="/panel/{{$.CollectorName}}/apps/{{$.AppName}}/logs/groups/{{.ID}}" class="block text-fg hover:text-accent transition-colors" title="View log details">
+        <a href="/panel/collectors/{{$.CollectorName}}/apps/{{$.AppName}}/logs/groups/{{.ID}}" class="block text-fg hover:text-accent transition-colors" title="View log details">
             {{if not $.Level}}<span class="text-xs font-medium uppercase text-fg-secondary sm:hidden">{{.Level}}: </span>{{end}}{{.Message}}
         </a>
     </td>
     <td class="px-4 py-3 bg-bg-secondary sm:bg-transparent text-left sm:text-right first:rounded-t-lg last:rounded-b-lg sm:first:rounded-none sm:last:rounded-none whitespace-nowrap">
-        <a href="/panel/{{$.CollectorName}}/apps/{{$.AppName}}/logs/groups/{{.ID}}" class="inline-flex items-center justify-center min-w-[2rem] px-2 py-0.5 text-sm font-medium bg-bg sm:bg-bg-secondary text-fg-secondary rounded hover:bg-accent hover:text-bg transition-colors" title="View log details">
+        <a href="/panel/collectors/{{$.CollectorName}}/apps/{{$.AppName}}/logs/groups/{{.ID}}" class="inline-flex items-center justify-center min-w-[2rem] px-2 py-0.5 text-sm font-medium bg-bg sm:bg-bg-secondary text-fg-secondary rounded hover:bg-accent hover:text-bg transition-colors" title="View log details">
             {{.Count}}
         </a>
     </td>
@@ -171,7 +171,7 @@
 {{end}}
 {{if .HasMore}}
 <tr id="load-more-trigger"
-    hx-get="/panel/{{.CollectorName}}/apps/{{.AppName}}/logs/entries?{{if .Level}}level={{.Level}}&{{end}}offset={{.NextOffset}}"
+    hx-get="/panel/collectors/{{.CollectorName}}/apps/{{.AppName}}/logs/entries?{{if .Level}}level={{.Level}}&{{end}}offset={{.NextOffset}}"
     hx-trigger="revealed"
     hx-swap="outerHTML"
     class="sm:table-row">
@@ -202,13 +202,13 @@
 
                 <div class="bg-bg-secondary p-5">
                     <div class="mb-4">
-                        <a href="/panel/{{.CollectorName}}/apps/{{.AppName}}/logs" class="text-accent hover:underline text-sm">&larr; Back to Groups</a>
+                        <a href="/panel/collectors/{{.CollectorName}}/apps/{{.AppName}}/logs" class="text-accent hover:underline text-sm">&larr; Back to Groups</a>
                     </div>
 
                     <h2 class="text-lg font-medium mb-2">Log Details</h2>
                     <p class="text-fg-secondary text-sm mb-4 break-words">{{.LogGroup.Message}}</p>
 
-                    <div hx-get="/panel/{{.CollectorName}}/apps/{{.AppName}}/logs/groups/{{.LogGroup.ID}}/entries{{if .HighlightLogID}}?logID={{.HighlightLogID}}{{end}}"
+                    <div hx-get="/panel/collectors/{{.CollectorName}}/apps/{{.AppName}}/logs/groups/{{.LogGroup.ID}}/entries{{if .HighlightLogID}}?logID={{.HighlightLogID}}{{end}}"
                          hx-trigger="load"
                          hx-swap="innerHTML">
                         <p class="text-fg-secondary text-center py-4">Loading logs...</p>
@@ -240,12 +240,12 @@
             {{range .Logs}}
             <tr class="flex flex-col mb-2 sm:table-row sm:border-b sm:border-bg-secondary hover:bg-bg-secondary/50 transition-colors {{if eq .ID $.HighlightLogID}}bg-accent/10 border-l-2 border-accent{{end}}" id="log-{{.ID}}">
                 <td class="px-4 py-3 bg-bg-secondary sm:bg-transparent first:rounded-t-lg last:rounded-b-lg sm:first:rounded-none sm:last:rounded-none sm:align-top">
-                    <a href="/panel/{{$.CollectorName}}/apps/{{$.AppName}}/logs/{{.ID}}" class="text-fg hover:text-accent transition-colors" title="View log details">
+                    <a href="/panel/collectors/{{$.CollectorName}}/apps/{{$.AppName}}/logs/{{.ID}}" class="text-fg hover:text-accent transition-colors" title="View log details">
                         <span class="text-fg-secondary text-sm sm:hidden">Level: </span><span class="text-xs font-medium uppercase">{{.Level}}</span>
                     </a>
                 </td>
                 <td class="px-4 py-3 bg-bg-secondary sm:bg-transparent first:rounded-t-lg last:rounded-b-lg sm:first:rounded-none sm:last:rounded-none">
-                    <a href="/panel/{{$.CollectorName}}/apps/{{$.AppName}}/logs/{{.ID}}" class="block text-fg hover:text-accent transition-colors" title="View log details">
+                    <a href="/panel/collectors/{{$.CollectorName}}/apps/{{$.AppName}}/logs/{{.ID}}" class="block text-fg hover:text-accent transition-colors" title="View log details">
                         {{if .Context.Valid}}
                         <span class="text-fg-secondary text-sm block mb-1 sm:hidden">Context:</span>
                         <pre class="bg-bg p-2 text-xs overflow-x-auto max-w-3xl whitespace-pre-wrap break-words"><code class="context-json">{{.Context.String}}</code></pre>
@@ -255,7 +255,7 @@
                     </a>
                 </td>
                 <td class="px-4 py-3 bg-bg-secondary sm:bg-transparent text-left sm:text-right first:rounded-t-lg last:rounded-b-lg sm:first:rounded-none sm:last:rounded-none text-fg-secondary text-sm sm:align-top">
-                    <a href="/panel/{{$.CollectorName}}/apps/{{$.AppName}}/logs/{{.ID}}" class="text-fg hover:text-accent transition-colors" title="View log details">
+                    <a href="/panel/collectors/{{$.CollectorName}}/apps/{{$.AppName}}/logs/{{.ID}}" class="text-fg hover:text-accent transition-colors" title="View log details">
                         <span class="sm:hidden">Time: </span>{{formatDateTime .CreatedAt}}
                     </a>
                 </td>
@@ -263,7 +263,7 @@
             {{end}}
             {{if .HasMore}}
             <tr id="load-more-logs-trigger"
-                hx-get="/panel/{{.CollectorName}}/apps/{{.AppName}}/logs/groups/{{.LogGroup.ID}}/entries?offset={{.NextOffset}}"
+                hx-get="/panel/collectors/{{.CollectorName}}/apps/{{.AppName}}/logs/groups/{{.LogGroup.ID}}/entries?offset={{.NextOffset}}"
                 hx-trigger="revealed"
                 hx-swap="outerHTML"
                 class="sm:table-row">
@@ -293,12 +293,12 @@ document.addEventListener('DOMContentLoaded', function() {
 {{range .Logs}}
 <tr class="flex flex-col mb-2 sm:table-row sm:border-b sm:border-bg-secondary hover:bg-bg-secondary/50 transition-colors {{if eq .ID $.HighlightLogID}}bg-accent/10 border-l-2 border-accent{{end}}" id="log-{{.ID}}">
     <td class="px-4 py-3 bg-bg-secondary sm:bg-transparent first:rounded-t-lg last:rounded-b-lg sm:first:rounded-none sm:last:rounded-none sm:align-top">
-        <a href="/panel/{{$.CollectorName}}/apps/{{$.AppName}}/logs/{{.ID}}" class="text-fg hover:text-accent transition-colors" title="View log details">
+        <a href="/panel/collectors/{{$.CollectorName}}/apps/{{$.AppName}}/logs/{{.ID}}" class="text-fg hover:text-accent transition-colors" title="View log details">
             <span class="text-fg-secondary text-sm sm:hidden">Level: </span><span class="text-xs font-medium uppercase">{{.Level}}</span>
         </a>
     </td>
     <td class="px-4 py-3 bg-bg-secondary sm:bg-transparent first:rounded-t-lg last:rounded-b-lg sm:first:rounded-none sm:last:rounded-none">
-        <a href="/panel/{{$.CollectorName}}/apps/{{$.AppName}}/logs/{{.ID}}" class="block text-fg hover:text-accent transition-colors" title="View log details">
+        <a href="/panel/collectors/{{$.CollectorName}}/apps/{{$.AppName}}/logs/{{.ID}}" class="block text-fg hover:text-accent transition-colors" title="View log details">
             {{if .Context.Valid}}
             <span class="text-fg-secondary text-sm block mb-1 sm:hidden">Context:</span>
             <pre class="bg-bg p-2 text-xs overflow-x-auto max-w-3xl whitespace-pre-wrap break-words"><code class="context-json">{{.Context.String}}</code></pre>
@@ -308,7 +308,7 @@ document.addEventListener('DOMContentLoaded', function() {
         </a>
     </td>
     <td class="px-4 py-3 bg-bg-secondary sm:bg-transparent text-left sm:text-right first:rounded-t-lg last:rounded-b-lg sm:first:rounded-none sm:last:rounded-none text-fg-secondary text-sm sm:align-top">
-        <a href="/panel/{{$.CollectorName}}/apps/{{$.AppName}}/logs/{{.ID}}" class="text-fg hover:text-accent transition-colors" title="View log details">
+        <a href="/panel/collectors/{{$.CollectorName}}/apps/{{$.AppName}}/logs/{{.ID}}" class="text-fg hover:text-accent transition-colors" title="View log details">
             <span class="sm:hidden">Time: </span>{{formatDateTime .CreatedAt}}
         </a>
     </td>
@@ -316,7 +316,7 @@ document.addEventListener('DOMContentLoaded', function() {
 {{end}}
 {{if .HasMore}}
 <tr id="load-more-logs-trigger"
-    hx-get="/panel/{{.CollectorName}}/apps/{{.AppName}}/logs/groups/{{.LogGroup.ID}}/entries?offset={{.NextOffset}}"
+    hx-get="/panel/collectors/{{.CollectorName}}/apps/{{.AppName}}/logs/groups/{{.LogGroup.ID}}/entries?offset={{.NextOffset}}"
     hx-trigger="revealed"
     hx-swap="outerHTML"
     class="sm:table-row">

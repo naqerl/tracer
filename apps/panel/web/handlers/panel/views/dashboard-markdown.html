@@ -15,9 +15,9 @@
 - **Last Updated**: {{formatDateTime .Stats.CreatedAt}}
 {{end}}
 - **Apps** ({{len .Apps}}):
-{{range .Apps}}  - [{{.}}](/panel/{{$collectorName}}/apps/{{urlEncode .}}.md)
+{{range .Apps}}  - [{{.}}](/panel/collectors/{{$collectorName}}/apps/{{urlEncode .}}.md)
 {{end}}
-[View Details](/panel/{{.Name}}.md)
+[View Details](/panel/collectors/{{.Name}}.md)
 
 ---
 {{end}}
