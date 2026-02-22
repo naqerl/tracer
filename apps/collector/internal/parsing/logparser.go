@@ -27,14 +27,22 @@ func New(cfg collectorconfig.App) (Parser, error) {
 }
 
 // normalizeLevel converts various level formats to uppercase standard
-func normalizeLevel(level string) string {
+func normalizeLevel(level string) types.LogLevel {
 	normalized := strings.ToUpper(level)
 	switch normalized {
 	case "WARNING":
-		return "WARN"
+		return types.LevelWarn
 	case "CRITICAL":
-		return "FATAL"
+		return types.LevelError
+	case "DEBUG":
+		return types.LevelDebug
+	case "INFO":
+		return types.LevelInfo
+	case "ERROR":
+		return types.LevelError
+	case "WARN":
+		return types.LevelWarn
 	default:
-		return normalized
+		return types.LogLevel(normalized)
 	}
 }

@@ -87,7 +87,7 @@ func (p *journalctlParser) Parse(line string) (types.LogEntry, error) {
 		entry.Message = line
 	}
 
-	entry.Level = journalLevel
+	entry.Level = types.LogLevel(journalLevel)
 
 	// Extract useful metadata from journalctl
 	usefulFields := []string{

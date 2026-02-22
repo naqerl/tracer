@@ -219,11 +219,6 @@ func (s *Service) sendRegistration() {
 		Type:          "register",
 		Apps:          s.appNames,
 		CollectorName: s.collectorName,
-		Thresholds: &types.CollectorThresholds{
-			CPU:  s.cpuAlert,
-			Mem:  s.memAlert,
-			Disk: s.diskAlert,
-		},
 	}
 
 	data, err := json.Marshal(msg)

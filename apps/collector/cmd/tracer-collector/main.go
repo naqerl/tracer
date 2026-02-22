@@ -133,11 +133,11 @@ func normalizePanelEndpoint(endpoint string) (string, error) {
 
 	cleanPath := strings.TrimSuffix(parsed.Path, "/")
 	if cleanPath == "" {
-		parsed.Path = "/api/ws/ingest"
-	} else if cleanPath == "/api/ws/ingest" {
+		parsed.Path = "/ingest/ws/ingest"
+	} else if cleanPath == "/ingest/ws/ingest" {
 		parsed.Path = cleanPath
 	} else {
-		parsed.Path = cleanPath + "/api/ws/ingest"
+		parsed.Path = cleanPath + "/ingest/ws/ingest"
 	}
 
 	return parsed.String(), nil
