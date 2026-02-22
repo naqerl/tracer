@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/ai-shift/tracer/apps/panel/internal/auth"
+	"github.com/ai-shift/tracer/apps/panel/internal/user"
 	"github.com/ai-shift/tracer/apps/panel/web/middleware"
 	"github.com/ai-shift/tracer/apps/panel/web/templates"
 )
@@ -17,14 +18,16 @@ var views embed.FS
 type handler struct {
 	t           templates.Templates
 	authService *auth.Service
+	userService *user.Service
 	sessionMax  int
 }
 
-func InitMux(authService *auth.Service, sessionDurationSec int) *http.ServeMux {
+func InitMux(authService *auth.Service, userService *user.Service, sessionDurationSec int) *http.ServeMux {
 	m := http.NewServeMux()
 	h := handler{
 		t:           templates.New(views),
 		authService: authService,
+		userService: userService,
 		sessionMax:  sessionDurationSec,
 	}
 
@@ -70,7 +73,7 @@ func (h *handler) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, token, err := h.authService.Login(r.Context(), username, password)
+	user, token, err := h.authService.Login(r.Context(), username, password, h.userService)
 	if err != nil {
 		slog.Debug("Login failed", "username", username, "error", err)
 		h.renderFormError(w, "Invalid credentials")
@@ -96,7 +99,7 @@ func (h *handler) logout(w http.ResponseWriter, r *http.Request) {
 // Setup handlers
 
 func (h *handler) setupPage(w http.ResponseWriter, r *http.Request) {
-	hasUsers, err := h.authService.HasUsers(r.Context())
+	hasUsers, err := h.userService.HasAny(r.Context())
 	if err != nil {
 		slog.Error("Failed to check users", "error", err)
 		h.t.RenderError(w, r, "Error", "Failed to check users", http.StatusInternalServerError)
@@ -123,7 +126,7 @@ func (h *handler) setupPage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) setup(w http.ResponseWriter, r *http.Request) {
-	hasUsers, err := h.authService.HasUsers(r.Context())
+	hasUsers, err := h.userService.HasAny(r.Context())
 	if err != nil {
 		slog.Error("Failed to check users", "error", err)
 		h.renderFormError(w, "Failed to check users: "+err.Error())
@@ -150,7 +153,7 @@ func (h *handler) setup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := h.authService.CreateUser(r.Context(), username, password, true)
+	user, err := h.authService.Register(r.Context(), username, password, true)
 	if err != nil {
 		slog.Error("Failed to create admin user", "error", err)
 		h.renderFormError(w, "Failed to create user: "+err.Error())

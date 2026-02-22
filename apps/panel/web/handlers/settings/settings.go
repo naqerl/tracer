@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/ai-shift/tracer/apps/panel/internal/auth"
+	"github.com/ai-shift/tracer/apps/panel/internal/user"
 	"github.com/ai-shift/tracer/apps/panel/internal/collectordb"
 	"github.com/ai-shift/tracer/apps/panel/internal/dbmanager"
 	"github.com/ai-shift/tracer/apps/panel/internal/notify"
@@ -25,17 +26,19 @@ var views embed.FS
 type handler struct {
 	t                  templates.Templates
 	authService        *auth.Service
+	userService        *user.Service
 	collectorDBManager *collectordb.Manager
 	notifierStore      *notify.Store
 	dbManager          *dbmanager.Manager
 	notifyService      *notify.Service
 }
 
-func InitMux(authService *auth.Service, collectorDBManager *collectordb.Manager, notifierStore *notify.Store, dbManager *dbmanager.Manager, notifyService *notify.Service) *http.ServeMux {
+func InitMux(authService *auth.Service, userService *user.Service, collectorDBManager *collectordb.Manager, notifierStore *notify.Store, dbManager *dbmanager.Manager, notifyService *notify.Service) *http.ServeMux {
 	m := http.NewServeMux()
 	h := handler{
 		t:                  templates.New(views),
 		authService:        authService,
+		userService:        userService,
 		collectorDBManager: collectorDBManager,
 		notifierStore:      notifierStore,
 		dbManager:          dbManager,
@@ -89,7 +92,7 @@ func (h *handler) settingsPage(w http.ResponseWriter, r *http.Request) {
 
 	// Admin-only data
 	if isAdmin {
-		users, err := h.authService.ListUsers(r.Context())
+		users, err := h.userService.List(r.Context())
 		if err != nil {
 			h.t.RenderError(w, r, "Error", "Failed to list users", http.StatusInternalServerError)
 			return
@@ -139,7 +142,7 @@ func (h *handler) listUsers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	users, err := h.authService.ListUsers(r.Context())
+	users, err := h.userService.List(r.Context())
 	if err != nil {
 		h.t.RenderError(w, r, "Error", "Failed to list users", http.StatusInternalServerError)
 		return
@@ -167,7 +170,7 @@ func (h *handler) createUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err := h.authService.CreateUser(r.Context(), username, password, isAdmin)
+	_, err := h.authService.Register(r.Context(), username, password, isAdmin)
 	if err != nil {
 		slog.Error("Failed to create user", "error", err)
 		http.Error(w, "Failed to create user", http.StatusInternalServerError)
@@ -195,7 +198,7 @@ func (h *handler) deleteUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.authService.DeleteUser(r.Context(), id); err != nil {
+	if err := h.userService.Delete(r.Context(), id); err != nil {
 		slog.Error("Failed to delete user", "error", err)
 		http.Error(w, "Failed to delete user", http.StatusInternalServerError)
 		return
@@ -217,13 +220,13 @@ func (h *handler) getUserApps(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := h.authService.GetUserByID(r.Context(), id)
+	user, err := h.userService.GetByID(r.Context(), id)
 	if err != nil {
 		h.t.RenderError(w, r, "Error", "User not found", http.StatusNotFound)
 		return
 	}
 
-	userApps, err := h.authService.GetUserApps(r.Context(), id)
+	userApps, err := h.userService.GetApps(r.Context(), id)
 	if err != nil {
 		h.t.RenderError(w, r, "Error", "Failed to get user apps", http.StatusInternalServerError)
 		return
@@ -274,7 +277,7 @@ func (h *handler) updateUserApps(w http.ResponseWriter, r *http.Request) {
 	}
 
 	selectedApps := r.Form["apps"]
-	currentApps, err := h.authService.GetUserApps(r.Context(), id)
+	currentApps, err := h.userService.GetApps(r.Context(), id)
 	if err != nil {
 		http.Error(w, "Failed to get user apps", http.StatusInternalServerError)
 		return
@@ -292,7 +295,7 @@ func (h *handler) updateUserApps(w http.ResponseWriter, r *http.Request) {
 
 	for _, app := range selectedApps {
 		if !currentMap[app] {
-			if err := h.authService.AddUserApp(r.Context(), id, app); err != nil {
+			if err := h.userService.AddApp(r.Context(), id, app); err != nil {
 				slog.Error("Failed to add user app", "user_id", id, "app", app, "error", err)
 			}
 		}
@@ -300,7 +303,7 @@ func (h *handler) updateUserApps(w http.ResponseWriter, r *http.Request) {
 
 	for _, app := range currentApps {
 		if !selectedMap[app] {
-			if err := h.authService.RemoveUserApp(r.Context(), id, app); err != nil {
+			if err := h.userService.RemoveApp(r.Context(), id, app); err != nil {
 				slog.Error("Failed to remove user app", "user_id", id, "app", app, "error", err)
 			}
 		}
@@ -616,7 +619,7 @@ func (h *handler) updateNotifier(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	notify.RegisterNotifierWithUser(r.Context(), h.notifierStore, h.notifyService, h.authService, id, user)
+	h.notifyService.RegisterNotifierWithUser(r.Context(), id, user)
 
 	http.Redirect(w, r, "/settings/", http.StatusSeeOther)
 }
@@ -753,7 +756,7 @@ func (h *handler) getNotifierApps(w http.ResponseWriter, r *http.Request) {
 
 	// Filter by user access for non-admins
 	if user.IsAdmin != 1 {
-		userApps, err := h.authService.GetUserApps(r.Context(), user.ID)
+		userApps, err := h.userService.GetApps(r.Context(), user.ID)
 		if err != nil {
 			h.t.RenderError(w, r, "Error", "Failed to get user apps", http.StatusInternalServerError)
 			return
@@ -854,7 +857,7 @@ func (h *handler) updateNotifierApps(w http.ResponseWriter, r *http.Request) {
 
 		// For non-admins: filter to only apps they have access to
 		if user.IsAdmin != 1 {
-			userApps, err := h.authService.GetUserApps(r.Context(), user.ID)
+			userApps, err := h.userService.GetApps(r.Context(), user.ID)
 			if err != nil {
 				http.Error(w, "Failed to get user apps", http.StatusInternalServerError)
 				return
@@ -897,7 +900,7 @@ func (h *handler) getAvailableApps(ctx context.Context, user *db.User) ([]string
 	}
 
 	// Non-admins only see their allowed apps
-	userApps, err := h.authService.GetUserApps(ctx, user.ID)
+	userApps, err := h.userService.GetApps(ctx, user.ID)
 	if err != nil {
 		return nil, err
 	}

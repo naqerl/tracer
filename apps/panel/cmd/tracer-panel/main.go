@@ -18,12 +18,13 @@ import (
 
 	panelconfig "github.com/ai-shift/tracer/apps/panel/internal/config"
 	"github.com/ai-shift/tracer/apps/panel/internal/auth"
-	"github.com/ai-shift/tracer/libs/logx"
 	"github.com/ai-shift/tracer/apps/panel/internal/collectordb"
 	"github.com/ai-shift/tracer/apps/panel/internal/collectors"
 	"github.com/ai-shift/tracer/apps/panel/internal/dbmanager"
 	"github.com/ai-shift/tracer/apps/panel/internal/notify"
 	"github.com/ai-shift/tracer/apps/panel/internal/retention"
+	"github.com/ai-shift/tracer/apps/panel/internal/user"
+	"github.com/ai-shift/tracer/libs/logx"
 	panelmigrations "github.com/ai-shift/tracer/apps/panel/sql/panel"
 	"github.com/ai-shift/tracer/apps/panel/web"
 )
@@ -48,7 +49,7 @@ func main() {
 		"sample_rate", cfg.SampleRate,
 		"retention_days", cfg.RetentionDays,
 	)
-
+        
 	// Setup context with cancellation
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -76,15 +77,16 @@ func main() {
 	}
 	defer panelDB.Close()
 
-	// Initialize auth service
+	// Initialize services
 	sessionDuration := cfg.SessionDurationParsed()
 	authService := auth.New(panelDB, sessionDuration)
 	defer authService.Close()
 
-	notifierStore := notify.NewStore(authService.DB())
+	userService := user.New(panelDB)
+	notifierStore := notify.NewStore(panelDB)
 
 	// Check if first run (no users exist)
-	hasUsers, err := authService.HasUsers(ctx)
+	hasUsers, err := userService.HasAny(ctx)
 	if err != nil {
 		slog.Error("Failed to check users", "error", err)
 		os.Exit(1)
@@ -104,11 +106,11 @@ func main() {
 	}
 
 	// Initialize notification service
-	notifyService := notify.New()
+	notifyService := notify.New(notifierStore, userService)
 	go notifyService.Start(ctx)
 
 	// Load and register enabled notifiers from database
-	if err := notify.LoadEnabled(ctx, notifierStore, authService, notifyService); err != nil {
+	if err := notifyService.LoadEnabled(ctx); err != nil {
 		slog.Error("Failed to load notifiers", "error", err)
 		// Continue anyway - notifiers can be added via UI
 	}
@@ -171,7 +173,7 @@ func main() {
 
 	// Initialize HTTP server
 	sessionDurationSec := int(sessionDuration.Seconds())
-	server := web.Run(cfg.Port, dbManager, collectorDBManager, cfg.SampleRate, notifyService, authService, notifierStore, tracker, sessionDurationSec, cfg.PanelURL)
+	server := web.Run(cfg.Port, dbManager, collectorDBManager, cfg.SampleRate, notifyService, authService, userService, notifierStore, tracker, sessionDurationSec, cfg.PanelURL)
 
 	// Handle shutdown signals
 	sigChan := make(chan os.Signal, 1)

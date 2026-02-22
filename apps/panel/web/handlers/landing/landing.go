@@ -4,7 +4,6 @@ import (
 	"embed"
 	"net/http"
 
-	"github.com/ai-shift/tracer/apps/panel/internal/auth"
 	"github.com/ai-shift/tracer/apps/panel/web/middleware"
 	"github.com/ai-shift/tracer/apps/panel/web/templates"
 )
@@ -13,14 +12,12 @@ import (
 var views embed.FS
 
 type handler struct {
-	t           templates.Templates
-	authService *auth.Service
+	t templates.Templates
 }
 
-func InitHandler(authService *auth.Service) http.HandlerFunc {
+func InitHandler() http.HandlerFunc {
 	h := handler{
-		t:           templates.New(views),
-		authService: authService,
+		t: templates.New(views),
 	}
 	return h.landingPage
 }

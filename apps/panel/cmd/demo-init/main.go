@@ -13,6 +13,7 @@ import (
 	_ "modernc.org/sqlite"
 
 	"github.com/ai-shift/tracer/apps/panel/internal/auth"
+	"github.com/ai-shift/tracer/apps/panel/internal/user"
 	panelmigrations "github.com/ai-shift/tracer/apps/panel/sql/panel"
 )
 
@@ -38,14 +39,16 @@ func main() {
 	authSvc := auth.New(panelDB, 24*time.Hour)
 	defer authSvc.Close()
 
-	hasUsers, err := authSvc.HasUsers(ctx)
+	userSvc := user.New(panelDB)
+
+	hasUsers, err := userSvc.HasAny(ctx)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to check users: %v\n", err)
 		os.Exit(1)
 	}
 
 	if !hasUsers {
-		if _, err := authSvc.CreateUser(ctx, *username, *password, true); err != nil {
+		if _, err := authSvc.Register(ctx, *username, *password, true); err != nil {
 			fmt.Fprintf(os.Stderr, "failed to create initial admin user: %v\n", err)
 			os.Exit(1)
 		}

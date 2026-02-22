@@ -10,6 +10,7 @@ import (
 	"github.com/ai-shift/tracer/apps/panel/internal/collectors"
 	"github.com/ai-shift/tracer/apps/panel/internal/dbmanager"
 	"github.com/ai-shift/tracer/apps/panel/internal/notify"
+	"github.com/ai-shift/tracer/apps/panel/internal/user"
 	"github.com/ai-shift/tracer/apps/panel/web/middleware"
 	"github.com/ai-shift/tracer/apps/panel/web/handlers/analytics"
 	"github.com/ai-shift/tracer/apps/panel/web/handlers/api"
@@ -19,15 +20,15 @@ import (
 	"github.com/ai-shift/tracer/apps/panel/web/handlers/settings"
 )
 
-func Run(port string, dbManager *dbmanager.Manager, collectorDBManager *collectordb.Manager, sampleRate float64, notifyService *notify.Service, authService *auth.Service, notifierStore *notify.Store, tracker *collectors.Tracker, sessionDurationSec int, panelURL string) *http.Server {
+func Run(port string, dbManager *dbmanager.Manager, collectorDBManager *collectordb.Manager, sampleRate float64, notifyService *notify.Service, authService *auth.Service, userService *user.Service, notifierStore *notify.Store, tracker *collectors.Tracker, sessionDurationSec int, panelURL string) *http.Server {
 	mux := http.NewServeMux()
 
 	// Auth routes (public)
-	mux.Handle("/", authres.InitMux(authService, sessionDurationSec))
+	mux.Handle("/", authres.InitMux(authService, userService, sessionDurationSec))
 
 	// Landing page
-	mux.HandleFunc("GET /{$}", landing.InitHandler(authService))
-	mux.HandleFunc("GET /index", landing.InitHandler(authService))
+	mux.HandleFunc("GET /{$}", landing.InitHandler())
+	mux.HandleFunc("GET /index", landing.InitHandler())
 
 	// Documentation routes
 	mux.Handle("/llm", llm.InitMux())
@@ -36,13 +37,13 @@ func Run(port string, dbManager *dbmanager.Manager, collectorDBManager *collecto
 	mux.Handle("/api/", http.StripPrefix("/api", api.InitMux(dbManager, collectorDBManager, sampleRate, notifyService.Chan(), tracker, panelURL)))
 
 	// UI routes (protected by auth middleware)
-	mux.Handle("/analytics/", http.StripPrefix("/analytics", analytics.InitMux(dbManager, authService, collectorDBManager, tracker)))
-	mux.Handle("/settings/", http.StripPrefix("/settings", settings.InitMux(authService, collectorDBManager, notifierStore, dbManager, notifyService)))
+	mux.Handle("/analytics/", http.StripPrefix("/analytics", analytics.InitMux(dbManager, authService, userService, collectorDBManager, tracker)))
+	mux.Handle("/settings/", http.StripPrefix("/settings", settings.InitMux(authService, userService, collectorDBManager, notifierStore, dbManager, notifyService)))
 
 	// Apply middleware (order matters: logging → markdown → auth → router)
 	markdownMiddleware := middleware.BuildMarkdownMiddleware()
 	loginPathMiddleware := middleware.BuildLoginPathMiddleware("/login")
-	authMiddleware := middleware.BuildAuthMiddleware(authService)
+	authMiddleware := middleware.BuildAuthMiddleware(authService, userService)
 	handler := loggingMiddleware(markdownMiddleware(loginPathMiddleware(authMiddleware(mux))))
 
 	return &http.Server{

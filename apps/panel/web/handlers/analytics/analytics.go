@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/ai-shift/tracer/apps/panel/internal/auth"
+	"github.com/ai-shift/tracer/apps/panel/internal/user"
 	"github.com/ai-shift/tracer/apps/panel/internal/collectordb"
 	"github.com/ai-shift/tracer/apps/panel/internal/collectors"
 	"github.com/ai-shift/tracer/apps/panel/internal/dbmanager"
@@ -28,16 +29,18 @@ type handler struct {
 	t                  templates.Templates
 	dbManager          *dbmanager.Manager
 	authService        *auth.Service
+	userService        *user.Service
 	collectorDBManager *collectordb.Manager
 	tracker            *collectors.Tracker
 }
 
-func InitMux(dbManager *dbmanager.Manager, authService *auth.Service, collectorDBManager *collectordb.Manager, tracker *collectors.Tracker) *http.ServeMux {
+func InitMux(dbManager *dbmanager.Manager, authService *auth.Service, userService *user.Service, collectorDBManager *collectordb.Manager, tracker *collectors.Tracker) *http.ServeMux {
 	m := http.NewServeMux()
 	h := handler{
 		t:                  templates.New(views),
 		dbManager:          dbManager,
 		authService:        authService,
+		userService:        userService,
 		collectorDBManager: collectorDBManager,
 		tracker:            tracker,
 	}
@@ -293,7 +296,7 @@ func (h *handler) appAnalytics(w http.ResponseWriter, r *http.Request) {
 	appName := r.PathValue("app")
 
 	// Check app access
-	hasAccess, err := h.authService.UserHasAppAccess(r.Context(), user.ID, appName)
+	hasAccess, err := h.userService.HasAppAccess(r.Context(), user.ID, appName)
 	if err != nil {
 		h.t.RenderError(w, r, "Error", "Failed to check access", http.StatusInternalServerError)
 		return
@@ -412,7 +415,7 @@ func (h *handler) getFilteredCollectors(r *http.Request, user *db.User) ([]Colle
 
 	var userAppMap map[string]bool
 	if user.IsAdmin != 1 {
-		userApps, err := h.authService.GetUserApps(r.Context(), user.ID)
+		userApps, err := h.userService.GetApps(r.Context(), user.ID)
 		if err != nil {
 			return nil, err
 		}
@@ -459,7 +462,7 @@ func (h *handler) userHasCollectorAccess(r *http.Request, user *db.User, collect
 		return true
 	}
 
-	userApps, err := h.authService.GetUserApps(r.Context(), user.ID)
+	userApps, err := h.userService.GetApps(r.Context(), user.ID)
 	if err != nil {
 		return false
 	}
@@ -489,7 +492,7 @@ func (h *handler) filterAppsByAccess(r *http.Request, user *db.User, apps []stri
 		return apps
 	}
 
-	userApps, err := h.authService.GetUserApps(r.Context(), user.ID)
+	userApps, err := h.userService.GetApps(r.Context(), user.ID)
 	if err != nil {
 		return nil
 	}
@@ -520,7 +523,7 @@ func (h *handler) appLogs(w http.ResponseWriter, r *http.Request) {
 	appName := r.PathValue("app")
 
 	// Check app access
-	hasAccess, err := h.authService.UserHasAppAccess(r.Context(), user.ID, appName)
+	hasAccess, err := h.userService.HasAppAccess(r.Context(), user.ID, appName)
 	if err != nil {
 		h.t.RenderError(w, r, "Error", "Failed to check access", http.StatusInternalServerError)
 		return
@@ -726,7 +729,7 @@ func (h *handler) appLogsChartData(w http.ResponseWriter, r *http.Request) {
 	appName := r.PathValue("app")
 
 	// Check app access
-	hasAccess, err := h.authService.UserHasAppAccess(r.Context(), user.ID, appName)
+	hasAccess, err := h.userService.HasAppAccess(r.Context(), user.ID, appName)
 	if err != nil {
 		http.Error(w, "Failed to check access", http.StatusInternalServerError)
 		return
@@ -783,7 +786,7 @@ func (h *handler) getLogByID(w http.ResponseWriter, r *http.Request) {
 	idStr := r.PathValue("id")
 
 	// Check app access
-	hasAccess, err := h.authService.UserHasAppAccess(r.Context(), user.ID, appName)
+	hasAccess, err := h.userService.HasAppAccess(r.Context(), user.ID, appName)
 	if err != nil {
 		http.Error(w, "Failed to check access", http.StatusInternalServerError)
 		return
