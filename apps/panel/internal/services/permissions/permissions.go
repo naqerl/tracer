@@ -3,9 +3,9 @@ package permissions
 import (
 	"context"
 
-	"github.com/ai-shift/tracer/apps/panel/db"
 	"github.com/ai-shift/tracer/apps/panel/internal/services/ingest"
 	"github.com/ai-shift/tracer/apps/panel/internal/services/user"
+	sharedtypes "github.com/ai-shift/tracer/libs/types"
 )
 
 type Service struct {
@@ -20,22 +20,19 @@ func New(userService *user.Service, tracker *ingest.Tracker) *Service {
 	}
 }
 
-func (s *Service) IsAdmin(user *db.User) bool {
-	return user != nil && user.IsAdmin == 1
+func (s *Service) IsAdmin(user sharedtypes.User) bool {
+	return user.IsAdmin
 }
 
-func (s *Service) CanAccessApp(ctx context.Context, user *db.User, appName string) (bool, error) {
-	if user == nil {
-		return false, nil
-	}
+func (s *Service) CanAccessApp(ctx context.Context, user sharedtypes.User, appName string) (bool, error) {
 	return s.userService.HasAppAccess(ctx, user.ID, appName)
 }
 
-func (s *Service) CanAccessCollector(ctx context.Context, user *db.User, collectorName string) (bool, error) {
+func (s *Service) CanAccessCollector(ctx context.Context, user sharedtypes.User, collectorName string) (bool, error) {
 	if s.IsAdmin(user) {
 		return true, nil
 	}
-	if user == nil || s.tracker == nil {
+	if user.ID == 0 || s.tracker == nil {
 		return false, nil
 	}
 
@@ -62,11 +59,11 @@ func (s *Service) CanAccessCollector(ctx context.Context, user *db.User, collect
 	return false, nil
 }
 
-func (s *Service) FilterAppsByAccess(ctx context.Context, user *db.User, apps []string) ([]string, error) {
+func (s *Service) FilterAppsByAccess(ctx context.Context, user sharedtypes.User, apps []string) ([]string, error) {
 	if s.IsAdmin(user) {
 		return apps, nil
 	}
-	if user == nil {
+	if user.ID == 0 {
 		return nil, nil
 	}
 
@@ -88,6 +85,6 @@ func (s *Service) FilterAppsByAccess(ctx context.Context, user *db.User, apps []
 	return filtered, nil
 }
 
-func (s *Service) CanManageNotifier(user *db.User, notifierOwnerID int64) bool {
-	return s.IsAdmin(user) || (user != nil && user.ID == notifierOwnerID)
+func (s *Service) CanManageNotifier(user sharedtypes.User, notifierOwnerID int64) bool {
+	return s.IsAdmin(user) || user.ID == notifierOwnerID
 }
