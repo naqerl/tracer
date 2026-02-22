@@ -11,6 +11,7 @@ import (
 
 	"github.com/ai-shift/tracer/apps/panel/db"
 	"github.com/ai-shift/tracer/apps/panel/internal/services/user"
+	sharedtypes "github.com/ai-shift/tracer/libs/types"
 )
 
 const (
@@ -504,7 +505,7 @@ func (s *Service) buildNotifier(notifier db.Notifier) (Notifier, error) {
 }
 
 // RegisterNotifierWithUser registers a notifier with user-based app filtering
-func (s *Service) RegisterNotifierWithUser(ctx context.Context, notifierID int64, user *db.User) {
+func (s *Service) RegisterNotifierWithUser(ctx context.Context, notifierID int64, user sharedtypes.User) {
 	notifier, err := s.GetNotifierDB(ctx, notifierID)
 	if err != nil {
 		slog.Error("Failed to get notifier for registration", "error", err)
@@ -526,7 +527,7 @@ func (s *Service) RegisterNotifierWithUser(ctx context.Context, notifierID int64
 	}
 
 	// Filter subscriptions based on user access
-	if user.IsAdmin != 1 {
+	if !user.IsAdmin {
 		userApps, err := s.userService.GetApps(ctx, user.ID)
 		if err != nil {
 			slog.Error("Failed to get user apps", "user_id", user.ID, "error", err)
