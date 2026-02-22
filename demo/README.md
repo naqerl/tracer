@@ -8,6 +8,12 @@ This demo runs fully in Podman with one panel and two collector/generator bundle
 make -C demo up
 ```
 
+Live reload mode (bind-mount current workspace, run panel/collectors with `air`):
+
+```bash
+make -C demo up-live-reload
+```
+
 Panel is exposed at `http://localhost:18081`.
 Default credentials: `demo` / `demo123`.
 
