@@ -16,8 +16,9 @@ import (
 	"github.com/ai-shift/tracer/apps/panel/internal/services/notify"
 	"github.com/ai-shift/tracer/apps/panel/internal/services/permissions"
 	"github.com/ai-shift/tracer/apps/panel/internal/services/user"
-	"github.com/ai-shift/tracer/apps/panel/web/middleware"
+	authmw "github.com/ai-shift/tracer/apps/panel/web/middleware/auth"
 	"github.com/ai-shift/tracer/apps/panel/web/templates"
+	sharedtypes "github.com/ai-shift/tracer/libs/types"
 )
 
 //go:embed views/*.html
@@ -78,13 +79,13 @@ func InitMux(authService *auth.Service, userService *user.Service, ingestService
 	return m
 }
 
-func (h *handler) requireAuthenticatedUser(w http.ResponseWriter, r *http.Request) *db.User {
-	user := middleware.GetUser(r)
-	if user == nil {
-		middleware.RedirectToLogin(w, r)
-		return nil
+func (h *handler) requireAuthenticatedUser(w http.ResponseWriter, r *http.Request) (sharedtypes.User, error) {
+	user, err := authmw.GetUser(r)
+	if err != nil {
+		authmw.RedirectToLogin(w, r)
+		return sharedtypes.User{}, err
 	}
-	return user
+	return user, nil
 }
 
 func (h *handler) settingsPage(w http.ResponseWriter, r *http.Request) {
@@ -104,12 +105,12 @@ func (h *handler) settingsEntries(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) buildSettingsPageData(w http.ResponseWriter, r *http.Request) (map[string]any, error) {
-	user := h.requireAuthenticatedUser(w, r)
-	if user == nil {
+	user, err := h.requireAuthenticatedUser(w, r)
+	if err != nil {
 		return nil, http.ErrNoCookie
 	}
 
-	isAdmin := user.IsAdmin == 1
+	isAdmin := user.IsAdmin
 
 	data := map[string]any{
 		"Title":       "Settings - Tracer",
@@ -161,8 +162,8 @@ func (h *handler) buildSettingsPageData(w http.ResponseWriter, r *http.Request) 
 // User handlers
 
 func (h *handler) listUsers(w http.ResponseWriter, r *http.Request) {
-	user := middleware.RequireAdmin(w, r)
-	if user == nil {
+	user, err := authmw.RequireAdmin(w, r)
+	if err != nil {
 		return
 	}
 
@@ -181,7 +182,7 @@ func (h *handler) listUsers(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) createUser(w http.ResponseWriter, r *http.Request) {
-	if middleware.RequireAdmin(w, r) == nil {
+	if _, err := authmw.RequireAdmin(w, r); err != nil {
 		return
 	}
 
@@ -205,8 +206,8 @@ func (h *handler) createUser(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) deleteUser(w http.ResponseWriter, r *http.Request) {
-	currentUser := middleware.RequireAdmin(w, r)
-	if currentUser == nil {
+	currentUser, err := authmw.RequireAdmin(w, r)
+	if err != nil {
 		return
 	}
 
@@ -248,8 +249,8 @@ func (h *handler) getUserAppsEntries(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) buildUserAppsData(w http.ResponseWriter, r *http.Request) (map[string]any, bool) {
-	currentUser := middleware.RequireAdmin(w, r)
-	if currentUser == nil {
+	currentUser, err := authmw.RequireAdmin(w, r)
+	if err != nil {
 		return nil, false
 	}
 
@@ -296,7 +297,7 @@ func (h *handler) buildUserAppsData(w http.ResponseWriter, r *http.Request) (map
 }
 
 func (h *handler) updateUserApps(w http.ResponseWriter, r *http.Request) {
-	if middleware.RequireAdmin(w, r) == nil {
+	if _, err := authmw.RequireAdmin(w, r); err != nil {
 		return
 	}
 
@@ -351,7 +352,7 @@ func (h *handler) updateUserApps(w http.ResponseWriter, r *http.Request) {
 // API key handlers
 
 func (h *handler) getAPIKey(w http.ResponseWriter, r *http.Request) {
-	if middleware.RequireAdmin(w, r) == nil {
+	if _, err := authmw.RequireAdmin(w, r); err != nil {
 		return
 	}
 
@@ -369,7 +370,7 @@ func (h *handler) getAPIKey(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) regenerateAPIKey(w http.ResponseWriter, r *http.Request) {
-	if middleware.RequireAdmin(w, r) == nil {
+	if _, err := authmw.RequireAdmin(w, r); err != nil {
 		return
 	}
 
@@ -391,8 +392,8 @@ func (h *handler) regenerateAPIKey(w http.ResponseWriter, r *http.Request) {
 // User API key handlers (LLM compatibility)
 
 func (h *handler) createUserAPIKey(w http.ResponseWriter, r *http.Request) {
-	user := h.requireAuthenticatedUser(w, r)
-	if user == nil {
+	user, err := h.requireAuthenticatedUser(w, r)
+	if err != nil {
 		return
 	}
 
@@ -402,7 +403,7 @@ func (h *handler) createUserAPIKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err := h.authService.GenerateUserAPIKey(r.Context(), user.ID, name)
+	_, err = h.authService.GenerateUserAPIKey(r.Context(), user.ID, name)
 	if err != nil {
 		slog.Error("Failed to generate user API key", "error", err)
 		http.Error(w, "Failed to generate API key", http.StatusInternalServerError)
@@ -413,8 +414,8 @@ func (h *handler) createUserAPIKey(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) deleteUserAPIKey(w http.ResponseWriter, r *http.Request) {
-	user := h.requireAuthenticatedUser(w, r)
-	if user == nil {
+	user, err := h.requireAuthenticatedUser(w, r)
+	if err != nil {
 		return
 	}
 
@@ -441,7 +442,7 @@ func (h *handler) deleteUserAPIKey(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if !owned && user.IsAdmin != 1 {
+	if !owned && !user.IsAdmin {
 		http.Error(w, "Forbidden", http.StatusForbidden)
 		return
 	}
@@ -458,14 +459,13 @@ func (h *handler) deleteUserAPIKey(w http.ResponseWriter, r *http.Request) {
 // Notifier handlers
 
 func (h *handler) listNotifiers(w http.ResponseWriter, r *http.Request) {
-	user := h.requireAuthenticatedUser(w, r)
-	if user == nil {
+	user, err := h.requireAuthenticatedUser(w, r)
+	if err != nil {
 		return
 	}
 
 	var notifiers []db.Notifier
-	var err error
-	if user.IsAdmin == 1 {
+	if user.IsAdmin {
 		notifiers, err = h.notifyService.ListNotifiers(r.Context())
 	} else {
 		notifiers, err = h.notifyService.ListNotifiersByUser(r.Context(), user.ID)
@@ -483,8 +483,8 @@ func (h *handler) listNotifiers(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) createNotifier(w http.ResponseWriter, r *http.Request) {
-	user := h.requireAuthenticatedUser(w, r)
-	if user == nil {
+	user, err := h.requireAuthenticatedUser(w, r)
+	if err != nil {
 		return
 	}
 
@@ -549,8 +549,8 @@ func (h *handler) getNotifierEntries(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) buildNotifierData(w http.ResponseWriter, r *http.Request) (map[string]any, bool) {
-	user := h.requireAuthenticatedUser(w, r)
-	if user == nil {
+	user, err := h.requireAuthenticatedUser(w, r)
+	if err != nil {
 		return nil, false
 	}
 
@@ -598,15 +598,15 @@ func (h *handler) buildNotifierData(w http.ResponseWriter, r *http.Request) (map
 		"Notifier":      notifier,
 		"Subscriptions": subscriptionMap,
 		"AllApps":       allApps,
-		"IsAdmin":       user.IsAdmin == 1,
+		"IsAdmin":       user.IsAdmin,
 	}
 
 	return data, true
 }
 
 func (h *handler) updateNotifier(w http.ResponseWriter, r *http.Request) {
-	user := h.requireAuthenticatedUser(w, r)
-	if user == nil {
+	user, err := h.requireAuthenticatedUser(w, r)
+	if err != nil {
 		return
 	}
 
@@ -667,8 +667,8 @@ func (h *handler) updateNotifier(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) deleteNotifier(w http.ResponseWriter, r *http.Request) {
-	user := h.requireAuthenticatedUser(w, r)
-	if user == nil {
+	user, err := h.requireAuthenticatedUser(w, r)
+	if err != nil {
 		return
 	}
 
@@ -701,8 +701,8 @@ func (h *handler) deleteNotifier(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) toggleNotifier(w http.ResponseWriter, r *http.Request) {
-	user := h.requireAuthenticatedUser(w, r)
-	if user == nil {
+	user, err := h.requireAuthenticatedUser(w, r)
+	if err != nil {
 		return
 	}
 
@@ -757,8 +757,8 @@ func (h *handler) getNotifierAppsEntries(w http.ResponseWriter, r *http.Request)
 }
 
 func (h *handler) buildNotifierAppsData(w http.ResponseWriter, r *http.Request) (map[string]any, bool) {
-	user := h.requireAuthenticatedUser(w, r)
-	if user == nil {
+	user, err := h.requireAuthenticatedUser(w, r)
+	if err != nil {
 		return nil, false
 	}
 
@@ -816,7 +816,7 @@ func (h *handler) buildNotifierAppsData(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// Filter by user access for non-admins
-	if user.IsAdmin != 1 {
+	if !user.IsAdmin {
 		userApps, err := h.userService.GetApps(r.Context(), user.ID)
 		if err != nil {
 			h.t.RenderError(w, r, "Error", "Failed to get user apps", http.StatusInternalServerError)
@@ -849,7 +849,7 @@ func (h *handler) buildNotifierAppsData(w http.ResponseWriter, r *http.Request) 
 		"NotifierID":    id,
 		"Subscriptions": subscriptionMap, // map[string]bool (key: "collector:app")
 		"CollectorApps": collectorApps,   // map[string][]string
-		"IsAdmin":       user.IsAdmin == 1,
+		"IsAdmin":       user.IsAdmin,
 		"Nav":           templates.NewNavData("Configure Notifier Apps", "settings", user.Username),
 	}
 
@@ -857,8 +857,8 @@ func (h *handler) buildNotifierAppsData(w http.ResponseWriter, r *http.Request) 
 }
 
 func (h *handler) updateNotifierApps(w http.ResponseWriter, r *http.Request) {
-	user := h.requireAuthenticatedUser(w, r)
-	if user == nil {
+	user, err := h.requireAuthenticatedUser(w, r)
+	if err != nil {
 		return
 	}
 
@@ -892,7 +892,7 @@ func (h *handler) updateNotifierApps(w http.ResponseWriter, r *http.Request) {
 
 	var subscriptions []notify.NotifierAppSubscription
 
-	if allApps && user.IsAdmin == 1 {
+	if allApps && user.IsAdmin {
 		// Global wildcard subscription (all apps from all collectors)
 		subscriptions = append(subscriptions, notify.NotifierAppSubscription{
 			AppName:       "*",
@@ -912,7 +912,7 @@ func (h *handler) updateNotifierApps(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// For non-admins: filter to only apps they have access to
-		if user.IsAdmin != 1 {
+		if !user.IsAdmin {
 			userApps, err := h.userService.GetApps(r.Context(), user.ID)
 			if err != nil {
 				http.Error(w, "Failed to get user apps", http.StatusInternalServerError)
@@ -970,13 +970,13 @@ func (h *handler) listAllApps(ctx context.Context) ([]string, error) {
 }
 
 // getAvailableApps returns apps available to a user (all apps for admins, user's apps for others)
-func (h *handler) getAvailableApps(ctx context.Context, user *db.User) ([]string, error) {
+func (h *handler) getAvailableApps(ctx context.Context, user sharedtypes.User) ([]string, error) {
 	allApps, err := h.listAllApps(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	if user.IsAdmin == 1 {
+	if user.IsAdmin {
 		return allApps, nil
 	}
 
