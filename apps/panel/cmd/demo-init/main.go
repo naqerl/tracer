@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"time"
 
 	"github.com/pressly/goose/v3"
 	_ "modernc.org/sqlite"
@@ -36,7 +35,7 @@ func main() {
 	}
 	defer panelDB.Close()
 
-	authSvc := auth.New(panelDB, 24*time.Hour)
+	authSvc := auth.New(panelDB)
 	defer authSvc.Close()
 
 	userSvc := user.New(panelDB)
