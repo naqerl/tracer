@@ -20,6 +20,7 @@ const (
 	bcryptCost       = 12
 	sessionTokenSize = 32
 	apiKeySize       = 32
+	SessionDuration  = 24 * time.Hour
 )
 
 var (
@@ -28,19 +29,17 @@ var (
 )
 
 type Service struct {
-	db              *sql.DB
-	queries         *db.Queries
-	sessionDuration time.Duration
+	db      *sql.DB
+	queries *db.Queries
 }
 
-func New(sqlDB *sql.DB, sessionDuration time.Duration) *Service {
+func New(sqlDB *sql.DB) *Service {
 	sqlDB.SetMaxOpenConns(1)
 	sqlDB.SetMaxIdleConns(1)
 
 	return &Service{
-		db:              sqlDB,
-		queries:         db.New(sqlDB),
-		sessionDuration: sessionDuration,
+		db:      sqlDB,
+		queries: db.New(sqlDB),
 	}
 }
 
@@ -120,7 +119,7 @@ func (s *Service) CreateSession(ctx context.Context, userID int64) (string, erro
 		return "", fmt.Errorf("generate session token: %w", err)
 	}
 
-	expiresAt := time.Now().Add(s.sessionDuration)
+	expiresAt := time.Now().Add(SessionDuration)
 	err = s.queries.CreateSession(ctx, db.CreateSessionParams{
 		ID:        token,
 		UserID:    userID,
