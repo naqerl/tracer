@@ -6,7 +6,9 @@ import (
 	"strings"
 )
 
-const formatContextKey contextKey = "format"
+type markdownContextKey string
+
+const formatContextKey markdownContextKey = "format"
 
 // GetFormat returns the format from request context ("markdown" or "")
 func GetFormat(r *http.Request) string {
