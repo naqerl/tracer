@@ -63,12 +63,15 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Start crawling from authenticated analytics root
-	crawl("/analytics/")
+	// Start crawling from authenticated panel root
+	crawl("/panel/")
+	crawl("/settings/")
 
 	// Test some additional known endpoints
 	testEndpoint("/llm")
 	testEndpoint("/")
+	testEndpoint("/panel/collectors")
+	testEndpoint("/settings/entries")
 
 	// Test API endpoint only if API key is provided
 	if apiKey != "" {
@@ -143,8 +146,10 @@ func crawl(path string) {
 		if len(match) > 1 {
 			linkPath := match[1]
 
-			// Only follow analytics and llm paths
-			if !strings.HasPrefix(linkPath, "/analytics") && !strings.HasPrefix(linkPath, "/llm") {
+			// Only follow panel, settings and llm paths
+			if !strings.HasPrefix(linkPath, "/panel") &&
+				!strings.HasPrefix(linkPath, "/settings") &&
+				!strings.HasPrefix(linkPath, "/llm") {
 				continue
 			}
 
