@@ -9,6 +9,3 @@ sample_rate = 0.1
 
 # Days to keep logs before automatic cleanup
 retention_days = 90
-
-[auth]
-session_duration = "24h"

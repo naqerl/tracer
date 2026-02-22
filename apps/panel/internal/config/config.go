@@ -3,7 +3,6 @@ package panel
 import (
 	"fmt"
 	"os"
-	"time"
 
 	"github.com/BurntSushi/toml"
 )
@@ -14,13 +13,6 @@ type Panel struct {
 	SampleRate    float64 `toml:"sample_rate"`
 	RetentionDays int     `toml:"retention_days"`
 	PanelURL      string  `toml:"panel_url"`
-        // TODO: Adds unnecessary complexity, should be removed
-	Auth          Auth    `toml:"auth"`
-}
-
-
-type Auth struct {
-	SessionDuration string `toml:"session_duration"`
 }
 
 const (
@@ -53,17 +45,6 @@ func Load(path string) (*Panel, error) {
 	if cfg.RetentionDays == 0 {
 		cfg.RetentionDays = 90
 	}
-	if cfg.Auth.SessionDuration == "" {
-		cfg.Auth.SessionDuration = "24h"
-	}
 
 	return &cfg, nil
-}
-
-func (p *Panel) SessionDurationParsed() time.Duration {
-	d, err := time.ParseDuration(p.Auth.SessionDuration)
-	if err != nil {
-		return 24 * time.Hour
-	}
-	return d
 }
