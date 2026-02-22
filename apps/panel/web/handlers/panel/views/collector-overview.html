@@ -1,0 +1,109 @@
+{{define "collector-overview"}}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    {{template "head"}}
+    <title>{{.Title}}</title>
+    <style>
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+        .animate-pulse { animation: pulse 2s infinite; }
+    </style>
+</head>
+<body>
+    <div class="max-w-5xl mx-auto p-6">
+        {{template "collector-overview-content" .}}
+    </div>
+</body>
+</html>
+{{end}}
+
+{{define "collector-overview-content"}}
+{{template "navbar" .Nav}}
+
+<!-- Lazy Load Data Container -->
+<div hx-get="/analytics/{{.CollectorName}}"
+     hx-trigger="load"
+     hx-swap="innerHTML">
+    <!-- Loading State -->
+    <div class="flex items-center justify-center py-12">
+        <svg class="animate-spin h-8 w-8 text-accent" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+        </svg>
+        <span class="ml-3 text-fg-secondary">Loading...</span>
+    </div>
+</div>
+{{end}}
+
+{{define "collector-overview-data"}}
+<div class="mb-10">
+    <!-- Collector Header -->
+    <div class="flex items-center mb-2">
+        <span class="text-fg-secondary text-xl mr-1">[</span>
+        <h2 class="text-xl font-semibold">{{.CollectorName}}</h2>
+        <span class="text-fg-secondary text-xl ml-1">]</span>
+        <hr class="flex-1 mx-4 border-bg-secondary" />
+        {{if .StatsDisplay}}
+        <span class="text-fg-secondary text-xs mr-1">[</span>
+        {{if eq .StatsDisplay.Staleness "fresh"}}
+        <span class="text-xs text-fg">{{.StatsDisplay.TimestampFormatted}}</span>
+        {{else if eq .StatsDisplay.Staleness "warning"}}
+        <span class="text-xs text-yellow-400">{{.StatsDisplay.TimestampFormatted}}</span>
+        {{else}}
+        <span class="text-xs text-red-400">{{.StatsDisplay.TimestampFormatted}}</span>
+        {{end}}
+        <span class="text-fg-secondary text-xs ml-1">]</span>
+        {{end}}
+        <span class="text-xs text-fg-secondary mx-1">[</span>
+        <a href="/analytics/{{.CollectorName}}/resources?range=24h" 
+           class="text-xs text-accent hover:underline"
+           title="View resource usage history">
+            resources
+        </a>
+        <span class="text-xs text-fg-secondary ml-1">]</span>
+    </div>
+
+    <!-- Stats Row -->
+    {{if .Stats}}
+    <div class="flex flex-wrap items-center gap-4 mb-4 text-xs">
+        <div class="flex items-center gap-1">
+            <span class="text-fg-secondary">CPU:</span>
+            <span class="{{if gt .Stats.CpuUsagePercent 80.0}}text-red-400{{else if gt .Stats.CpuUsagePercent 60.0}}text-yellow-400{{else}}text-green-400{{end}}">{{printf "%.0f" .Stats.CpuUsagePercent}}%</span>
+        </div>
+        <div class="flex items-center gap-1">
+            <span class="text-fg-secondary">RAM:</span>
+            {{$memPercent := 0.0}}
+            {{if gt .Stats.MemTotalMb 0}}
+                {{$memPercent = (divFloat (toFloat .Stats.MemUsedMb) (toFloat .Stats.MemTotalMb))}}
+                {{$memPercent = (mulFloat $memPercent 100.0)}}
+            {{end}}
+            <span class="{{if gt $memPercent 80.0}}text-red-400{{else if gt $memPercent 60.0}}text-yellow-400{{else}}text-green-400{{end}}">{{printf "%.0f" $memPercent}}%</span>
+        </div>
+        <div class="flex items-center gap-1">
+            <span class="text-fg-secondary">Disk:</span>
+            {{$diskPercent := 0.0}}
+            {{if gt .Stats.DiskTotalGb 0}}
+                {{$diskPercent = (divFloat (toFloat .Stats.DiskUsedGb) (toFloat .Stats.DiskTotalGb))}}
+                {{$diskPercent = (mulFloat $diskPercent 100.0)}}
+            {{end}}
+            <span class="{{if gt $diskPercent 80.0}}text-red-400{{else if gt $diskPercent 60.0}}text-yellow-400{{else}}text-green-400{{end}}">{{printf "%.0f" $diskPercent}}%</span>
+        </div>
+    </div>
+    {{else}}
+    <div class="text-fg-secondary text-xs mb-4">No stats available</div>
+    {{end}}
+
+    <!-- Apps Grid -->
+    {{if .Apps}}
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        {{range .Apps}}
+        <a href="/analytics/{{$.CollectorName}}/apps/{{.}}" class="block bg-bg-secondary hover:bg-bg-secondary/80 p-4 transition-all hover:-translate-y-0.5">
+            <span class="font-medium">{{.}}</span>
+        </a>
+        {{end}}
+    </div>
+    {{else}}
+    <div class="text-fg-secondary text-sm">No apps registered</div>
+    {{end}}
+</div>
+{{end}}
