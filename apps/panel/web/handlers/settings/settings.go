@@ -16,7 +16,6 @@ import (
 	"github.com/ai-shift/tracer/apps/panel/internal/services/notify"
 	"github.com/ai-shift/tracer/apps/panel/internal/services/permissions"
 	"github.com/ai-shift/tracer/apps/panel/internal/services/user"
-	"github.com/ai-shift/tracer/apps/panel/web/htmx"
 	"github.com/ai-shift/tracer/apps/panel/web/middleware"
 	"github.com/ai-shift/tracer/apps/panel/web/templates"
 )
@@ -48,10 +47,12 @@ func InitMux(authService *auth.Service, userService *user.Service, ingestService
 
 	// Users management
 	m.HandleFunc("GET /", h.settingsPage)
+	m.HandleFunc("GET /entries", h.settingsEntries)
 	m.HandleFunc("GET /users", h.listUsers)
 	m.HandleFunc("POST /users", h.createUser)
 	m.HandleFunc("POST /users/{id}/delete", h.deleteUser)
 	m.HandleFunc("GET /users/{id}/apps", h.getUserApps)
+	m.HandleFunc("GET /users/{id}/apps/entries", h.getUserAppsEntries)
 	m.HandleFunc("POST /users/{id}/apps", h.updateUserApps)
 
 	// API key
@@ -66,10 +67,12 @@ func InitMux(authService *auth.Service, userService *user.Service, ingestService
 	m.HandleFunc("GET /notifiers", h.listNotifiers)
 	m.HandleFunc("POST /notifiers", h.createNotifier)
 	m.HandleFunc("GET /notifiers/{id}", h.getNotifier)
+	m.HandleFunc("GET /notifiers/{id}/entries", h.getNotifierEntries)
 	m.HandleFunc("POST /notifiers/{id}", h.updateNotifier)
 	m.HandleFunc("POST /notifiers/{id}/delete", h.deleteNotifier)
 	m.HandleFunc("POST /notifiers/{id}/toggle", h.toggleNotifier)
 	m.HandleFunc("GET /notifiers/{id}/apps", h.getNotifierApps)
+	m.HandleFunc("GET /notifiers/{id}/apps/entries", h.getNotifierAppsEntries)
 	m.HandleFunc("POST /notifiers/{id}/apps", h.updateNotifierApps)
 
 	return m
@@ -85,9 +88,25 @@ func (h *handler) requireAuthenticatedUser(w http.ResponseWriter, r *http.Reques
 }
 
 func (h *handler) settingsPage(w http.ResponseWriter, r *http.Request) {
+	data, err := h.buildSettingsPageData(w, r)
+	if err != nil {
+		return
+	}
+	h.t.RenderHTTP(w, r, "settings", data)
+}
+
+func (h *handler) settingsEntries(w http.ResponseWriter, r *http.Request) {
+	data, err := h.buildSettingsPageData(w, r)
+	if err != nil {
+		return
+	}
+	h.t.RenderHTTP(w, r, "settings-content", data)
+}
+
+func (h *handler) buildSettingsPageData(w http.ResponseWriter, r *http.Request) (map[string]any, error) {
 	user := h.requireAuthenticatedUser(w, r)
 	if user == nil {
-		return
+		return nil, http.ErrNoCookie
 	}
 
 	isAdmin := user.IsAdmin == 1
@@ -104,7 +123,7 @@ func (h *handler) settingsPage(w http.ResponseWriter, r *http.Request) {
 		users, err := h.userService.List(r.Context())
 		if err != nil {
 			h.t.RenderError(w, r, "Error", "Failed to list users", http.StatusInternalServerError)
-			return
+			return nil, err
 		}
 		data["Users"] = users
 
@@ -115,7 +134,7 @@ func (h *handler) settingsPage(w http.ResponseWriter, r *http.Request) {
 		notifiers, err := h.notifyService.ListNotifiers(r.Context())
 		if err != nil {
 			h.t.RenderError(w, r, "Error", "Failed to list notifiers", http.StatusInternalServerError)
-			return
+			return nil, err
 		}
 		data["Notifiers"] = notifiers
 	} else {
@@ -123,7 +142,7 @@ func (h *handler) settingsPage(w http.ResponseWriter, r *http.Request) {
 		notifiers, err := h.notifyService.ListNotifiersByUser(r.Context(), user.ID)
 		if err != nil {
 			h.t.RenderError(w, r, "Error", "Failed to list notifiers", http.StatusInternalServerError)
-			return
+			return nil, err
 		}
 		data["Notifiers"] = notifiers
 	}
@@ -136,11 +155,7 @@ func (h *handler) settingsPage(w http.ResponseWriter, r *http.Request) {
 		data["UserAPIKeys"] = userAPIKeys
 	}
 
-	if htmx.IsAjax(r) {
-		h.t.RenderHTTP(w, r, "settings-content", data)
-	} else {
-		h.t.RenderHTTP(w, r, "settings", data)
-	}
+	return data, nil
 }
 
 // User handlers
@@ -217,34 +232,50 @@ func (h *handler) deleteUser(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) getUserApps(w http.ResponseWriter, r *http.Request) {
+	data, ok := h.buildUserAppsData(w, r)
+	if !ok {
+		return
+	}
+	h.t.RenderHTTP(w, r, "user-apps", data)
+}
+
+func (h *handler) getUserAppsEntries(w http.ResponseWriter, r *http.Request) {
+	data, ok := h.buildUserAppsData(w, r)
+	if !ok {
+		return
+	}
+	h.t.RenderHTTP(w, r, "user-apps-content", data)
+}
+
+func (h *handler) buildUserAppsData(w http.ResponseWriter, r *http.Request) (map[string]any, bool) {
 	currentUser := middleware.RequireAdmin(w, r)
 	if currentUser == nil {
-		return
+		return nil, false
 	}
 
 	idStr := r.PathValue("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
 		http.Error(w, "Invalid user ID", http.StatusBadRequest)
-		return
+		return nil, false
 	}
 
 	user, err := h.userService.GetByID(r.Context(), id)
 	if err != nil {
 		h.t.RenderError(w, r, "Error", "User not found", http.StatusNotFound)
-		return
+		return nil, false
 	}
 
 	userApps, err := h.userService.GetApps(r.Context(), id)
 	if err != nil {
 		h.t.RenderError(w, r, "Error", "Failed to get user apps", http.StatusInternalServerError)
-		return
+		return nil, false
 	}
 
 	allApps, err := h.listAllApps(r.Context())
 	if err != nil {
 		h.t.RenderError(w, r, "Error", "Failed to list apps", http.StatusInternalServerError)
-		return
+		return nil, false
 	}
 
 	userAppMap := make(map[string]bool)
@@ -261,11 +292,7 @@ func (h *handler) getUserApps(w http.ResponseWriter, r *http.Request) {
 		"Nav":       templates.NewNavData("Manage App Access", "settings", currentUser.Username),
 	}
 
-	if htmx.IsAjax(r) {
-		h.t.RenderHTTP(w, r, "user-apps-content", data)
-	} else {
-		h.t.RenderHTTP(w, r, "user-apps", data)
-	}
+	return data, true
 }
 
 func (h *handler) updateUserApps(w http.ResponseWriter, r *http.Request) {
@@ -506,41 +533,57 @@ func (h *handler) createNotifier(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) getNotifier(w http.ResponseWriter, r *http.Request) {
+	data, ok := h.buildNotifierData(w, r)
+	if !ok {
+		return
+	}
+	h.t.RenderHTTP(w, r, "notifier-edit", data)
+}
+
+func (h *handler) getNotifierEntries(w http.ResponseWriter, r *http.Request) {
+	data, ok := h.buildNotifierData(w, r)
+	if !ok {
+		return
+	}
+	h.t.RenderHTTP(w, r, "notifier-edit-content", data)
+}
+
+func (h *handler) buildNotifierData(w http.ResponseWriter, r *http.Request) (map[string]any, bool) {
 	user := h.requireAuthenticatedUser(w, r)
 	if user == nil {
-		return
+		return nil, false
 	}
 
 	idStr := r.PathValue("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
 		http.Error(w, "Invalid notifier ID", http.StatusBadRequest)
-		return
+		return nil, false
 	}
 
 	notifier, err := h.notifyService.GetNotifierDB(r.Context(), id)
 	if err != nil {
 		h.t.RenderError(w, r, "Error", "Notifier not found", http.StatusNotFound)
-		return
+		return nil, false
 	}
 
 	// Check ownership (admins can access any, others only their own)
 	if !h.permissions.CanManageNotifier(user, notifier.UserID) {
 		h.t.RenderError(w, r, "Forbidden", "You don't have access to this notifier", http.StatusForbidden)
-		return
+		return nil, false
 	}
 
 	subscriptions, err := h.notifyService.GetNotifierApps(r.Context(), id)
 	if err != nil {
 		h.t.RenderError(w, r, "Error", "Failed to get notifier subscriptions", http.StatusInternalServerError)
-		return
+		return nil, false
 	}
 
 	// Get available apps based on user access
 	allApps, err := h.getAvailableApps(r.Context(), user)
 	if err != nil {
 		h.t.RenderError(w, r, "Error", "Failed to list apps", http.StatusInternalServerError)
-		return
+		return nil, false
 	}
 
 	// Build subscription map with "collector:app" keys for display
@@ -558,11 +601,7 @@ func (h *handler) getNotifier(w http.ResponseWriter, r *http.Request) {
 		"IsAdmin":       user.IsAdmin == 1,
 	}
 
-	if htmx.IsAjax(r) {
-		h.t.RenderHTTP(w, r, "notifier-edit-content", data)
-	} else {
-		h.t.RenderHTTP(w, r, "notifier-edit", data)
-	}
+	return data, true
 }
 
 func (h *handler) updateNotifier(w http.ResponseWriter, r *http.Request) {
@@ -702,35 +741,51 @@ func (h *handler) toggleNotifier(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) getNotifierApps(w http.ResponseWriter, r *http.Request) {
+	data, ok := h.buildNotifierAppsData(w, r)
+	if !ok {
+		return
+	}
+	h.t.RenderHTTP(w, r, "notifier-apps", data)
+}
+
+func (h *handler) getNotifierAppsEntries(w http.ResponseWriter, r *http.Request) {
+	data, ok := h.buildNotifierAppsData(w, r)
+	if !ok {
+		return
+	}
+	h.t.RenderHTTP(w, r, "notifier-apps-content", data)
+}
+
+func (h *handler) buildNotifierAppsData(w http.ResponseWriter, r *http.Request) (map[string]any, bool) {
 	user := h.requireAuthenticatedUser(w, r)
 	if user == nil {
-		return
+		return nil, false
 	}
 
 	idStr := r.PathValue("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
 		http.Error(w, "Invalid notifier ID", http.StatusBadRequest)
-		return
+		return nil, false
 	}
 
 	notifier, err := h.notifyService.GetNotifierDB(r.Context(), id)
 	if err != nil {
 		h.t.RenderError(w, r, "Error", "Notifier not found", http.StatusNotFound)
-		return
+		return nil, false
 	}
 
 	// Check ownership
 	if !h.permissions.CanManageNotifier(user, notifier.UserID) {
 		h.t.RenderError(w, r, "Forbidden", "You don't have access to this notifier", http.StatusForbidden)
-		return
+		return nil, false
 	}
 
 	// Get subscriptions with collector info
 	subscriptions, err := h.notifyService.GetNotifierApps(r.Context(), id)
 	if err != nil {
 		h.t.RenderError(w, r, "Error", "Failed to get notifier subscriptions", http.StatusInternalServerError)
-		return
+		return nil, false
 	}
 
 	// Build subscription map with "collector:app" keys
@@ -745,7 +800,7 @@ func (h *handler) getNotifierApps(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		slog.Error("Failed to list collectors", "error", err)
 		h.t.RenderError(w, r, "Error", "Failed to list collectors", http.StatusInternalServerError)
-		return
+		return nil, false
 	}
 
 	// Build structured data: map[collector][]app
@@ -755,7 +810,7 @@ func (h *handler) getNotifierApps(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			slog.Error("Failed to list apps for collector", "collector", collector, "error", err)
 			h.t.RenderError(w, r, "Error", "Failed to list apps", http.StatusInternalServerError)
-			return
+			return nil, false
 		}
 		collectorApps[collector.String()] = apps
 	}
@@ -765,7 +820,7 @@ func (h *handler) getNotifierApps(w http.ResponseWriter, r *http.Request) {
 		userApps, err := h.userService.GetApps(r.Context(), user.ID)
 		if err != nil {
 			h.t.RenderError(w, r, "Error", "Failed to get user apps", http.StatusInternalServerError)
-			return
+			return nil, false
 		}
 		userAppSet := make(map[string]bool)
 		for _, app := range userApps {
@@ -798,11 +853,7 @@ func (h *handler) getNotifierApps(w http.ResponseWriter, r *http.Request) {
 		"Nav":           templates.NewNavData("Configure Notifier Apps", "settings", user.Username),
 	}
 
-	if htmx.IsAjax(r) {
-		h.t.RenderHTTP(w, r, "notifier-apps-content", data)
-	} else {
-		h.t.RenderHTTP(w, r, "notifier-apps", data)
-	}
+	return data, true
 }
 
 func (h *handler) updateNotifierApps(w http.ResponseWriter, r *http.Request) {
