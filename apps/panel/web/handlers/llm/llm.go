@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/ai-shift/tracer/apps/panel/web/middleware"
+	authmw "github.com/ai-shift/tracer/apps/panel/web/middleware/auth"
 	"github.com/ai-shift/tracer/apps/panel/web/templates"
 )
 
@@ -29,8 +30,8 @@ func InitMux() *http.ServeMux {
 
 // llmDocs serves documentation about available markdown endpoints for LLM tools
 func (h *handler) llmDocs(w http.ResponseWriter, r *http.Request) {
-	user := middleware.RequireAuthRedirect(w, r)
-	if user == nil {
+	user, err := authmw.RequireAuthRedirect(w, r)
+	if err != nil {
 		return
 	}
 
@@ -39,7 +40,7 @@ func (h *handler) llmDocs(w http.ResponseWriter, r *http.Request) {
 	data := map[string]any{
 		"Title":   "LLM API Documentation",
 		"User":    user,
-		"IsAdmin": user.IsAdmin == 1,
+		"IsAdmin": user.IsAdmin,
 		"Nav":     nav,
 		"BaseURL": r.Host,
 	}

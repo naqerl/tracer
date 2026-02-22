@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/ai-shift/tracer/apps/panel/web/middleware"
+	authmw "github.com/ai-shift/tracer/apps/panel/web/middleware/auth"
 	"github.com/ai-shift/tracer/apps/panel/web/templates"
 )
 
@@ -23,8 +24,8 @@ func InitHandler() http.HandlerFunc {
 }
 
 func (h handler) landingPage(w http.ResponseWriter, r *http.Request) {
-	user := middleware.GetUser(r)
-	isAuthenticated := user != nil
+	user, err := authmw.GetUser(r)
+	isAuthenticated := err == nil
 
 	username := ""
 	if isAuthenticated {

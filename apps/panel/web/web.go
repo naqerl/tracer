@@ -13,6 +13,7 @@ import (
 	"github.com/ai-shift/tracer/apps/panel/web/handlers/panel"
 	"github.com/ai-shift/tracer/apps/panel/web/handlers/settings"
 	"github.com/ai-shift/tracer/apps/panel/web/middleware"
+	authmw "github.com/ai-shift/tracer/apps/panel/web/middleware/auth"
 )
 
 func Run(deps Dependencies, port string, sampleRate float64, panelURL string) *http.Server {
@@ -35,8 +36,8 @@ func Run(deps Dependencies, port string, sampleRate float64, panelURL string) *h
 	mux.Handle("/", landing.InitHandler())
 
 	markdownMiddleware := middleware.BuildMarkdownMiddleware()
-	loginPathMiddleware := middleware.BuildLoginPathMiddleware("/login")
-	authMiddleware := middleware.BuildAuthMiddleware(deps.Auth, deps.User)
+	loginPathMiddleware := authmw.BuildLoginPathMiddleware("/login")
+	authMiddleware := authmw.BuildAuthMiddleware(deps.Auth, deps.User)
 	handler := middleware.LoggingMiddleware(markdownMiddleware(loginPathMiddleware(authMiddleware(mux))))
 
 	return &http.Server{
