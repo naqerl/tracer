@@ -32,6 +32,7 @@ type Querier interface {
 	DeleteExpiredSessions(ctx context.Context, expiresAt time.Time) error
 	DeleteNotifier(ctx context.Context, id int64) error
 	DeleteOldLogs(ctx context.Context, createdAt sql.NullTime) error
+	DeleteOldStats(ctx context.Context, createdAt time.Time) error
 	DeleteSession(ctx context.Context, id string) error
 	DeleteUser(ctx context.Context, id int64) error
 	DeleteUserAPIKey(ctx context.Context, id int64) error
@@ -42,6 +43,7 @@ type Querier interface {
 	// Settings/config queries
 	GetConfig(ctx context.Context, key string) (string, error)
 	GetGlobalNotifiers(ctx context.Context) ([]Notifier, error)
+	GetLatestStats(ctx context.Context) (SystemStat, error)
 	GetLogByID(ctx context.Context, id int64) (Log, error)
 	// Lookup log group by ID
 	GetLogGroupByID(ctx context.Context, id int64) (LogGroup, error)
@@ -58,6 +60,7 @@ type Querier interface {
 	GetOrCreateLogGroup(ctx context.Context, arg GetOrCreateLogGroupParams) (LogGroup, error)
 	GetPercentiles(ctx context.Context, createdAt sql.NullTime) (GetPercentilesRow, error)
 	GetSession(ctx context.Context, id string) (Session, error)
+	GetStatsHistory(ctx context.Context, createdAt time.Time) ([]SystemStat, error)
 	GetUserAPIKey(ctx context.Context, apiKey string) (UserApiKey, error)
 	GetUserAPIKeysByUser(ctx context.Context, userID int64) ([]UserApiKey, error)
 	// User app access queries
@@ -65,6 +68,7 @@ type Querier interface {
 	GetUserByID(ctx context.Context, id int64) (User, error)
 	GetUserByUsername(ctx context.Context, username string) (User, error)
 	InsertLog(ctx context.Context, arg InsertLogParams) (Log, error)
+	InsertSystemStats(ctx context.Context, arg InsertSystemStatsParams) error
 	ListEnabledNotifiers(ctx context.Context) ([]Notifier, error)
 	// List all log groups with their counts and latest timestamp
 	ListLogGroups(ctx context.Context, arg ListLogGroupsParams) ([]ListLogGroupsRow, error)

@@ -56,6 +56,19 @@ type Session struct {
 	CreatedAt sql.NullTime
 }
 
+type SystemStat struct {
+	ID              int64
+	CollectorName   string
+	CpuUsagePercent float64
+	MemTotalMb      int64
+	MemUsedMb       int64
+	MemAvailableMb  int64
+	DiskTotalGb     int64
+	DiskUsedGb      int64
+	DiskAvailGb     int64
+	CreatedAt       time.Time
+}
+
 type User struct {
 	ID           int64
 	Username     string
