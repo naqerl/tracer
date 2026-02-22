@@ -76,7 +76,6 @@ func main() {
 	defer authService.Close()
 
 	userService := user.New(panelDB)
-	notifierStore := notify.NewStore(panelDB)
 
 	// Check if first run (no users exist)
 	hasUsers, err := userService.HasAny(ctx)
@@ -99,7 +98,7 @@ func main() {
 	}
 
 	// Initialize notification service
-	notifyService := notify.New(notifierStore, userService)
+	notifyService := notify.New(panelDB, userService)
 	go notifyService.Start(ctx)
 
 	// Load and register enabled notifiers from database
@@ -148,7 +147,7 @@ func main() {
 	// Note: System stats cleanup is handled by retention service
 
 	// Initialize HTTP server
-	server := web.Run(cfg.Port, dbManager, collectorService, cfg.SampleRate, notifyService, authService, userService, notifierStore, tracker, cfg.PanelURL)
+	server := web.Run(cfg.Port, dbManager, collectorService, cfg.SampleRate, notifyService, authService, userService, tracker, cfg.PanelURL)
 
 	// Handle shutdown signals
 	sigChan := make(chan os.Signal, 1)

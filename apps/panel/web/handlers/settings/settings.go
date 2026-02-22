@@ -24,25 +24,23 @@ import (
 var views embed.FS
 
 type handler struct {
-	t               templates.Templates
-	authService     *auth.Service
-	userService     *user.Service
+	t                templates.Templates
+	authService      *auth.Service
+	userService      *user.Service
 	collectorService *collectors.Service
-	notifierStore   *notify.Store
-	dbManager       *dbmanager.Manager
-	notifyService   *notify.Service
+	dbManager        *dbmanager.Manager
+	notifyService    *notify.Service
 }
 
-func InitMux(authService *auth.Service, userService *user.Service, collectorService *collectors.Service, notifierStore *notify.Store, dbManager *dbmanager.Manager, notifyService *notify.Service) *http.ServeMux {
+func InitMux(authService *auth.Service, userService *user.Service, collectorService *collectors.Service, dbManager *dbmanager.Manager, notifyService *notify.Service) *http.ServeMux {
 	m := http.NewServeMux()
 	h := handler{
-		t:               templates.New(views),
-		authService:     authService,
-		userService:     userService,
+		t:                templates.New(views),
+		authService:      authService,
+		userService:      userService,
 		collectorService: collectorService,
-		notifierStore:   notifierStore,
-		dbManager:       dbManager,
-		notifyService:   notifyService,
+		dbManager:        dbManager,
+		notifyService:    notifyService,
 	}
 
 	// Users management
@@ -103,7 +101,7 @@ func (h *handler) settingsPage(w http.ResponseWriter, r *http.Request) {
 		data["APIKey"] = apiKey
 
 		// Admins see all notifiers
-		notifiers, err := h.notifierStore.ListNotifiers(r.Context())
+		notifiers, err := h.notifyService.ListNotifiers(r.Context())
 		if err != nil {
 			h.t.RenderError(w, r, "Error", "Failed to list notifiers", http.StatusInternalServerError)
 			return
@@ -111,7 +109,7 @@ func (h *handler) settingsPage(w http.ResponseWriter, r *http.Request) {
 		data["Notifiers"] = notifiers
 	} else {
 		// Non-admins only see their own notifiers
-		notifiers, err := h.notifierStore.ListNotifiersByUser(r.Context(), user.ID)
+		notifiers, err := h.notifyService.ListNotifiersByUser(r.Context(), user.ID)
 		if err != nil {
 			h.t.RenderError(w, r, "Error", "Failed to list notifiers", http.StatusInternalServerError)
 			return
@@ -433,9 +431,9 @@ func (h *handler) listNotifiers(w http.ResponseWriter, r *http.Request) {
 	var notifiers []db.Notifier
 	var err error
 	if user.IsAdmin == 1 {
-		notifiers, err = h.notifierStore.ListNotifiers(r.Context())
+		notifiers, err = h.notifyService.ListNotifiers(r.Context())
 	} else {
-		notifiers, err = h.notifierStore.ListNotifiersByUser(r.Context(), user.ID)
+		notifiers, err = h.notifyService.ListNotifiersByUser(r.Context(), user.ID)
 	}
 	if err != nil {
 		h.t.RenderError(w, r, "Error", "Failed to list notifiers", http.StatusInternalServerError)
@@ -491,7 +489,7 @@ func (h *handler) createNotifier(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create notifier through service (handles DB, welcome notification, registration)
-	if err := h.notifyService.AddNotifier(r.Context(), req, h.notifierStore); err != nil {
+	if err := h.notifyService.AddNotifier(r.Context(), req); err != nil {
 		slog.Error("Failed to add notifier", "error", err)
 		http.Error(w, "Failed to create notifier", http.StatusInternalServerError)
 		return
@@ -514,7 +512,7 @@ func (h *handler) getNotifier(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	notifier, err := h.notifierStore.GetNotifierDB(r.Context(), id)
+	notifier, err := h.notifyService.GetNotifierDB(r.Context(), id)
 	if err != nil {
 		h.t.RenderError(w, r, "Error", "Notifier not found", http.StatusNotFound)
 		return
@@ -526,7 +524,7 @@ func (h *handler) getNotifier(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	subscriptions, err := h.notifierStore.GetNotifierApps(r.Context(), id)
+	subscriptions, err := h.notifyService.GetNotifierApps(r.Context(), id)
 	if err != nil {
 		h.t.RenderError(w, r, "Error", "Failed to get notifier subscriptions", http.StatusInternalServerError)
 		return
@@ -575,7 +573,7 @@ func (h *handler) updateNotifier(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	notifier, err := h.notifierStore.GetNotifierDB(r.Context(), id)
+	notifier, err := h.notifyService.GetNotifierDB(r.Context(), id)
 	if err != nil {
 		http.Error(w, "Notifier not found", http.StatusNotFound)
 		return
@@ -613,7 +611,7 @@ func (h *handler) updateNotifier(w http.ResponseWriter, r *http.Request) {
 
 	enabled := notifier.Enabled == 1
 
-	if err := h.notifierStore.UpdateNotifier(r.Context(), id, name, notifier.Type, configJSON, enabled); err != nil {
+	if err := h.notifyService.UpdateNotifier(r.Context(), id, name, notifier.Type, configJSON, enabled); err != nil {
 		slog.Error("Failed to update notifier", "error", err)
 		http.Error(w, "Failed to update notifier", http.StatusInternalServerError)
 		return
@@ -638,7 +636,7 @@ func (h *handler) deleteNotifier(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	notifier, err := h.notifierStore.GetNotifierDB(r.Context(), id)
+	notifier, err := h.notifyService.GetNotifierDB(r.Context(), id)
 	if err != nil {
 		http.Error(w, "Notifier not found", http.StatusNotFound)
 		return
@@ -650,7 +648,7 @@ func (h *handler) deleteNotifier(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.notifierStore.DeleteNotifier(r.Context(), id); err != nil {
+	if err := h.notifyService.DeleteNotifier(r.Context(), id); err != nil {
 		slog.Error("Failed to delete notifier", "error", err)
 		http.Error(w, "Failed to delete notifier", http.StatusInternalServerError)
 		return
@@ -673,7 +671,7 @@ func (h *handler) toggleNotifier(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	notifier, err := h.notifierStore.GetNotifierDB(r.Context(), id)
+	notifier, err := h.notifyService.GetNotifierDB(r.Context(), id)
 	if err != nil {
 		http.Error(w, "Notifier not found", http.StatusNotFound)
 		return
@@ -686,9 +684,9 @@ func (h *handler) toggleNotifier(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if notifier.Enabled == 1 {
-		err = h.notifierStore.DisableNotifier(r.Context(), id)
+		err = h.notifyService.DisableNotifier(r.Context(), id)
 	} else {
-		err = h.notifierStore.EnableNotifier(r.Context(), id)
+		err = h.notifyService.EnableNotifier(r.Context(), id)
 	}
 
 	if err != nil {
@@ -714,7 +712,7 @@ func (h *handler) getNotifierApps(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	notifier, err := h.notifierStore.GetNotifierDB(r.Context(), id)
+	notifier, err := h.notifyService.GetNotifierDB(r.Context(), id)
 	if err != nil {
 		h.t.RenderError(w, r, "Error", "Notifier not found", http.StatusNotFound)
 		return
@@ -727,7 +725,7 @@ func (h *handler) getNotifierApps(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get subscriptions with collector info
-	subscriptions, err := h.notifierStore.GetNotifierApps(r.Context(), id)
+	subscriptions, err := h.notifyService.GetNotifierApps(r.Context(), id)
 	if err != nil {
 		h.t.RenderError(w, r, "Error", "Failed to get notifier subscriptions", http.StatusInternalServerError)
 		return
@@ -819,7 +817,7 @@ func (h *handler) updateNotifierApps(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	notifier, err := h.notifierStore.GetNotifierDB(r.Context(), id)
+	notifier, err := h.notifyService.GetNotifierDB(r.Context(), id)
 	if err != nil {
 		http.Error(w, "Notifier not found", http.StatusNotFound)
 		return
@@ -885,7 +883,7 @@ func (h *handler) updateNotifierApps(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Update subscriptions through service (handles DB, subscription notifications, re-registration)
-	if err := h.notifyService.UpdateNotifierApps(r.Context(), id, user.ID, subscriptions, h.notifierStore); err != nil {
+	if err := h.notifyService.UpdateNotifierApps(r.Context(), id, user.ID, subscriptions); err != nil {
 		slog.Error("Failed to update notifier subscriptions", "error", err)
 		http.Error(w, "Failed to update notifier subscriptions", http.StatusInternalServerError)
 		return

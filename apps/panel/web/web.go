@@ -20,14 +20,14 @@ import (
 // TODO: Investigate why handlers require dbManager. It should be encapsulated
 // insdie of *Service structs and handlers should use them instead of direct
 // dbManager interaction
-func Run(port string, dbManager *dbmanager.Manager, collectorService *collectors.Service, sampleRate float64, notifyService *notify.Service, authService *auth.Service, userService *user.Service, notifierStore *notify.Store, tracker *collectors.Tracker, panelURL string) *http.Server {
+func Run(port string, dbManager *dbmanager.Manager, collectorService *collectors.Service, sampleRate float64, notifyService *notify.Service, authService *auth.Service, userService *user.Service, tracker *collectors.Tracker, panelURL string) *http.Server {
 	mux := http.NewServeMux()
 
 	mux.Handle("/", authres.InitMux(authService, userService))
 	mux.Handle("/llm", llm.InitMux())
 	mux.Handle("/ingest/", http.StripPrefix("/ingest", api.InitMux(dbManager, collectorService, sampleRate, notifyService.Chan(), tracker, panelURL)))
 	mux.Handle("/analytics/", http.StripPrefix("/analytics", analytics.InitMux(dbManager, authService, userService, collectorService, tracker)))
-	mux.Handle("/settings/", http.StripPrefix("/settings", settings.InitMux(authService, userService, collectorService, notifierStore, dbManager, notifyService)))
+	mux.Handle("/settings/", http.StripPrefix("/settings", settings.InitMux(authService, userService, collectorService, dbManager, notifyService)))
 
 	markdownMiddleware := middleware.BuildMarkdownMiddleware()
 	loginPathMiddleware := middleware.BuildLoginPathMiddleware("/login")
