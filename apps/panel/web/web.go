@@ -9,23 +9,20 @@ import (
 	"github.com/ai-shift/tracer/apps/panel/internal/dbmanager"
 	"github.com/ai-shift/tracer/apps/panel/internal/notify"
 	"github.com/ai-shift/tracer/apps/panel/internal/user"
-	"github.com/ai-shift/tracer/apps/panel/web/middleware"
 	"github.com/ai-shift/tracer/apps/panel/web/handlers/analytics"
 	"github.com/ai-shift/tracer/apps/panel/web/handlers/api"
 	authres "github.com/ai-shift/tracer/apps/panel/web/handlers/auth"
 	"github.com/ai-shift/tracer/apps/panel/web/handlers/llm"
 	"github.com/ai-shift/tracer/apps/panel/web/handlers/settings"
+	"github.com/ai-shift/tracer/apps/panel/web/middleware"
 )
 
-// TODO: Investigate why handlers require dbManager. It should be encapsulated
-// insdie of *Service structs and handlers should use them instead of direct
-// dbManager interaction
 func Run(port string, dbManager *dbmanager.Manager, collectorService *collectors.Service, sampleRate float64, notifyService *notify.Service, authService *auth.Service, userService *user.Service, tracker *collectors.Tracker, panelURL string) *http.Server {
 	mux := http.NewServeMux()
 
 	mux.Handle("/", authres.InitMux(authService, userService))
 	mux.Handle("/llm", llm.InitMux())
-	mux.Handle("/ingest/", http.StripPrefix("/ingest", api.InitMux(dbManager, collectorService, sampleRate, notifyService.Chan(), tracker, panelURL)))
+	mux.Handle("/ingest/", http.StripPrefix("/ingest", api.InitMux(collectorService, sampleRate, notifyService.Chan(), tracker, panelURL)))
 	mux.Handle("/analytics/", http.StripPrefix("/analytics", analytics.InitMux(dbManager, authService, userService, collectorService, tracker)))
 	mux.Handle("/settings/", http.StripPrefix("/settings", settings.InitMux(authService, userService, collectorService, dbManager, notifyService)))
 

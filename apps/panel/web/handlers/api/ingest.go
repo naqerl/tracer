@@ -2,7 +2,6 @@ package api
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -14,9 +13,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 
-	"github.com/ai-shift/tracer/apps/panel/db"
 	"github.com/ai-shift/tracer/apps/panel/internal/collectors"
-	"github.com/ai-shift/tracer/apps/panel/internal/dbmanager"
 	"github.com/ai-shift/tracer/apps/panel/internal/notify"
 	"github.com/ai-shift/tracer/libs/types"
 )
@@ -30,23 +27,21 @@ var upgrader = websocket.Upgrader{
 }
 
 type handler struct {
-	dbManager       *dbmanager.Manager
 	collectorService *collectors.Service
-	sampleRate      float64
-	notifyChan      notify.NotificationChan
-	tracker         *collectors.Tracker
-	panelURL        string
+	sampleRate       float64
+	notifyChan       notify.NotificationChan
+	tracker          *collectors.Tracker
+	panelURL         string
 }
 
-func InitMux(dbManager *dbmanager.Manager, collectorService *collectors.Service, sampleRate float64, notifyChan notify.NotificationChan, tracker *collectors.Tracker, panelURL string) *http.ServeMux {
+func InitMux(collectorService *collectors.Service, sampleRate float64, notifyChan notify.NotificationChan, tracker *collectors.Tracker, panelURL string) *http.ServeMux {
 	m := http.NewServeMux()
 	h := &handler{
-		dbManager:       dbManager,
 		collectorService: collectorService,
-		sampleRate:      sampleRate,
-		notifyChan:      notifyChan,
-		tracker:         tracker,
-		panelURL:        panelURL,
+		sampleRate:       sampleRate,
+		notifyChan:       notifyChan,
+		tracker:          tracker,
+		panelURL:         panelURL,
 	}
 
 	m.HandleFunc("GET /ws/ingest", h.handleWebSocket)
@@ -124,20 +119,16 @@ func (h *handler) handleRegistration(ctx context.Context, connID, remoteAddr, co
 	// Register collector with tracker
 	h.tracker.Register(connID, collectorName, remoteAddr, apps)
 
-	// Pre-create databases for registered apps and track app-collector mapping
+	// Create all databases via collector service
+	if err := h.collectorService.Register(collectorName, apps); err != nil {
+		slog.Error("Failed to register collector", "collector", collectorName, "error", err)
+		return
+	}
+
 	for _, appName := range apps {
-		if appName == "" {
-			continue
-		}
-		// Explicitly create DB for the app during registration
-		if _, err := h.dbManager.CreateAppDB(collectorName, appName); err != nil {
-			slog.Error("Failed to register app", "app_name", appName, "error", err)
-		} else {
+		if appName != "" {
 			slog.Info("Registered app", "app_name", appName)
 		}
-
-		// App is tracked via filesystem (collector/<name>/apps/<app>.db)
-		// No need for separate DB tracking
 	}
 }
 
@@ -198,51 +189,8 @@ func (h *handler) processMessage(ctx context.Context, connID, remoteAddr string,
 		return
 	}
 
-	// Get or create DB for this app
-	sqlDB, err := h.dbManager.CreateAppDB(msg.CollectorName, msg.AppName)
-	if err != nil {
-		slog.Error("Failed to create/get app DB", "error", err, "collector_name", msg.CollectorName, "app_name", msg.AppName)
-		return
-	}
-	queries := db.New(sqlDB)
-
-	// Marshal extra context
-	contextJSON := "{}"
-	if len(msg.Entry.Extra) > 0 {
-		if b, err := json.Marshal(msg.Entry.Extra); err == nil {
-			contextJSON = string(b)
-		}
-	}
-
-	// Get or create log group for this message and level
-	logGroup, err := queries.GetOrCreateLogGroup(ctx, db.GetOrCreateLogGroupParams{
-		Message: msg.Entry.Message,
-		Level:   string(msg.Entry.Level),
-	})
-	if err != nil {
-		slog.Error("Failed to get/create log group", "error", err, "app_name", msg.AppName)
-		return
-	}
-
-	// Store log entry
-	ts := msg.Entry.Timestamp
-	if ts.IsZero() {
-		ts = time.Now()
-	}
-	// Normalize to UTC for consistent storage
-	ts = ts.UTC()
-
-	_, err = queries.InsertLog(ctx, db.InsertLogParams{
-		TraceID:   msg.Entry.TraceID,
-		Level:     string(msg.Entry.Level),
-		Message:   msg.Entry.Message,
-		Source:    msg.Entry.Source,
-		Context:   sql.NullString{String: contextJSON, Valid: true},
-		Raw:       msg.Entry.Raw,
-		GroupID:   sql.NullInt64{Int64: logGroup.ID, Valid: true},
-		CreatedAt: sql.NullTime{Time: ts, Valid: true},
-	})
-	if err != nil {
+	// Store log via collector service
+	if err := h.collectorService.StoreLog(ctx, msg.CollectorName, msg.AppName, msg.Entry); err != nil {
 		slog.Error("Failed to store log", "error", err, "app_name", msg.AppName)
 		return
 	}
@@ -286,57 +234,8 @@ func (h *handler) handleStartup(ctx context.Context, msg types.LogMessage) {
 
 	slog.Info("App startup detected", "app", msg.AppName, "message", msg.Entry.Message)
 
-	// Get or create DB for this app
-	sqlDB, err := h.dbManager.CreateAppDB(msg.CollectorName, msg.AppName)
-	if err != nil {
-		slog.Error("Failed to create/get app DB for startup", "error", err, "collector_name", msg.CollectorName, "app_name", msg.AppName)
-		return
-	}
-	queries := db.New(sqlDB)
-
-	// Marshal extra context
-	contextJSON := "{}"
-	if len(msg.Entry.Extra) > 0 {
-		if b, err := json.Marshal(msg.Entry.Extra); err == nil {
-			contextJSON = string(b)
-		}
-	}
-
-	// Use "STARTUP" as the level for startup events
-	level := "STARTUP"
-	if msg.Entry.Level != "" {
-		level = string(msg.Entry.Level)
-	}
-
-	// Get or create log group for this message and level
-	logGroup, err := queries.GetOrCreateLogGroup(ctx, db.GetOrCreateLogGroupParams{
-		Message: msg.Entry.Message,
-		Level:   level,
-	})
-	if err != nil {
-		slog.Error("Failed to get/create log group for startup", "error", err, "app_name", msg.AppName)
-		return
-	}
-
-	// Store startup entry (always persist, no sampling)
-	ts := msg.Entry.Timestamp
-	if ts.IsZero() {
-		ts = time.Now()
-	}
-	// Normalize to UTC for consistent storage
-	ts = ts.UTC()
-
-	_, err = queries.InsertLog(ctx, db.InsertLogParams{
-		TraceID:   msg.Entry.TraceID,
-		Level:     level,
-		Message:   msg.Entry.Message,
-		Source:    msg.Entry.Source,
-		Context:   sql.NullString{String: contextJSON, Valid: true},
-		Raw:       msg.Entry.Raw,
-		GroupID:   sql.NullInt64{Int64: logGroup.ID, Valid: true},
-		CreatedAt: sql.NullTime{Time: ts, Valid: true},
-	})
-	if err != nil {
+	// Store startup via collector service
+	if err := h.collectorService.StoreStartup(ctx, msg.CollectorName, msg.AppName, msg.Entry); err != nil {
 		slog.Error("Failed to store startup log", "error", err, "app_name", msg.AppName)
 		return
 	}
@@ -390,7 +289,7 @@ func (h *handler) handleStats(ctx context.Context, msg types.LogMessage) {
 	// Normalize to UTC for consistent storage
 	ts = ts.UTC()
 
-	err := h.collectorService.InsertSystemStats(ctx, collectors.CollectorName(msg.CollectorName), db.InsertSystemStatsParams{
+	err := h.collectorService.InsertSystemStats(ctx, collectors.CollectorName(msg.CollectorName), collectors.SystemStats{
 		CollectorName:   msg.CollectorName,
 		CpuUsagePercent: msg.Stats.CPUUsagePercent,
 		MemTotalMb:      int64(msg.Stats.MemTotalMB),
