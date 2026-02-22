@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 
+	"github.com/ai-shift/tracer/apps/panel/internal/services/auth"
 	"github.com/ai-shift/tracer/apps/panel/internal/services/ingest"
 	"github.com/ai-shift/tracer/apps/panel/internal/services/notify"
 	"github.com/ai-shift/tracer/libs/types"
@@ -27,6 +28,7 @@ var upgrader = websocket.Upgrader{
 }
 
 type handler struct {
+	authService   *auth.Service
 	ingestService *ingest.Service
 	sampleRate    float64
 	notifyChan    notify.NotificationChan
@@ -34,9 +36,10 @@ type handler struct {
 	panelURL      string
 }
 
-func InitMux(ingestService *ingest.Service, sampleRate float64, notifyChan notify.NotificationChan, tracker *ingest.Tracker, panelURL string) *http.ServeMux {
+func InitMux(authService *auth.Service, ingestService *ingest.Service, sampleRate float64, notifyChan notify.NotificationChan, tracker *ingest.Tracker, panelURL string) *http.ServeMux {
 	m := http.NewServeMux()
 	h := &handler{
+		authService:   authService,
 		ingestService: ingestService,
 		sampleRate:    sampleRate,
 		notifyChan:    notifyChan,
@@ -50,7 +53,30 @@ func InitMux(ingestService *ingest.Service, sampleRate float64, notifyChan notif
 	return m
 }
 
+func (h *handler) requireCollectorAPIKey(w http.ResponseWriter, r *http.Request) bool {
+	apiKey := r.Header.Get("X-API-Key")
+	if apiKey == "" {
+		http.Error(w, "API key required", http.StatusUnauthorized)
+		return false
+	}
+
+	valid, err := h.authService.ValidateAPIKey(r.Context(), apiKey)
+	if err != nil {
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return false
+	}
+	if !valid {
+		http.Error(w, "Invalid API key", http.StatusUnauthorized)
+		return false
+	}
+	return true
+}
+
 func (h *handler) handleWebSocket(w http.ResponseWriter, r *http.Request) {
+	if !h.requireCollectorAPIKey(w, r) {
+		return
+	}
+
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		slog.Error("WebSocket upgrade failed", "error", err)
@@ -266,6 +292,10 @@ func (h *handler) handleStartup(ctx context.Context, msg types.LogMessage) {
 }
 
 func (h *handler) listCollectors(w http.ResponseWriter, r *http.Request) {
+	if !h.requireCollectorAPIKey(w, r) {
+		return
+	}
+
 	collectors := h.tracker.List()
 
 	w.Header().Set("Content-Type", "application/json")
