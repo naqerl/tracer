@@ -14,6 +14,7 @@ import (
 	"github.com/ai-shift/tracer/apps/panel/internal/services/auth"
 	"github.com/ai-shift/tracer/apps/panel/internal/services/ingest"
 	"github.com/ai-shift/tracer/apps/panel/internal/services/notify"
+	"github.com/ai-shift/tracer/apps/panel/internal/services/permissions"
 	"github.com/ai-shift/tracer/apps/panel/internal/services/user"
 	"github.com/ai-shift/tracer/apps/panel/web/htmx"
 	"github.com/ai-shift/tracer/apps/panel/web/middleware"
@@ -30,9 +31,10 @@ type handler struct {
 	ingestService *ingest.Service
 	dbManager     *dbmanager.Manager
 	notifyService *notify.Service
+	permissions   *permissions.Service
 }
 
-func InitMux(authService *auth.Service, userService *user.Service, ingestService *ingest.Service, dbManager *dbmanager.Manager, notifyService *notify.Service) *http.ServeMux {
+func InitMux(authService *auth.Service, userService *user.Service, ingestService *ingest.Service, dbManager *dbmanager.Manager, notifyService *notify.Service, permissions *permissions.Service) *http.ServeMux {
 	m := http.NewServeMux()
 	h := handler{
 		t:             templates.New(views),
@@ -41,6 +43,7 @@ func InitMux(authService *auth.Service, userService *user.Service, ingestService
 		ingestService: ingestService,
 		dbManager:     dbManager,
 		notifyService: notifyService,
+		permissions:   permissions,
 	}
 
 	// Users management
@@ -72,10 +75,18 @@ func InitMux(authService *auth.Service, userService *user.Service, ingestService
 	return m
 }
 
-func (h *handler) settingsPage(w http.ResponseWriter, r *http.Request) {
+func (h *handler) requireAuthenticatedUser(w http.ResponseWriter, r *http.Request) *db.User {
 	user := middleware.GetUser(r)
 	if user == nil {
 		middleware.RedirectToLogin(w, r)
+		return nil
+	}
+	return user
+}
+
+func (h *handler) settingsPage(w http.ResponseWriter, r *http.Request) {
+	user := h.requireAuthenticatedUser(w, r)
+	if user == nil {
 		return
 	}
 
@@ -353,9 +364,8 @@ func (h *handler) regenerateAPIKey(w http.ResponseWriter, r *http.Request) {
 // User API key handlers (LLM compatibility)
 
 func (h *handler) createUserAPIKey(w http.ResponseWriter, r *http.Request) {
-	user := middleware.GetUser(r)
+	user := h.requireAuthenticatedUser(w, r)
 	if user == nil {
-		middleware.RedirectToLogin(w, r)
 		return
 	}
 
@@ -376,9 +386,8 @@ func (h *handler) createUserAPIKey(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) deleteUserAPIKey(w http.ResponseWriter, r *http.Request) {
-	user := middleware.GetUser(r)
+	user := h.requireAuthenticatedUser(w, r)
 	if user == nil {
-		middleware.RedirectToLogin(w, r)
 		return
 	}
 
@@ -422,9 +431,8 @@ func (h *handler) deleteUserAPIKey(w http.ResponseWriter, r *http.Request) {
 // Notifier handlers
 
 func (h *handler) listNotifiers(w http.ResponseWriter, r *http.Request) {
-	user := middleware.GetUser(r)
+	user := h.requireAuthenticatedUser(w, r)
 	if user == nil {
-		middleware.RedirectToLogin(w, r)
 		return
 	}
 
@@ -448,9 +456,8 @@ func (h *handler) listNotifiers(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) createNotifier(w http.ResponseWriter, r *http.Request) {
-	user := middleware.GetUser(r)
+	user := h.requireAuthenticatedUser(w, r)
 	if user == nil {
-		middleware.RedirectToLogin(w, r)
 		return
 	}
 
@@ -499,9 +506,8 @@ func (h *handler) createNotifier(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) getNotifier(w http.ResponseWriter, r *http.Request) {
-	user := middleware.GetUser(r)
+	user := h.requireAuthenticatedUser(w, r)
 	if user == nil {
-		middleware.RedirectToLogin(w, r)
 		return
 	}
 
@@ -519,7 +525,7 @@ func (h *handler) getNotifier(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check ownership (admins can access any, others only their own)
-	if user.IsAdmin != 1 && notifier.UserID != user.ID {
+	if !h.permissions.CanManageNotifier(user, notifier.UserID) {
 		h.t.RenderError(w, r, "Forbidden", "You don't have access to this notifier", http.StatusForbidden)
 		return
 	}
@@ -560,9 +566,8 @@ func (h *handler) getNotifier(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) updateNotifier(w http.ResponseWriter, r *http.Request) {
-	user := middleware.GetUser(r)
+	user := h.requireAuthenticatedUser(w, r)
 	if user == nil {
-		middleware.RedirectToLogin(w, r)
 		return
 	}
 
@@ -580,7 +585,7 @@ func (h *handler) updateNotifier(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check ownership
-	if user.IsAdmin != 1 && notifier.UserID != user.ID {
+	if !h.permissions.CanManageNotifier(user, notifier.UserID) {
 		http.Error(w, "Forbidden", http.StatusForbidden)
 		return
 	}
@@ -623,9 +628,8 @@ func (h *handler) updateNotifier(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) deleteNotifier(w http.ResponseWriter, r *http.Request) {
-	user := middleware.GetUser(r)
+	user := h.requireAuthenticatedUser(w, r)
 	if user == nil {
-		middleware.RedirectToLogin(w, r)
 		return
 	}
 
@@ -643,7 +647,7 @@ func (h *handler) deleteNotifier(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check ownership
-	if user.IsAdmin != 1 && notifier.UserID != user.ID {
+	if !h.permissions.CanManageNotifier(user, notifier.UserID) {
 		http.Error(w, "Forbidden", http.StatusForbidden)
 		return
 	}
@@ -658,9 +662,8 @@ func (h *handler) deleteNotifier(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) toggleNotifier(w http.ResponseWriter, r *http.Request) {
-	user := middleware.GetUser(r)
+	user := h.requireAuthenticatedUser(w, r)
 	if user == nil {
-		middleware.RedirectToLogin(w, r)
 		return
 	}
 
@@ -678,7 +681,7 @@ func (h *handler) toggleNotifier(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check ownership
-	if user.IsAdmin != 1 && notifier.UserID != user.ID {
+	if !h.permissions.CanManageNotifier(user, notifier.UserID) {
 		http.Error(w, "Forbidden", http.StatusForbidden)
 		return
 	}
@@ -699,9 +702,8 @@ func (h *handler) toggleNotifier(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) getNotifierApps(w http.ResponseWriter, r *http.Request) {
-	user := middleware.GetUser(r)
+	user := h.requireAuthenticatedUser(w, r)
 	if user == nil {
-		middleware.RedirectToLogin(w, r)
 		return
 	}
 
@@ -719,7 +721,7 @@ func (h *handler) getNotifierApps(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check ownership
-	if user.IsAdmin != 1 && notifier.UserID != user.ID {
+	if !h.permissions.CanManageNotifier(user, notifier.UserID) {
 		h.t.RenderError(w, r, "Forbidden", "You don't have access to this notifier", http.StatusForbidden)
 		return
 	}
@@ -804,9 +806,8 @@ func (h *handler) getNotifierApps(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) updateNotifierApps(w http.ResponseWriter, r *http.Request) {
-	user := middleware.GetUser(r)
+	user := h.requireAuthenticatedUser(w, r)
 	if user == nil {
-		middleware.RedirectToLogin(w, r)
 		return
 	}
 
@@ -824,7 +825,7 @@ func (h *handler) updateNotifierApps(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check ownership
-	if user.IsAdmin != 1 && notifier.UserID != user.ID {
+	if !h.permissions.CanManageNotifier(user, notifier.UserID) {
 		http.Error(w, "Forbidden", http.StatusForbidden)
 		return
 	}

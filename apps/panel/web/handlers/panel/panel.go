@@ -2,20 +2,16 @@ package panel
 
 import (
 	"context"
-	"database/sql"
 	"embed"
-	"errors"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"strconv"
 	"time"
 
 	"github.com/ai-shift/tracer/apps/panel/db"
-	"github.com/ai-shift/tracer/apps/panel/internal/dbmanager"
-	"github.com/ai-shift/tracer/apps/panel/internal/services/auth"
 	"github.com/ai-shift/tracer/apps/panel/internal/services/ingest"
-	"github.com/ai-shift/tracer/apps/panel/internal/services/user"
+	"github.com/ai-shift/tracer/apps/panel/internal/services/panelread"
+	"github.com/ai-shift/tracer/apps/panel/internal/services/permissions"
 	"github.com/ai-shift/tracer/apps/panel/web/htmx"
 	"github.com/ai-shift/tracer/apps/panel/web/middleware"
 	"github.com/ai-shift/tracer/apps/panel/web/templates"
@@ -26,20 +22,18 @@ var views embed.FS
 
 type handler struct {
 	t             templates.Templates
-	dbManager     *dbmanager.Manager
-	authService   *auth.Service
-	userService   *user.Service
+	panelRead     *panelread.Service
+	permissions   *permissions.Service
 	ingestService *ingest.Service
 	tracker       *ingest.Tracker
 }
 
-func InitMux(dbManager *dbmanager.Manager, authService *auth.Service, userService *user.Service, ingestService *ingest.Service, tracker *ingest.Tracker) *http.ServeMux {
+func InitMux(panelRead *panelread.Service, permissions *permissions.Service, ingestService *ingest.Service, tracker *ingest.Tracker) *http.ServeMux {
 	m := http.NewServeMux()
 	h := handler{
 		t:             templates.New(views),
-		dbManager:     dbManager,
-		authService:   authService,
-		userService:   userService,
+		panelRead:     panelRead,
+		permissions:   permissions,
 		ingestService: ingestService,
 		tracker:       tracker,
 	}
@@ -295,7 +289,7 @@ func (h *handler) appAnalytics(w http.ResponseWriter, r *http.Request) {
 	appName := r.PathValue("app")
 
 	// Check app access
-	hasAccess, err := h.userService.HasAppAccess(r.Context(), user.ID, appName)
+	hasAccess, err := h.permissions.CanAccessApp(r.Context(), user, appName)
 	if err != nil {
 		h.t.RenderError(w, r, "Error", "Failed to check access", http.StatusInternalServerError)
 		return
@@ -351,14 +345,6 @@ type StatsDisplay struct {
 	Staleness          string // "fresh", "warning", "stale", "old"
 }
 
-// appStats holds aggregated app-level counts
-type appStats struct {
-	Total    int64
-	Errors   int64
-	Warnings int64
-	Infos    int64
-}
-
 // CollectorWithStats combines collector info with latest system stats
 type CollectorWithStats struct {
 	ingest.Collector
@@ -409,31 +395,14 @@ func formatStatsForDisplay(stats db.SystemStat) *StatsDisplay {
 func (h *handler) getFilteredCollectors(r *http.Request, user *db.User) ([]CollectorWithStats, error) {
 	collectorList := h.tracker.List()
 
-	var userAppMap map[string]bool
-	if user.IsAdmin != 1 {
-		userApps, err := h.userService.GetApps(r.Context(), user.ID)
+	collectorsWithStats := make([]CollectorWithStats, 0, len(collectorList))
+	for _, c := range collectorList {
+		hasAccess, err := h.permissions.CanAccessCollector(r.Context(), user, c.Name)
 		if err != nil {
 			return nil, err
 		}
-		userAppMap = make(map[string]bool)
-		for _, app := range userApps {
-			userAppMap[app] = true
-		}
-	}
-
-	collectorsWithStats := make([]CollectorWithStats, 0, len(collectorList))
-	for _, c := range collectorList {
-		if user.IsAdmin != 1 {
-			hasAccessibleApp := false
-			for _, app := range c.Apps {
-				if userAppMap[app] {
-					hasAccessibleApp = true
-					break
-				}
-			}
-			if !hasAccessibleApp {
-				continue
-			}
+		if !hasAccess {
+			continue
 		}
 
 		cws := CollectorWithStats{
@@ -454,57 +423,16 @@ func (h *handler) getFilteredCollectors(r *http.Request, user *db.User) ([]Colle
 
 // userHasCollectorAccess checks if user can access the collector
 func (h *handler) userHasCollectorAccess(r *http.Request, user *db.User, collectorName string) bool {
-	if user.IsAdmin == 1 {
-		return true
-	}
-
-	userApps, err := h.userService.GetApps(r.Context(), user.ID)
-	if err != nil {
-		return false
-	}
-
-	collector, exists := h.tracker.Get(collectorName)
-	if !exists {
-		return false
-	}
-
-	userAppMap := make(map[string]bool)
-	for _, app := range userApps {
-		userAppMap[app] = true
-	}
-
-	for _, app := range collector.Apps {
-		if userAppMap[app] {
-			return true
-		}
-	}
-
-	return false
+	hasAccess, err := h.permissions.CanAccessCollector(r.Context(), user, collectorName)
+	return err == nil && hasAccess
 }
 
 // filterAppsByAccess filters apps list by user access
 func (h *handler) filterAppsByAccess(r *http.Request, user *db.User, apps []string) []string {
-	if user.IsAdmin == 1 {
-		return apps
-	}
-
-	userApps, err := h.userService.GetApps(r.Context(), user.ID)
+	filtered, err := h.permissions.FilterAppsByAccess(r.Context(), user, apps)
 	if err != nil {
 		return nil
 	}
-
-	userAppMap := make(map[string]bool)
-	for _, app := range userApps {
-		userAppMap[app] = true
-	}
-
-	filtered := make([]string, 0)
-	for _, app := range apps {
-		if userAppMap[app] {
-			filtered = append(filtered, app)
-		}
-	}
-
 	return filtered
 }
 
@@ -519,7 +447,7 @@ func (h *handler) appLogs(w http.ResponseWriter, r *http.Request) {
 	appName := r.PathValue("app")
 
 	// Check app access
-	hasAccess, err := h.userService.HasAppAccess(r.Context(), user.ID, appName)
+	hasAccess, err := h.permissions.CanAccessApp(r.Context(), user, appName)
 	if err != nil {
 		h.t.RenderError(w, r, "Error", "Failed to check access", http.StatusInternalServerError)
 		return
@@ -528,18 +456,6 @@ func (h *handler) appLogs(w http.ResponseWriter, r *http.Request) {
 		h.t.RenderError(w, r, "Forbidden", "You don't have access to this app", http.StatusForbidden)
 		return
 	}
-
-	sqlDB, err := h.dbManager.GetAppDB(collectorName, appName)
-	if err != nil {
-		if err == dbmanager.ErrDBNotFound {
-			h.t.RenderError(w, r, "Error", "App not found", http.StatusNotFound)
-			return
-		}
-		slog.Error("Failed to get app DB", "error", err)
-		h.t.RenderError(w, r, "Error", "Internal error", http.StatusInternalServerError)
-		return
-	}
-	queries := db.New(sqlDB)
 
 	groupIDParam := r.URL.Query().Get("groupID")
 	logIDParam := r.URL.Query().Get("logID")
@@ -575,44 +491,29 @@ func (h *handler) appLogs(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// Get group info
-		logGroup, err := queries.GetLogGroupByID(r.Context(), groupID)
-		if err != nil {
-			h.t.RenderError(w, r, "Error", "Group not found", http.StatusNotFound)
-			return
-		}
-
-		// Get logs for this group with pagination
 		limit := int64(50)
-		logs, err := queries.GetLogsByGroupID(r.Context(), db.GetLogsByGroupIDParams{
-			GroupID: sql.NullInt64{Int64: groupID, Valid: true},
-			Limit:   limit,
-			Offset:  offset,
-		})
+		detail, err := h.panelRead.GetLogDetail(r.Context(), collectorName, appName, groupID, offset, limit)
 		if err != nil {
+			if err == panelread.ErrAppNotFound || err == panelread.ErrLogNotFound {
+				h.t.RenderError(w, r, "Error", "Group not found", http.StatusNotFound)
+				return
+			}
 			h.t.RenderError(w, r, "Error", "Failed to fetch logs", http.StatusInternalServerError)
 			return
-		}
-
-		// Get total count
-		totalCount, err := queries.CountLogsByGroupID(r.Context(), sql.NullInt64{Int64: groupID, Valid: true})
-		if err != nil {
-			slog.Error("Failed to count logs", "error", err)
-			totalCount = 0
 		}
 
 		data := map[string]any{
 			"Title":          appName + " Log Details",
 			"AppName":        appName,
 			"CollectorName":  collectorName,
-			"LogGroup":       logGroup,
-			"Logs":           logs,
+			"LogGroup":       detail.Group,
+			"Logs":           detail.Logs,
 			"User":           user,
 			"IsAdmin":        user.IsAdmin == 1,
 			"Nav":            nav,
 			"Offset":         offset,
 			"Limit":          limit,
-			"HasMore":        offset+int64(len(logs)) < totalCount,
+			"HasMore":        offset+int64(len(detail.Logs)) < detail.TotalCount,
 			"NextOffset":     offset + limit,
 			"HighlightLogID": highlightLogID,
 		}
@@ -630,46 +531,12 @@ func (h *handler) appLogs(w http.ResponseWriter, r *http.Request) {
 	// List view: show groups with counts
 	level := r.URL.Query().Get("level")
 	limit := int64(50)
-
-	// Fetch counts for each level
-	totalCount, err := queries.CountLogGroups(r.Context())
+	logGroups, err := h.panelRead.GetLogGroups(r.Context(), collectorName, appName, level, offset, limit)
 	if err != nil {
-		slog.Error("Failed to count log groups", "error", err)
-		totalCount = 0
-	}
-
-	errorCount, err := queries.CountLogGroupsByLevel(r.Context(), "error")
-	if err != nil {
-		slog.Error("Failed to count error groups", "error", err)
-		errorCount = 0
-	}
-
-	warnCount, err := queries.CountLogGroupsByLevel(r.Context(), "warn")
-	if err != nil {
-		slog.Error("Failed to count warn groups", "error", err)
-		warnCount = 0
-	}
-
-	infoCount, err := queries.CountLogGroupsByLevel(r.Context(), "info")
-	if err != nil {
-		slog.Error("Failed to count info groups", "error", err)
-		infoCount = 0
-	}
-
-	var groups any
-	if level != "" {
-		groups, err = queries.ListLogGroupsByLevel(r.Context(), db.ListLogGroupsByLevelParams{
-			LOWER:  level,
-			Limit:  limit,
-			Offset: offset,
-		})
-	} else {
-		groups, err = queries.ListLogGroups(r.Context(), db.ListLogGroupsParams{
-			Limit:  limit,
-			Offset: offset,
-		})
-	}
-	if err != nil {
+		if err == panelread.ErrAppNotFound {
+			h.t.RenderError(w, r, "Error", "App not found", http.StatusNotFound)
+			return
+		}
 		h.t.RenderError(w, r, "Error", "Failed to fetch log groups", http.StatusInternalServerError)
 		return
 	}
@@ -679,31 +546,31 @@ func (h *handler) appLogs(w http.ResponseWriter, r *http.Request) {
 	if level != "" {
 		switch level {
 		case "error":
-			currentCount = errorCount
+			currentCount = logGroups.ErrorCount
 		case "warn":
-			currentCount = warnCount
+			currentCount = logGroups.WarnCount
 		case "info":
-			currentCount = infoCount
+			currentCount = logGroups.InfoCount
 		default:
-			currentCount = totalCount
+			currentCount = logGroups.TotalCount
 		}
 	} else {
-		currentCount = totalCount
+		currentCount = logGroups.TotalCount
 	}
 
 	data := map[string]any{
 		"Title":         appName + " Logs",
 		"AppName":       appName,
 		"CollectorName": collectorName,
-		"Groups":        groups,
+		"Groups":        logGroups.Groups,
 		"Level":         level,
 		"User":          user,
 		"IsAdmin":       user.IsAdmin == 1,
 		"Nav":           nav,
-		"TotalCount":    totalCount,
-		"ErrorCount":    errorCount,
-		"WarnCount":     warnCount,
-		"InfoCount":     infoCount,
+		"TotalCount":    logGroups.TotalCount,
+		"ErrorCount":    logGroups.ErrorCount,
+		"WarnCount":     logGroups.WarnCount,
+		"InfoCount":     logGroups.InfoCount,
 		"Offset":        offset,
 		"Limit":         limit,
 		"HasMore":       offset+limit < currentCount,
@@ -731,7 +598,7 @@ func (h *handler) appLogsChartData(w http.ResponseWriter, r *http.Request) {
 	appName := r.PathValue("app")
 
 	// Check app access
-	hasAccess, err := h.userService.HasAppAccess(r.Context(), user.ID, appName)
+	hasAccess, err := h.permissions.CanAccessApp(r.Context(), user, appName)
 	if err != nil {
 		http.Error(w, "Failed to check access", http.StatusInternalServerError)
 		return
@@ -740,18 +607,6 @@ func (h *handler) appLogsChartData(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Forbidden", http.StatusForbidden)
 		return
 	}
-
-	sqlDB, err := h.dbManager.GetAppDB(collectorName, appName)
-	if err != nil {
-		if err == dbmanager.ErrDBNotFound {
-			http.Error(w, "App not found", http.StatusNotFound)
-			return
-		}
-		slog.Error("Failed to get app DB", "error", err)
-		http.Error(w, "Internal error", http.StatusInternalServerError)
-		return
-	}
-	queries := db.New(sqlDB)
 
 	rangeParam := r.URL.Query().Get("range")
 	if rangeParam == "" {
@@ -762,11 +617,12 @@ func (h *handler) appLogsChartData(w http.ResponseWriter, r *http.Request) {
 	granularity := getBucketGranularity(rangeParam)
 
 	// Get time-series data
-	timeSeriesData, err := queries.GetLogVolumeTimeSeries(r.Context(), db.GetLogVolumeTimeSeriesParams{
-		Since:       sql.NullTime{Time: since, Valid: true},
-		Granularity: granularity,
-	})
+	timeSeriesData, err := h.panelRead.GetLogVolumeTimeSeries(r.Context(), collectorName, appName, since, granularity)
 	if err != nil {
+		if err == panelread.ErrAppNotFound {
+			http.Error(w, "App not found", http.StatusNotFound)
+			return
+		}
 		http.Error(w, "Failed to fetch chart data", http.StatusInternalServerError)
 		return
 	}
@@ -794,7 +650,7 @@ func (h *handler) getLogByID(w http.ResponseWriter, r *http.Request) {
 	idStr := r.PathValue("id")
 
 	// Check app access
-	hasAccess, err := h.userService.HasAppAccess(r.Context(), user.ID, appName)
+	hasAccess, err := h.permissions.CanAccessApp(r.Context(), user, appName)
 	if err != nil {
 		http.Error(w, "Failed to check access", http.StatusInternalServerError)
 		return
@@ -804,31 +660,22 @@ func (h *handler) getLogByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sqlDB, err := h.dbManager.GetAppDB(collectorName, appName)
-	if err != nil {
-		if err == dbmanager.ErrDBNotFound {
-			http.Error(w, "App not found", http.StatusNotFound)
-			return
-		}
-		slog.Error("Failed to get app DB", "error", err)
-		http.Error(w, "Internal error", http.StatusInternalServerError)
-		return
-	}
-	queries := db.New(sqlDB)
-
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
 		http.Error(w, "Invalid log ID", http.StatusBadRequest)
 		return
 	}
 
-	logEntry, err := queries.GetLogByID(r.Context(), id)
+	logEntry, err := h.panelRead.GetLogByID(r.Context(), collectorName, appName, id)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if err == panelread.ErrAppNotFound {
+			http.Error(w, "App not found", http.StatusNotFound)
+			return
+		}
+		if err == panelread.ErrLogNotFound {
 			http.Error(w, "Log not found", http.StatusNotFound)
 			return
 		}
-		slog.Error("Failed to get log", "error", err)
 		http.Error(w, "Failed to get log", http.StatusInternalServerError)
 		return
 	}
@@ -837,55 +684,14 @@ func (h *handler) getLogByID(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, fmt.Sprintf("/analytics/%s/apps/%s/logs?groupID=%d&logID=%d", collectorName, appName, logEntry.GroupID.Int64, logEntry.ID), http.StatusSeeOther)
 }
 
-func (h *handler) getAppAnalyticsData(ctx context.Context, collectorName, appName string) (*appStats, any, error) {
-	sqlDB, err := h.dbManager.GetAppDB(collectorName, appName)
+func (h *handler) getAppAnalyticsData(ctx context.Context, collectorName, appName string) (*panelread.AppStats, any, error) {
+	stats, grouped, err := h.panelRead.GetAppAnalytics(ctx, collectorName, appName)
 	if err != nil {
-		if err == dbmanager.ErrDBNotFound {
+		if err == panelread.ErrAppNotFound {
 			return nil, nil, fmt.Errorf("app not found")
 		}
 		return nil, nil, err
 	}
-	queries := db.New(sqlDB)
-
-	totalCount, err := queries.CountLogGroups(ctx)
-	if err != nil {
-		slog.Error("Failed to count log groups", "error", err)
-		totalCount = 0
-	}
-
-	errorCount, err := queries.CountLogGroupsByLevel(ctx, "error")
-	if err != nil {
-		slog.Error("Failed to count error groups", "error", err)
-		errorCount = 0
-	}
-
-	warnCount, err := queries.CountLogGroupsByLevel(ctx, "warn")
-	if err != nil {
-		slog.Error("Failed to count warn groups", "error", err)
-		warnCount = 0
-	}
-
-	infoCount, err := queries.CountLogGroupsByLevel(ctx, "info")
-	if err != nil {
-		slog.Error("Failed to count info groups", "error", err)
-		infoCount = 0
-	}
-
-	grouped, err := queries.ListLogGroups(ctx, db.ListLogGroupsParams{
-		Limit:  20,
-		Offset: 0,
-	})
-	if err != nil {
-		return nil, nil, err
-	}
-
-	stats := &appStats{
-		Total:    totalCount,
-		Errors:   errorCount,
-		Warnings: warnCount,
-		Infos:    infoCount,
-	}
-
 	return stats, grouped, nil
 }
 
