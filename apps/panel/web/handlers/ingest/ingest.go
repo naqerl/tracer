@@ -56,6 +56,10 @@ func InitMux(authService *auth.Service, ingestService *ingest.Service, sampleRat
 func (h *handler) requireCollectorAPIKey(w http.ResponseWriter, r *http.Request) bool {
 	apiKey := r.Header.Get("X-API-Key")
 	if apiKey == "" {
+		// Backward compatibility for collector configs that still pass key via query param.
+		apiKey = r.URL.Query().Get("api_key")
+	}
+	if apiKey == "" {
 		http.Error(w, "API key required", http.StatusUnauthorized)
 		return false
 	}
