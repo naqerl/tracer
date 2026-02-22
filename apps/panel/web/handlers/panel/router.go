@@ -5,7 +5,7 @@ import (
 	"net/http"
 
 	"github.com/ai-shift/tracer/apps/panel/internal/services/ingest"
-	"github.com/ai-shift/tracer/apps/panel/internal/services/panelread"
+	panelsvc "github.com/ai-shift/tracer/apps/panel/internal/services/panel"
 	"github.com/ai-shift/tracer/apps/panel/internal/services/permissions"
 	"github.com/ai-shift/tracer/apps/panel/web/templates"
 )
@@ -15,17 +15,17 @@ var views embed.FS
 
 type handler struct {
 	t             templates.Templates
-	panelRead     *panelread.Service
+	panelSvc      *panelsvc.Service
 	permissions   *permissions.Service
 	ingestService *ingest.Service
 	tracker       *ingest.Tracker
 }
 
-func InitMux(panelRead *panelread.Service, permissions *permissions.Service, ingestService *ingest.Service, tracker *ingest.Tracker) *http.ServeMux {
+func InitMux(panelSvc *panelsvc.Service, permissions *permissions.Service, ingestService *ingest.Service, tracker *ingest.Tracker) *http.ServeMux {
 	m := http.NewServeMux()
 	h := handler{
 		t:             templates.New(views),
-		panelRead:     panelRead,
+		panelSvc:      panelSvc,
 		permissions:   permissions,
 		ingestService: ingestService,
 		tracker:       tracker,

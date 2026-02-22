@@ -1,4 +1,4 @@
-package panelread
+package panel
 
 import (
 	"context"

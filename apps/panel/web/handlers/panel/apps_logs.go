@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/ai-shift/tracer/apps/panel/internal/services/panelread"
+	panelsvc "github.com/ai-shift/tracer/apps/panel/internal/services/panel"
 	"github.com/ai-shift/tracer/apps/panel/web/middleware"
 	"github.com/ai-shift/tracer/apps/panel/web/templates"
 )
@@ -113,9 +113,9 @@ func (h *handler) appLogsPage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if middleware.IsMarkdownFormat(r) {
-		logGroups, err := h.panelRead.GetLogGroups(r.Context(), collectorName, appName, "", 0, 50)
+		logGroups, err := h.panelSvc.GetLogGroups(r.Context(), collectorName, appName, "", 0, 50)
 		if err != nil {
-			if err == panelread.ErrAppNotFound {
+			if err == panelsvc.ErrAppNotFound {
 				h.t.RenderError(w, r, "Error", "App not found", http.StatusNotFound)
 				return
 			}
@@ -173,9 +173,9 @@ func (h *handler) appLogGroupsEntries(w http.ResponseWriter, r *http.Request) {
 	level := r.URL.Query().Get("level")
 	offset := parseOffset(r.URL.Query().Get("offset"))
 	limit := int64(50)
-	logGroups, err := h.panelRead.GetLogGroups(r.Context(), collectorName, appName, level, offset, limit)
+	logGroups, err := h.panelSvc.GetLogGroups(r.Context(), collectorName, appName, level, offset, limit)
 	if err != nil {
-		if err == panelread.ErrAppNotFound {
+		if err == panelsvc.ErrAppNotFound {
 			http.Error(w, "App not found", http.StatusNotFound)
 			return
 		}
@@ -235,9 +235,9 @@ func (h *handler) appLogGroupPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	detail, err := h.panelRead.GetLogDetail(r.Context(), collectorName, appName, groupID, 0, 1)
+	detail, err := h.panelSvc.GetLogDetail(r.Context(), collectorName, appName, groupID, 0, 1)
 	if err != nil {
-		if err == panelread.ErrAppNotFound || err == panelread.ErrLogNotFound {
+		if err == panelsvc.ErrAppNotFound || err == panelsvc.ErrLogNotFound {
 			h.t.RenderError(w, r, "Error", "Group not found", http.StatusNotFound)
 			return
 		}
@@ -293,9 +293,9 @@ func (h *handler) appLogGroupEntries(w http.ResponseWriter, r *http.Request) {
 	offset := parseOffset(r.URL.Query().Get("offset"))
 	highlightLogID := parseOffset(r.URL.Query().Get("logID"))
 	limit := int64(50)
-	detail, err := h.panelRead.GetLogDetail(r.Context(), collectorName, appName, groupID, offset, limit)
+	detail, err := h.panelSvc.GetLogDetail(r.Context(), collectorName, appName, groupID, offset, limit)
 	if err != nil {
-		if err == panelread.ErrAppNotFound || err == panelread.ErrLogNotFound {
+		if err == panelsvc.ErrAppNotFound || err == panelsvc.ErrLogNotFound {
 			http.Error(w, "Group not found", http.StatusNotFound)
 			return
 		}
@@ -341,9 +341,9 @@ func (h *handler) appLogsVolume(w http.ResponseWriter, r *http.Request) {
 		rangeParam = "24h"
 	}
 
-	timeSeriesData, err := h.panelRead.GetLogVolumeTimeSeries(r.Context(), collectorName, appName, parseTimeRange(rangeParam), getBucketGranularity(rangeParam))
+	timeSeriesData, err := h.panelSvc.GetLogVolumeTimeSeries(r.Context(), collectorName, appName, parseTimeRange(rangeParam), getBucketGranularity(rangeParam))
 	if err != nil {
-		if err == panelread.ErrAppNotFound {
+		if err == panelsvc.ErrAppNotFound {
 			http.Error(w, "App not found", http.StatusNotFound)
 			return
 		}
@@ -386,13 +386,13 @@ func (h *handler) getLogByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	logEntry, err := h.panelRead.GetLogByID(r.Context(), collectorName, appName, id)
+	logEntry, err := h.panelSvc.GetLogByID(r.Context(), collectorName, appName, id)
 	if err != nil {
-		if err == panelread.ErrAppNotFound {
+		if err == panelsvc.ErrAppNotFound {
 			http.Error(w, "App not found", http.StatusNotFound)
 			return
 		}
-		if err == panelread.ErrLogNotFound {
+		if err == panelsvc.ErrLogNotFound {
 			http.Error(w, "Log not found", http.StatusNotFound)
 			return
 		}
@@ -403,10 +403,10 @@ func (h *handler) getLogByID(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, fmt.Sprintf("/panel/%s/apps/%s/logs/groups/%d?logID=%d", collectorName, appName, logEntry.GroupID.Int64, logEntry.ID), http.StatusSeeOther)
 }
 
-func (h *handler) getAppAnalyticsData(ctx context.Context, collectorName, appName string) (*panelread.AppStats, any, error) {
-	stats, grouped, err := h.panelRead.GetAppAnalytics(ctx, collectorName, appName)
+func (h *handler) getAppAnalyticsData(ctx context.Context, collectorName, appName string) (*panelsvc.AppStats, any, error) {
+	stats, grouped, err := h.panelSvc.GetAppAnalytics(ctx, collectorName, appName)
 	if err != nil {
-		if err == panelread.ErrAppNotFound {
+		if err == panelsvc.ErrAppNotFound {
 			return nil, nil, fmt.Errorf("app not found")
 		}
 		return nil, nil, err
