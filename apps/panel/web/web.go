@@ -9,7 +9,6 @@ import (
 	"github.com/ai-shift/tracer/apps/panel/internal/collectordb"
 	"github.com/ai-shift/tracer/apps/panel/internal/collectors"
 	"github.com/ai-shift/tracer/apps/panel/internal/dbmanager"
-	"github.com/ai-shift/tracer/apps/panel/internal/notifierstore"
 	"github.com/ai-shift/tracer/apps/panel/internal/notify"
 	"github.com/ai-shift/tracer/apps/panel/web/middleware"
 	"github.com/ai-shift/tracer/apps/panel/web/handlers/analytics"
@@ -20,7 +19,7 @@ import (
 	"github.com/ai-shift/tracer/apps/panel/web/handlers/settings"
 )
 
-func Run(port string, dbManager *dbmanager.Manager, collectorDBManager *collectordb.Manager, sampleRate float64, notifyService *notify.Service, authService *auth.Service, notifierStore *notifierstore.Store, tracker *collectors.Tracker, sessionDurationSec int, panelURL string) *http.Server {
+func Run(port string, dbManager *dbmanager.Manager, collectorDBManager *collectordb.Manager, sampleRate float64, notifyService *notify.Service, authService *auth.Service, notifierStore *notify.Store, tracker *collectors.Tracker, sessionDurationSec int, panelURL string) *http.Server {
 	mux := http.NewServeMux()
 
 	// Auth routes (public)

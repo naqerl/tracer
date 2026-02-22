@@ -12,8 +12,6 @@ import (
 	"github.com/ai-shift/tracer/apps/panel/internal/auth"
 	"github.com/ai-shift/tracer/apps/panel/internal/collectordb"
 	"github.com/ai-shift/tracer/apps/panel/internal/dbmanager"
-	"github.com/ai-shift/tracer/apps/panel/internal/notifierloader"
-	"github.com/ai-shift/tracer/apps/panel/internal/notifierstore"
 	"github.com/ai-shift/tracer/apps/panel/internal/notify"
 	"github.com/ai-shift/tracer/apps/panel/db"
 	"github.com/ai-shift/tracer/apps/panel/web/htmx"
@@ -28,12 +26,12 @@ type handler struct {
 	t                  templates.Templates
 	authService        *auth.Service
 	collectorDBManager *collectordb.Manager
-	notifierStore      *notifierstore.Store
+	notifierStore      *notify.Store
 	dbManager          *dbmanager.Manager
 	notifyService      *notify.Service
 }
 
-func InitMux(authService *auth.Service, collectorDBManager *collectordb.Manager, notifierStore *notifierstore.Store, dbManager *dbmanager.Manager, notifyService *notify.Service) *http.ServeMux {
+func InitMux(authService *auth.Service, collectorDBManager *collectordb.Manager, notifierStore *notify.Store, dbManager *dbmanager.Manager, notifyService *notify.Service) *http.ServeMux {
 	m := http.NewServeMux()
 	h := handler{
 		t:                  templates.New(views),
@@ -603,7 +601,7 @@ func (h *handler) updateNotifier(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		cfg := notifierloader.TelegramConfig{Token: token, ChatID: chatID}
+		cfg := notify.TelegramConfig{Token: token, ChatID: chatID}
 		cfgBytes, _ := json.Marshal(cfg)
 		configJSON = string(cfgBytes)
 	default:
@@ -618,7 +616,7 @@ func (h *handler) updateNotifier(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	notifierloader.RegisterNotifierWithUser(r.Context(), h.notifierStore, h.notifyService, h.authService, id, user)
+	notify.RegisterNotifierWithUser(r.Context(), h.notifierStore, h.notifyService, h.authService, id, user)
 
 	http.Redirect(w, r, "/settings/", http.StatusSeeOther)
 }

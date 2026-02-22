@@ -22,8 +22,6 @@ import (
 	"github.com/ai-shift/tracer/apps/panel/internal/collectordb"
 	"github.com/ai-shift/tracer/apps/panel/internal/collectors"
 	"github.com/ai-shift/tracer/apps/panel/internal/dbmanager"
-	"github.com/ai-shift/tracer/apps/panel/internal/notifierloader"
-	"github.com/ai-shift/tracer/apps/panel/internal/notifierstore"
 	"github.com/ai-shift/tracer/apps/panel/internal/notify"
 	"github.com/ai-shift/tracer/apps/panel/internal/retention"
 	panelmigrations "github.com/ai-shift/tracer/apps/panel/sql/panel"
@@ -83,7 +81,7 @@ func main() {
 	authService := auth.New(panelDB, sessionDuration)
 	defer authService.Close()
 
-	notifierStore := notifierstore.New(authService.DB())
+	notifierStore := notify.NewStore(authService.DB())
 
 	// Check if first run (no users exist)
 	hasUsers, err := authService.HasUsers(ctx)
@@ -110,7 +108,7 @@ func main() {
 	go notifyService.Start(ctx)
 
 	// Load and register enabled notifiers from database
-	if err := notifierloader.LoadEnabled(ctx, notifierStore, authService, notifyService); err != nil {
+	if err := notify.LoadEnabled(ctx, notifierStore, authService, notifyService); err != nil {
 		slog.Error("Failed to load notifiers", "error", err)
 		// Continue anyway - notifiers can be added via UI
 	}

@@ -1,4 +1,4 @@
-package notifierstore
+package notify
 
 import (
 	"context"
@@ -7,7 +7,6 @@ import (
 	"fmt"
 
 	"github.com/ai-shift/tracer/apps/panel/db"
-	"github.com/ai-shift/tracer/apps/panel/internal/notify"
 )
 
 type Store struct {
@@ -15,7 +14,7 @@ type Store struct {
 	queries *db.Queries
 }
 
-func New(sqlDB *sql.DB) *Store {
+func NewStore(sqlDB *sql.DB) *Store {
 	return &Store{
 		db:      sqlDB,
 		queries: db.New(sqlDB),
@@ -82,7 +81,7 @@ func (s *Store) DisableNotifier(ctx context.Context, id int64) error {
 	return s.queries.DisableNotifier(ctx, id)
 }
 
-func (s *Store) GetNotifierApps(ctx context.Context, notifierID int64) ([]notify.NotifierAppSubscription, error) {
+func (s *Store) GetNotifierApps(ctx context.Context, notifierID int64) ([]NotifierAppSubscription, error) {
 	rows, err := s.db.QueryContext(ctx,
 		"SELECT app_name, collector_name FROM notifier_app WHERE notifier_id = ?",
 		notifierID)
@@ -91,9 +90,9 @@ func (s *Store) GetNotifierApps(ctx context.Context, notifierID int64) ([]notify
 	}
 	defer rows.Close()
 
-	var subscriptions []notify.NotifierAppSubscription
+	var subscriptions []NotifierAppSubscription
 	for rows.Next() {
-		var sub notify.NotifierAppSubscription
+		var sub NotifierAppSubscription
 		if err := rows.Scan(&sub.AppName, &sub.CollectorName); err != nil {
 			return nil, err
 		}
@@ -117,7 +116,7 @@ func (s *Store) RemoveNotifierApp(ctx context.Context, notifierID int64, appName
 	})
 }
 
-func (s *Store) SetNotifierApps(ctx context.Context, notifierID int64, subscriptions []notify.NotifierAppSubscription) error {
+func (s *Store) SetNotifierApps(ctx context.Context, notifierID int64, subscriptions []NotifierAppSubscription) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
@@ -156,7 +155,7 @@ func (s *Store) GetGlobalNotifiers(ctx context.Context) ([]db.Notifier, error) {
 	return s.queries.GetGlobalNotifiers(ctx)
 }
 
-func (s *Store) CreateNotifier(ctx context.Context, userID int64, name, notifierType, config string, enabled bool) (notify.NotifierData, error) {
+func (s *Store) CreateNotifier(ctx context.Context, userID int64, name, notifierType, config string, enabled bool) (NotifierData, error) {
 	enabledInt := int64(0)
 	if enabled {
 		enabledInt = 1
@@ -170,10 +169,10 @@ func (s *Store) CreateNotifier(ctx context.Context, userID int64, name, notifier
 		Enabled: enabledInt,
 	})
 	if err != nil {
-		return notify.NotifierData{}, err
+		return NotifierData{}, err
 	}
 
-	return notify.NotifierData{
+	return NotifierData{
 		ID:      notifier.ID,
 		UserID:  notifier.UserID,
 		Name:    notifier.Name,
@@ -183,13 +182,13 @@ func (s *Store) CreateNotifier(ctx context.Context, userID int64, name, notifier
 	}, nil
 }
 
-func (s *Store) GetNotifier(ctx context.Context, id int64) (notify.NotifierData, error) {
+func (s *Store) GetNotifier(ctx context.Context, id int64) (NotifierData, error) {
 	notifier, err := s.queries.GetNotifier(ctx, id)
 	if err != nil {
-		return notify.NotifierData{}, err
+		return NotifierData{}, err
 	}
 
-	return notify.NotifierData{
+	return NotifierData{
 		ID:      notifier.ID,
 		UserID:  notifier.UserID,
 		Name:    notifier.Name,

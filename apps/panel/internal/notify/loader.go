@@ -1,4 +1,4 @@
-package notifierloader
+package notify
 
 import (
 	"context"
@@ -8,8 +8,6 @@ import (
 
 	"github.com/ai-shift/tracer/apps/panel/db"
 	"github.com/ai-shift/tracer/apps/panel/internal/auth"
-	"github.com/ai-shift/tracer/apps/panel/internal/notifierstore"
-	"github.com/ai-shift/tracer/apps/panel/internal/notify"
 )
 
 type TelegramConfig struct {
@@ -17,7 +15,7 @@ type TelegramConfig struct {
 	ChatID int64  `json:"chat_id"`
 }
 
-func LoadEnabled(ctx context.Context, notifierStore *notifierstore.Store, authService *auth.Service, notifyService *notify.Service) error {
+func LoadEnabled(ctx context.Context, notifierStore *Store, authService *auth.Service, notifyService *Service) error {
 	notifiers, err := notifierStore.ListNotifiers(ctx)
 	if err != nil {
 		return err
@@ -54,7 +52,7 @@ func LoadEnabled(ctx context.Context, notifierStore *notifierstore.Store, authSe
 			for _, app := range userApps {
 				userAppMap[app] = true
 			}
-			var filtered []notify.NotifierAppSubscription
+			var filtered []NotifierAppSubscription
 			for _, sub := range subscriptions {
 				if sub.AppName == "*" {
 					continue
@@ -86,7 +84,7 @@ func LoadEnabled(ctx context.Context, notifierStore *notifierstore.Store, authSe
 	return nil
 }
 
-func RegisterNotifierWithUser(ctx context.Context, notifierStore *notifierstore.Store, notifyService *notify.Service, authService *auth.Service, notifierID int64, user *db.User) {
+func RegisterNotifierWithUser(ctx context.Context, notifierStore *Store, notifyService *Service, authService *auth.Service, notifierID int64, user *db.User) {
 	notifier, err := notifierStore.GetNotifierDB(ctx, notifierID)
 	if err != nil {
 		slog.Error("Failed to get notifier for registration", "error", err)
@@ -113,7 +111,7 @@ func RegisterNotifierWithUser(ctx context.Context, notifierStore *notifierstore.
 		for _, app := range userApps {
 			userAppMap[app] = true
 		}
-		var filtered []notify.NotifierAppSubscription
+		var filtered []NotifierAppSubscription
 		for _, sub := range subscriptions {
 			if sub.AppName == "*" {
 				continue
@@ -140,14 +138,14 @@ func RegisterNotifierWithUser(ctx context.Context, notifierStore *notifierstore.
 	}
 }
 
-func BuildNotifier(notifier db.Notifier) (notify.Notifier, error) {
+func BuildNotifier(notifier db.Notifier) (Notifier, error) {
 	switch notifier.Type {
 	case "telegram":
 		var cfg TelegramConfig
 		if err := json.Unmarshal([]byte(notifier.Config), &cfg); err != nil {
 			return nil, err
 		}
-		return notify.NewTelegramNotifier(notifier.Name, cfg.Token, cfg.ChatID)
+		return NewTelegramNotifier(notifier.Name, cfg.Token, cfg.ChatID)
 	default:
 		return nil, fmt.Errorf("unknown notifier type: %s", notifier.Type)
 	}
