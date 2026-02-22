@@ -3,7 +3,6 @@ package middleware
 import (
 	"context"
 	"net/http"
-	"strings"
 
 	"github.com/ai-shift/tracer/apps/panel/db"
 	"github.com/ai-shift/tracer/apps/panel/internal/services/auth"
@@ -95,15 +94,7 @@ func RedirectToLogin(w http.ResponseWriter, r *http.Request) {
 func BuildAuthMiddleware(authService *auth.Service, userService *user.Service) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			path := r.URL.Path
-
-			// Ingest paths use API key authentication
-			if strings.HasPrefix(path, "/ingest/") {
-				handleAPIAuth(w, r, next, authService, userService)
-				return
-			}
-
-			// Markdown format paths can use either session or API key auth
+			// Markdown format paths can use either session or user API key auth.
 			if IsMarkdownFormat(r) {
 				attachMarkdownContext(w, r, next, authService, userService)
 				return
@@ -115,49 +106,9 @@ func BuildAuthMiddleware(authService *auth.Service, userService *user.Service) f
 	}
 }
 
-func handleAPIAuth(w http.ResponseWriter, r *http.Request, next http.Handler, authService *auth.Service, userService *user.Service) {
-	// Get API key from header or query parameter
-	apiKey := r.Header.Get("X-API-Key")
-	if apiKey == "" {
-		apiKey = r.URL.Query().Get("api_key")
-	}
-
-	if apiKey == "" {
-		http.Error(w, "API key required", http.StatusUnauthorized)
-		return
-	}
-
-	// First try validating as user API key
-	user, err := authService.ValidateUserAPIKey(r.Context(), apiKey, userService)
-	if err == nil {
-		// Valid user API key - add user to context
-		ctx := context.WithValue(r.Context(), userContextKey, user)
-		next.ServeHTTP(w, r.WithContext(ctx))
-		return
-	}
-
-	// Fall back to global collector API key
-	valid, err := authService.ValidateAPIKey(r.Context(), apiKey)
-	if err != nil {
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-		return
-	}
-
-	if !valid {
-		http.Error(w, "Invalid API key", http.StatusUnauthorized)
-		return
-	}
-
-	next.ServeHTTP(w, r)
-}
-
 func attachMarkdownContext(w http.ResponseWriter, r *http.Request, next http.Handler, authService *auth.Service, userService *user.Service) {
-	// Try API key first (from header or query)
+	// Try API key first from request header.
 	apiKey := r.Header.Get("X-API-Key")
-	if apiKey == "" {
-		apiKey = r.URL.Query().Get("api_key")
-	}
-
 	if apiKey != "" {
 		user, err := authService.ValidateUserAPIKey(r.Context(), apiKey, userService)
 		if err == nil {
@@ -204,6 +155,7 @@ func SetSessionCookie(w http.ResponseWriter, token string, maxAge int) {
 		Path:     "/",
 		MaxAge:   maxAge,
 		HttpOnly: true,
+		Secure:   true,
 		SameSite: http.SameSiteLaxMode,
 	})
 }
