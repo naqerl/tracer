@@ -7,18 +7,12 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"log"
 	"log/slog"
-	"os"
-	"path/filepath"
 	"time"
 
-	"github.com/pressly/goose/v3"
 	"golang.org/x/crypto/bcrypt"
-	_ "modernc.org/sqlite"
 
 	"github.com/ai-shift/tracer/apps/panel/db"
-	panelmigrations "github.com/ai-shift/tracer/apps/panel/sql/panel"
 )
 
 const (
@@ -39,46 +33,15 @@ type Service struct {
 	sessionDuration time.Duration
 }
 
-func New(dataDir string, sessionDuration time.Duration) *Service {
-	if err := os.MkdirAll(dataDir, 0755); err != nil {
-		log.Fatalf("create data dir: %v", err)
-	}
-
-	dbPath := filepath.Join(dataDir, "panel.db")
-	dsn := fmt.Sprintf("file:%s?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=synchronous(NORMAL)&_pragma=foreign_keys(ON)", dbPath)
-
-	sqlDB, err := sql.Open("sqlite", dsn)
-	if err != nil {
-		log.Fatalf("open panel database: %v", err)
-	}
-
+func New(sqlDB *sql.DB, sessionDuration time.Duration) *Service {
 	sqlDB.SetMaxOpenConns(1)
 	sqlDB.SetMaxIdleConns(1)
-
-	if err := runMigrations(sqlDB); err != nil {
-		sqlDB.Close()
-		log.Fatalf("run auth migrations: %v", err)
-	}
 
 	return &Service{
 		db:              sqlDB,
 		queries:         db.New(sqlDB),
 		sessionDuration: sessionDuration,
 	}
-}
-
-func runMigrations(sqlDB *sql.DB) error {
-	gooseProvider, err := goose.NewProvider(goose.DialectSQLite3, sqlDB, panelmigrations.Embed)
-	if err != nil {
-		return fmt.Errorf("create goose provider: %w", err)
-	}
-
-	_, err = gooseProvider.Up(context.Background())
-	if err != nil {
-		return fmt.Errorf("run migrations: %w", err)
-	}
-
-	return nil
 }
 
 func (s *Service) Close() error {

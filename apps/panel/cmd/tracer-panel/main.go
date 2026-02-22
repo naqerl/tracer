@@ -2,14 +2,19 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"flag"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
+
+	"github.com/pressly/goose/v3"
+	_ "modernc.org/sqlite"
 
 	panelconfig "github.com/ai-shift/tracer/apps/panel/internal/config"
 	"github.com/ai-shift/tracer/apps/panel/internal/auth"
@@ -21,7 +26,8 @@ import (
 	"github.com/ai-shift/tracer/apps/panel/internal/notifierstore"
 	"github.com/ai-shift/tracer/apps/panel/internal/notify"
 	"github.com/ai-shift/tracer/apps/panel/internal/retention"
-	"github.com/ai-shift/tracer/apps/panel/internal/web"
+	panelmigrations "github.com/ai-shift/tracer/apps/panel/sql/panel"
+	"github.com/ai-shift/tracer/apps/panel/web"
 )
 
 func main() {
@@ -64,9 +70,17 @@ func main() {
 	}
 	defer collectorDBManager.Close()
 
+	// Initialize panel database and run migrations
+	panelDB, err := initPanelDB(cfg.DataDir)
+	if err != nil {
+		slog.Error("Failed to initialize panel database", "error", err)
+		os.Exit(1)
+	}
+	defer panelDB.Close()
+
 	// Initialize auth service
 	sessionDuration := cfg.SessionDurationParsed()
-	authService := auth.New(cfg.DataDir, sessionDuration)
+	authService := auth.New(panelDB, sessionDuration)
 	defer authService.Close()
 
 	notifierStore := notifierstore.New(authService.DB())
@@ -186,4 +200,39 @@ func main() {
 	}
 
 	slog.Info("Server stopped")
+}
+
+func initPanelDB(dataDir string) (*sql.DB, error) {
+	if err := os.MkdirAll(dataDir, 0755); err != nil {
+		return nil, fmt.Errorf("create data dir: %w", err)
+	}
+
+	dbPath := filepath.Join(dataDir, "panel.db")
+	dsn := fmt.Sprintf("file:%s?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=synchronous(NORMAL)&_pragma=foreign_keys(ON)", dbPath)
+
+	sqlDB, err := sql.Open("sqlite", dsn)
+	if err != nil {
+		return nil, fmt.Errorf("open panel database: %w", err)
+	}
+
+	if err := runMigrations(sqlDB); err != nil {
+		sqlDB.Close()
+		return nil, fmt.Errorf("run migrations: %w", err)
+	}
+
+	return sqlDB, nil
+}
+
+func runMigrations(sqlDB *sql.DB) error {
+	gooseProvider, err := goose.NewProvider(goose.DialectSQLite3, sqlDB, panelmigrations.Embed)
+	if err != nil {
+		return fmt.Errorf("create goose provider: %w", err)
+	}
+
+	_, err = gooseProvider.Up(context.Background())
+	if err != nil {
+		return fmt.Errorf("run migrations: %w", err)
+	}
+
+	return nil
 }
