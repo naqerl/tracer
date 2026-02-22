@@ -7,20 +7,20 @@ import (
 	"time"
 
 	"github.com/ai-shift/tracer/apps/panel/db"
-	"github.com/ai-shift/tracer/apps/panel/internal/collectordb"
+	"github.com/ai-shift/tracer/apps/panel/internal/collectors"
 	"github.com/ai-shift/tracer/apps/panel/internal/dbmanager"
 )
 
 type Service struct {
 	dbManager     *dbmanager.Manager
-	collectorDB   *collectordb.Manager
+	collectorService *collectors.Service
 	retentionDays int
 }
 
-func New(dbManager *dbmanager.Manager, collectorDB *collectordb.Manager, retentionDays int) *Service {
+func New(dbManager *dbmanager.Manager, collectorService *collectors.Service, retentionDays int) *Service {
 	return &Service{
 		dbManager:     dbManager,
-		collectorDB:   collectorDB,
+		collectorService: collectorService,
 		retentionDays: retentionDays,
 	}
 }
@@ -47,29 +47,43 @@ func (s *Service) Start(ctx context.Context) {
 }
 
 func (s *Service) runCleanup(ctx context.Context) {
-	instances, err := s.dbManager.ListAppInstances()
+	// List all collectors from filesystem
+	collectorList, err := s.collectorService.List()
 	if err != nil {
-		slog.Error("Failed to list app instances for cleanup", "error", err)
+		slog.Error("Failed to list collectors for cleanup", "error", err)
 		return
 	}
 
 	cutoff := sql.NullTime{Time: time.Now().AddDate(0, 0, -s.retentionDays), Valid: true}
 
-	for _, instance := range instances {
-		sqlDB, err := s.dbManager.GetDB(instance.CollectorName, instance.AppName)
+	// For each collector, list apps and cleanup
+	for _, collector := range collectorList {
+		apps, err := s.collectorService.ListApps(collector)
 		if err != nil {
-			slog.Error("Failed to get DB for cleanup", "collector_name", instance.CollectorName, "app_name", instance.AppName, "error", err)
+			slog.Error("Failed to list apps for cleanup", "collector", collector, "error", err)
 			continue
 		}
 
-		queries := db.New(sqlDB)
-		err = queries.DeleteOldLogs(ctx, cutoff)
-		if err != nil {
-			slog.Error("Failed to cleanup logs", "collector_name", instance.CollectorName, "app_name", instance.AppName, "error", err)
-			continue
-		}
+		for _, appName := range apps {
+		sqlDB, err := s.dbManager.GetAppDB(collector.String(), appName)
+			if err != nil {
+				if err == dbmanager.ErrDBNotFound {
+					// Skip if DB doesn't exist
+					continue
+				}
+				slog.Error("Failed to get DB for cleanup", "collector", collector, "app", appName, "error", err)
+				continue
+			}
 
-		slog.Debug("Cleaned up old logs", "collector_name", instance.CollectorName, "app_name", instance.AppName, "cutoff", cutoff.Time)
+			queries := db.New(sqlDB)
+			err = queries.DeleteOldLogs(ctx, cutoff)
+			if err != nil {
+				slog.Error("Failed to cleanup logs", "collector", collector, "app", appName, "error", err)
+				continue
+			}
+
+			slog.Debug("Cleaned up old logs", "collector", collector, "app", appName, "cutoff", cutoff.Time)
+		}
 	}
 
 	// Cleanup old system stats
@@ -79,7 +93,7 @@ func (s *Service) runCleanup(ctx context.Context) {
 func (s *Service) cleanupSystemStats(ctx context.Context) {
 	cutoff := time.Now().AddDate(0, 0, -s.retentionDays)
 
-	err := s.collectorDB.DeleteOldStats(ctx, cutoff)
+	err := s.collectorService.DeleteOldStats(ctx, cutoff)
 	if err != nil {
 		slog.Error("Failed to cleanup system stats", "error", err)
 		return

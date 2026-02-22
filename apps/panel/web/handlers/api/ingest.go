@@ -15,7 +15,6 @@ import (
 	"github.com/gorilla/websocket"
 
 	"github.com/ai-shift/tracer/apps/panel/db"
-	"github.com/ai-shift/tracer/apps/panel/internal/collectordb"
 	"github.com/ai-shift/tracer/apps/panel/internal/collectors"
 	"github.com/ai-shift/tracer/apps/panel/internal/dbmanager"
 	"github.com/ai-shift/tracer/apps/panel/internal/notify"
@@ -31,23 +30,23 @@ var upgrader = websocket.Upgrader{
 }
 
 type handler struct {
-	dbManager          *dbmanager.Manager
-	collectorDBManager *collectordb.Manager
-	sampleRate         float64
-	notifyChan         notify.NotificationChan
-	tracker            *collectors.Tracker
-	panelURL           string
+	dbManager       *dbmanager.Manager
+	collectorService *collectors.Service
+	sampleRate      float64
+	notifyChan      notify.NotificationChan
+	tracker         *collectors.Tracker
+	panelURL        string
 }
 
-func InitMux(dbManager *dbmanager.Manager, collectorDBManager *collectordb.Manager, sampleRate float64, notifyChan notify.NotificationChan, tracker *collectors.Tracker, panelURL string) *http.ServeMux {
+func InitMux(dbManager *dbmanager.Manager, collectorService *collectors.Service, sampleRate float64, notifyChan notify.NotificationChan, tracker *collectors.Tracker, panelURL string) *http.ServeMux {
 	m := http.NewServeMux()
 	h := &handler{
-		dbManager:          dbManager,
-		collectorDBManager: collectorDBManager,
-		sampleRate:         sampleRate,
-		notifyChan:         notifyChan,
-		tracker:            tracker,
-		panelURL:           panelURL,
+		dbManager:       dbManager,
+		collectorService: collectorService,
+		sampleRate:      sampleRate,
+		notifyChan:      notifyChan,
+		tracker:         tracker,
+		panelURL:        panelURL,
 	}
 
 	m.HandleFunc("GET /ws/ingest", h.handleWebSocket)
@@ -130,16 +129,15 @@ func (h *handler) handleRegistration(ctx context.Context, connID, remoteAddr, co
 		if appName == "" {
 			continue
 		}
-		if _, err := h.dbManager.GetDB(collectorName, appName); err != nil {
+		// Explicitly create DB for the app during registration
+		if _, err := h.dbManager.CreateAppDB(collectorName, appName); err != nil {
 			slog.Error("Failed to register app", "app_name", appName, "error", err)
 		} else {
 			slog.Info("Registered app", "app_name", appName)
 		}
 
-		// Track which collector serves this app
-		if err := h.collectorDBManager.UpsertCollectorApp(ctx, collectorName, appName); err != nil {
-			slog.Error("Failed to upsert app collector", "app_name", appName, "collector", collectorName, "error", err)
-		}
+		// App is tracked via filesystem (collector/<name>/apps/<app>.db)
+		// No need for separate DB tracking
 	}
 }
 
@@ -204,10 +202,10 @@ func (h *handler) processMessage(ctx context.Context, connID, remoteAddr string,
 		return
 	}
 
-	// Get DB for this app and create queries
-	sqlDB, err := h.dbManager.GetDB(msg.CollectorName, msg.AppName)
+	// Get or create DB for this app
+	sqlDB, err := h.dbManager.CreateAppDB(msg.CollectorName, msg.AppName)
 	if err != nil {
-		slog.Error("Failed to get DB", "error", err, "collector_name", msg.CollectorName, "app_name", msg.AppName)
+		slog.Error("Failed to create/get app DB", "error", err, "collector_name", msg.CollectorName, "app_name", msg.AppName)
 		return
 	}
 	queries := db.New(sqlDB)
@@ -292,10 +290,10 @@ func (h *handler) handleStartup(ctx context.Context, msg types.LogMessage) {
 
 	slog.Info("App startup detected", "app", msg.AppName, "message", msg.Entry.Message)
 
-	// Get DB for this app and create queries
-	sqlDB, err := h.dbManager.GetDB(msg.CollectorName, msg.AppName)
+	// Get or create DB for this app
+	sqlDB, err := h.dbManager.CreateAppDB(msg.CollectorName, msg.AppName)
 	if err != nil {
-		slog.Error("Failed to get DB for startup", "error", err, "collector_name", msg.CollectorName, "app_name", msg.AppName)
+		slog.Error("Failed to create/get app DB for startup", "error", err, "collector_name", msg.CollectorName, "app_name", msg.AppName)
 		return
 	}
 	queries := db.New(sqlDB)
@@ -396,7 +394,7 @@ func (h *handler) handleStats(ctx context.Context, msg types.LogMessage) {
 	// Normalize to UTC for consistent storage
 	ts = ts.UTC()
 
-	err := h.collectorDBManager.InsertSystemStats(ctx, msg.CollectorName, collectordb.InsertSystemStatsParams{
+	err := h.collectorService.InsertSystemStats(ctx, collectors.CollectorName(msg.CollectorName), db.InsertSystemStatsParams{
 		CollectorName:   msg.CollectorName,
 		CpuUsagePercent: msg.Stats.CPUUsagePercent,
 		MemTotalMb:      int64(msg.Stats.MemTotalMB),

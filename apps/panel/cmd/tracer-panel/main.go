@@ -18,7 +18,6 @@ import (
 
 	panelconfig "github.com/ai-shift/tracer/apps/panel/internal/config"
 	"github.com/ai-shift/tracer/apps/panel/internal/auth"
-	"github.com/ai-shift/tracer/apps/panel/internal/collectordb"
 	"github.com/ai-shift/tracer/apps/panel/internal/collectors"
 	"github.com/ai-shift/tracer/apps/panel/internal/dbmanager"
 	"github.com/ai-shift/tracer/apps/panel/internal/notify"
@@ -62,12 +61,7 @@ func main() {
 	}
 	defer dbManager.Close()
 
-	collectorDBManager, err := collectordb.New(cfg.DataDir)
-	if err != nil {
-		slog.Error("Failed to create collector database manager", "error", err)
-		os.Exit(1)
-	}
-	defer collectorDBManager.Close()
+	collectorService := collectors.New(dbManager)
 
 	// Initialize panel database and run migrations
 	panelDB, err := initPanelDB(cfg.DataDir)
@@ -116,7 +110,7 @@ func main() {
 	}
 
 	// Initialize retention service
-	retentionService := retention.New(dbManager, collectorDBManager, cfg.RetentionDays)
+	retentionService := retention.New(dbManager, collectorService, cfg.RetentionDays)
 	go retentionService.Start(ctx)
 
 	// Initialize collector tracker
@@ -152,28 +146,11 @@ func main() {
 		}
 	}()
 
-	// Start system stats cleanup goroutine (use same retention as logs)
-	go func() {
-		ticker := time.NewTicker(24 * time.Hour)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				cutoff := time.Now().Add(-time.Duration(cfg.RetentionDays) * 24 * time.Hour)
-				if err := collectorDBManager.DeleteOldStats(ctx, cutoff); err != nil {
-					slog.Error("Failed to cleanup old stats", "error", err)
-				} else {
-					slog.Info("Cleaned up old stats", "cutoff", cutoff.Format(time.RFC3339))
-				}
-			}
-		}
-	}()
+	// Note: System stats cleanup is handled by retention service
 
 	// Initialize HTTP server
 	sessionDurationSec := int(sessionDuration.Seconds())
-	server := web.Run(cfg.Port, dbManager, collectorDBManager, cfg.SampleRate, notifyService, authService, userService, notifierStore, tracker, sessionDurationSec, cfg.PanelURL)
+	server := web.Run(cfg.Port, dbManager, collectorService, cfg.SampleRate, notifyService, authService, userService, notifierStore, tracker, sessionDurationSec, cfg.PanelURL)
 
 	// Handle shutdown signals
 	sigChan := make(chan os.Signal, 1)

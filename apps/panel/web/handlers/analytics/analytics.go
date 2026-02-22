@@ -13,7 +13,6 @@ import (
 
 	"github.com/ai-shift/tracer/apps/panel/internal/auth"
 	"github.com/ai-shift/tracer/apps/panel/internal/user"
-	"github.com/ai-shift/tracer/apps/panel/internal/collectordb"
 	"github.com/ai-shift/tracer/apps/panel/internal/collectors"
 	"github.com/ai-shift/tracer/apps/panel/internal/dbmanager"
 	"github.com/ai-shift/tracer/apps/panel/db"
@@ -26,23 +25,23 @@ import (
 var views embed.FS
 
 type handler struct {
-	t                  templates.Templates
-	dbManager          *dbmanager.Manager
-	authService        *auth.Service
-	userService        *user.Service
-	collectorDBManager *collectordb.Manager
-	tracker            *collectors.Tracker
+	t               templates.Templates
+	dbManager       *dbmanager.Manager
+	authService     *auth.Service
+	userService     *user.Service
+	collectorService *collectors.Service
+	tracker         *collectors.Tracker
 }
 
-func InitMux(dbManager *dbmanager.Manager, authService *auth.Service, userService *user.Service, collectorDBManager *collectordb.Manager, tracker *collectors.Tracker) *http.ServeMux {
+func InitMux(dbManager *dbmanager.Manager, authService *auth.Service, userService *user.Service, collectorService *collectors.Service, tracker *collectors.Tracker) *http.ServeMux {
 	m := http.NewServeMux()
 	h := handler{
-		t:                  templates.New(views),
-		dbManager:          dbManager,
-		authService:        authService,
-		userService:        userService,
-		collectorDBManager: collectorDBManager,
-		tracker:            tracker,
+		t:               templates.New(views),
+		dbManager:       dbManager,
+		authService:     authService,
+		userService:     userService,
+		collectorService: collectorService,
+		tracker:         tracker,
 	}
 
 	// Dashboard - list all collectors
@@ -161,11 +160,11 @@ func (h *handler) collectorOverview(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get latest stats
-	var stats *collectordb.SystemStat
+	var stats *db.SystemStat
 	var statsDisplay *StatsDisplay
-	s, err := h.collectorDBManager.GetLatestStats(r.Context(), collectorName)
-	if err == nil && s != nil {
-		stats = s
+	s, err := h.collectorService.GetLatestStats(r.Context(), collectors.CollectorName(collectorName))
+	if err == nil {
+		stats = &s
 		statsDisplay = formatStatsForDisplay(s)
 	}
 
@@ -214,7 +213,7 @@ func (h *handler) collectorResources(w http.ResponseWriter, r *http.Request) {
 		Build()
 
 	since := parseTimeRange(rangeParam)
-	stats, err := h.collectorDBManager.GetCollectorStatsHistory(r.Context(), collectorName, since)
+	stats, err := h.collectorService.GetStatsHistory(r.Context(), collectors.CollectorName(collectorName), since)
 	if err != nil {
 		h.t.RenderError(w, r, "Error", "Failed to get stats history", http.StatusInternalServerError)
 		return
@@ -347,7 +346,7 @@ func (h *handler) appAnalytics(w http.ResponseWriter, r *http.Request) {
 
 // StatsDisplay holds formatted stats data for display
 type StatsDisplay struct {
-	*collectordb.SystemStat
+	db.SystemStat
 	TimestampFormatted string // Formatted timestamp
 	Staleness          string // "fresh", "warning", "stale", "old"
 }
@@ -363,15 +362,12 @@ type appStats struct {
 // CollectorWithStats combines collector info with latest system stats
 type CollectorWithStats struct {
 	collectors.Collector
-	Stats        *collectordb.SystemStat
+	Stats        db.SystemStat
 	StatsDisplay *StatsDisplay
 }
 
 // formatStatsForDisplay creates a StatsDisplay from SystemStat
-func formatStatsForDisplay(stats *collectordb.SystemStat) *StatsDisplay {
-	if stats == nil {
-		return nil
-	}
+func formatStatsForDisplay(stats db.SystemStat) *StatsDisplay {
 
 	now := time.Now()
 	age := now.Sub(stats.CreatedAt)
@@ -444,8 +440,8 @@ func (h *handler) getFilteredCollectors(r *http.Request, user *db.User) ([]Colle
 			Collector: c,
 		}
 
-		stats, err := h.collectorDBManager.GetLatestStats(r.Context(), c.Name)
-		if err == nil && stats != nil {
+		stats, err := h.collectorService.GetLatestStats(r.Context(), collectors.CollectorName(c.Name))
+		if err == nil {
 			cws.Stats = stats
 			cws.StatsDisplay = formatStatsForDisplay(stats)
 		}
@@ -533,9 +529,14 @@ func (h *handler) appLogs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sqlDB, err := h.dbManager.GetDB(collectorName, appName)
+	sqlDB, err := h.dbManager.GetAppDB(collectorName, appName)
 	if err != nil {
-		h.t.RenderError(w, r, "Error", "App not found", http.StatusNotFound)
+		if err == dbmanager.ErrDBNotFound {
+			h.t.RenderError(w, r, "Error", "App not found", http.StatusNotFound)
+			return
+		}
+		slog.Error("Failed to get app DB", "error", err)
+		h.t.RenderError(w, r, "Error", "Internal error", http.StatusInternalServerError)
 		return
 	}
 	queries := db.New(sqlDB)
@@ -740,9 +741,14 @@ func (h *handler) appLogsChartData(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sqlDB, err := h.dbManager.GetDB(collectorName, appName)
+	sqlDB, err := h.dbManager.GetAppDB(collectorName, appName)
 	if err != nil {
-		http.Error(w, "App not found", http.StatusNotFound)
+		if err == dbmanager.ErrDBNotFound {
+			http.Error(w, "App not found", http.StatusNotFound)
+			return
+		}
+		slog.Error("Failed to get app DB", "error", err)
+		http.Error(w, "Internal error", http.StatusInternalServerError)
 		return
 	}
 	queries := db.New(sqlDB)
@@ -798,9 +804,14 @@ func (h *handler) getLogByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sqlDB, err := h.dbManager.GetDB(collectorName, appName)
+	sqlDB, err := h.dbManager.GetAppDB(collectorName, appName)
 	if err != nil {
-		http.Error(w, "App not found", http.StatusNotFound)
+		if err == dbmanager.ErrDBNotFound {
+			http.Error(w, "App not found", http.StatusNotFound)
+			return
+		}
+		slog.Error("Failed to get app DB", "error", err)
+		http.Error(w, "Internal error", http.StatusInternalServerError)
 		return
 	}
 	queries := db.New(sqlDB)
@@ -827,8 +838,11 @@ func (h *handler) getLogByID(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) getAppAnalyticsData(ctx context.Context, collectorName, appName string) (*appStats, any, error) {
-	sqlDB, err := h.dbManager.GetDB(collectorName, appName)
+	sqlDB, err := h.dbManager.GetAppDB(collectorName, appName)
 	if err != nil {
+		if err == dbmanager.ErrDBNotFound {
+			return nil, nil, fmt.Errorf("app not found")
+		}
 		return nil, nil, err
 	}
 	queries := db.New(sqlDB)

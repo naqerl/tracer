@@ -11,7 +11,7 @@ import (
 
 	"github.com/ai-shift/tracer/apps/panel/internal/auth"
 	"github.com/ai-shift/tracer/apps/panel/internal/user"
-	"github.com/ai-shift/tracer/apps/panel/internal/collectordb"
+	"github.com/ai-shift/tracer/apps/panel/internal/collectors"
 	"github.com/ai-shift/tracer/apps/panel/internal/dbmanager"
 	"github.com/ai-shift/tracer/apps/panel/internal/notify"
 	"github.com/ai-shift/tracer/apps/panel/db"
@@ -24,25 +24,25 @@ import (
 var views embed.FS
 
 type handler struct {
-	t                  templates.Templates
-	authService        *auth.Service
-	userService        *user.Service
-	collectorDBManager *collectordb.Manager
-	notifierStore      *notify.Store
-	dbManager          *dbmanager.Manager
-	notifyService      *notify.Service
+	t               templates.Templates
+	authService     *auth.Service
+	userService     *user.Service
+	collectorService *collectors.Service
+	notifierStore   *notify.Store
+	dbManager       *dbmanager.Manager
+	notifyService   *notify.Service
 }
 
-func InitMux(authService *auth.Service, userService *user.Service, collectorDBManager *collectordb.Manager, notifierStore *notify.Store, dbManager *dbmanager.Manager, notifyService *notify.Service) *http.ServeMux {
+func InitMux(authService *auth.Service, userService *user.Service, collectorService *collectors.Service, notifierStore *notify.Store, dbManager *dbmanager.Manager, notifyService *notify.Service) *http.ServeMux {
 	m := http.NewServeMux()
 	h := handler{
-		t:                  templates.New(views),
-		authService:        authService,
-		userService:        userService,
-		collectorDBManager: collectorDBManager,
-		notifierStore:      notifierStore,
-		dbManager:          dbManager,
-		notifyService:      notifyService,
+		t:               templates.New(views),
+		authService:     authService,
+		userService:     userService,
+		collectorService: collectorService,
+		notifierStore:   notifierStore,
+		dbManager:       dbManager,
+		notifyService:   notifyService,
 	}
 
 	// Users management
@@ -232,7 +232,7 @@ func (h *handler) getUserApps(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	allApps, err := h.dbManager.ListApps()
+	allApps, err := h.listAllApps(r.Context())
 	if err != nil {
 		h.t.RenderError(w, r, "Error", "Failed to list apps", http.StatusInternalServerError)
 		return
@@ -740,18 +740,24 @@ func (h *handler) getNotifierApps(w http.ResponseWriter, r *http.Request) {
 		subscriptionMap[key] = true
 	}
 
-	// Get app-collector mappings
-	appCollectors, err := h.collectorDBManager.ListAppCollectors(r.Context())
+	// Get app-collector mappings from filesystem
+	collectors, err := h.collectorService.List()
 	if err != nil {
-		slog.Error("Failed to get app collectors", "error", err)
+		slog.Error("Failed to list collectors", "error", err)
 		h.t.RenderError(w, r, "Error", "Failed to list collectors", http.StatusInternalServerError)
 		return
 	}
 
 	// Build structured data: map[collector][]app
 	collectorApps := make(map[string][]string)
-	for _, ac := range appCollectors {
-		collectorApps[ac.CollectorName] = append(collectorApps[ac.CollectorName], ac.AppName)
+	for _, collector := range collectors {
+		apps, err := h.collectorService.ListApps(collector)
+		if err != nil {
+			slog.Error("Failed to list apps for collector", "collector", collector, "error", err)
+			h.t.RenderError(w, r, "Error", "Failed to list apps", http.StatusInternalServerError)
+			return
+		}
+		collectorApps[collector.String()] = apps
 	}
 
 	// Filter by user access for non-admins
@@ -888,9 +894,34 @@ func (h *handler) updateNotifierApps(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/settings/", http.StatusSeeOther)
 }
 
+// listAllApps returns all unique app names across all collectors
+func (h *handler) listAllApps(ctx context.Context) ([]string, error) {
+	collectors, err := h.collectorService.List()
+	if err != nil {
+		return nil, err
+	}
+
+	appSet := make(map[string]struct{})
+	for _, collector := range collectors {
+		apps, err := h.collectorService.ListApps(collector)
+		if err != nil {
+			return nil, err
+		}
+		for _, app := range apps {
+			appSet[app] = struct{}{}
+		}
+	}
+
+	result := make([]string, 0, len(appSet))
+	for app := range appSet {
+		result = append(result, app)
+	}
+	return result, nil
+}
+
 // getAvailableApps returns apps available to a user (all apps for admins, user's apps for others)
 func (h *handler) getAvailableApps(ctx context.Context, user *db.User) ([]string, error) {
-	allApps, err := h.dbManager.ListApps()
+	allApps, err := h.listAllApps(ctx)
 	if err != nil {
 		return nil, err
 	}
