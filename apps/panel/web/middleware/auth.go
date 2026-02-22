@@ -97,8 +97,8 @@ func BuildAuthMiddleware(authService *auth.Service, userService *user.Service) f
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			path := r.URL.Path
 
-			// API paths use API key authentication
-			if strings.HasPrefix(path, "/api/") {
+			// Ingest paths use API key authentication
+			if strings.HasPrefix(path, "/ingest/") {
 				handleAPIAuth(w, r, next, authService, userService)
 				return
 			}
