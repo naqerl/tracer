@@ -60,6 +60,20 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Ensure we always write a usable raw key for collectors.
+	// EnsureAPIKey may return only a masked preview when a hashed key already exists.
+	if *keyFile != "" && len(apiKey) >= 4 && apiKey[:4] == "****" {
+		apiKey, err = auth.GenerateAPIKey()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "failed to generate collector api key: %v\n", err)
+			os.Exit(1)
+		}
+		if err := authSvc.SetAPIKey(ctx, apiKey); err != nil {
+			fmt.Fprintf(os.Stderr, "failed to persist collector api key: %v\n", err)
+			os.Exit(1)
+		}
+	}
+
 	if *keyFile != "" {
 		if err := os.WriteFile(*keyFile, []byte(apiKey), 0600); err != nil {
 			fmt.Fprintf(os.Stderr, "failed to write key file: %v\n", err)
