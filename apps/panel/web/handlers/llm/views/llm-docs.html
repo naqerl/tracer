@@ -28,7 +28,7 @@
                 <h3 class="text-lg font-medium text-fg mb-3">Using Your API Key</h3>
                 <div class="bg-bg p-4 mb-6">
                     <p class="text-xs text-fg-secondary mb-2">Use request header:</p>
-                    <code class="text-green-400 text-sm">curl -H "X-API-Key: YOUR_KEY" "https://{{.BaseURL}}/analytics.md"</code>
+                    <code class="text-green-400 text-sm">curl -H "X-API-Key: YOUR_KEY" "https://{{.BaseURL}}/panel.md"</code>
                 </div>
 
                 <h2 class="text-xl font-semibold text-fg mt-8 mb-4">Available Endpoints</h2>
@@ -36,15 +36,15 @@
                 <h3 class="text-lg font-medium text-fg mb-3">Analytics</h3>
                 <ul class="space-y-3 mb-6">
                     <li class="bg-bg p-3">
-                        <code class="text-accent">GET /analytics.md</code>
+                        <code class="text-accent">GET /panel.md</code>
                         <p class="text-sm text-fg-secondary mt-1">Dashboard - Lists all collectors</p>
                     </li>
                     <li class="bg-bg p-3">
-                        <code class="text-accent">GET /analytics/{collector}.md</code>
+                        <code class="text-accent">GET /panel/{collector}.md</code>
                         <p class="text-sm text-fg-secondary mt-1">Collector overview with system stats</p>
                     </li>
                     <li class="bg-bg p-3">
-                        <code class="text-accent">GET /analytics/{collector}/apps/{app}.md</code>
+                        <code class="text-accent">GET /panel/{collector}/apps/{app}.md</code>
                         <p class="text-sm text-fg-secondary mt-1">App analytics with statistics and grouped logs</p>
                     </li>
                 </ul>

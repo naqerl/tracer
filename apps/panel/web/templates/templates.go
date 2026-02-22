@@ -25,20 +25,20 @@ type Templates struct {
 
 func New(fsys fs.FS) Templates {
 	funcMap := template.FuncMap{
-		"formatDate":      formatDate,
-		"formatDateTime":  formatDateTime,
-		"levelClass":      levelClass,
-		"truncate":        truncate,
-		"nullStr":         nullStr,
-		"hasContext":      hasContext,
-		"parseContext":    parseContext,
-		"urlEncode":       url.QueryEscape,
-		"toFloat":         toFloat,
-		"divFloat":        divFloat,
-		"mulFloat":        mulFloat,
-		"sub":             func(a, b int) int { return a - b },
-		"isAnalyticsPath": isAnalyticsPath,
-		"isSettingsPath":  isSettingsPath,
+		"formatDate":     formatDate,
+		"formatDateTime": formatDateTime,
+		"levelClass":     levelClass,
+		"truncate":       truncate,
+		"nullStr":        nullStr,
+		"hasContext":     hasContext,
+		"parseContext":   parseContext,
+		"urlEncode":      url.QueryEscape,
+		"toFloat":        toFloat,
+		"divFloat":       divFloat,
+		"mulFloat":       mulFloat,
+		"sub":            func(a, b int) int { return a - b },
+		"isPanelPath":    isPanelPath,
+		"isSettingsPath": isSettingsPath,
 	}
 
 	// Parse shared templates first
@@ -89,8 +89,8 @@ func (t Templates) RenderMarkdown(w http.ResponseWriter, r *http.Request, name s
 
 // BreadcrumbSegment represents a single segment in the breadcrumb path
 type BreadcrumbSegment struct {
-	Text string // lowercase text, e.g., "analytics", "aishift", "apps", "mimi"
-	URL  string // full URL up to this segment, e.g., "/analytics/aishift"
+	Text string // lowercase text, e.g., "panel", "aishift", "apps", "mimi"
+	URL  string // full URL up to this segment, e.g., "/panel/aishift"
 }
 
 // NavData holds data for the shared navbar template
@@ -136,8 +136,8 @@ func (b *NavBuilder) Build() NavData {
 func NewNavData(title, activePage, username string) NavData {
 	// Convert old format to new breadcrumb format
 	builder := NewNavBuilder()
-	if activePage == "analytics" {
-		builder.Add("analytics", "analytics")
+	if activePage == "panel" {
+		builder.Add("panel", "panel")
 	} else if activePage == "settings" {
 		builder.Add("settings", "settings")
 	}
@@ -245,11 +245,11 @@ func mulFloat(a, b float64) float64 {
 	return a * b
 }
 
-func isAnalyticsPath(breadcrumbs []BreadcrumbSegment) bool {
+func isPanelPath(breadcrumbs []BreadcrumbSegment) bool {
 	if len(breadcrumbs) == 0 {
 		return false
 	}
-	return breadcrumbs[0].Text == "analytics"
+	return breadcrumbs[0].Text == "panel"
 }
 
 func isSettingsPath(breadcrumbs []BreadcrumbSegment) bool {

@@ -55,7 +55,7 @@ func (h *handler) renderFormError(w http.ResponseWriter, msg string) {
 
 func (h *handler) loginPage(w http.ResponseWriter, r *http.Request) {
 	if user := middleware.GetUser(r); user != nil {
-		http.Redirect(w, r, "/analytics/", http.StatusSeeOther)
+		http.Redirect(w, r, "/panel/", http.StatusSeeOther)
 		return
 	}
 
@@ -81,10 +81,10 @@ func (h *handler) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	middleware.SetSessionCookie(w, token, int(h.sessionMax.Seconds()))
+	middleware.SetSessionCookie(w, r, token, int(h.sessionMax.Seconds()))
 	slog.Info("User logged in", "username", user.Username)
 
-	w.Header().Set("HX-Redirect", "/analytics/")
+	w.Header().Set("HX-Redirect", "/panel/")
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -175,9 +175,9 @@ func (h *handler) setup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	middleware.SetSessionCookie(w, token, int(h.sessionMax.Seconds()))
+	middleware.SetSessionCookie(w, r, token, int(h.sessionMax.Seconds()))
 	slog.Info("Admin user created and logged in", "username", username)
 
-	w.Header().Set("HX-Redirect", "/analytics/")
+	w.Header().Set("HX-Redirect", "/panel/")
 	w.WriteHeader(http.StatusOK)
 }

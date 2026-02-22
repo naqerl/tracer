@@ -226,7 +226,7 @@ func (h *handler) processMessage(ctx context.Context, connID, remoteAddr string,
 		// Build the alert message with markdown link
 		alertMessage := fmt.Sprintf("```%s```", msg.Entry.Message)
 		if h.panelURL != "" {
-			logsURL := fmt.Sprintf("%s/analytics/%s/apps/%s/logs",
+			logsURL := fmt.Sprintf("%s/panel/%s/apps/%s/logs",
 				h.panelURL,
 				msg.CollectorName,
 				msg.AppName)
@@ -271,7 +271,7 @@ func (h *handler) handleStartup(ctx context.Context, msg types.LogMessage) {
 		// Build the startup message with markdown link
 		startupMessage := msg.Entry.Message
 		if h.panelURL != "" {
-			logsURL := fmt.Sprintf("%s/analytics/%s/apps/%s/logs",
+			logsURL := fmt.Sprintf("%s/panel/%s/apps/%s/logs",
 				h.panelURL,
 				msg.CollectorName,
 				msg.AppName)

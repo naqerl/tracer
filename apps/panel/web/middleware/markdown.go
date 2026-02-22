@@ -31,9 +31,12 @@ func BuildMarkdownMiddleware() func(http.Handler) http.Handler {
 				// Remove .md suffix from path and update request
 				trimmed := strings.TrimSuffix(path, ".md")
 
-				// Avoid ServeMux trailing slash redirect for analytics root
-				if trimmed == "/analytics" {
-					trimmed = "/analytics/"
+				// Avoid ServeMux trailing slash redirects for section roots.
+				if trimmed == "/panel" {
+					trimmed = "/panel/"
+				}
+				if trimmed == "/settings" {
+					trimmed = "/settings/"
 				}
 
 				r.URL.Path = trimmed

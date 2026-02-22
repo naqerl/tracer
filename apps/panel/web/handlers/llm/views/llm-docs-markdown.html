@@ -18,7 +18,7 @@ All endpoints require authentication via API key.
 
 Use request header:
 ```bash
-curl -H "X-API-Key: YOUR_KEY" "https://panel.example.com/analytics.md"
+curl -H "X-API-Key: YOUR_KEY" "https://panel.example.com/panel.md"
 ```
 
 ## Permissions
@@ -33,30 +33,30 @@ API keys inherit your user's app access permissions:
 
 #### Dashboard
 ```
-GET /analytics.md
+GET /panel.md
 ```
 Lists all collectors with their status, system stats, and app counts.
 
 #### Collector Overview
 ```
-GET /analytics/{collector}.md
+GET /panel/{collector}.md
 ```
 Shows system stats and applications for a specific collector.
 
 **Example:**
 ```
-GET /analytics/my-server.md
+GET /panel/my-server.md
 ```
 
 #### App Analytics
 ```
-GET /analytics/{collector}/apps/{app}.md
+GET /panel/{collector}/apps/{app}.md
 ```
 Shows statistics and grouped logs for a specific application (last 24 hours).
 
 **Example:**
 ```
-GET /analytics/my-server/apps/web-api.md
+GET /panel/my-server/apps/web-api.md
 ```
 
 ## Response Format
@@ -72,19 +72,19 @@ All endpoints return markdown-formatted text with:
 ### Check System Health
 ```bash
 curl -H "X-API-Key: YOUR_KEY" \
-  "https://panel.example.com/analytics.md"
+  "https://panel.example.com/panel.md"
 ```
 
 ### View App Statistics and Logs
 ```bash
 curl -H "X-API-Key: YOUR_KEY" \
-  "https://panel.example.com/analytics/my-server/apps/web-api.md"
+  "https://panel.example.com/panel/my-server/apps/web-api.md"
 ```
 
 ### Monitor Specific Collector
 ```bash
 curl -H "X-API-Key: YOUR_KEY" \
-  "https://panel.example.com/analytics/my-server.md"
+  "https://panel.example.com/panel/my-server.md"
 ```
 
 ## Rate Limits
