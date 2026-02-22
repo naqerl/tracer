@@ -13,7 +13,9 @@ import (
 	panelsvc "github.com/ai-shift/tracer/apps/panel/internal/services/panel"
 	"github.com/ai-shift/tracer/apps/panel/internal/services/permissions"
 	"github.com/ai-shift/tracer/apps/panel/web/middleware"
+	authmw "github.com/ai-shift/tracer/apps/panel/web/middleware/auth"
 	"github.com/ai-shift/tracer/apps/panel/web/templates"
+	sharedtypes "github.com/ai-shift/tracer/libs/types"
 )
 
 //go:embed views/*.html
@@ -39,7 +41,8 @@ func InitMux(panelSvc *panelsvc.Service, permissions *permissions.Service, inges
 
 	// Dashboard
 	m.HandleFunc("GET /", h.dashboardPage)
-	m.HandleFunc("GET /collectors", h.dashboardCollectors)
+	m.HandleFunc("GET /collectors", h.dashboardPage)
+	m.HandleFunc("GET /collectors/entries", h.dashboardCollectors)
 
 	// Collector
 	m.HandleFunc("GET /collectors/{collector}", h.collectorOverviewPage)
@@ -80,8 +83,8 @@ type CollectorWithStats struct {
 // Dashboard handlers
 
 func (h *handler) dashboardPage(w http.ResponseWriter, r *http.Request) {
-	user := middleware.RequireAuthRedirect(w, r)
-	if user == nil {
+	user, err := authmw.RequireAuthRedirect(w, r)
+	if err != nil {
 		return
 	}
 
@@ -94,7 +97,7 @@ func (h *handler) dashboardPage(w http.ResponseWriter, r *http.Request) {
 	data := map[string]any{
 		"Title":      "Panel",
 		"User":       user,
-		"IsAdmin":    user.IsAdmin == 1,
+		"IsAdmin":    user.IsAdmin,
 		"Nav":        templates.NewNavBuilder().Add("panel", "panel").Build(),
 		"Collectors": collectorsWithStats,
 	}
@@ -108,8 +111,8 @@ func (h *handler) dashboardPage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) dashboardCollectors(w http.ResponseWriter, r *http.Request) {
-	user := middleware.GetUser(r)
-	if user == nil {
+	user, err := authmw.GetUser(r)
+	if err != nil {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
@@ -126,8 +129,8 @@ func (h *handler) dashboardCollectors(w http.ResponseWriter, r *http.Request) {
 // Collector handlers
 
 func (h *handler) collectorOverviewPage(w http.ResponseWriter, r *http.Request) {
-	user := middleware.RequireAuthRedirect(w, r)
-	if user == nil {
+	user, err := authmw.RequireAuthRedirect(w, r)
+	if err != nil {
 		return
 	}
 
@@ -146,7 +149,7 @@ func (h *handler) collectorOverviewPage(w http.ResponseWriter, r *http.Request) 
 		"Title":         collectorName,
 		"CollectorName": collectorName,
 		"User":          user,
-		"IsAdmin":       user.IsAdmin == 1,
+		"IsAdmin":       user.IsAdmin,
 		"Nav": templates.NewNavBuilder().
 			Add("panel", "panel").
 			Add("collectors", "collectors").
@@ -181,8 +184,8 @@ func (h *handler) collectorOverviewPage(w http.ResponseWriter, r *http.Request) 
 }
 
 func (h *handler) collectorOverviewData(w http.ResponseWriter, r *http.Request) {
-	user := middleware.GetUser(r)
-	if user == nil {
+	user, err := authmw.GetUser(r)
+	if err != nil {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
@@ -221,8 +224,8 @@ func (h *handler) collectorOverviewData(w http.ResponseWriter, r *http.Request) 
 }
 
 func (h *handler) collectorResourcesPage(w http.ResponseWriter, r *http.Request) {
-	user := middleware.RequireAuthRedirect(w, r)
-	if user == nil {
+	user, err := authmw.RequireAuthRedirect(w, r)
+	if err != nil {
 		return
 	}
 
@@ -246,7 +249,7 @@ func (h *handler) collectorResourcesPage(w http.ResponseWriter, r *http.Request)
 		"CollectorName": collectorName,
 		"RangeParam":    rangeParam,
 		"User":          user,
-		"IsAdmin":       user.IsAdmin == 1,
+		"IsAdmin":       user.IsAdmin,
 		"Nav": templates.NewNavBuilder().
 			Add("panel", "panel").
 			Add("collectors", "collectors").
@@ -259,8 +262,8 @@ func (h *handler) collectorResourcesPage(w http.ResponseWriter, r *http.Request)
 }
 
 func (h *handler) collectorResourcesEntries(w http.ResponseWriter, r *http.Request) {
-	user := middleware.GetUser(r)
-	if user == nil {
+	user, err := authmw.GetUser(r)
+	if err != nil {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
@@ -294,8 +297,8 @@ func (h *handler) collectorResourcesEntries(w http.ResponseWriter, r *http.Reque
 }
 
 func (h *handler) collectorAppsPage(w http.ResponseWriter, r *http.Request) {
-	user := middleware.RequireAuthRedirect(w, r)
-	if user == nil {
+	user, err := authmw.RequireAuthRedirect(w, r)
+	if err != nil {
 		return
 	}
 
@@ -313,7 +316,7 @@ func (h *handler) collectorAppsPage(w http.ResponseWriter, r *http.Request) {
 		"Title":         collectorName + " Apps",
 		"CollectorName": collectorName,
 		"User":          user,
-		"IsAdmin":       user.IsAdmin == 1,
+		"IsAdmin":       user.IsAdmin,
 		"Nav": templates.NewNavBuilder().
 			Add("panel", "panel").
 			Add("collectors", "collectors").
@@ -324,8 +327,8 @@ func (h *handler) collectorAppsPage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) collectorAppsEntries(w http.ResponseWriter, r *http.Request) {
-	user := middleware.GetUser(r)
-	if user == nil {
+	user, err := authmw.GetUser(r)
+	if err != nil {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
@@ -355,8 +358,8 @@ func (h *handler) collectorAppsEntries(w http.ResponseWriter, r *http.Request) {
 // App logs handlers
 
 func (h *handler) appAnalyticsPage(w http.ResponseWriter, r *http.Request) {
-	user := middleware.RequireAuthRedirect(w, r)
-	if user == nil {
+	user, err := authmw.RequireAuthRedirect(w, r)
+	if err != nil {
 		return
 	}
 
@@ -393,7 +396,7 @@ func (h *handler) appAnalyticsPage(w http.ResponseWriter, r *http.Request) {
 		"Title":         appName + " Analytics",
 		"AppName":       appName,
 		"CollectorName": collectorName,
-		"IsAdmin":       user.IsAdmin == 1,
+		"IsAdmin":       user.IsAdmin,
 		"Nav": templates.NewNavBuilder().
 			Add("panel", "panel").
 			Add("collectors", "collectors").
@@ -405,8 +408,8 @@ func (h *handler) appAnalyticsPage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) appRecentLogs(w http.ResponseWriter, r *http.Request) {
-	user := middleware.GetUser(r)
-	if user == nil {
+	user, err := authmw.GetUser(r)
+	if err != nil {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
@@ -438,8 +441,8 @@ func (h *handler) appRecentLogs(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) appLogsPage(w http.ResponseWriter, r *http.Request) {
-	user := middleware.RequireAuthRedirect(w, r)
-	if user == nil {
+	user, err := authmw.RequireAuthRedirect(w, r)
+	if err != nil {
 		return
 	}
 
@@ -483,7 +486,7 @@ func (h *handler) appLogsPage(w http.ResponseWriter, r *http.Request) {
 		"AppName":       appName,
 		"CollectorName": collectorName,
 		"User":          user,
-		"IsAdmin":       user.IsAdmin == 1,
+		"IsAdmin":       user.IsAdmin,
 		"Nav": templates.NewNavBuilder().
 			Add("panel", "panel").
 			Add("collectors", "collectors").
@@ -496,8 +499,8 @@ func (h *handler) appLogsPage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) appLogGroupsEntries(w http.ResponseWriter, r *http.Request) {
-	user := middleware.GetUser(r)
-	if user == nil {
+	user, err := authmw.GetUser(r)
+	if err != nil {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
@@ -557,8 +560,8 @@ func (h *handler) appLogGroupsEntries(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) appLogGroupPage(w http.ResponseWriter, r *http.Request) {
-	user := middleware.RequireAuthRedirect(w, r)
-	if user == nil {
+	user, err := authmw.RequireAuthRedirect(w, r)
+	if err != nil {
 		return
 	}
 
@@ -599,7 +602,7 @@ func (h *handler) appLogGroupPage(w http.ResponseWriter, r *http.Request) {
 		"LogGroup":       detail.Group,
 		"HighlightLogID": highlightLogID,
 		"User":           user,
-		"IsAdmin":        user.IsAdmin == 1,
+		"IsAdmin":        user.IsAdmin,
 		"Nav": templates.NewNavBuilder().
 			Add("panel", "panel").
 			Add("collectors", "collectors").
@@ -612,8 +615,8 @@ func (h *handler) appLogGroupPage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) appLogGroupEntries(w http.ResponseWriter, r *http.Request) {
-	user := middleware.GetUser(r)
-	if user == nil {
+	user, err := authmw.GetUser(r)
+	if err != nil {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
@@ -663,8 +666,8 @@ func (h *handler) appLogGroupEntries(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) appLogsVolume(w http.ResponseWriter, r *http.Request) {
-	user := middleware.GetUser(r)
-	if user == nil {
+	user, err := authmw.GetUser(r)
+	if err != nil {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
@@ -706,8 +709,8 @@ func (h *handler) appLogsVolume(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) getLogByID(w http.ResponseWriter, r *http.Request) {
-	user := middleware.GetUser(r)
-	if user == nil {
+	user, err := authmw.GetUser(r)
+	if err != nil {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
@@ -783,7 +786,8 @@ func formatStatsForDisplay(stats db.SystemStat) *StatsDisplay {
 	}
 }
 
-func (h *handler) getFilteredCollectors(r *http.Request, user *db.User) ([]CollectorWithStats, error) {
+// TODO: Rework
+func (h *handler) getFilteredCollectors(r *http.Request, user sharedtypes.User) ([]CollectorWithStats, error) {
 	collectorList := h.tracker.List()
 	collectorsWithStats := make([]CollectorWithStats, 0, len(collectorList))
 
@@ -808,12 +812,12 @@ func (h *handler) getFilteredCollectors(r *http.Request, user *db.User) ([]Colle
 	return collectorsWithStats, nil
 }
 
-func (h *handler) userHasCollectorAccess(r *http.Request, user *db.User, collectorName string) bool {
+func (h *handler) userHasCollectorAccess(r *http.Request, user sharedtypes.User, collectorName string) bool {
 	hasAccess, err := h.permissions.CanAccessCollector(r.Context(), user, collectorName)
 	return err == nil && hasAccess
 }
 
-func (h *handler) filterAppsByAccess(r *http.Request, user *db.User, apps []string) []string {
+func (h *handler) filterAppsByAccess(r *http.Request, user sharedtypes.User, apps []string) []string {
 	filtered, err := h.permissions.FilterAppsByAccess(r.Context(), user, apps)
 	if err != nil {
 		return nil
