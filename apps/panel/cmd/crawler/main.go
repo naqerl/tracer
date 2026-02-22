@@ -71,6 +71,7 @@ func main() {
 	testEndpoint("/llm")
 	testEndpoint("/")
 	testEndpoint("/panel/collectors")
+	testEndpoint("/panel/collectors/entries")
 	testEndpoint("/settings/entries")
 
 	// Test API endpoint only if API key is provided
