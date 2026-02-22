@@ -16,9 +16,9 @@ import (
 	"github.com/ai-shift/tracer/apps/panel/internal/notifierstore"
 	"github.com/ai-shift/tracer/apps/panel/internal/notify"
 	"github.com/ai-shift/tracer/apps/panel/db"
-	"github.com/ai-shift/tracer/apps/panel/internal/htmx"
-	"github.com/ai-shift/tracer/apps/panel/internal/middleware"
-	"github.com/ai-shift/tracer/apps/panel/internal/templates"
+	"github.com/ai-shift/tracer/apps/panel/web/htmx"
+	"github.com/ai-shift/tracer/apps/panel/web/middleware"
+	"github.com/ai-shift/tracer/apps/panel/web/templates"
 )
 
 //go:embed views/*.html

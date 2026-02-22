@@ -11,13 +11,13 @@ import (
 	"github.com/ai-shift/tracer/apps/panel/internal/dbmanager"
 	"github.com/ai-shift/tracer/apps/panel/internal/notifierstore"
 	"github.com/ai-shift/tracer/apps/panel/internal/notify"
-	"github.com/ai-shift/tracer/apps/panel/internal/middleware"
-	"github.com/ai-shift/tracer/apps/panel/internal/resources/analytics"
-	"github.com/ai-shift/tracer/apps/panel/internal/resources/api"
-	authres "github.com/ai-shift/tracer/apps/panel/internal/resources/auth"
-	"github.com/ai-shift/tracer/apps/panel/internal/resources/landing"
-	"github.com/ai-shift/tracer/apps/panel/internal/resources/llm"
-	"github.com/ai-shift/tracer/apps/panel/internal/resources/settings"
+	"github.com/ai-shift/tracer/apps/panel/web/middleware"
+	"github.com/ai-shift/tracer/apps/panel/web/handlers/analytics"
+	"github.com/ai-shift/tracer/apps/panel/web/handlers/api"
+	authres "github.com/ai-shift/tracer/apps/panel/web/handlers/auth"
+	"github.com/ai-shift/tracer/apps/panel/web/handlers/landing"
+	"github.com/ai-shift/tracer/apps/panel/web/handlers/llm"
+	"github.com/ai-shift/tracer/apps/panel/web/handlers/settings"
 )
 
 func Run(port string, dbManager *dbmanager.Manager, collectorDBManager *collectordb.Manager, sampleRate float64, notifyService *notify.Service, authService *auth.Service, notifierStore *notifierstore.Store, tracker *collectors.Tracker, sessionDurationSec int, panelURL string) *http.Server {
@@ -66,3 +66,4 @@ func loggingMiddleware(next http.Handler) http.Handler {
 		)
 	})
 }
+
