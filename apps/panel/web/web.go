@@ -4,31 +4,26 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/ai-shift/tracer/apps/panel/internal/auth"
-	"github.com/ai-shift/tracer/apps/panel/internal/collectors"
-	"github.com/ai-shift/tracer/apps/panel/internal/dbmanager"
-	"github.com/ai-shift/tracer/apps/panel/internal/notify"
-	"github.com/ai-shift/tracer/apps/panel/internal/user"
-	"github.com/ai-shift/tracer/apps/panel/web/handlers/analytics"
-	"github.com/ai-shift/tracer/apps/panel/web/handlers/api"
+	"github.com/ai-shift/tracer/apps/panel/web/handlers/panel"
+	"github.com/ai-shift/tracer/apps/panel/web/handlers/ingest"
 	authres "github.com/ai-shift/tracer/apps/panel/web/handlers/auth"
 	"github.com/ai-shift/tracer/apps/panel/web/handlers/llm"
 	"github.com/ai-shift/tracer/apps/panel/web/handlers/settings"
 	"github.com/ai-shift/tracer/apps/panel/web/middleware"
 )
 
-func Run(port string, dbManager *dbmanager.Manager, collectorService *collectors.Service, sampleRate float64, notifyService *notify.Service, authService *auth.Service, userService *user.Service, tracker *collectors.Tracker, panelURL string) *http.Server {
+func Run(deps Dependencies, port string, sampleRate float64, panelURL string) *http.Server {
 	mux := http.NewServeMux()
 
-	mux.Handle("/", authres.InitMux(authService, userService))
+        mux.Handle("/ingest/", http.StripPrefix("/ingest", ingest.InitMux(deps.Collector, sampleRate, deps.Notify.Chan(), deps.Tracker, panelURL)))
+	mux.Handle("/panel/", http.StripPrefix("/panel", panel.InitMux(deps.DBManagerx, deps.Auth, deps.User, deps.Collector, deps.Tracker)))
+	mux.Handle("/auth/", http.StripPrefix("/auth", authres.InitMux(deps.Auth, deps.User)))
 	mux.Handle("/llm", llm.InitMux())
-	mux.Handle("/ingest/", http.StripPrefix("/ingest", api.InitMux(collectorService, sampleRate, notifyService.Chan(), tracker, panelURL)))
-	mux.Handle("/analytics/", http.StripPrefix("/analytics", analytics.InitMux(dbManager, authService, userService, collectorService, tracker)))
-	mux.Handle("/settings/", http.StripPrefix("/settings", settings.InitMux(authService, userService, collectorService, dbManager, notifyService)))
+	mux.Handle("/settings/", http.StripPrefix("/settings", settings.InitMux(deps.Auth, deps.User, deps.Collector, deps.DBManagerx, deps.Notify)))
 
 	markdownMiddleware := middleware.BuildMarkdownMiddleware()
 	loginPathMiddleware := middleware.BuildLoginPathMiddleware("/login")
-	authMiddleware := middleware.BuildAuthMiddleware(authService, userService)
+	authMiddleware := middleware.BuildAuthMiddleware(deps.Auth, deps.User)
 	handler := middleware.LoggingMiddleware(markdownMiddleware(loginPathMiddleware(authMiddleware(mux))))
 
 	return &http.Server{

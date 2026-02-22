@@ -147,7 +147,15 @@ func main() {
 	// Note: System stats cleanup is handled by retention service
 
 	// Initialize HTTP server
-	server := web.Run(cfg.Port, dbManager, collectorService, cfg.SampleRate, notifyService, authService, userService, tracker, cfg.PanelURL)
+	deps := web.Dependencies{
+		DBManagerx: dbManager,
+		Collector:  collectorService,
+		Notify:     notifyService,
+		Auth:       authService,
+		User:       userService,
+		Tracker:    tracker,
+	}
+	server := web.Run(deps, cfg.Port, cfg.SampleRate, cfg.PanelURL)
 
 	// Handle shutdown signals
 	sigChan := make(chan os.Signal, 1)
