@@ -148,14 +148,15 @@ func attachSessionContext(w http.ResponseWriter, r *http.Request, next http.Hand
 }
 
 // SetSessionCookie sets the session cookie
-func SetSessionCookie(w http.ResponseWriter, token string, maxAge int) {
+func SetSessionCookie(w http.ResponseWriter, r *http.Request, token string, maxAge int) {
+	secure := r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https"
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookie,
 		Value:    token,
 		Path:     "/",
 		MaxAge:   maxAge,
 		HttpOnly: true,
-		Secure:   true,
+		Secure:   secure,
 		SameSite: http.SameSiteLaxMode,
 	})
 }
