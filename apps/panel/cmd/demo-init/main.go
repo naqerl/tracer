@@ -52,7 +52,7 @@ func main() {
 			fmt.Fprintf(os.Stderr, "failed to create initial admin user: %v\n", err)
 			os.Exit(1)
 		}
-		fmt.Printf("created demo admin user: %s\n", username)
+		fmt.Printf("created demo admin user: %s\n", *username)
 	}
 
 	apiKey, err := authSvc.EnsureAPIKey(ctx)
