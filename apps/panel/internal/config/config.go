@@ -14,8 +14,10 @@ type Panel struct {
 	SampleRate    float64 `toml:"sample_rate"`
 	RetentionDays int     `toml:"retention_days"`
 	PanelURL      string  `toml:"panel_url"`
+        // TODO: Adds unnecessary complexity, should be removed
 	Auth          Auth    `toml:"auth"`
 }
+
 
 type Auth struct {
 	SessionDuration string `toml:"session_duration"`
