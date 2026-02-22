@@ -113,7 +113,7 @@ func extractIP(remoteAddr string) string {
 	return remoteAddr
 }
 
-func (h *handler) handleRegistration(ctx context.Context, connID, remoteAddr, collectorName string, apps []string, thresholds types.CollectorThresholds) {
+func (h *handler) handleRegistration(ctx context.Context, connID, remoteAddr, collectorName string, apps []string) {
 	if collectorName == "" {
 		slog.Warn("Registration rejected: missing collector_name", "remote", remoteAddr, "conn_id", connID)
 		return
@@ -122,7 +122,7 @@ func (h *handler) handleRegistration(ctx context.Context, connID, remoteAddr, co
 	slog.Info("Received app registration", "collector", collectorName, "remote", remoteAddr, "apps", apps, "count", len(apps))
 
 	// Register collector with tracker
-	h.tracker.Register(connID, collectorName, remoteAddr, apps, thresholds)
+	h.tracker.Register(connID, collectorName, remoteAddr, apps)
 
 	// Pre-create databases for registered apps and track app-collector mapping
 	for _, appName := range apps {
@@ -161,11 +161,7 @@ func (h *handler) processMessage(ctx context.Context, connID, remoteAddr string,
 
 	// Handle registration messages
 	if msg.Type == "register" {
-		thresholds := types.CollectorThresholds{}
-		if msg.Thresholds != nil {
-			thresholds = *msg.Thresholds
-		}
-		h.handleRegistration(ctx, connID, remoteAddr, msg.CollectorName, msg.Apps, thresholds)
+		h.handleRegistration(ctx, connID, remoteAddr, msg.CollectorName, msg.Apps)
 		return
 	}
 
@@ -221,7 +217,7 @@ func (h *handler) processMessage(ctx context.Context, connID, remoteAddr string,
 	// Get or create log group for this message and level
 	logGroup, err := queries.GetOrCreateLogGroup(ctx, db.GetOrCreateLogGroupParams{
 		Message: msg.Entry.Message,
-		Level:   msg.Entry.Level,
+		Level:   string(msg.Entry.Level),
 	})
 	if err != nil {
 		slog.Error("Failed to get/create log group", "error", err, "app_name", msg.AppName)
@@ -238,7 +234,7 @@ func (h *handler) processMessage(ctx context.Context, connID, remoteAddr string,
 
 	_, err = queries.InsertLog(ctx, db.InsertLogParams{
 		TraceID:   msg.Entry.TraceID,
-		Level:     msg.Entry.Level,
+		Level:     string(msg.Entry.Level),
 		Message:   msg.Entry.Message,
 		Source:    msg.Entry.Source,
 		Context:   sql.NullString{String: contextJSON, Valid: true},
@@ -309,7 +305,7 @@ func (h *handler) handleStartup(ctx context.Context, msg types.LogMessage) {
 	// Use "STARTUP" as the level for startup events
 	level := "STARTUP"
 	if msg.Entry.Level != "" {
-		level = msg.Entry.Level
+		level = string(msg.Entry.Level)
 	}
 
 	// Get or create log group for this message and level
@@ -411,42 +407,4 @@ func (h *handler) handleStats(ctx context.Context, msg types.LogMessage) {
 	}
 
 	slog.Debug("Stored system stats", "collector", msg.CollectorName, "cpu", msg.Stats.CPUUsagePercent)
-
-	// Check for alerts based on collector thresholds
-	if collector, exists := h.tracker.Get(msg.CollectorName); exists && collector.IsConnected {
-		alerts := []string{}
-
-		if collector.Thresholds.CPU > 0 && msg.Stats.CPUUsagePercent > collector.Thresholds.CPU {
-			alerts = append(alerts, fmt.Sprintf("CPU: %.1f%% (threshold: %.1f%%)", msg.Stats.CPUUsagePercent, collector.Thresholds.CPU))
-		}
-
-		memUsagePercent := float64(msg.Stats.MemUsedMB) / float64(msg.Stats.MemTotalMB) * 100
-		if collector.Thresholds.Mem > 0 && memUsagePercent > collector.Thresholds.Mem {
-			alerts = append(alerts, fmt.Sprintf("Memory: %.1f%% (threshold: %.1f%%)", memUsagePercent, collector.Thresholds.Mem))
-		}
-
-		diskUsagePercent := float64(msg.Stats.DiskUsedGB) / float64(msg.Stats.DiskTotalGB) * 100
-		if collector.Thresholds.Disk > 0 && diskUsagePercent > collector.Thresholds.Disk {
-			alerts = append(alerts, fmt.Sprintf("Disk: %.1f%% (threshold: %.1f%%)", diskUsagePercent, collector.Thresholds.Disk))
-		}
-
-		if len(alerts) > 0 && h.notifyChan != nil {
-			alertMessage := fmt.Sprintf("🚨 Resource alerts on %s:\n%s", msg.CollectorName, strings.Join(alerts, "\n"))
-			if h.panelURL != "" {
-				resourcesURL := fmt.Sprintf("%s/analytics/%s/resources", h.panelURL, msg.CollectorName)
-				alertMessage += fmt.Sprintf("\n\n[view resources](%s)", resourcesURL)
-			}
-
-			select {
-			case h.notifyChan <- notify.Notification{
-				Type:          notify.TypeAlert,
-				CollectorName: msg.CollectorName,
-				AppName:       "resources",
-				Message:       alertMessage,
-			}:
-			default:
-				slog.Warn("Notification channel full, dropping resource alert")
-			}
-		}
-	}
 }

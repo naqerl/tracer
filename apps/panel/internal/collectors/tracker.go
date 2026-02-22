@@ -4,20 +4,17 @@ import (
 	"sort"
 	"sync"
 	"time"
-
-	"github.com/ai-shift/tracer/libs/types"
 )
 
 // Collector represents a connected collector instance
 type Collector struct {
-	Name        string     `json:"name"`
-	RemoteAddr  string     `json:"remote_addr"`
-	Apps        []string   `json:"apps"`
-	Thresholds types.CollectorThresholds `json:"thresholds"`
-	ConnectedAt time.Time  `json:"connected_at"`
-	LastSeenAt  time.Time  `json:"last_seen_at"`
-	IsConnected bool       `json:"is_connected"`
-	connID      string     // internal: current connection ID
+	Name        string    `json:"name"`
+	RemoteAddr  string    `json:"remote_addr"`
+	Apps        []string  `json:"apps"`
+	ConnectedAt time.Time `json:"connected_at"`
+	LastSeenAt  time.Time `json:"last_seen_at"`
+	IsConnected bool      `json:"is_connected"`
+	connID      string    // internal: current connection ID
 }
 
 // Tracker keeps track of connected collectors
@@ -35,7 +32,7 @@ func NewTracker() *Tracker {
 
 // Register adds or updates a collector connection
 // Uses collector name as key, so reconnections update the existing entry
-func (t *Tracker) Register(connID, name, remoteAddr string, apps []string, thresholds types.CollectorThresholds) {
+func (t *Tracker) Register(connID, name, remoteAddr string, apps []string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
@@ -45,7 +42,6 @@ func (t *Tracker) Register(connID, name, remoteAddr string, apps []string, thres
 		c.connID = connID
 		c.RemoteAddr = remoteAddr
 		c.Apps = apps
-		c.Thresholds = thresholds
 		c.LastSeenAt = now
 		c.IsConnected = true
 		// Keep original ConnectedAt for session tracking
@@ -56,7 +52,6 @@ func (t *Tracker) Register(connID, name, remoteAddr string, apps []string, thres
 			Name:        name,
 			RemoteAddr:  remoteAddr,
 			Apps:        apps,
-			Thresholds:  thresholds,
 			ConnectedAt: now,
 			LastSeenAt:  now,
 			IsConnected: true,
