@@ -51,6 +51,7 @@ func InitMux(dbManager *dbmanager.Manager, authService *auth.Service, collectorD
 	m.HandleFunc("GET /{collector}/apps/{app}", h.appAnalytics)
 	m.HandleFunc("GET /{collector}/apps/{app}/logs", h.appLogs)
 	m.HandleFunc("GET /{collector}/apps/{app}/logs/chart-data", h.appLogsChartData)
+	m.HandleFunc("GET /{collector}/apps/{app}/logs/{id}", h.appLog)
 
 	return m
 }
@@ -699,6 +700,83 @@ func (h *handler) appLogs(w http.ResponseWriter, r *http.Request) {
 		h.t.RenderHTTP(w, r, "app-logs-table", data)
 	} else {
 		h.t.RenderHTTP(w, r, "app-logs-page", data)
+	}
+}
+
+// appLog return a specific log for an app
+func (h *handler) appLog(w http.ResponseWriter, r *http.Request) {
+	user := middleware.RequireAuthRedirect(w, r)
+	if user == nil {
+		return
+	}
+
+	collectorName := r.PathValue("collector")
+	appName := r.PathValue("app")
+	idParam := r.PathValue("id")
+
+	// Parse log ID
+	logID, err := strconv.ParseInt(idParam, 10, 64)
+	if err != nil {
+		h.t.RenderError(w, r, "Error", "Invalid log ID", http.StatusBadRequest)
+		return
+	}
+
+	// Check app access
+	hasAccess, err := h.authService.UserHasAppAccess(r.Context(), user.ID, appName)
+	if err != nil {
+		h.t.RenderError(w, r, "Error", "Failed to check access", http.StatusInternalServerError)
+		return
+	}
+	if !hasAccess {
+		h.t.RenderError(w, r, "Forbidden", "You don't have access to this app", http.StatusForbidden)
+		return
+	}
+
+	// Get queries for the app
+	queries, err := h.dbManager.GetQueries(appName)
+	if err != nil {
+		h.t.RenderError(w, r, "Error", "App not found", http.StatusNotFound)
+		return
+	}
+
+	// Fetch the log
+	log, err := queries.GetLogByID(r.Context(), logID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			h.t.RenderError(w, r, "Error", "Log not found", http.StatusNotFound)
+			return
+		}
+		h.t.RenderError(w, r, "Error", "Failed to fetch log", http.StatusInternalServerError)
+		return
+	}
+
+	// Build navigation breadcrumbs
+	nav := templates.NewNavBuilder().
+		Add("analytics", "analytics").
+		Add(collectorName, collectorName).
+		Add("apps", "apps").
+		Add(appName, appName).
+		Add("logs", "logs").
+		Add("log", "log").
+		Build()
+
+	// Prepare template data
+	data := map[string]any{
+		"Title":         "Log #" + idParam,
+		"AppName":       appName,
+		"CollectorName": collectorName,
+		"Log":           log,
+		"User":          user,
+		"IsAdmin":       user.IsAdmin == 1,
+		"Nav":           nav,
+	}
+
+	if middleware.IsMarkdownFormat(r) {
+		h.t.RenderMarkdown(w, r, "app-log-markdown", data)
+	} else if htmx.IsAjax(r) {
+		h.t.RenderHTTP(w, r, "app-log", data)
+	} else {
+		h.t.RenderHTTP(w, r, "app-log-page", data)
 	}
 }
 

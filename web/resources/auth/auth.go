@@ -44,7 +44,7 @@ func InitMux(authService *auth.Service, sessionDurationSec int) *http.ServeMux {
 func (h *handler) renderFormError(w http.ResponseWriter, msg string) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusUnprocessableEntity)
-	fmt.Fprintf(w, `<div class="error">%s</div>`, msg)
+	fmt.Fprint(w, msg)
 }
 
 // Login handlers
