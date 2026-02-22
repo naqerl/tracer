@@ -533,11 +533,12 @@ func (h *handler) appLogs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	queries, err := h.dbManager.GetQueries(collectorName, appName)
+	sqlDB, err := h.dbManager.GetDB(collectorName, appName)
 	if err != nil {
 		h.t.RenderError(w, r, "Error", "App not found", http.StatusNotFound)
 		return
 	}
+	queries := db.New(sqlDB)
 
 	groupIDParam := r.URL.Query().Get("groupID")
 	logIDParam := r.URL.Query().Get("logID")
@@ -739,11 +740,12 @@ func (h *handler) appLogsChartData(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	queries, err := h.dbManager.GetQueries(collectorName, appName)
+	sqlDB, err := h.dbManager.GetDB(collectorName, appName)
 	if err != nil {
 		http.Error(w, "App not found", http.StatusNotFound)
 		return
 	}
+	queries := db.New(sqlDB)
 
 	rangeParam := r.URL.Query().Get("range")
 	if rangeParam == "" {
@@ -796,11 +798,12 @@ func (h *handler) getLogByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	queries, err := h.dbManager.GetQueries(collectorName, appName)
+	sqlDB, err := h.dbManager.GetDB(collectorName, appName)
 	if err != nil {
 		http.Error(w, "App not found", http.StatusNotFound)
 		return
 	}
+	queries := db.New(sqlDB)
 
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
@@ -824,10 +827,11 @@ func (h *handler) getLogByID(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) getAppAnalyticsData(ctx context.Context, collectorName, appName string) (*appStats, any, error) {
-	queries, err := h.dbManager.GetQueries(collectorName, appName)
+	sqlDB, err := h.dbManager.GetDB(collectorName, appName)
 	if err != nil {
 		return nil, nil, err
 	}
+	queries := db.New(sqlDB)
 
 	totalCount, err := queries.CountLogGroups(ctx)
 	if err != nil {

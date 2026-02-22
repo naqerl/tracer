@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/ai-shift/tracer/apps/panel/db"
 	"github.com/ai-shift/tracer/apps/panel/internal/collectordb"
 	"github.com/ai-shift/tracer/apps/panel/internal/dbmanager"
 )
@@ -55,12 +56,13 @@ func (s *Service) runCleanup(ctx context.Context) {
 	cutoff := sql.NullTime{Time: time.Now().AddDate(0, 0, -s.retentionDays), Valid: true}
 
 	for _, instance := range instances {
-		queries, err := s.dbManager.GetQueries(instance.CollectorName, instance.AppName)
+		sqlDB, err := s.dbManager.GetDB(instance.CollectorName, instance.AppName)
 		if err != nil {
-			slog.Error("Failed to get queries for cleanup", "collector_name", instance.CollectorName, "app_name", instance.AppName, "error", err)
+			slog.Error("Failed to get DB for cleanup", "collector_name", instance.CollectorName, "app_name", instance.AppName, "error", err)
 			continue
 		}
 
+		queries := db.New(sqlDB)
 		err = queries.DeleteOldLogs(ctx, cutoff)
 		if err != nil {
 			slog.Error("Failed to cleanup logs", "collector_name", instance.CollectorName, "app_name", instance.AppName, "error", err)

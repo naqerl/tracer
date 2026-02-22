@@ -15,7 +15,6 @@ import (
 	"github.com/pressly/goose/v3"
 	_ "modernc.org/sqlite"
 
-	"github.com/ai-shift/tracer/apps/panel/db"
 	appmigrations "github.com/ai-shift/tracer/apps/panel/sql/app"
 )
 
@@ -23,7 +22,6 @@ type Manager struct {
 	mu            sync.RWMutex
 	collectorsDir string
 	dbs           map[string]*sql.DB
-	queries       map[string]*db.Queries
 }
 
 func New(baseDir string) (*Manager, error) {
@@ -35,7 +33,6 @@ func New(baseDir string) (*Manager, error) {
 	return &Manager{
 		collectorsDir: collectorsDir,
 		dbs:           make(map[string]*sql.DB),
-		queries:       make(map[string]*db.Queries),
 	}, nil
 }
 
@@ -62,41 +59,6 @@ func (m *Manager) GetDB(collectorName, appName string) (*sql.DB, error) {
 	m.mu.RUnlock()
 
 	return m.createDB(collectorName, appName)
-}
-
-// GetQueries returns SQLC queries for the given collector/app.
-func (m *Manager) GetQueries(collectorName, appName string) (*db.Queries, error) {
-	if err := validateIdentifier(collectorName); err != nil {
-		return nil, fmt.Errorf("invalid collector name: %w", err)
-	}
-	if err := validateIdentifier(appName); err != nil {
-		return nil, fmt.Errorf("invalid app name: %w", err)
-	}
-	key := dbKey(collectorName, appName)
-
-	m.mu.RLock()
-	if q, ok := m.queries[key]; ok {
-		m.mu.RUnlock()
-		return q, nil
-	}
-	m.mu.RUnlock()
-
-	sqlDB, err := m.GetDB(collectorName, appName)
-	if err != nil {
-		return nil, err
-	}
-
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	// Double-check after acquiring write lock
-	if q, ok := m.queries[key]; ok {
-		return q, nil
-	}
-
-	q := db.New(sqlDB)
-	m.queries[key] = q
-	return q, nil
 }
 
 func (m *Manager) createDB(collectorName, appName string) (*sql.DB, error) {
@@ -252,6 +214,5 @@ func (m *Manager) Close() error {
 	}
 
 	m.dbs = make(map[string]*sql.DB)
-	m.queries = make(map[string]*db.Queries)
 	return nil
 }

@@ -130,7 +130,7 @@ func (h *handler) handleRegistration(ctx context.Context, connID, remoteAddr, co
 		if appName == "" {
 			continue
 		}
-		if _, err := h.dbManager.GetQueries(collectorName, appName); err != nil {
+		if _, err := h.dbManager.GetDB(collectorName, appName); err != nil {
 			slog.Error("Failed to register app", "app_name", appName, "error", err)
 		} else {
 			slog.Info("Registered app", "app_name", appName)
@@ -204,12 +204,13 @@ func (h *handler) processMessage(ctx context.Context, connID, remoteAddr string,
 		return
 	}
 
-	// Get queries for this app
-	queries, err := h.dbManager.GetQueries(msg.CollectorName, msg.AppName)
+	// Get DB for this app and create queries
+	sqlDB, err := h.dbManager.GetDB(msg.CollectorName, msg.AppName)
 	if err != nil {
-		slog.Error("Failed to get queries", "error", err, "collector_name", msg.CollectorName, "app_name", msg.AppName)
+		slog.Error("Failed to get DB", "error", err, "collector_name", msg.CollectorName, "app_name", msg.AppName)
 		return
 	}
+	queries := db.New(sqlDB)
 
 	// Marshal extra context
 	contextJSON := "{}"
@@ -291,12 +292,13 @@ func (h *handler) handleStartup(ctx context.Context, msg types.LogMessage) {
 
 	slog.Info("App startup detected", "app", msg.AppName, "message", msg.Entry.Message)
 
-	// Get queries for this app
-	queries, err := h.dbManager.GetQueries(msg.CollectorName, msg.AppName)
+	// Get DB for this app and create queries
+	sqlDB, err := h.dbManager.GetDB(msg.CollectorName, msg.AppName)
 	if err != nil {
-		slog.Error("Failed to get queries for startup", "error", err, "collector_name", msg.CollectorName, "app_name", msg.AppName)
+		slog.Error("Failed to get DB for startup", "error", err, "collector_name", msg.CollectorName, "app_name", msg.AppName)
 		return
 	}
+	queries := db.New(sqlDB)
 
 	// Marshal extra context
 	contextJSON := "{}"
