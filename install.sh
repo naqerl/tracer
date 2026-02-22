@@ -169,7 +169,7 @@ create_configs() {
 name = "my-collector"
 
 # Panel WebSocket endpoint (include API key as query parameter)
-panel_endpoint = "ws://localhost:8080/api/ws/ingest?api_key=YOUR_API_KEY"
+panel_endpoint = "ws://localhost:8080/ingest/ws/ingest?api_key=YOUR_API_KEY"
 
 # System stats collection interval (optional, e.g. "30s", "1m")
 # stats_interval = "30s"
@@ -229,9 +229,6 @@ sample_rate = 0.1
 # Days to keep logs before automatic cleanup
 retention_days = 90
 
-# Authentication settings
-[auth]
-session_duration = "24h"
 
 # Telegram alerts (optional)
 [telegram]
@@ -359,7 +356,7 @@ print_instructions() {
         echo "   sudo nano ${CONFIG_DIR}/collector.toml"
         echo ""
         echo "   Set panel_endpoint to your panel's WebSocket URL, e.g.:"
-        echo "   panel_endpoint = \"ws://panel.example.com/api/ws/ingest?api_key=YOUR_KEY\""
+        echo "   panel_endpoint = \"ws://panel.example.com/ingest/ws/ingest?api_key=YOUR_KEY\""
         echo ""
         echo "2. Add your applications to monitor (see examples in config)"
         echo ""
