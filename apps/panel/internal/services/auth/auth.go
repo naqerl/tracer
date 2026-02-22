@@ -3,6 +3,8 @@ package auth
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
+	"crypto/subtle"
 	"database/sql"
 	"encoding/hex"
 	"errors"
@@ -188,34 +190,100 @@ func (s *Service) Login(ctx context.Context, username, password string, userServ
 
 // API Key management
 
-const apiKeyConfigKey = "api_key"
+const (
+	apiKeyConfigKey        = "api_key" // legacy plaintext key (backward-compat only)
+	apiKeyHashConfigKey    = "api_key_hash"
+	apiKeyPreviewConfigKey = "api_key_preview"
+)
+
+func hashAPIKey(key string) string {
+	sum := sha256.Sum256([]byte(key))
+	return hex.EncodeToString(sum[:])
+}
 
 func (s *Service) GetAPIKey(ctx context.Context) (string, error) {
+	// Backward compatibility: plaintext key in legacy config.
 	value, err := s.queries.GetConfig(ctx, apiKeyConfigKey)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return "", nil
+			preview, previewErr := s.queries.GetConfig(ctx, apiKeyPreviewConfigKey)
+			if previewErr != nil {
+				if errors.Is(previewErr, sql.ErrNoRows) {
+					return "", nil
+				}
+				return "", previewErr
+			}
+			return "****" + preview, nil
 		}
 		return "", err
+	}
+	if value == "" {
+		preview, previewErr := s.queries.GetConfig(ctx, apiKeyPreviewConfigKey)
+		if previewErr != nil {
+			if errors.Is(previewErr, sql.ErrNoRows) {
+				return "", nil
+			}
+			return "", previewErr
+		}
+		return "****" + preview, nil
 	}
 	return value, nil
 }
 
 func (s *Service) SetAPIKey(ctx context.Context, key string) error {
+	hash := hashAPIKey(key)
+	if err := s.queries.SetConfig(ctx, db.SetConfigParams{
+		Key:   apiKeyHashConfigKey,
+		Value: hash,
+	}); err != nil {
+		return err
+	}
+
+	preview := key
+	if len(preview) > 6 {
+		preview = preview[len(preview)-6:]
+	}
+	if err := s.queries.SetConfig(ctx, db.SetConfigParams{
+		Key:   apiKeyPreviewConfigKey,
+		Value: preview,
+	}); err != nil {
+		return err
+	}
+
+	// Clear legacy plaintext value if it exists.
 	return s.queries.SetConfig(ctx, db.SetConfigParams{
 		Key:   apiKeyConfigKey,
-		Value: key,
+		Value: "",
 	})
 }
 
 func (s *Service) EnsureAPIKey(ctx context.Context) (string, error) {
+	hash, err := s.queries.GetConfig(ctx, apiKeyHashConfigKey)
+	if err == nil && hash != "" {
+		preview, previewErr := s.queries.GetConfig(ctx, apiKeyPreviewConfigKey)
+		if previewErr == nil && preview != "" {
+			return "****" + preview, nil
+		}
+		return "configured", nil
+	}
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return "", err
+	}
+
+	// Backward compatibility: migrate from plaintext config if present.
 	key, err := s.GetAPIKey(ctx)
 	if err != nil {
 		return "", err
 	}
 
 	if key != "" {
-		return key, nil
+		if len(key) >= 4 && key[:4] == "****" {
+			return key, nil
+		}
+		if err := s.SetAPIKey(ctx, key); err != nil {
+			return "", fmt.Errorf("migrate API key to hash: %w", err)
+		}
+		return "****" + key[max(0, len(key)-6):], nil
 	}
 
 	// Generate new API key
@@ -233,11 +301,27 @@ func (s *Service) EnsureAPIKey(ctx context.Context) (string, error) {
 }
 
 func (s *Service) ValidateAPIKey(ctx context.Context, key string) (bool, error) {
-	storedKey, err := s.GetAPIKey(ctx)
-	if err != nil {
+	storedHash, err := s.queries.GetConfig(ctx, apiKeyHashConfigKey)
+	if err == nil && storedHash != "" {
+		inputHash := hashAPIKey(key)
+		return subtle.ConstantTimeCompare([]byte(storedHash), []byte(inputHash)) == 1, nil
+	}
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return false, err
 	}
-	return storedKey != "" && storedKey == key, nil
+
+	// Legacy plaintext fallback.
+	storedKey, err := s.queries.GetConfig(ctx, apiKeyConfigKey)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return false, nil
+		}
+		return false, err
+	}
+	if storedKey == "" {
+		return false, nil
+	}
+	return subtle.ConstantTimeCompare([]byte(storedKey), []byte(key)) == 1, nil
 }
 
 // User API Key management (LLM compatibility)
