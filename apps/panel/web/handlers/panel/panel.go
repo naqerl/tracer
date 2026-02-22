@@ -153,7 +153,7 @@ func (h *handler) collectorOverview(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// AJAX or Markdown: fetch data
-	ingestItem, exists := h.tracker.Get(collectorName)
+	collector, exists := h.tracker.Get(collectorName)
 	if !exists {
 		h.t.RenderError(w, r, "Error", "Ingest not found", http.StatusNotFound)
 		return
@@ -169,9 +169,9 @@ func (h *handler) collectorOverview(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Filter apps by user access
-	apps := h.filterAppsByAccess(r, user, ingestItem.Apps)
+	apps := h.filterAppsByAccess(r, user, collector.Apps)
 
-	data["IsConnected"] = ingestItem.IsConnected
+	data["IsConnected"] = collector.IsConnected
 	data["Stats"] = stats
 	data["StatsDisplay"] = statsDisplay
 	data["Apps"] = apps
