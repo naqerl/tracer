@@ -13,7 +13,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/ai-shift/tracer/apps/panel/db"
-	userpkg "github.com/ai-shift/tracer/apps/panel/internal/user"
+	userpkg "github.com/ai-shift/tracer/apps/panel/internal/services/user"
 )
 
 const (

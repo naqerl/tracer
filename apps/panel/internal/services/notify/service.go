@@ -10,7 +10,7 @@ import (
 	"sync"
 
 	"github.com/ai-shift/tracer/apps/panel/db"
-	"github.com/ai-shift/tracer/apps/panel/internal/user"
+	"github.com/ai-shift/tracer/apps/panel/internal/services/user"
 )
 
 const (

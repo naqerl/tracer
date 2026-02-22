@@ -13,8 +13,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 
-	"github.com/ai-shift/tracer/apps/panel/internal/collectors"
-	"github.com/ai-shift/tracer/apps/panel/internal/notify"
+	"github.com/ai-shift/tracer/apps/panel/internal/services/collectors"
+	"github.com/ai-shift/tracer/apps/panel/internal/services/notify"
 	"github.com/ai-shift/tracer/libs/types"
 )
 

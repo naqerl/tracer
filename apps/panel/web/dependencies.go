@@ -1,11 +1,11 @@
 package web
 
 import (
-	"github.com/ai-shift/tracer/apps/panel/internal/auth"
-	"github.com/ai-shift/tracer/apps/panel/internal/collectors"
+	"github.com/ai-shift/tracer/apps/panel/internal/services/auth"
+	"github.com/ai-shift/tracer/apps/panel/internal/services/collectors"
 	"github.com/ai-shift/tracer/apps/panel/internal/dbmanager"
-	"github.com/ai-shift/tracer/apps/panel/internal/notify"
-	"github.com/ai-shift/tracer/apps/panel/internal/user"        
+	"github.com/ai-shift/tracer/apps/panel/internal/services/notify"
+	"github.com/ai-shift/tracer/apps/panel/internal/services/user"        
 )
 
 type Dependencies struct {

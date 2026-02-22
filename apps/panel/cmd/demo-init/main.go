@@ -11,8 +11,8 @@ import (
 	"github.com/pressly/goose/v3"
 	_ "modernc.org/sqlite"
 
-	"github.com/ai-shift/tracer/apps/panel/internal/auth"
-	"github.com/ai-shift/tracer/apps/panel/internal/user"
+	"github.com/ai-shift/tracer/apps/panel/internal/services/auth"
+	"github.com/ai-shift/tracer/apps/panel/internal/services/user"
 	panelmigrations "github.com/ai-shift/tracer/apps/panel/sql/panel"
 )
 

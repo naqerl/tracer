@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/ai-shift/tracer/apps/panel/internal/auth"
-	"github.com/ai-shift/tracer/apps/panel/internal/user"
+	"github.com/ai-shift/tracer/apps/panel/internal/services/auth"
+	"github.com/ai-shift/tracer/apps/panel/internal/services/user"
 	"github.com/ai-shift/tracer/apps/panel/db"
 )
 

@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/ai-shift/tracer/apps/panel/db"
-	"github.com/ai-shift/tracer/apps/panel/internal/collectors"
+	"github.com/ai-shift/tracer/apps/panel/internal/services/collectors"
 	"github.com/ai-shift/tracer/apps/panel/internal/dbmanager"
 )
 
