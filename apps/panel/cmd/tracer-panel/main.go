@@ -18,7 +18,7 @@ import (
 
 	panelconfig "github.com/ai-shift/tracer/apps/panel/internal/config"
 	"github.com/ai-shift/tracer/apps/panel/internal/services/auth"
-	"github.com/ai-shift/tracer/apps/panel/internal/services/collectors"
+	"github.com/ai-shift/tracer/apps/panel/internal/services/ingest"
 	"github.com/ai-shift/tracer/apps/panel/internal/dbmanager"
 	"github.com/ai-shift/tracer/apps/panel/internal/services/notify"
 	"github.com/ai-shift/tracer/apps/panel/internal/retention"
@@ -61,7 +61,7 @@ func main() {
 	}
 	defer dbManager.Close()
 
-	collectorService := collectors.New(dbManager)
+	ingestService := ingest.New(dbManager)
 
 	// Initialize panel database and run migrations
 	panelDB, err := initPanelDB(cfg.DataDir)
@@ -108,13 +108,13 @@ func main() {
 	}
 
 	// Initialize retention service
-	retentionService := retention.New(dbManager, collectorService, cfg.RetentionDays)
+	retentionService := retention.New(dbManager, ingestService, cfg.RetentionDays)
 	go retentionService.Start(ctx)
 
 	// Initialize collector tracker
-	tracker := collectors.NewTracker()
+	tracker := ingest.NewTracker()
 
-	// Start collector cleanup goroutine (remove stale disconnected collectors after 1 hour)
+	// Start ingest cleanup goroutine (remove stale disconnected ingests after 1 hour)
 	go func() {
 		ticker := time.NewTicker(10 * time.Minute)
 		defer ticker.Stop()
@@ -149,7 +149,7 @@ func main() {
 	// Initialize HTTP server
 	deps := web.Dependencies{
 		DBManagerx: dbManager,
-		Collector:  collectorService,
+		Ingest:     ingestService,
 		Notify:     notifyService,
 		Auth:       authService,
 		User:       userService,

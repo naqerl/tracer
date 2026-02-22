@@ -11,7 +11,7 @@ import (
 
 	"github.com/ai-shift/tracer/apps/panel/internal/services/auth"
 	"github.com/ai-shift/tracer/apps/panel/internal/services/user"
-	"github.com/ai-shift/tracer/apps/panel/internal/services/collectors"
+	"github.com/ai-shift/tracer/apps/panel/internal/services/ingest"
 	"github.com/ai-shift/tracer/apps/panel/internal/dbmanager"
 	"github.com/ai-shift/tracer/apps/panel/internal/services/notify"
 	"github.com/ai-shift/tracer/apps/panel/db"
@@ -27,18 +27,18 @@ type handler struct {
 	t                templates.Templates
 	authService      *auth.Service
 	userService      *user.Service
-	collectorService *collectors.Service
+	ingestService *ingest.Service
 	dbManager        *dbmanager.Manager
 	notifyService    *notify.Service
 }
 
-func InitMux(authService *auth.Service, userService *user.Service, collectorService *collectors.Service, dbManager *dbmanager.Manager, notifyService *notify.Service) *http.ServeMux {
+func InitMux(authService *auth.Service, userService *user.Service, ingestService *ingest.Service, dbManager *dbmanager.Manager, notifyService *notify.Service) *http.ServeMux {
 	m := http.NewServeMux()
 	h := handler{
 		t:                templates.New(views),
 		authService:      authService,
 		userService:      userService,
-		collectorService: collectorService,
+		ingestService: ingestService,
 		dbManager:        dbManager,
 		notifyService:    notifyService,
 	}
@@ -739,7 +739,7 @@ func (h *handler) getNotifierApps(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get app-collector mappings from filesystem
-	collectors, err := h.collectorService.List()
+	collectors, err := h.ingestService.ListCollectors()
 	if err != nil {
 		slog.Error("Failed to list collectors", "error", err)
 		h.t.RenderError(w, r, "Error", "Failed to list collectors", http.StatusInternalServerError)
@@ -749,7 +749,7 @@ func (h *handler) getNotifierApps(w http.ResponseWriter, r *http.Request) {
 	// Build structured data: map[collector][]app
 	collectorApps := make(map[string][]string)
 	for _, collector := range collectors {
-		apps, err := h.collectorService.ListApps(collector)
+		apps, err := h.ingestService.ListApps(collector)
 		if err != nil {
 			slog.Error("Failed to list apps for collector", "collector", collector, "error", err)
 			h.t.RenderError(w, r, "Error", "Failed to list apps", http.StatusInternalServerError)
@@ -894,14 +894,14 @@ func (h *handler) updateNotifierApps(w http.ResponseWriter, r *http.Request) {
 
 // listAllApps returns all unique app names across all collectors
 func (h *handler) listAllApps(ctx context.Context) ([]string, error) {
-	collectors, err := h.collectorService.List()
+	collectors, err := h.ingestService.ListCollectors()
 	if err != nil {
 		return nil, err
 	}
 
 	appSet := make(map[string]struct{})
 	for _, collector := range collectors {
-		apps, err := h.collectorService.ListApps(collector)
+		apps, err := h.ingestService.ListApps(collector)
 		if err != nil {
 			return nil, err
 		}

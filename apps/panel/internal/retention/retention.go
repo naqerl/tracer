@@ -7,20 +7,20 @@ import (
 	"time"
 
 	"github.com/ai-shift/tracer/apps/panel/db"
-	"github.com/ai-shift/tracer/apps/panel/internal/services/collectors"
+	"github.com/ai-shift/tracer/apps/panel/internal/services/ingest"
 	"github.com/ai-shift/tracer/apps/panel/internal/dbmanager"
 )
 
 type Service struct {
 	dbManager     *dbmanager.Manager
-	collectorService *collectors.Service
+	ingestService *ingest.Service
 	retentionDays int
 }
 
-func New(dbManager *dbmanager.Manager, collectorService *collectors.Service, retentionDays int) *Service {
+func New(dbManager *dbmanager.Manager, ingestService *ingest.Service, retentionDays int) *Service {
 	return &Service{
 		dbManager:     dbManager,
-		collectorService: collectorService,
+		ingestService: ingestService,
 		retentionDays: retentionDays,
 	}
 }
@@ -47,25 +47,25 @@ func (s *Service) Start(ctx context.Context) {
 }
 
 func (s *Service) runCleanup(ctx context.Context) {
-	// List all collectors from filesystem
-	collectorList, err := s.collectorService.List()
+	// List all ingests from filesystem
+	ingestList, err := s.ingestService.ListCollectors()
 	if err != nil {
-		slog.Error("Failed to list collectors for cleanup", "error", err)
+		slog.Error("Failed to list ingests for cleanup", "error", err)
 		return
 	}
 
 	cutoff := sql.NullTime{Time: time.Now().AddDate(0, 0, -s.retentionDays), Valid: true}
 
-	// For each collector, list apps and cleanup
-	for _, collector := range collectorList {
-		apps, err := s.collectorService.ListApps(collector)
+	// For each ingest, list apps and cleanup
+	for _, collector := range ingestList {
+		apps, err := s.ingestService.ListApps(collector)
 		if err != nil {
 			slog.Error("Failed to list apps for cleanup", "collector", collector, "error", err)
 			continue
 		}
 
 		for _, appName := range apps {
-		sqlDB, err := s.dbManager.GetAppDB(collector.String(), appName)
+			sqlDB, err := s.dbManager.GetAppDB(collector.String(), appName)
 			if err != nil {
 				if err == dbmanager.ErrDBNotFound {
 					// Skip if DB doesn't exist
@@ -93,7 +93,7 @@ func (s *Service) runCleanup(ctx context.Context) {
 func (s *Service) cleanupSystemStats(ctx context.Context) {
 	cutoff := time.Now().AddDate(0, 0, -s.retentionDays)
 
-	err := s.collectorService.DeleteOldStats(ctx, cutoff)
+	err := s.ingestService.DeleteOldStats(ctx, cutoff)
 	if err != nil {
 		slog.Error("Failed to cleanup system stats", "error", err)
 		return

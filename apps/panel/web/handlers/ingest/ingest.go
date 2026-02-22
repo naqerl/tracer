@@ -13,7 +13,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 
-	"github.com/ai-shift/tracer/apps/panel/internal/services/collectors"
+	"github.com/ai-shift/tracer/apps/panel/internal/services/ingest"
 	"github.com/ai-shift/tracer/apps/panel/internal/services/notify"
 	"github.com/ai-shift/tracer/libs/types"
 )
@@ -27,21 +27,21 @@ var upgrader = websocket.Upgrader{
 }
 
 type handler struct {
-	collectorService *collectors.Service
+	ingestService *ingest.Service
 	sampleRate       float64
 	notifyChan       notify.NotificationChan
-	tracker          *collectors.Tracker
+	tracker          *ingest.Tracker
 	panelURL         string
 }
 
-func InitMux(collectorService *collectors.Service, sampleRate float64, notifyChan notify.NotificationChan, tracker *collectors.Tracker, panelURL string) *http.ServeMux {
+func InitMux(ingestService *ingest.Service, sampleRate float64, notifyChan notify.NotificationChan, tracker *ingest.Tracker, panelURL string) *http.ServeMux {
 	m := http.NewServeMux()
 	h := &handler{
-		collectorService: collectorService,
-		sampleRate:       sampleRate,
-		notifyChan:       notifyChan,
-		tracker:          tracker,
-		panelURL:         panelURL,
+		ingestService: ingestService,
+		sampleRate:    sampleRate,
+		notifyChan:    notifyChan,
+		tracker:       tracker,
+		panelURL:      panelURL,
 	}
 
 	m.HandleFunc("GET /ws/ingest", h.handleWebSocket)
@@ -108,20 +108,20 @@ func extractIP(remoteAddr string) string {
 	return remoteAddr
 }
 
-func (h *handler) handleRegistration(ctx context.Context, connID, remoteAddr, collectorName string, apps []string) {
-	if collectorName == "" {
-		slog.Warn("Registration rejected: missing collector_name", "remote", remoteAddr, "conn_id", connID)
+func (h *handler) handleRegistration(ctx context.Context, connID, remoteAddr, ingestName string, apps []string) {
+	if ingestName == "" {
+		slog.Warn("Registration rejected: missing ingest_name", "remote", remoteAddr, "conn_id", connID)
 		return
 	}
 
-	slog.Info("Received app registration", "collector", collectorName, "remote", remoteAddr, "apps", apps, "count", len(apps))
+	slog.Info("Received app registration", "ingest", ingestName, "remote", remoteAddr, "apps", apps, "count", len(apps))
 
-	// Register collector with tracker
-	h.tracker.Register(connID, collectorName, remoteAddr, apps)
+	// Register ingest with tracker
+	h.tracker.Register(connID, ingestName, remoteAddr, apps)
 
-	// Create all databases via collector service
-	if err := h.collectorService.Register(collectorName, apps); err != nil {
-		slog.Error("Failed to register collector", "collector", collectorName, "error", err)
+	// Create all databases via ingest service
+	if err := h.ingestService.Register(ingestName, apps); err != nil {
+		slog.Error("Failed to register ingest", "ingest", ingestName, "error", err)
 		return
 	}
 
@@ -189,8 +189,8 @@ func (h *handler) processMessage(ctx context.Context, connID, remoteAddr string,
 		return
 	}
 
-	// Store log via collector service
-	if err := h.collectorService.StoreLog(ctx, msg.CollectorName, msg.AppName, msg.Entry); err != nil {
+	// Store log via ingest service
+	if err := h.ingestService.StoreLog(ctx, msg.CollectorName, msg.AppName, msg.Entry); err != nil {
 		slog.Error("Failed to store log", "error", err, "app_name", msg.AppName)
 		return
 	}
@@ -234,8 +234,8 @@ func (h *handler) handleStartup(ctx context.Context, msg types.LogMessage) {
 
 	slog.Info("App startup detected", "app", msg.AppName, "message", msg.Entry.Message)
 
-	// Store startup via collector service
-	if err := h.collectorService.StoreStartup(ctx, msg.CollectorName, msg.AppName, msg.Entry); err != nil {
+	// Store startup via ingest service
+	if err := h.ingestService.StoreStartup(ctx, msg.CollectorName, msg.AppName, msg.Entry); err != nil {
 		slog.Error("Failed to store startup log", "error", err, "app_name", msg.AppName)
 		return
 	}
@@ -275,7 +275,7 @@ func (h *handler) listCollectors(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// handleStats processes system statistics from collectors
+// handleStats processes system statistics from ingests
 func (h *handler) handleStats(ctx context.Context, msg types.LogMessage) {
 	if msg.Stats == nil || msg.CollectorName == "" {
 		slog.Warn("Received stats without stats data or collector name")
@@ -289,7 +289,7 @@ func (h *handler) handleStats(ctx context.Context, msg types.LogMessage) {
 	// Normalize to UTC for consistent storage
 	ts = ts.UTC()
 
-	err := h.collectorService.InsertSystemStats(ctx, collectors.CollectorName(msg.CollectorName), collectors.SystemStats{
+	err := h.ingestService.InsertSystemStats(ctx, ingest.CollectorName(msg.CollectorName), ingest.SystemStats{
 		CollectorName:   msg.CollectorName,
 		CpuUsagePercent: msg.Stats.CPUUsagePercent,
 		MemTotalMb:      int64(msg.Stats.MemTotalMB),

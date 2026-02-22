@@ -13,7 +13,7 @@ import (
 
 	"github.com/ai-shift/tracer/apps/panel/internal/services/auth"
 	"github.com/ai-shift/tracer/apps/panel/internal/services/user"
-	"github.com/ai-shift/tracer/apps/panel/internal/services/collectors"
+	"github.com/ai-shift/tracer/apps/panel/internal/services/ingest"
 	"github.com/ai-shift/tracer/apps/panel/internal/dbmanager"
 	"github.com/ai-shift/tracer/apps/panel/db"
 	"github.com/ai-shift/tracer/apps/panel/web/htmx"
@@ -29,22 +29,22 @@ type handler struct {
 	dbManager       *dbmanager.Manager
 	authService     *auth.Service
 	userService     *user.Service
-	collectorService *collectors.Service
-	tracker         *collectors.Tracker
+	ingestService *ingest.Service
+	tracker        *ingest.Tracker
 }
 
-func InitMux(dbManager *dbmanager.Manager, authService *auth.Service, userService *user.Service, collectorService *collectors.Service, tracker *collectors.Tracker) *http.ServeMux {
+func InitMux(dbManager *dbmanager.Manager, authService *auth.Service, userService *user.Service, ingestService *ingest.Service, tracker *ingest.Tracker) *http.ServeMux {
 	m := http.NewServeMux()
 	h := handler{
 		t:               templates.New(views),
 		dbManager:       dbManager,
 		authService:     authService,
 		userService:     userService,
-		collectorService: collectorService,
+		ingestService: ingestService,
 		tracker:         tracker,
 	}
 
-	// Dashboard - list all collectors
+	// Dashboard - list all ingests
 	m.HandleFunc("GET /", h.dashboard)
 	m.HandleFunc("GET /collectors", h.getCollectors)
 
@@ -67,7 +67,7 @@ func (h *handler) dashboard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get collectors filtered by user access
+	// Get ingests filtered by user access
 	collectorsWithStats, err := h.getFilteredCollectors(r, user)
 	if err != nil {
 		h.t.RenderError(w, r, "Error", "Failed to get collectors", http.StatusInternalServerError)
@@ -95,7 +95,7 @@ func (h *handler) dashboard(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// getCollectors returns collectors sections for HTMX refresh
+// getCollectors returns ingests sections for HTMX refresh
 func (h *handler) getCollectors(w http.ResponseWriter, r *http.Request) {
 	user := middleware.GetUser(r)
 	if user == nil {
@@ -114,7 +114,7 @@ func (h *handler) getCollectors(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// collectorOverview shows a single collector with stats and apps
+// collectorOverview shows a single ingest with stats and apps
 func (h *handler) collectorOverview(w http.ResponseWriter, r *http.Request) {
 	user := middleware.RequireAuthRedirect(w, r)
 	if user == nil {
@@ -153,25 +153,25 @@ func (h *handler) collectorOverview(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// AJAX or Markdown: fetch data
-	collector, exists := h.tracker.Get(collectorName)
+	ingestItem, exists := h.tracker.Get(collectorName)
 	if !exists {
-		h.t.RenderError(w, r, "Error", "Collector not found", http.StatusNotFound)
+		h.t.RenderError(w, r, "Error", "Ingest not found", http.StatusNotFound)
 		return
 	}
 
 	// Get latest stats
 	var stats *db.SystemStat
 	var statsDisplay *StatsDisplay
-	s, err := h.collectorService.GetLatestStats(r.Context(), collectors.CollectorName(collectorName))
+	s, err := h.ingestService.GetLatestStats(r.Context(), ingest.CollectorName(collectorName))
 	if err == nil {
 		stats = &s
 		statsDisplay = formatStatsForDisplay(s)
 	}
 
 	// Filter apps by user access
-	apps := h.filterAppsByAccess(r, user, collector.Apps)
+	apps := h.filterAppsByAccess(r, user, ingestItem.Apps)
 
-	data["IsConnected"] = collector.IsConnected
+	data["IsConnected"] = ingestItem.IsConnected
 	data["Stats"] = stats
 	data["StatsDisplay"] = statsDisplay
 	data["Apps"] = apps
@@ -213,7 +213,7 @@ func (h *handler) collectorResources(w http.ResponseWriter, r *http.Request) {
 		Build()
 
 	since := parseTimeRange(rangeParam)
-	stats, err := h.collectorService.GetStatsHistory(r.Context(), collectors.CollectorName(collectorName), since)
+	stats, err := h.ingestService.GetStatsHistory(r.Context(), ingest.CollectorName(collectorName), since)
 	if err != nil {
 		h.t.RenderError(w, r, "Error", "Failed to get stats history", http.StatusInternalServerError)
 		return
@@ -260,13 +260,13 @@ func (h *handler) collectorApps(w http.ResponseWriter, r *http.Request) {
 		Add("apps", "apps").
 		Build()
 
-	collector, exists := h.tracker.Get(collectorName)
+	ingest, exists := h.tracker.Get(collectorName)
 	if !exists {
-		h.t.RenderError(w, r, "Error", "Collector not found", http.StatusNotFound)
+		h.t.RenderError(w, r, "Error", "Ingest not found", http.StatusNotFound)
 		return
 	}
 
-	apps := h.filterAppsByAccess(r, user, collector.Apps)
+	apps := h.filterAppsByAccess(r, user, ingest.Apps)
 
 	data := map[string]any{
 		"Title":         collectorName + " Apps",
@@ -361,7 +361,7 @@ type appStats struct {
 
 // CollectorWithStats combines collector info with latest system stats
 type CollectorWithStats struct {
-	collectors.Collector
+	ingest.Collector
 	Stats        db.SystemStat
 	StatsDisplay *StatsDisplay
 }
@@ -440,7 +440,7 @@ func (h *handler) getFilteredCollectors(r *http.Request, user *db.User) ([]Colle
 			Collector: c,
 		}
 
-		stats, err := h.collectorService.GetLatestStats(r.Context(), collectors.CollectorName(c.Name))
+		stats, err := h.ingestService.GetLatestStats(r.Context(), ingest.CollectorName(c.Name))
 		if err == nil {
 			cws.Stats = stats
 			cws.StatsDisplay = formatStatsForDisplay(stats)

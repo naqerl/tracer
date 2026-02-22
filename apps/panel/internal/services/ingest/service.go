@@ -1,4 +1,4 @@
-package collectors
+package ingest
 
 import (
 	"context"
@@ -28,20 +28,20 @@ type DBManager interface {
 	CreateAppDB(collectorName, appName string) (*sql.DB, error)
 }
 
-// Service manages collector operations using dbmanager for all DB access.
+// Service manages ingest operations using dbmanager for all DB access.
 type Service struct {
 	dbManager DBManager
 }
 
-// New creates a new collector service.
+// New creates a new ingest service.
 func New(dbManager DBManager) *Service {
 	return &Service{
 		dbManager: dbManager,
 	}
 }
 
-// List returns all collector names.
-func (s *Service) List() ([]CollectorName, error) {
+// ListCollectors returns all collector names.
+func (s *Service) ListCollectors() ([]CollectorName, error) {
 	names, err := s.dbManager.ListCollectors()
 	if err != nil {
 		return nil, err
@@ -120,7 +120,7 @@ func (s *Service) GetStatsHistory(ctx context.Context, collector CollectorName, 
 // DeleteOldStats removes stats older than the given time for all collectors.
 // Skips collectors that don't have a DB yet.
 func (s *Service) DeleteOldStats(ctx context.Context, before time.Time) error {
-	collectors, err := s.List()
+	collectors, err := s.ListCollectors()
 	if err != nil {
 		return err
 	}

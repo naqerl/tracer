@@ -2,7 +2,7 @@ package web
 
 import (
 	"github.com/ai-shift/tracer/apps/panel/internal/services/auth"
-	"github.com/ai-shift/tracer/apps/panel/internal/services/collectors"
+	"github.com/ai-shift/tracer/apps/panel/internal/services/ingest"
 	"github.com/ai-shift/tracer/apps/panel/internal/dbmanager"
 	"github.com/ai-shift/tracer/apps/panel/internal/services/notify"
 	"github.com/ai-shift/tracer/apps/panel/internal/services/user"        
@@ -10,9 +10,9 @@ import (
 
 type Dependencies struct {
         DBManagerx *dbmanager.Manager
-        Collector *collectors.Service
+        Ingest *ingest.Service
         Notify *notify.Service
         Auth *auth.Service
         User *user.Service
-        Tracker *collectors.Tracker
+        Tracker *ingest.Tracker
 }
