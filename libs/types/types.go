@@ -25,6 +25,10 @@ type LogEntry struct {
 	Extra     map[string]string `json:"extra,omitempty"`
 }
 
+// TODO: Define LevelInfo and others and use type alias
+// instead of pure string
+// TODO: Use separate structs for log and stats
+// TODO: Get rid of Thresholds
 // LogMessage is the message format from collectors to panel via WebSocket
 type LogMessage struct {
 	Type          string                 `json:"type"` // "register", "log", "startup", "stats"
