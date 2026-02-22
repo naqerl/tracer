@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/ai-shift/tracer/apps/panel/internal/auth"
 	"github.com/ai-shift/tracer/apps/panel/internal/user"
@@ -19,17 +20,17 @@ type handler struct {
 	t           templates.Templates
 	authService *auth.Service
 	userService *user.Service
-	sessionMax  int
+	sessionMax  time.Duration
 }
 
-func InitMux(authService *auth.Service, userService *user.Service, sessionDurationSec int) *http.ServeMux {
+func InitMux(authService *auth.Service, userService *user.Service) *http.ServeMux {
 	m := http.NewServeMux()
 	h := handler{
 		t:           templates.New(views),
 		authService: authService,
 		userService: userService,
-		sessionMax:  sessionDurationSec,
-	}
+		sessionMax:  auth.SessionDuration,
+}
 
 	// Login routes
 	m.HandleFunc("GET /login", h.loginPage)
@@ -80,7 +81,7 @@ func (h *handler) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	middleware.SetSessionCookie(w, token, h.sessionMax)
+	middleware.SetSessionCookie(w, token, int(h.sessionMax.Seconds()))
 	slog.Info("User logged in", "username", user.Username)
 
 	w.Header().Set("HX-Redirect", "/analytics/")
@@ -174,7 +175,7 @@ func (h *handler) setup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	middleware.SetSessionCookie(w, token, h.sessionMax)
+	middleware.SetSessionCookie(w, token, int(h.sessionMax.Seconds()))
 	slog.Info("Admin user created and logged in", "username", username)
 
 	w.Header().Set("HX-Redirect", "/analytics/")

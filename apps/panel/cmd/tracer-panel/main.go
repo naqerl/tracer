@@ -72,8 +72,7 @@ func main() {
 	defer panelDB.Close()
 
 	// Initialize services
-	sessionDuration := cfg.SessionDurationParsed()
-	authService := auth.New(panelDB, sessionDuration)
+	authService := auth.New(panelDB)
 	defer authService.Close()
 
 	userService := user.New(panelDB)
@@ -149,8 +148,7 @@ func main() {
 	// Note: System stats cleanup is handled by retention service
 
 	// Initialize HTTP server
-	sessionDurationSec := int(sessionDuration.Seconds())
-	server := web.Run(cfg.Port, dbManager, collectorService, cfg.SampleRate, notifyService, authService, userService, notifierStore, tracker, sessionDurationSec, cfg.PanelURL)
+	server := web.Run(cfg.Port, dbManager, collectorService, cfg.SampleRate, notifyService, authService, userService, notifierStore, tracker, cfg.PanelURL)
 
 	// Handle shutdown signals
 	sigChan := make(chan os.Signal, 1)
