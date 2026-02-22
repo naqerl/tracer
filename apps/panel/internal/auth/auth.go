@@ -13,6 +13,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/ai-shift/tracer/apps/panel/db"
+	userpkg "github.com/ai-shift/tracer/apps/panel/internal/user"
 )
 
 const (
@@ -23,7 +24,6 @@ const (
 
 var (
 	ErrInvalidCredentials = errors.New("invalid credentials")
-	ErrUserNotFound       = errors.New("user not found")
 	ErrSessionExpired     = errors.New("session expired")
 )
 
@@ -87,9 +87,8 @@ func GenerateAPIKey() (string, error) {
 	return GenerateToken(apiKeySize)
 }
 
-// User management
-
-func (s *Service) CreateUser(ctx context.Context, username, password string, isAdmin bool) (*db.User, error) {
+// Register creates a new user with hashed password
+func (s *Service) Register(ctx context.Context, username, password string, isAdmin bool) (*db.User, error) {
 	hash, err := HashPassword(password)
 	if err != nil {
 		return nil, fmt.Errorf("hash password: %w", err)
@@ -111,44 +110,6 @@ func (s *Service) CreateUser(ctx context.Context, username, password string, isA
 
 	slog.Info("User created", "username", username, "is_admin", isAdmin)
 	return &user, nil
-}
-
-func (s *Service) GetUserByID(ctx context.Context, id int64) (*db.User, error) {
-	user, err := s.queries.GetUserByID(ctx, id)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, ErrUserNotFound
-		}
-		return nil, err
-	}
-	return &user, nil
-}
-
-func (s *Service) GetUserByUsername(ctx context.Context, username string) (*db.User, error) {
-	user, err := s.queries.GetUserByUsername(ctx, username)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, ErrUserNotFound
-		}
-		return nil, err
-	}
-	return &user, nil
-}
-
-func (s *Service) ListUsers(ctx context.Context) ([]db.User, error) {
-	return s.queries.ListUsers(ctx)
-}
-
-func (s *Service) DeleteUser(ctx context.Context, id int64) error {
-	return s.queries.DeleteUser(ctx, id)
-}
-
-func (s *Service) HasUsers(ctx context.Context) (bool, error) {
-	count, err := s.queries.CountUsers(ctx)
-	if err != nil {
-		return false, err
-	}
-	return count > 0, nil
 }
 
 // Session management
@@ -204,10 +165,10 @@ func (s *Service) CleanupExpiredSessions(ctx context.Context) error {
 
 // Login
 
-func (s *Service) Login(ctx context.Context, username, password string) (*db.User, string, error) {
-	user, err := s.GetUserByUsername(ctx, username)
+func (s *Service) Login(ctx context.Context, username, password string, userService *userpkg.Service) (*db.User, string, error) {
+	user, err := userService.GetByUsername(ctx, username)
 	if err != nil {
-		if errors.Is(err, ErrUserNotFound) {
+		if errors.Is(err, userpkg.ErrNotFound) {
 			return nil, "", ErrInvalidCredentials
 		}
 		return nil, "", err
@@ -224,51 +185,6 @@ func (s *Service) Login(ctx context.Context, username, password string) (*db.Use
 
 	slog.Info("User logged in", "username", username)
 	return user, token, nil
-}
-
-// User app access
-
-func (s *Service) GetUserApps(ctx context.Context, userID int64) ([]string, error) {
-	return s.queries.GetUserApps(ctx, userID)
-}
-
-func (s *Service) AddUserApp(ctx context.Context, userID int64, appName string) error {
-	return s.queries.AddUserApp(ctx, db.AddUserAppParams{
-		UserID:  userID,
-		AppName: appName,
-	})
-}
-
-func (s *Service) RemoveUserApp(ctx context.Context, userID int64, appName string) error {
-	return s.queries.RemoveUserApp(ctx, db.RemoveUserAppParams{
-		UserID:  userID,
-		AppName: appName,
-	})
-}
-
-func (s *Service) UserHasAppAccess(ctx context.Context, userID int64, appName string) (bool, error) {
-	user, err := s.GetUserByID(ctx, userID)
-	if err != nil {
-		return false, err
-	}
-
-	// Admins have access to all apps
-	if user.IsAdmin == 1 {
-		return true, nil
-	}
-
-	apps, err := s.GetUserApps(ctx, userID)
-	if err != nil {
-		return false, err
-	}
-
-	for _, app := range apps {
-		if app == appName {
-			return true, nil
-		}
-	}
-
-	return false, nil
 }
 
 // API Key management
@@ -346,7 +262,7 @@ func (s *Service) GenerateUserAPIKey(ctx context.Context, userID int64, name str
 	return &userKey, nil
 }
 
-func (s *Service) ValidateUserAPIKey(ctx context.Context, key string) (*db.User, error) {
+func (s *Service) ValidateUserAPIKey(ctx context.Context, key string, userService *userpkg.Service) (*db.User, error) {
 	userKey, err := s.queries.GetUserAPIKey(ctx, key)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -363,12 +279,12 @@ func (s *Service) ValidateUserAPIKey(ctx context.Context, key string) (*db.User,
 		})
 	}()
 
-	user, err := s.queries.GetUserByID(ctx, userKey.UserID)
+	user, err := userService.GetByID(ctx, userKey.UserID)
 	if err != nil {
 		return nil, fmt.Errorf("get user for API key: %w", err)
 	}
 
-	return &user, nil
+	return user, nil
 }
 
 func (s *Service) ListUserAPIKeys(ctx context.Context, userID int64) ([]db.UserApiKey, error) {

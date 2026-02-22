@@ -6,6 +6,9 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+
+	"github.com/ai-shift/tracer/apps/panel/db"
+	"github.com/ai-shift/tracer/apps/panel/internal/user"
 )
 
 const (
@@ -27,6 +30,9 @@ type Service struct {
 
 	mu            sync.RWMutex
 	subscriptions map[CollectorApp][]Notifier // (collector, app) -> notifiers
+
+	store       *Store
+	userService *user.Service
 }
 
 // AddNotifierRequest contains data for creating a new notifier
@@ -64,12 +70,20 @@ type NotifierData struct {
 	Enabled bool
 }
 
+// TelegramConfig represents Telegram notifier configuration
+type TelegramConfig struct {
+	Token  string `json:"token"`
+	ChatID int64  `json:"chat_id"`
+}
+
 // New creates a new notification service
-func New() *Service {
+func New(store *Store, userService *user.Service) *Service {
 	return &Service{
 		ch:            make(chan Notification, channelSize),
 		semaphore:     make(chan struct{}, maxWorkers),
 		subscriptions: make(map[CollectorApp][]Notifier),
+		store:         store,
+		userService:   userService,
 	}
 }
 
@@ -216,7 +230,7 @@ func (s *Service) dispatch(n Notification, notifiers []Notifier) {
 
 // AddNotifier creates a notifier, saves to DB, sends welcome notification, and registers it
 // This is the entry point for creating new notifiers from the UI
-func (s *Service) AddNotifier(ctx context.Context, req AddNotifierRequest, authService NotifierRepository) error {
+func (s *Service) AddNotifier(ctx context.Context, req AddNotifierRequest, repo NotifierRepository) error {
 	// 1. Create config JSON based on type
 	var configJSON string
 	switch req.Type {
@@ -238,7 +252,7 @@ func (s *Service) AddNotifier(ctx context.Context, req AddNotifierRequest, authS
 	}
 
 	// 2. Save to database
-	notifier, err := authService.CreateNotifier(ctx, req.UserID, req.Name, req.Type, configJSON, true)
+	notifier, err := repo.CreateNotifier(ctx, req.UserID, req.Name, req.Type, configJSON, true)
 	if err != nil {
 		return fmt.Errorf("create notifier in DB: %w", err)
 	}
@@ -276,7 +290,7 @@ func (s *Service) AddNotifier(ctx context.Context, req AddNotifierRequest, authS
 			})
 		}
 
-		if err := authService.SetNotifierApps(ctx, notifier.ID, subscriptions); err != nil {
+		if err := repo.SetNotifierApps(ctx, notifier.ID, subscriptions); err != nil {
 			return fmt.Errorf("set notifier apps: %w", err)
 		}
 
@@ -290,9 +304,9 @@ func (s *Service) AddNotifier(ctx context.Context, req AddNotifierRequest, authS
 }
 
 // UpdateNotifierApps updates apps for a notifier, sends subscription notifications for new apps
-func (s *Service) UpdateNotifierApps(ctx context.Context, notifierID int64, userID int64, newSubscriptions []NotifierAppSubscription, authService NotifierRepository) error {
+func (s *Service) UpdateNotifierApps(ctx context.Context, notifierID int64, userID int64, newSubscriptions []NotifierAppSubscription, repo NotifierRepository) error {
 	// 1. Get current subscriptions
-	currentSubscriptions, err := authService.GetNotifierApps(ctx, notifierID)
+	currentSubscriptions, err := repo.GetNotifierApps(ctx, notifierID)
 	if err != nil {
 		return fmt.Errorf("get current subscriptions: %w", err)
 	}
@@ -314,12 +328,12 @@ func (s *Service) UpdateNotifierApps(ctx context.Context, notifierID int64, user
 	}
 
 	// 4. Update database
-	if err := authService.SetNotifierApps(ctx, notifierID, newSubscriptions); err != nil {
+	if err := repo.SetNotifierApps(ctx, notifierID, newSubscriptions); err != nil {
 		return fmt.Errorf("update notifier subscriptions: %w", err)
 	}
 
 	// 5. Get notifier and create instance
-	notifier, err := authService.GetNotifier(ctx, notifierID)
+	notifier, err := repo.GetNotifier(ctx, notifierID)
 	if err != nil {
 		return fmt.Errorf("get notifier: %w", err)
 	}
@@ -407,5 +421,144 @@ func (s *Service) clearNotifier(notifierName string) {
 		} else {
 			delete(s.subscriptions, key)
 		}
+	}
+}
+
+// LoadEnabled loads and registers enabled notifiers from the database
+func (s *Service) LoadEnabled(ctx context.Context) error {
+	notifiers, err := s.store.ListNotifiers(ctx)
+	if err != nil {
+		return err
+	}
+
+	for _, notifier := range notifiers {
+		if notifier.Enabled != 1 {
+			continue
+		}
+
+		subscriptions, err := s.store.GetNotifierApps(ctx, notifier.ID)
+		if err != nil {
+			slog.Error("Failed to get notifier subscriptions", "notifier_id", notifier.ID, "error", err)
+			continue
+		}
+
+		if len(subscriptions) == 0 {
+			continue
+		}
+
+		owner, err := s.userService.GetByID(ctx, notifier.UserID)
+		if err != nil {
+			slog.Error("Failed to get notifier owner", "notifier_id", notifier.ID, "error", err)
+			continue
+		}
+
+		if owner.IsAdmin != 1 {
+			userApps, err := s.userService.GetApps(ctx, owner.ID)
+			if err != nil {
+				slog.Error("Failed to get user apps", "user_id", owner.ID, "error", err)
+				continue
+			}
+			userAppMap := make(map[string]bool)
+			for _, app := range userApps {
+				userAppMap[app] = true
+			}
+			var filtered []NotifierAppSubscription
+			for _, sub := range subscriptions {
+				if sub.AppName == "*" {
+					continue
+				}
+				if userAppMap[sub.AppName] {
+					filtered = append(filtered, sub)
+				}
+			}
+			subscriptions = filtered
+		}
+
+		if len(subscriptions) == 0 {
+			continue
+		}
+
+		instance, err := s.buildNotifier(notifier)
+		if err != nil {
+			slog.Error("Failed to create notifier", "notifier_id", notifier.ID, "error", err)
+			continue
+		}
+
+		for _, sub := range subscriptions {
+			s.RegisterNotifier(sub.CollectorName, sub.AppName, instance)
+		}
+
+		slog.Info("Loaded notifier", "name", notifier.Name, "type", notifier.Type, "subscriptions", len(subscriptions), "owner", owner.Username)
+	}
+
+	return nil
+}
+
+// buildNotifier creates a notifier instance from database record
+func (s *Service) buildNotifier(notifier db.Notifier) (Notifier, error) {
+	switch notifier.Type {
+	case "telegram":
+		var cfg TelegramConfig
+		if err := json.Unmarshal([]byte(notifier.Config), &cfg); err != nil {
+			return nil, err
+		}
+		return NewTelegramNotifier(notifier.Name, cfg.Token, cfg.ChatID)
+	default:
+		return nil, fmt.Errorf("unknown notifier type: %s", notifier.Type)
+	}
+}
+
+// RegisterNotifierWithUser registers a notifier with user-based app filtering
+func (s *Service) RegisterNotifierWithUser(ctx context.Context, notifierID int64, user *db.User) {
+	notifier, err := s.store.GetNotifierDB(ctx, notifierID)
+	if err != nil {
+		slog.Error("Failed to get notifier for registration", "error", err)
+		return
+	}
+
+	if notifier.Enabled != 1 {
+		return
+	}
+
+	subscriptions, err := s.store.GetNotifierApps(ctx, notifierID)
+	if err != nil {
+		slog.Error("Failed to get notifier subscriptions", "error", err)
+		return
+	}
+
+	if user != nil && user.IsAdmin != 1 {
+		userApps, err := s.userService.GetApps(ctx, user.ID)
+		if err != nil {
+			slog.Error("Failed to get user apps", "error", err)
+			return
+		}
+		userAppMap := make(map[string]bool)
+		for _, app := range userApps {
+			userAppMap[app] = true
+		}
+		var filtered []NotifierAppSubscription
+		for _, sub := range subscriptions {
+			if sub.AppName == "*" {
+				continue
+			}
+			if userAppMap[sub.AppName] {
+				filtered = append(filtered, sub)
+			}
+		}
+		subscriptions = filtered
+	}
+
+	if len(subscriptions) == 0 {
+		return
+	}
+
+	instance, err := s.buildNotifier(*notifier)
+	if err != nil {
+		slog.Error("Failed to create notifier", "error", err)
+		return
+	}
+
+	for _, sub := range subscriptions {
+		s.RegisterNotifier(sub.CollectorName, sub.AppName, instance)
 	}
 }
