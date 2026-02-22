@@ -32,9 +32,12 @@ test:
 	go test ./...
 
 # Run vet and staticcheck
-vet:
+vet: fmt
 	go vet ./...
 	staticcheck ./...
+
+fmt:
+	go fmt ./...
 
 # Install dependencies
 deps:

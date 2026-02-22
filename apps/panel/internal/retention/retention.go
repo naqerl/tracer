@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/ai-shift/tracer/apps/panel/db"
-	"github.com/ai-shift/tracer/apps/panel/internal/services/ingest"
 	"github.com/ai-shift/tracer/apps/panel/internal/dbmanager"
+	"github.com/ai-shift/tracer/apps/panel/internal/services/ingest"
 )
 
 type Service struct {

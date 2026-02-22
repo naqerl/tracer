@@ -5,9 +5,9 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/ai-shift/tracer/apps/panel/db"
 	"github.com/ai-shift/tracer/apps/panel/internal/services/auth"
 	"github.com/ai-shift/tracer/apps/panel/internal/services/user"
-	"github.com/ai-shift/tracer/apps/panel/db"
 )
 
 type contextKey string

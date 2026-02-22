@@ -4,10 +4,10 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/ai-shift/tracer/apps/panel/web/handlers/panel"
-	"github.com/ai-shift/tracer/apps/panel/web/handlers/ingest"
 	authres "github.com/ai-shift/tracer/apps/panel/web/handlers/auth"
+	"github.com/ai-shift/tracer/apps/panel/web/handlers/ingest"
 	"github.com/ai-shift/tracer/apps/panel/web/handlers/llm"
+	"github.com/ai-shift/tracer/apps/panel/web/handlers/panel"
 	"github.com/ai-shift/tracer/apps/panel/web/handlers/settings"
 	"github.com/ai-shift/tracer/apps/panel/web/middleware"
 )
@@ -15,7 +15,7 @@ import (
 func Run(deps Dependencies, port string, sampleRate float64, panelURL string) *http.Server {
 	mux := http.NewServeMux()
 
-        mux.Handle("/ingest/", http.StripPrefix("/ingest", ingest.InitMux(deps.Ingest, sampleRate, deps.Notify.Chan(), deps.Tracker, panelURL)))
+	mux.Handle("/ingest/", http.StripPrefix("/ingest", ingest.InitMux(deps.Ingest, sampleRate, deps.Notify.Chan(), deps.Tracker, panelURL)))
 	mux.Handle("/panel/", http.StripPrefix("/panel", panel.InitMux(deps.DBManagerx, deps.Auth, deps.User, deps.Ingest, deps.Tracker)))
 	mux.Handle("/auth/", http.StripPrefix("/auth", authres.InitMux(deps.Auth, deps.User)))
 	mux.Handle("/llm", llm.InitMux())
@@ -34,4 +34,3 @@ func Run(deps Dependencies, port string, sampleRate float64, panelURL string) *h
 		IdleTimeout:  120 * time.Second,
 	}
 }
-

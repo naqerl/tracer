@@ -11,11 +11,11 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/ai-shift/tracer/apps/panel/internal/services/auth"
-	"github.com/ai-shift/tracer/apps/panel/internal/services/user"
-	"github.com/ai-shift/tracer/apps/panel/internal/services/ingest"
-	"github.com/ai-shift/tracer/apps/panel/internal/dbmanager"
 	"github.com/ai-shift/tracer/apps/panel/db"
+	"github.com/ai-shift/tracer/apps/panel/internal/dbmanager"
+	"github.com/ai-shift/tracer/apps/panel/internal/services/auth"
+	"github.com/ai-shift/tracer/apps/panel/internal/services/ingest"
+	"github.com/ai-shift/tracer/apps/panel/internal/services/user"
 	"github.com/ai-shift/tracer/apps/panel/web/htmx"
 	"github.com/ai-shift/tracer/apps/panel/web/middleware"
 	"github.com/ai-shift/tracer/apps/panel/web/templates"
@@ -25,23 +25,23 @@ import (
 var views embed.FS
 
 type handler struct {
-	t               templates.Templates
-	dbManager       *dbmanager.Manager
-	authService     *auth.Service
-	userService     *user.Service
+	t             templates.Templates
+	dbManager     *dbmanager.Manager
+	authService   *auth.Service
+	userService   *user.Service
 	ingestService *ingest.Service
-	tracker        *ingest.Tracker
+	tracker       *ingest.Tracker
 }
 
 func InitMux(dbManager *dbmanager.Manager, authService *auth.Service, userService *user.Service, ingestService *ingest.Service, tracker *ingest.Tracker) *http.ServeMux {
 	m := http.NewServeMux()
 	h := handler{
-		t:               templates.New(views),
-		dbManager:       dbManager,
-		authService:     authService,
-		userService:     userService,
+		t:             templates.New(views),
+		dbManager:     dbManager,
+		authService:   authService,
+		userService:   userService,
 		ingestService: ingestService,
-		tracker:         tracker,
+		tracker:       tracker,
 	}
 
 	// Dashboard - list all ingests

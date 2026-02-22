@@ -28,10 +28,10 @@ var upgrader = websocket.Upgrader{
 
 type handler struct {
 	ingestService *ingest.Service
-	sampleRate       float64
-	notifyChan       notify.NotificationChan
-	tracker          *ingest.Tracker
-	panelURL         string
+	sampleRate    float64
+	notifyChan    notify.NotificationChan
+	tracker       *ingest.Tracker
+	panelURL      string
 }
 
 func InitMux(ingestService *ingest.Service, sampleRate float64, notifyChan notify.NotificationChan, tracker *ingest.Tracker, panelURL string) *http.ServeMux {

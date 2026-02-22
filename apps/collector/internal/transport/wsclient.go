@@ -22,8 +22,6 @@ const (
 	maxReconnectWait = 5 * time.Minute
 )
 
-
-
 type Service struct {
 	endpoint      string
 	collectorName string

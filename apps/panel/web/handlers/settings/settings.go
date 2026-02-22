@@ -9,12 +9,12 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/ai-shift/tracer/apps/panel/internal/services/auth"
-	"github.com/ai-shift/tracer/apps/panel/internal/services/user"
-	"github.com/ai-shift/tracer/apps/panel/internal/services/ingest"
-	"github.com/ai-shift/tracer/apps/panel/internal/dbmanager"
-	"github.com/ai-shift/tracer/apps/panel/internal/services/notify"
 	"github.com/ai-shift/tracer/apps/panel/db"
+	"github.com/ai-shift/tracer/apps/panel/internal/dbmanager"
+	"github.com/ai-shift/tracer/apps/panel/internal/services/auth"
+	"github.com/ai-shift/tracer/apps/panel/internal/services/ingest"
+	"github.com/ai-shift/tracer/apps/panel/internal/services/notify"
+	"github.com/ai-shift/tracer/apps/panel/internal/services/user"
 	"github.com/ai-shift/tracer/apps/panel/web/htmx"
 	"github.com/ai-shift/tracer/apps/panel/web/middleware"
 	"github.com/ai-shift/tracer/apps/panel/web/templates"
@@ -24,23 +24,23 @@ import (
 var views embed.FS
 
 type handler struct {
-	t                templates.Templates
-	authService      *auth.Service
-	userService      *user.Service
+	t             templates.Templates
+	authService   *auth.Service
+	userService   *user.Service
 	ingestService *ingest.Service
-	dbManager        *dbmanager.Manager
-	notifyService    *notify.Service
+	dbManager     *dbmanager.Manager
+	notifyService *notify.Service
 }
 
 func InitMux(authService *auth.Service, userService *user.Service, ingestService *ingest.Service, dbManager *dbmanager.Manager, notifyService *notify.Service) *http.ServeMux {
 	m := http.NewServeMux()
 	h := handler{
-		t:                templates.New(views),
-		authService:      authService,
-		userService:      userService,
+		t:             templates.New(views),
+		authService:   authService,
+		userService:   userService,
 		ingestService: ingestService,
-		dbManager:        dbManager,
-		notifyService:    notifyService,
+		dbManager:     dbManager,
+		notifyService: notifyService,
 	}
 
 	// Users management

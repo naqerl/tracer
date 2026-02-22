@@ -17,15 +17,15 @@ import (
 	_ "modernc.org/sqlite"
 
 	panelconfig "github.com/ai-shift/tracer/apps/panel/internal/config"
+	"github.com/ai-shift/tracer/apps/panel/internal/dbmanager"
+	"github.com/ai-shift/tracer/apps/panel/internal/retention"
 	"github.com/ai-shift/tracer/apps/panel/internal/services/auth"
 	"github.com/ai-shift/tracer/apps/panel/internal/services/ingest"
-	"github.com/ai-shift/tracer/apps/panel/internal/dbmanager"
 	"github.com/ai-shift/tracer/apps/panel/internal/services/notify"
-	"github.com/ai-shift/tracer/apps/panel/internal/retention"
 	"github.com/ai-shift/tracer/apps/panel/internal/services/user"
-	"github.com/ai-shift/tracer/libs/logx"
 	panelmigrations "github.com/ai-shift/tracer/apps/panel/sql/panel"
 	"github.com/ai-shift/tracer/apps/panel/web"
+	"github.com/ai-shift/tracer/libs/logx"
 )
 
 func main() {
@@ -48,7 +48,7 @@ func main() {
 		"sample_rate", cfg.SampleRate,
 		"retention_days", cfg.RetentionDays,
 	)
-        
+
 	// Setup context with cancellation
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

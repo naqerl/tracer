@@ -30,7 +30,7 @@ func InitMux(authService *auth.Service, userService *user.Service) *http.ServeMu
 		authService: authService,
 		userService: userService,
 		sessionMax:  auth.SessionDuration,
-}
+	}
 
 	// Login routes
 	m.HandleFunc("GET /login", h.loginPage)
