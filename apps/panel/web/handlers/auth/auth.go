@@ -7,9 +7,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/ai-shift/tracer/apps/panel/internal/services/auth"
+	authsvc "github.com/ai-shift/tracer/apps/panel/internal/services/auth"
 	"github.com/ai-shift/tracer/apps/panel/internal/services/user"
-	"github.com/ai-shift/tracer/apps/panel/web/middleware"
+	authmw "github.com/ai-shift/tracer/apps/panel/web/middleware/auth"
 	"github.com/ai-shift/tracer/apps/panel/web/templates"
 )
 
@@ -18,18 +18,18 @@ var views embed.FS
 
 type handler struct {
 	t           templates.Templates
-	authService *auth.Service
+	authService *authsvc.Service
 	userService *user.Service
 	sessionMax  time.Duration
 }
 
-func InitMux(authService *auth.Service, userService *user.Service) *http.ServeMux {
+func InitMux(authService *authsvc.Service, userService *user.Service) *http.ServeMux {
 	m := http.NewServeMux()
 	h := handler{
 		t:           templates.New(views),
 		authService: authService,
 		userService: userService,
-		sessionMax:  auth.SessionDuration,
+		sessionMax:  authsvc.SessionDuration,
 	}
 
 	// Login routes
@@ -54,7 +54,7 @@ func (h *handler) renderFormError(w http.ResponseWriter, msg string) {
 // Login handlers
 
 func (h *handler) loginPage(w http.ResponseWriter, r *http.Request) {
-	if user := middleware.GetUser(r); user != nil {
+	if _, err := authmw.GetUser(r); err == nil {
 		http.Redirect(w, r, "/panel/", http.StatusSeeOther)
 		return
 	}
@@ -81,7 +81,7 @@ func (h *handler) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	middleware.SetSessionCookie(w, r, token, int(h.sessionMax.Seconds()))
+	authmw.SetSessionCookie(w, r, token, int(h.sessionMax.Seconds()))
 	slog.Info("User logged in", "username", user.Username)
 
 	w.Header().Set("HX-Redirect", "/panel/")
@@ -93,8 +93,8 @@ func (h *handler) logout(w http.ResponseWriter, r *http.Request) {
 		h.authService.DeleteSession(r.Context(), cookie.Value)
 	}
 
-	middleware.ClearSessionCookie(w)
-	middleware.RedirectToLogin(w, r)
+	authmw.ClearSessionCookie(w)
+	authmw.RedirectToLogin(w, r)
 }
 
 // Setup handlers
@@ -108,7 +108,7 @@ func (h *handler) setupPage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if hasUsers {
-		middleware.RedirectToLogin(w, r)
+		authmw.RedirectToLogin(w, r)
 		return
 	}
 
@@ -135,7 +135,7 @@ func (h *handler) setup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if hasUsers {
-		w.Header().Set("HX-Redirect", middleware.LoginPath(r))
+		w.Header().Set("HX-Redirect", authmw.LoginPath(r))
 		w.WriteHeader(http.StatusOK)
 		return
 	}
@@ -175,7 +175,7 @@ func (h *handler) setup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	middleware.SetSessionCookie(w, r, token, int(h.sessionMax.Seconds()))
+	authmw.SetSessionCookie(w, r, token, int(h.sessionMax.Seconds()))
 	slog.Info("Admin user created and logged in", "username", username)
 
 	w.Header().Set("HX-Redirect", "/panel/")
