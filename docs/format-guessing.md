@@ -20,81 +20,46 @@ Log format:
 
 ## Requirements
 
-The path to the config have to be mentioned in the .env or passed via flag, otherwise the default path will be used.
-Priority: Flag > Environmental variable > Default Path
-
 `journalctl`
 Make sure that current user have the permission to run the `journalctl`.
 The unit name have to match the name of the service ("unit name".service).
 
 ## Workflow
 
-1. Validate the input.
-2. Check if source is available for current unit.
-3. <TBD> Read the last 100 logs from the source.
+1. Inside of main read the config and check if the app present there. Override only with --override flag, if no flag exit with warning.
+2. Validate the input.
+3. Read the last 100 logs from the source.
 4. Guess the log format by detecting the format specific characters and patterns. Exit the execution if the format was not detected.
 5. Parse the logs and extract the required parameters:
     - Log level
     - Trace id
     - Message
+    - Timestamp (format as well)
     Match the keys with the pool of most used. (Example: "msg", "message", "descr", "description" for the Message parameter).
-    <TBD> Exit if required parameters: log level and message, are not found or inconsistent among these logs.
-6. Add a new app to the collector configuration file. <TBD> If app entry with such name already exists, overwrite the fields.
+    Exit if required parameters: log level and message are not found. If logs are inconsistent log WARN and pick first among options.
+6. Add a new app to the collector configuration file. If app entry with such name already exists, overwrite the fields.
 
 ## Implementation
 
 ```go
 package formatguesser
 
-type LogsFormat int
-
-const (
-    JSON LogsFormat = iota
-)
-
-type Params struct {
-    LogLevel    string
-    Message     string
-    TraceID     string
-}
-
-type Parser interface {
-    Parse(raw []byte) (Params, error)
-}
-
 type LogSorce interface {
-    Fetch(unit string) ([]byte, error)
+    Fetch(ctx context.Context) ([]byte, error)
 }
 
-func Add(source, unit, configPath string)
+func Add(ctx context.Context, cfg config.Collector, sources config.Sources)
 
-func guessFormat(raw []byte) (Parser, error)
+func guessFormat(raw []byte) (config.ResolvedApp, error)
 
-func updateConfig(configPath string, params Params) (error)
 ```
 
 ## Test cases
 
-### Positive
+Create a table test with:
+    Input: Log in any format
+    Expected: types.LogEntry
+    Execution: log -> guessFormat -> config.ReslvedApp -> parser.Parse(ra) -> compare with expected
 
-1. Standard systemd JSON
-    Input: 1 to 100 lines of valid JSON format from journalctl
-    Expectations: `guessFormat` returns JSON parser, which populates all the Params successfully. Config file gets updated.
-
-### Negative
-
-1. Unavailable source
-    Input: Arbitrary source
-    Expectations: `Add` exits with error before fetching the source
-
-2. No permissions
-    Input: User has no permission to run `journalctl`
-    Expectations: `Fetch` will return an error and `Add` exits
-
-3. Unavailable format
-    Input: Plain text logs
-    Expectations: `guessFormat` returns an error and `Add` exits
-
-4. Wrong guess
-    Input: `guessFormat` makes a wrong guess
-    Expectations: `Parse`  returns an error and `Add` exits
+## Notes:
+1. Add the Persist method to the Collector type in /collector/internal/config
