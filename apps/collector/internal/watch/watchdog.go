@@ -4,16 +4,19 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"os"
 	"os/exec"
 	"regexp"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	collectorconfig "github.com/ai-shift/tracer/apps/collector/internal/config"
-	"github.com/ai-shift/tracer/apps/collector/internal/parsing"
+	logparser "github.com/ai-shift/tracer/apps/collector/internal/parsing"
 	"github.com/ai-shift/tracer/libs/types"
 )
 
@@ -21,6 +24,8 @@ const (
 	pollInterval = 100 * time.Millisecond
 	maxBatchSize = 100
 	maxLineBytes = 1024 * 1024
+
+	readFromEnd = "end"
 )
 
 type sourceType int
@@ -40,26 +45,16 @@ type fileSourceConfig struct {
 	readFrom string
 }
 
-func (c fileSourceConfig) sourceType() sourceType {
-	return sourceTypeFile
-}
-
-func (c fileSourceConfig) label() string {
-	return c.path
-}
+func (c fileSourceConfig) sourceType() sourceType { return sourceTypeFile }
+func (c fileSourceConfig) label() string          { return c.path }
 
 type journalctlSourceConfig struct {
 	unit  string
 	since string
 }
 
-func (c journalctlSourceConfig) sourceType() sourceType {
-	return sourceTypeJournalctl
-}
-
-func (c journalctlSourceConfig) label() string {
-	return "journalctl:" + c.unit
-}
+func (c journalctlSourceConfig) sourceType() sourceType { return sourceTypeJournalctl }
+func (c journalctlSourceConfig) label() string          { return "journalctl:" + c.unit }
 
 type AppLogEntry struct {
 	AppName   string
@@ -67,22 +62,32 @@ type AppLogEntry struct {
 	IsStartup bool
 }
 
+// watchedSource is thread-safe for concurrent access.
 type watchedSource struct {
+	mu      sync.RWMutex
 	appName string
 	source  sourceConfig
-	file    *os.File
 	parser  logparser.Parser
-	offset  int64
+
+	// File-specific fields
+	file   *os.File
+	offset atomic.Int64 // Use atomic for lock-free offset reads
+
+	// Journalctl-specific fields
+	cmd    *exec.Cmd
+	stdout io.ReadCloser
 
 	startupRegex *regexp.Regexp
 
-	cmd    *exec.Cmd
-	stdout io.ReadCloser
+	// Buffer pool for scanning - initialized per source
+	scanBuf []byte
 }
 
 type Service struct {
-	LogChan chan AppLogEntry
-	sources []*watchedSource
+	LogChan   chan AppLogEntry
+	sources   []*watchedSource
+	closeOnce sync.Once // Protects channel close
+	wg        sync.WaitGroup
 }
 
 func New(apps []collectorconfig.ResolvedApp) (*Service, error) {
@@ -94,7 +99,7 @@ func New(apps []collectorconfig.ResolvedApp) (*Service, error) {
 	for _, app := range apps {
 		parser, err := logparser.New(app)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("creating parser for app %s: %w", app.Name, err)
 		}
 
 		sourceCfg, err := buildSourceConfig(app)
@@ -106,6 +111,7 @@ func New(apps []collectorconfig.ResolvedApp) (*Service, error) {
 			appName: app.Name,
 			parser:  parser,
 			source:  sourceCfg,
+			scanBuf: make([]byte, 0, 64*1024),
 		}
 
 		if app.StartupPattern != "" {
@@ -144,6 +150,7 @@ func (s *Service) GetAppNames() []string {
 }
 
 func (s *Service) Start(ctx context.Context) {
+	// Initialize all sources
 	for _, ws := range s.sources {
 		switch cfg := ws.source.(type) {
 		case fileSourceConfig:
@@ -164,6 +171,7 @@ func (s *Service) Start(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			s.closeAll()
+			s.wg.Wait() // Wait for all goroutines to finish
 			return
 		case <-ticker.C:
 			s.pollAll(ctx)
@@ -172,28 +180,33 @@ func (s *Service) Start(ctx context.Context) {
 }
 
 func (s *Service) openFile(ws *watchedSource, cfg fileSourceConfig) error {
+	ws.mu.Lock()
+	defer ws.mu.Unlock()
+
 	file, err := os.Open(cfg.path)
 	if err != nil {
-		return err
+		return fmt.Errorf("opening file %s: %w", cfg.path, err)
 	}
 
 	offset := int64(0)
-	if cfg.readFrom == "end" {
-		var err error
+	if cfg.readFrom == readFromEnd {
 		offset, err = file.Seek(0, io.SeekEnd)
 		if err != nil {
 			file.Close()
-			return err
+			return fmt.Errorf("seeking to end of %s: %w", cfg.path, err)
 		}
 	}
 
 	ws.file = file
-	ws.offset = offset
+	ws.offset.Store(offset)
 	slog.Info("Watching file", "path", cfg.path, "offset", offset)
 	return nil
 }
 
 func (s *Service) startJournalctl(ctx context.Context, ws *watchedSource, cfg journalctlSourceConfig) error {
+	ws.mu.Lock()
+	defer ws.mu.Unlock()
+
 	cmd := exec.CommandContext(ctx, "journalctl",
 		"-u", cfg.unit,
 		"-f",
@@ -203,11 +216,11 @@ func (s *Service) startJournalctl(ctx context.Context, ws *watchedSource, cfg jo
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		return err
+		return fmt.Errorf("creating stdout pipe for journalctl: %w", err)
 	}
 
 	if err := cmd.Start(); err != nil {
-		return err
+		return fmt.Errorf("starting journalctl: %w", err)
 	}
 
 	ws.cmd = cmd
@@ -215,15 +228,27 @@ func (s *Service) startJournalctl(ctx context.Context, ws *watchedSource, cfg jo
 
 	slog.Info("Watching journalctl", "unit", cfg.unit)
 
-	go s.readJournalctl(ctx, ws, cfg.unit)
+	s.wg.Add(1)
+	go func() {
+		defer s.wg.Done()
+		s.readJournalctl(ctx, ws, cfg.unit)
+	}()
 
 	return nil
 }
 
 func (s *Service) readJournalctl(ctx context.Context, ws *watchedSource, unit string) {
-	scanner := bufio.NewScanner(ws.stdout)
-	buf := make([]byte, 0, 64*1024)
-	scanner.Buffer(buf, maxLineBytes)
+	ws.mu.RLock()
+	stdout := ws.stdout
+	scanBuf := ws.scanBuf
+	ws.mu.RUnlock()
+
+	if stdout == nil {
+		return
+	}
+
+	scanner := bufio.NewScanner(stdout)
+	scanner.Buffer(scanBuf, maxLineBytes)
 
 	for scanner.Scan() {
 		if ctx.Err() != nil {
@@ -235,13 +260,12 @@ func (s *Service) readJournalctl(ctx context.Context, ws *watchedSource, unit st
 			continue
 		}
 
-		_, stop := s.parseAndDispatch(ctx, ws, line, "journalctl:"+unit)
-		if stop {
+		if stop := s.parseAndDispatch(ctx, ws, line, "journalctl:"+unit); stop {
 			return
 		}
 	}
 
-	if err := scanner.Err(); err != nil {
+	if err := scanner.Err(); err != nil && !errors.Is(err, context.Canceled) {
 		slog.Warn("Journalctl scanner error", "unit", unit, "error", err)
 	}
 }
@@ -249,16 +273,18 @@ func (s *Service) readJournalctl(ctx context.Context, ws *watchedSource, unit st
 func extractJournalMessage(line string) (string, error) {
 	var data map[string]any
 	if err := json.Unmarshal([]byte(line), &data); err != nil {
-		return "", err
+		return "", fmt.Errorf("unmarshaling journal json: %w", err)
 	}
 	msg, ok := data["MESSAGE"]
 	if !ok {
-		return "", fmt.Errorf("missing MESSAGE field")
+		return "", errors.New("missing MESSAGE field in journal entry")
 	}
 	return fmt.Sprintf("%v", msg), nil
 }
 
 func (ws *watchedSource) isStartupEntry(entry types.LogEntry) bool {
+	ws.mu.RLock()
+	defer ws.mu.RUnlock()
 	if ws.startupRegex == nil {
 		return false
 	}
@@ -272,7 +298,11 @@ func (s *Service) pollAll(ctx context.Context) {
 			continue
 		}
 
-		if ws.file == nil {
+		ws.mu.Lock()
+		needsOpen := ws.file == nil
+		ws.mu.Unlock()
+
+		if needsOpen {
 			if err := s.openFile(ws, cfg); err != nil {
 				continue
 			}
@@ -282,24 +312,36 @@ func (s *Service) pollAll(ctx context.Context) {
 }
 
 func (s *Service) readNewLines(ctx context.Context, ws *watchedSource, path string) {
-	info, err := ws.file.Stat()
+	ws.mu.Lock()
+	file := ws.file
+	scanBuf := ws.scanBuf
+	ws.mu.Unlock()
+
+	if file == nil {
+		return
+	}
+
+	info, err := file.Stat()
 	if err != nil {
 		slog.Warn("Failed to stat file", "path", path, "error", err)
 		s.reopenFile(ws, path)
 		return
 	}
 
-	if info.Size() < ws.offset {
+	ws.mu.RLock()
+	currentOffset := ws.offset.Load()
+	ws.mu.RUnlock()
+
+	if info.Size() < currentOffset {
 		slog.Info("File truncated, reopening", "path", path)
 		s.reopenFile(ws, path)
 		return
 	}
 
-	scanner := bufio.NewScanner(ws.file)
-	buf := make([]byte, 0, 64*1024)
-	scanner.Buffer(buf, maxLineBytes)
-	count := 0
+	scanner := bufio.NewScanner(file)
+	scanner.Buffer(scanBuf, maxLineBytes)
 
+	count := 0
 	for scanner.Scan() {
 		if ctx.Err() != nil {
 			return
@@ -310,12 +352,8 @@ func (s *Service) readNewLines(ctx context.Context, ws *watchedSource, path stri
 			continue
 		}
 
-		dispatched, stop := s.parseAndDispatch(ctx, ws, line, path)
-		if stop {
+		if stop := s.parseAndDispatch(ctx, ws, line, path); stop {
 			return
-		}
-		if !dispatched {
-			continue
 		}
 
 		count++
@@ -328,17 +366,17 @@ func (s *Service) readNewLines(ctx context.Context, ws *watchedSource, path stri
 		slog.Warn("Scanner error", "path", path, "error", err)
 	}
 
-	newOffset, _ := ws.file.Seek(0, io.SeekCurrent)
-	ws.offset = newOffset
+	newOffset, _ := file.Seek(0, io.SeekCurrent)
+	ws.offset.Store(newOffset)
 }
 
 // parseAndDispatch is the single parse path for all sources.
-// Returns (dispatched, stop). stop=true means caller should terminate loop.
-func (s *Service) parseAndDispatch(ctx context.Context, ws *watchedSource, line, source string) (bool, bool) {
+// Returns stop=true means caller should terminate loop.
+func (s *Service) parseAndDispatch(ctx context.Context, ws *watchedSource, line, source string) (stop bool) {
 	entry, err := s.parseLine(ws, line)
 	if err != nil {
-		slog.Debug("Failed to parse line", "app", ws.appName, "source", source, "error", err, "line", line)
-		return false, false
+		slog.Debug("Failed to parse line", "app", ws.appName, "source", source, "error", err)
+		return false
 	}
 
 	isStartup := ws.isStartupEntry(entry)
@@ -348,35 +386,44 @@ func (s *Service) parseAndDispatch(ctx context.Context, ws *watchedSource, line,
 
 	select {
 	case s.LogChan <- AppLogEntry{AppName: ws.appName, Entry: entry, IsStartup: isStartup}:
-		return true, false
+		return false
 	case <-ctx.Done():
-		return false, true
-	default:
-		slog.Warn("Log channel full, dropping entry")
-		return false, false
+		return true
 	}
 }
 
 func (s *Service) parseLine(ws *watchedSource, line string) (types.LogEntry, error) {
-	entry, err := ws.parser.Parse(line)
+	ws.mu.RLock()
+	parser := ws.parser
+	sourceType := ws.source.sourceType()
+	ws.mu.RUnlock()
+
+	entry, err := parser.Parse(line)
 	if err == nil {
 		return entry, nil
 	}
 
-	// For journalctl source, non-journal parsers can parse raw MESSAGE payload.
-	if ws.source.sourceType() == sourceTypeJournalctl {
+	// For journalctl source, try parsing extracted MESSAGE payload
+	if sourceType == sourceTypeJournalctl {
 		raw, extractErr := extractJournalMessage(line)
 		if extractErr == nil {
-			return ws.parser.Parse(raw)
+			if retryEntry, retryErr := parser.Parse(raw); retryErr == nil {
+				return retryEntry, nil
+			}
 		}
 	}
 
-	return types.LogEntry{}, err
+	return types.LogEntry{}, fmt.Errorf("parsing log line: %w", err)
 }
 
 func (s *Service) reopenFile(ws *watchedSource, path string) {
+	ws.mu.Lock()
+	defer ws.mu.Unlock()
+
 	if ws.file != nil {
-		ws.file.Close()
+		if err := ws.file.Close(); err != nil {
+			slog.Warn("Error closing file during reopen", "path", path, "error", err)
+		}
 		ws.file = nil
 	}
 
@@ -387,25 +434,40 @@ func (s *Service) reopenFile(ws *watchedSource, path string) {
 	}
 
 	ws.file = file
-	ws.offset = 0
+	ws.offset.Store(0)
 }
 
 func (s *Service) closeAll() {
-	for _, ws := range s.sources {
-		switch ws.source.sourceType() {
-		case sourceTypeFile:
-			if ws.file != nil {
-				ws.file.Close()
-				ws.file = nil
-			}
-		case sourceTypeJournalctl:
-			if ws.cmd != nil && ws.cmd.Process != nil {
-				ws.cmd.Process.Kill()
-			}
-			if ws.stdout != nil {
-				ws.stdout.Close()
+	s.closeOnce.Do(func() {
+		for _, ws := range s.sources {
+			switch ws.source.sourceType() {
+			case sourceTypeFile:
+				ws.mu.Lock()
+				if ws.file != nil {
+					if err := ws.file.Close(); err != nil {
+						slog.Warn("Error closing file", "path", ws.source.label(), "error", err)
+					}
+					ws.file = nil
+				}
+				ws.mu.Unlock()
+
+			case sourceTypeJournalctl:
+				ws.mu.Lock()
+				// Try graceful shutdown first
+				if ws.cmd != nil && ws.cmd.Process != nil {
+					if err := ws.cmd.Process.Signal(os.Interrupt); err != nil {
+						slog.Debug("Failed to send interrupt, killing", "unit", ws.source.label(), "error", err)
+						_ = ws.cmd.Process.Kill()
+					}
+				}
+				if ws.stdout != nil {
+					if err := ws.stdout.Close(); err != nil {
+						slog.Warn("Error closing journalctl stdout", "unit", ws.source.label(), "error", err)
+					}
+				}
+				ws.mu.Unlock()
 			}
 		}
-	}
-	close(s.LogChan)
+		close(s.LogChan)
+	})
 }
