@@ -10,7 +10,6 @@ import (
 	"os/exec"
 	"sync"
 	"sync/atomic"
-	"syscall"
 	"time"
 
 	"github.com/ai-shift/tracer/libs/types"
@@ -26,9 +25,9 @@ const (
 // Source represents a log source (file or journalctl).
 type Source interface {
 	Read(ctx context.Context) <-chan types.RawLine
+	Health(ctx context.Context) <-chan error
 	Name() string
 	AppName() string
-	Health() error
 	Restart() error
 }
 
@@ -90,14 +89,38 @@ type FileSource struct {
 func (fs *FileSource) Name() string    { return fs.Path }
 func (fs *FileSource) AppName() string { return fs.App }
 
-// Health returns nil if the source is healthy.
-func (fs *FileSource) Health() error {
+// Health returns a channel that reports errors when the source becomes unhealthy.
+func (fs *FileSource) Health(ctx context.Context) <-chan error {
+	ch := make(chan error, 1)
+	go func() {
+		defer close(ch)
+		ticker := time.NewTicker(30 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				if err := fs.checkHealth(); err != nil {
+					select {
+					case ch <- err:
+						return // Signal once and exit
+					case <-ctx.Done():
+						return
+					}
+				}
+			}
+		}
+	}()
+	return ch
+}
+
+func (fs *FileSource) checkHealth() error {
 	fs.mu.Lock()
 	defer fs.mu.Unlock()
 	if fs.file == nil {
 		return fmt.Errorf("file not open")
 	}
-	// Try to stat the file
 	_, err := fs.file.Stat()
 	return err
 }
@@ -247,6 +270,60 @@ type JournalctlSource struct {
 func (js *JournalctlSource) Name() string    { return "journalctl:" + js.Unit }
 func (js *JournalctlSource) AppName() string { return js.App }
 
+// Health returns a channel that reports errors when the process dies.
+func (js *JournalctlSource) Health(ctx context.Context) <-chan error {
+	ch := make(chan error, 1)
+	go func() {
+		defer close(ch)
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
+
+			js.mu.Lock()
+			cmd := js.cmd
+			js.mu.Unlock()
+
+			if cmd == nil || cmd.Process == nil {
+				select {
+				case ch <- fmt.Errorf("journalctl not running"):
+					return
+				case <-ctx.Done():
+					return
+				}
+			}
+
+			// Wait for process to exit
+			err := cmd.Wait()
+			if err != nil {
+				select {
+				case ch <- fmt.Errorf("journalctl exited: %w", err):
+					return
+				case <-ctx.Done():
+					return
+				}
+			}
+
+			// Process exited cleanly, check if context is done
+			select {
+			case <-ctx.Done():
+				return
+			default:
+				// Process exited but context still active - this is an error
+				select {
+				case ch <- fmt.Errorf("journalctl exited unexpectedly"):
+					return
+				case <-ctx.Done():
+					return
+				}
+			}
+		}
+	}()
+	return ch
+}
+
 func (js *JournalctlSource) Read(ctx context.Context) <-chan types.RawLine {
 	out := make(chan types.RawLine)
 	go js.readLoop(ctx, out)
@@ -334,18 +411,6 @@ func (js *JournalctlSource) runOnce(ctx context.Context, out chan<- types.RawLin
 
 	stdout.Close()
 	return cmd.Wait()
-}
-
-// Health returns nil if journalctl is running.
-func (js *JournalctlSource) Health() error {
-	js.mu.Lock()
-	defer js.mu.Unlock()
-	if js.cmd == nil || js.cmd.Process == nil {
-		return fmt.Errorf("journalctl not running")
-	}
-	// Check if process is still running by sending signal 0
-	err := js.cmd.Process.Signal(syscall.Signal(0))
-	return err
 }
 
 // Restart kills and restarts journalctl.

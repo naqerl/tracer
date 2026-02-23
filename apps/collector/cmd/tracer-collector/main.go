@@ -139,10 +139,13 @@ func main() {
 	}
 
 	// Start supervisor to monitor sources and emit error events
+	// Convert watchdog sources to supervisor sources
 	sourcesForSupervisor := make([]supervisor.Source, len(sources))
 	for i, s := range sources {
 		sourcesForSupervisor[i] = s.(supervisor.Source)
 	}
+
+	// Start supervisor to monitor sources and emit error events
 	super := supervisor.New(sourcesForSupervisor, bus)
 	go super.Run(ctx)
 
