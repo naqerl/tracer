@@ -46,11 +46,12 @@ type LogEntry struct {
 	Extra     map[string]string `json:"extra,omitempty"`
 }
 
-// LogPayload is the message format for log entries from collectors to panel via WebSocket
+// LogPayload is the internal collector representation of a log entry.
+// It carries enrichment metadata (AppName, IsStartup) alongside the parsed entry.
 type LogPayload struct {
-	Type    string   `json:"type"` // "log"
-	AppName string   `json:"app_name"`
-	Entry   LogEntry `json:"entry"`
+	AppName   string   `json:"app_name"`
+	Entry     LogEntry `json:"entry"`
+	IsStartup bool     `json:"is_startup"`
 }
 
 // StatsPayload is the message format for stats from collectors to panel via WebSocket

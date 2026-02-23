@@ -9,6 +9,9 @@ import (
 	"time"
 
 	collectorconfig "github.com/ai-shift/tracer/apps/collector/internal/config"
+	"github.com/ai-shift/tracer/apps/collector/internal/events"
+	logparser "github.com/ai-shift/tracer/apps/collector/internal/parsing"
+	"github.com/ai-shift/tracer/libs/types"
 )
 
 func TestWatcherReadFromEndSkipsExistingLines(t *testing.T) {
@@ -21,21 +24,24 @@ func TestWatcherReadFromEndSkipsExistingLines(t *testing.T) {
 		t.Fatalf("write existing line: %v", err)
 	}
 
-	cfg := collectorconfig.ResolvedApp{
-		Name:            "app",
-		SourceKind:      "file",
-		Path:            logPath,
-		ReadFrom:        "end",
-		Source:          logPath,
-		ParserKind:      "json",
-		TimestampField:  "timestamp",
-		TimestampFormat: time.RFC3339,
-		LevelField:      "level",
-		TraceIDField:    "trace_id",
-		MessageField:    "message",
+	bus := events.NewBus(10)
+	cfg := logparser.Config{
+		ResolvedApp: collectorconfig.ResolvedApp{
+			Name:            "app",
+			SourceKind:      "file",
+			Path:            logPath,
+			ReadFrom:        "end",
+			Source:          logPath,
+			ParserKind:      "json",
+			TimestampField:  "timestamp",
+			TimestampFormat: time.RFC3339,
+			LevelField:      "level",
+			TraceIDField:    "trace_id",
+			MessageField:    "message",
+		},
 	}
 
-	svc, err := New([]collectorconfig.ResolvedApp{cfg})
+	svc, err := New([]logparser.Config{cfg}, bus)
 	if err != nil {
 		t.Fatalf("new watcher: %v", err)
 	}
@@ -57,7 +63,8 @@ func TestWatcherReadFromEndSkipsExistingLines(t *testing.T) {
 	}
 	_ = f.Close()
 
-	got := awaitLog(t, svc.LogChan, 3*time.Second)
+	ch := bus.Subscribe()
+	got := awaitLog(t, ch, 3*time.Second)
 	if got.Entry.Message != "new" {
 		t.Fatalf("expected only newly appended line, got message=%q", got.Entry.Message)
 	}
@@ -73,21 +80,24 @@ func TestWatcherReadFromStartReadsExistingLines(t *testing.T) {
 		t.Fatalf("write existing line: %v", err)
 	}
 
-	cfg := collectorconfig.ResolvedApp{
-		Name:            "app",
-		SourceKind:      "file",
-		Path:            logPath,
-		ReadFrom:        "start",
-		Source:          logPath,
-		ParserKind:      "json",
-		TimestampField:  "timestamp",
-		TimestampFormat: time.RFC3339,
-		LevelField:      "level",
-		TraceIDField:    "trace_id",
-		MessageField:    "message",
+	bus := events.NewBus(10)
+	cfg := logparser.Config{
+		ResolvedApp: collectorconfig.ResolvedApp{
+			Name:            "app",
+			SourceKind:      "file",
+			Path:            logPath,
+			ReadFrom:        "start",
+			Source:          logPath,
+			ParserKind:      "json",
+			TimestampField:  "timestamp",
+			TimestampFormat: time.RFC3339,
+			LevelField:      "level",
+			TraceIDField:    "trace_id",
+			MessageField:    "message",
+		},
 	}
 
-	svc, err := New([]collectorconfig.ResolvedApp{cfg})
+	svc, err := New([]logparser.Config{cfg}, bus)
 	if err != nil {
 		t.Fatalf("new watcher: %v", err)
 	}
@@ -96,59 +106,106 @@ func TestWatcherReadFromStartReadsExistingLines(t *testing.T) {
 	defer cancel()
 	go svc.Start(ctx)
 
-	got := awaitLog(t, svc.LogChan, 3*time.Second)
+	ch := bus.Subscribe()
+	got := awaitLog(t, ch, 3*time.Second)
 	if got.Entry.Message != "existing" {
 		t.Fatalf("expected existing line to be read first, got message=%q", got.Entry.Message)
 	}
 }
 
-func TestParseLineJournalFallbackToMessage(t *testing.T) {
+func TestPipelineJournalctlExtraction(t *testing.T) {
 	t.Parallel()
 
-	app := collectorconfig.ResolvedApp{
-		Name:            "svc",
-		SourceKind:      "journalctl",
-		Source:          "journalctl:svc.service",
-		Unit:            "svc.service",
-		Since:           "now",
-		ParserKind:      "text",
-		TimestampRegex:  `^(\S+)`,
-		TimestampFormat: time.RFC3339,
-		LevelRegex:      `\b(INFO|WARN|ERROR|DEBUG)\b`,
-		TraceIDRegex:    `trace=([^\s]+)`,
+	cfg := logparser.Config{
+		ResolvedApp: collectorconfig.ResolvedApp{
+			Name:            "svc",
+			SourceKind:      "journalctl",
+			Source:          "journalctl:svc.service",
+			Unit:            "svc.service",
+			Since:           "now",
+			ParserKind:      "text",
+			TimestampRegex:  `^(\S+)`,
+			TimestampFormat: time.RFC3339,
+			LevelRegex:      `\b(INFO|WARN|ERROR|DEBUG)\b`,
+			TraceIDRegex:    `trace=([^\s]+)`,
+		},
 	}
 
-	svc, err := New([]collectorconfig.ResolvedApp{app})
+	pipeline, err := logparser.NewPipeline(cfg)
 	if err != nil {
-		t.Fatalf("new watcher: %v", err)
-	}
-	if len(svc.sources) != 1 {
-		t.Fatalf("expected one source")
+		t.Fatalf("new pipeline: %v", err)
 	}
 
 	line := `{"__REALTIME_TIMESTAMP":"1708683072000000","PRIORITY":"6","MESSAGE":"2026-02-23T10:11:12Z INFO trace=trace-77 app started"}`
-	entry, err := svc.parseLine(svc.sources[0], line)
-	if err != nil {
-		t.Fatalf("parseLine failed: %v", err)
+	rl := types.RawLine{App: "svc", Line: line}
+	evt := pipeline.Process(rl)
+
+	logEvt, ok := evt.(types.LogEvent)
+	if !ok {
+		t.Fatalf("expected LogEvent, got %T", evt)
 	}
 
-	if entry.Message != "2026-02-23T10:11:12Z INFO trace=trace-77 app started" {
-		t.Fatalf("unexpected message: %q", entry.Message)
+	if logEvt.Entry.Message != "2026-02-23T10:11:12Z INFO trace=trace-77 app started" {
+		t.Fatalf("unexpected message: %q", logEvt.Entry.Message)
 	}
-	if entry.TraceID != "trace-77" {
-		t.Fatalf("unexpected trace id: %q", entry.TraceID)
+	if logEvt.Entry.TraceID != "trace-77" {
+		t.Fatalf("unexpected trace id: %q", logEvt.Entry.TraceID)
 	}
 }
 
-func awaitLog(t *testing.T, ch <-chan AppLogEntry, timeout time.Duration) AppLogEntry {
+func TestPipelineStartupDetection(t *testing.T) {
+	t.Parallel()
+
+	cfg := logparser.Config{
+		ResolvedApp: collectorconfig.ResolvedApp{
+			Name:            "app",
+			SourceKind:      "file",
+			Path:            "/tmp/app.log",
+			Source:          "/tmp/app.log",
+			ParserKind:      "json",
+			TimestampField:  "timestamp",
+			TimestampFormat: time.RFC3339,
+			LevelField:      "level",
+			MessageField:    "message",
+			StartupPattern:  "Server started",
+		},
+	}
+
+	pipeline, err := logparser.NewPipeline(cfg)
+	if err != nil {
+		t.Fatalf("new pipeline: %v", err)
+	}
+
+	line := `{"timestamp":"2026-02-23T10:00:00Z","level":"info","message":"Server started on port 8080"}`
+	rl := types.RawLine{App: "app", Line: line}
+	evt := pipeline.Process(rl)
+
+	startupEvt, ok := evt.(types.StartupEvent)
+	if !ok {
+		t.Fatalf("expected StartupEvent, got %T", evt)
+	}
+
+	if startupEvt.App != "app" {
+		t.Fatalf("unexpected app: %q", startupEvt.App)
+	}
+	if startupEvt.Message != "Server started on port 8080" {
+		t.Fatalf("unexpected message: %q", startupEvt.Message)
+	}
+}
+
+func awaitLog(t *testing.T, ch <-chan types.Event, timeout time.Duration) types.LogEvent {
 	t.Helper()
 	select {
 	case got := <-ch:
-		return got
+		logEvt, ok := got.(types.LogEvent)
+		if !ok {
+			t.Fatalf("expected LogEvent, got %T", got)
+		}
+		return logEvt
 	case <-time.After(timeout):
 		t.Fatalf("timed out waiting for log entry")
 	}
-	return AppLogEntry{}
+	return types.LogEvent{}
 }
 
 func jsonLine(ts, msg string) string {

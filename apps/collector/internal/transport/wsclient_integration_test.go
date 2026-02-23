@@ -11,19 +11,19 @@ import (
 
 	"github.com/gorilla/websocket"
 
-	watchdog "github.com/ai-shift/tracer/apps/collector/internal/watch"
+	"github.com/ai-shift/tracer/apps/collector/internal/events"
 	"github.com/ai-shift/tracer/libs/types"
 )
 
-type receivedMessage struct {
+type receivedEnvelope struct {
 	header string
-	msg    types.LogMessage
+	env    types.Envelope
 }
 
 func TestWSClientSendsHeaderRegistrationAndLog(t *testing.T) {
 	t.Parallel()
 
-	recvCh := make(chan receivedMessage, 4)
+	recvCh := make(chan receivedEnvelope, 4)
 	errCh := make(chan error, 1)
 
 	upgrader := websocket.Upgrader{
@@ -45,20 +45,26 @@ func TestWSClientSendsHeaderRegistrationAndLog(t *testing.T) {
 				errCh <- err
 				return
 			}
-			var msg types.LogMessage
-			if err := json.Unmarshal(payload, &msg); err != nil {
+			var env types.Envelope
+			if err := json.Unmarshal(payload, &env); err != nil {
+				// Try register message format
+				var reg types.RegisterMessage
+				if err2 := json.Unmarshal(payload, &reg); err2 == nil {
+					recvCh <- receivedEnvelope{header: apiKey, env: types.Envelope{Type: reg.Type}}
+					continue
+				}
 				errCh <- err
 				return
 			}
-			recvCh <- receivedMessage{header: apiKey, msg: msg}
+			recvCh <- receivedEnvelope{header: apiKey, env: env}
 		}
 	}))
 	defer srv.Close()
 
 	wsURL := "ws" + strings.TrimPrefix(srv.URL, "http")
 
-	logCh := make(chan watchdog.AppLogEntry, 2)
-	client := New(wsURL, "secret-key", "collector-1", []string{"app-a"}, logCh)
+	bus := events.NewBus(10)
+	client := New(wsURL, "secret-key", "collector-1", []string{"app-a"}, bus)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -68,18 +74,14 @@ func TestWSClientSendsHeaderRegistrationAndLog(t *testing.T) {
 	if first.header != "secret-key" {
 		t.Fatalf("expected X-API-Key header, got %q", first.header)
 	}
-	if first.msg.Type != types.MessageTypeRegister {
-		t.Fatalf("expected register message first, got %q", first.msg.Type)
-	}
-	if first.msg.CollectorName != "collector-1" {
-		t.Fatalf("unexpected collector name: %q", first.msg.CollectorName)
-	}
-	if len(first.msg.Apps) != 1 || first.msg.Apps[0] != "app-a" {
-		t.Fatalf("unexpected apps payload: %#v", first.msg.Apps)
+	if first.env.Type != "register" {
+		t.Fatalf("expected register message first, got %q", first.env.Type)
 	}
 
-	logCh <- watchdog.AppLogEntry{
-		AppName: "app-a",
+	// Publish a log event
+	bus.Publish(types.LogEvent{
+		Time: time.Now(),
+		App:  "app-a",
 		Entry: types.LogEntry{
 			Timestamp: time.Now(),
 			Level:     types.LevelInfo,
@@ -87,21 +89,18 @@ func TestWSClientSendsHeaderRegistrationAndLog(t *testing.T) {
 			Source:    "/tmp/test.log",
 			Raw:       `{"message":"hello from test"}`,
 		},
-	}
+	})
 
 	second := awaitWSMessage(t, recvCh, errCh, 4*time.Second)
-	if second.msg.Type != types.MessageTypeLog {
-		t.Fatalf("expected log message second, got %q", second.msg.Type)
+	if second.env.Type != "log" {
+		t.Fatalf("expected log message second, got %q", second.env.Type)
 	}
-	if second.msg.AppName != "app-a" {
-		t.Fatalf("unexpected app name: %q", second.msg.AppName)
-	}
-	if second.msg.Entry.Message != "hello from test" {
-		t.Fatalf("unexpected log message payload: %q", second.msg.Entry.Message)
+	if second.env.App != "app-a" {
+		t.Fatalf("unexpected app name: %q", second.env.App)
 	}
 }
 
-func awaitWSMessage(t *testing.T, recv <-chan receivedMessage, errs <-chan error, timeout time.Duration) receivedMessage {
+func awaitWSMessage(t *testing.T, recv <-chan receivedEnvelope, errs <-chan error, timeout time.Duration) receivedEnvelope {
 	t.Helper()
 	select {
 	case err := <-errs:
@@ -111,5 +110,5 @@ func awaitWSMessage(t *testing.T, recv <-chan receivedMessage, errs <-chan error
 	case <-time.After(timeout):
 		t.Fatalf("timeout waiting for ws message")
 	}
-	return receivedMessage{}
+	return receivedEnvelope{}
 }

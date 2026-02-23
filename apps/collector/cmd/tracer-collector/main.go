@@ -14,9 +14,11 @@ import (
 	"time"
 
 	collectorconfig "github.com/ai-shift/tracer/apps/collector/internal/config"
-	"github.com/ai-shift/tracer/apps/collector/internal/stats"
-	"github.com/ai-shift/tracer/apps/collector/internal/transport"
-	"github.com/ai-shift/tracer/apps/collector/internal/watch"
+	"github.com/ai-shift/tracer/apps/collector/internal/events"
+	logparser "github.com/ai-shift/tracer/apps/collector/internal/parsing"
+	sysstats "github.com/ai-shift/tracer/apps/collector/internal/stats"
+	wsclient "github.com/ai-shift/tracer/apps/collector/internal/transport"
+	watchdog "github.com/ai-shift/tracer/apps/collector/internal/watch"
 	"github.com/ai-shift/tracer/libs/logx"
 )
 
@@ -65,17 +67,29 @@ func main() {
 		cancel()
 	}()
 
-	// Initialize file watcher
-	watcher, err := watchdog.New(cfg.Apps)
+	// Create shared event bus
+	bus := events.NewBus(1000)
+
+	// Build pipeline configs from app configs
+	pipelineConfigs := make([]logparser.Config, len(cfg.Apps))
+	for i, app := range cfg.Apps {
+		pipelineConfigs[i] = logparser.Config{
+			ResolvedApp:     app,
+			ShutdownPattern: "", // Could add to config if needed
+		}
+	}
+
+	// Initialize watchdog
+	watcher, err := watchdog.New(pipelineConfigs, bus)
 	if err != nil {
-		slog.Error("Failed to create file watcher", "error", err)
+		slog.Error("Failed to create watchdog", "error", err)
 		os.Exit(1)
 	}
 
 	// Initialize WebSocket client
-	wsClient := wsclient.New(panelEndpoint, cfg.APIKey, collectorName, watcher.GetAppNames(), watcher.LogChan)
+	wsClient := wsclient.New(panelEndpoint, cfg.APIKey, collectorName, watcher.GetAppNames(), bus)
 
-	// Configure system stats if interval is set
+	// Start stats producer if interval is set
 	if cfg.StatsInterval != "" {
 		interval, err := time.ParseDuration(cfg.StatsInterval)
 		if err != nil {
@@ -83,26 +97,23 @@ func main() {
 		} else if interval > 0 {
 			dataDir := cfg.DataDir
 			if dataDir == "" {
-				dataDir = "/" // Default to root for disk monitoring
+				dataDir = "/"
 			}
 			statsCollector := sysstats.New(dataDir)
-			wsClient.WithStats(statsCollector, interval).WithAlerts(cfg.CPUAlertPercent, cfg.MemAlertPercent, cfg.DiskAlertPercent)
+			statsProducer := sysstats.NewProducer(statsCollector, interval, bus)
+			go statsProducer.Start(ctx)
 			slog.Info("System stats enabled", "interval", interval, "data_dir", dataDir)
 		}
 	}
 
 	// Start services
 	go watcher.Start(ctx)
-	wsClient.Start(ctx)
+	wsClient.Start(ctx) // Blocks until shutdown
 }
 
-// getOutboundIP returns the preferred outbound IP of this machine
 func getOutboundIP() string {
-	// Connect to a public address to determine local IP
-	// This doesn't actually establish a connection, just determines the route
 	conn, err := net.Dial("udp", "8.8.8.8:80")
 	if err != nil {
-		// Fallback to hostname if we can't determine IP
 		hostname, _ := os.Hostname()
 		if hostname != "" {
 			return hostname

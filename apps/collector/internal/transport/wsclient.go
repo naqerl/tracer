@@ -5,13 +5,11 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
-	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
 
-	"github.com/ai-shift/tracer/apps/collector/internal/stats"
-	"github.com/ai-shift/tracer/apps/collector/internal/watch"
+	"github.com/ai-shift/tracer/apps/collector/internal/events"
 	"github.com/ai-shift/tracer/libs/types"
 )
 
@@ -19,67 +17,33 @@ const (
 	writeTimeout     = 10 * time.Second
 	reconnectDelay   = 5 * time.Second
 	pingInterval     = 30 * time.Second
-	pongWait         = 60 * time.Second // Time allowed to read the next pong message from server
+	pongWait         = 60 * time.Second
 	maxReconnectWait = 5 * time.Minute
 )
 
+// Service handles WebSocket connection to panel.
 type Service struct {
 	endpoint      string
 	apiKey        string
 	collectorName string
 	appNames      []string
-	logChan       <-chan watchdog.AppLogEntry
-
-	// System stats
-	statsCollector *sysstats.Collector
-	statsInterval  time.Duration
-
-	// Alert thresholds (sent to panel)
-	cpuAlert  float64
-	memAlert  float64
-	diskAlert float64
-
-	conn   *websocket.Conn
-	connMu sync.Mutex
+	bus           *events.Bus
+	conn          *websocket.Conn
 }
 
-func New(endpoint, apiKey, collectorName string, appNames []string, logChan <-chan watchdog.AppLogEntry) *Service {
+// New creates a WebSocket client service.
+func New(endpoint, apiKey, collectorName string, appNames []string, bus *events.Bus) *Service {
 	return &Service{
 		endpoint:      endpoint,
 		apiKey:        apiKey,
 		collectorName: collectorName,
 		appNames:      appNames,
-		logChan:       logChan,
+		bus:           bus,
 	}
 }
 
-// WithStats configures the service to send system stats at the given interval
-func (s *Service) WithStats(collector *sysstats.Collector, interval time.Duration) *Service {
-	s.statsCollector = collector
-	s.statsInterval = interval
-	return s
-}
-
-// WithAlerts configures alert thresholds for resource usage (sent to panel)
-func (s *Service) WithAlerts(cpuAlert, memAlert, diskAlert float64) *Service {
-	s.cpuAlert = cpuAlert
-	s.memAlert = memAlert
-	s.diskAlert = diskAlert
-	return s
-}
-
+// Start begins the connection loop and event processing.
 func (s *Service) Start(ctx context.Context) {
-	go s.maintainConnection(ctx)
-
-	// Start stats loop if configured
-	if s.statsCollector != nil && s.statsInterval > 0 {
-		go s.statsLoop(ctx)
-	}
-
-	s.processLogs(ctx)
-}
-
-func (s *Service) maintainConnection(ctx context.Context) {
 	reconnectWait := reconnectDelay
 
 	for {
@@ -92,27 +56,24 @@ func (s *Service) maintainConnection(ctx context.Context) {
 		if err := s.connect(); err != nil {
 			slog.Error("Failed to connect to panel", "endpoint", s.endpoint, "error", err)
 			time.Sleep(reconnectWait)
-			// Exponential backoff
 			reconnectWait = min(reconnectWait*2, maxReconnectWait)
 			continue
 		}
 
-		// Reset backoff on successful connection
 		reconnectWait = reconnectDelay
 		slog.Info("Connected to panel", "endpoint", s.endpoint)
 
-		// Send registration message
 		s.sendRegistration()
 
-		// Keep connection alive with pings
-		s.pingLoop(ctx)
+		if err := s.run(ctx); err != nil {
+			slog.Warn("Connection lost", "error", err)
+		}
+
+		s.close()
 	}
 }
 
 func (s *Service) connect() error {
-	s.connMu.Lock()
-	defer s.connMu.Unlock()
-
 	if s.conn != nil {
 		s.conn.Close()
 	}
@@ -127,7 +88,6 @@ func (s *Service) connect() error {
 		return err
 	}
 
-	// Set up pong handler to reset read deadline when server responds to our pings
 	conn.SetReadDeadline(time.Now().Add(pongWait))
 	conn.SetPongHandler(func(string) error {
 		conn.SetReadDeadline(time.Now().Add(pongWait))
@@ -138,154 +98,78 @@ func (s *Service) connect() error {
 	return nil
 }
 
-func (s *Service) pingLoop(ctx context.Context) {
-	// Channel to signal connection is dead (from read loop)
-	connDead := make(chan struct{})
+func (s *Service) run(ctx context.Context) error {
+	ch := s.bus.Subscribe()
+	defer func() {
+		// Note: bus channels are not closed on unsubscribe in current implementation
+	}()
 
-	// Start read loop to handle incoming messages and keep connection alive
-	// This is essential: Gorilla WebSocket only processes control frames (ping/pong)
-	// when ReadMessage is called. Without this, server pings are never answered.
-	go s.readLoop(connDead)
+	pingTicker := time.NewTicker(pingInterval)
+	defer pingTicker.Stop()
 
-	ticker := time.NewTicker(pingInterval)
-	defer ticker.Stop()
+	// Start read loop for pongs
+	pongDone := make(chan struct{})
+	go s.readLoop(pongDone)
 
 	for {
 		select {
 		case <-ctx.Done():
-			return
-		case <-connDead:
-			// Connection died, exit to trigger reconnect
-			return
-		case <-ticker.C:
-			s.connMu.Lock()
-			if s.conn == nil {
-				s.connMu.Unlock()
-				return
+			return nil
+		case <-pongDone:
+			return websocket.ErrBadHandshake
+		case evt := <-ch:
+			if err := s.sendEvent(evt); err != nil {
+				return err
 			}
-			err := s.conn.WriteControl(websocket.PingMessage, nil, time.Now().Add(writeTimeout))
-			s.connMu.Unlock()
-
-			if err != nil {
-				slog.Warn("Ping failed, reconnecting", "error", err)
-				return
+		case <-pingTicker.C:
+			if err := s.conn.WriteControl(websocket.PingMessage, nil, time.Now().Add(writeTimeout)); err != nil {
+				return err
 			}
 		}
 	}
 }
 
-// readLoop continuously reads from the WebSocket connection.
-// This serves two purposes:
-// 1. Allows Gorilla WebSocket to process control frames (ping from server -> automatic pong response)
-// 2. Resets the read deadline via the pong handler when server responds to our pings
-func (s *Service) readLoop(connDead chan<- struct{}) {
-	defer close(connDead)
-
+func (s *Service) readLoop(done chan<- struct{}) {
+	defer close(done)
 	for {
-		s.connMu.Lock()
-		conn := s.conn
-		s.connMu.Unlock()
-
-		if conn == nil {
+		if _, _, err := s.conn.ReadMessage(); err != nil {
 			return
-		}
-
-		// ReadMessage will block until a message arrives or deadline expires.
-		// It also processes control frames (ping/pong) automatically.
-		// We don't expect any actual messages from the server, so we discard them.
-		_, _, err := conn.ReadMessage()
-		if err != nil {
-			// Connection closed or error - signal to ping loop
-			if !websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
-				slog.Debug("Read loop ended", "error", err)
-			}
-			return
-		}
-	}
-}
-
-func (s *Service) processLogs(ctx context.Context) {
-	for {
-		select {
-		case <-ctx.Done():
-			s.close()
-			return
-		case entry, ok := <-s.logChan:
-			if !ok {
-				s.close()
-				return
-			}
-			s.sendLog(entry)
 		}
 	}
 }
 
 func (s *Service) sendRegistration() {
-	msg := types.LogMessage{
-		Type:          types.MessageTypeRegister,
-		Apps:          s.appNames,
-		CollectorName: s.collectorName,
+	msg := types.RegisterMessage{
+		Type:      "register",
+		Collector: s.collectorName,
+		Apps:      s.appNames,
 	}
-
-	data, err := json.Marshal(msg)
-	if err != nil {
-		slog.Error("Failed to marshal registration", "error", err)
-		return
-	}
-
-	s.connMu.Lock()
-	defer s.connMu.Unlock()
-
-	if s.conn == nil {
-		return
-	}
-
-	s.conn.SetWriteDeadline(time.Now().Add(writeTimeout))
-	if err := s.conn.WriteMessage(websocket.TextMessage, data); err != nil {
-		slog.Warn("Failed to send registration", "error", err)
-	}
+	s.sendJSON(msg)
 }
 
-func (s *Service) sendLog(appLog watchdog.AppLogEntry) {
-	// Determine message type based on whether this is a startup entry
-	msgType := types.MessageTypeLog
-	if appLog.IsStartup {
-		msgType = types.MessageTypeStartup
-	}
-
-	msg := types.LogMessage{
-		Type:          msgType,
-		AppName:       appLog.AppName,
-		CollectorName: s.collectorName,
-		Entry:         appLog.Entry,
-	}
-
-	data, err := json.Marshal(msg)
+func (s *Service) sendEvent(evt types.Event) error {
+	payload, err := json.Marshal(evt)
 	if err != nil {
-		slog.Error("Failed to marshal log entry", "error", err)
-		return
+		return err
 	}
 
-	s.connMu.Lock()
-	defer s.connMu.Unlock()
-
-	if s.conn == nil {
-		slog.Warn("No connection, dropping log entry")
-		return
+	envelope := types.Envelope{
+		Type:      evt.EventType(),
+		Timestamp: evt.Timestamp(),
+		Collector: s.collectorName,
+		App:       evt.AppName(),
+		Data:      payload,
 	}
 
+	return s.sendJSON(envelope)
+}
+
+func (s *Service) sendJSON(v any) error {
 	s.conn.SetWriteDeadline(time.Now().Add(writeTimeout))
-	if err := s.conn.WriteMessage(websocket.TextMessage, data); err != nil {
-		slog.Warn("Failed to send log entry", "error", err)
-		s.conn.Close()
-		s.conn = nil
-	}
+	return s.conn.WriteJSON(v)
 }
 
 func (s *Service) close() {
-	s.connMu.Lock()
-	defer s.connMu.Unlock()
-
 	if s.conn != nil {
 		s.conn.WriteControl(
 			websocket.CloseMessage,
@@ -295,61 +179,4 @@ func (s *Service) close() {
 		s.conn.Close()
 		s.conn = nil
 	}
-}
-
-// statsLoop periodically collects and sends system statistics
-func (s *Service) statsLoop(ctx context.Context) {
-	ticker := time.NewTicker(s.statsInterval)
-	defer ticker.Stop()
-
-	// Send initial stats immediately
-	s.collectAndSendStats()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			s.collectAndSendStats()
-		}
-	}
-}
-
-func (s *Service) collectAndSendStats() {
-	stats, err := s.statsCollector.Collect()
-	if err != nil {
-		slog.Error("Failed to collect system stats", "error", err)
-		return
-	}
-
-	s.sendStats(stats)
-}
-
-func (s *Service) sendStats(stats *sysstats.Stats) {
-	msg := types.LogMessage{
-		Type:          types.MessageTypeStats,
-		CollectorName: s.collectorName,
-		Stats:         stats,
-	}
-
-	data, err := json.Marshal(msg)
-	if err != nil {
-		slog.Error("Failed to marshal stats", "error", err)
-		return
-	}
-
-	s.connMu.Lock()
-	defer s.connMu.Unlock()
-
-	if s.conn == nil {
-		return // No connection, skip this cycle
-	}
-
-	s.conn.SetWriteDeadline(time.Now().Add(writeTimeout))
-	if err := s.conn.WriteMessage(websocket.TextMessage, data); err != nil {
-		slog.Warn("Failed to send stats", "error", err)
-		// Don't close connection on stats failure, let ping handle it
-	}
-
-	slog.Debug("Sent system stats", "collector", s.collectorName, "cpu", stats.CPUUsagePercent)
 }

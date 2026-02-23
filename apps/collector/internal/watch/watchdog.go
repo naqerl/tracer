@@ -4,18 +4,15 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"os"
 	"os/exec"
-	"regexp"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	collectorconfig "github.com/ai-shift/tracer/apps/collector/internal/config"
+	"github.com/ai-shift/tracer/apps/collector/internal/events"
 	logparser "github.com/ai-shift/tracer/apps/collector/internal/parsing"
 	"github.com/ai-shift/tracer/libs/types"
 )
@@ -24,450 +21,307 @@ const (
 	pollInterval = 100 * time.Millisecond
 	maxBatchSize = 100
 	maxLineBytes = 1024 * 1024
-
-	readFromEnd = "end"
+	readFromEnd  = "end"
 )
 
-type sourceType int
-
-const (
-	sourceTypeFile sourceType = iota
-	sourceTypeJournalctl
-)
-
-type sourceConfig interface {
-	sourceType() sourceType
-	label() string
+// Source represents a log source (file or journalctl).
+type Source interface {
+	Read(ctx context.Context) <-chan types.RawLine
+	Name() string
 }
 
-type fileSourceConfig struct {
+// fileSource reads from a log file.
+type fileSource struct {
+	appName  string
 	path     string
 	readFrom string
+	file     *os.File
+	offset   atomic.Int64
+	mu       sync.Mutex
 }
 
-func (c fileSourceConfig) sourceType() sourceType { return sourceTypeFile }
-func (c fileSourceConfig) label() string          { return c.path }
+func (fs *fileSource) Name() string { return fs.path }
 
-type journalctlSourceConfig struct {
-	unit  string
-	since string
+func (fs *fileSource) Read(ctx context.Context) <-chan types.RawLine {
+	out := make(chan types.RawLine)
+	go fs.readLoop(ctx, out)
+	return out
 }
 
-func (c journalctlSourceConfig) sourceType() sourceType { return sourceTypeJournalctl }
-func (c journalctlSourceConfig) label() string          { return "journalctl:" + c.unit }
+func (fs *fileSource) readLoop(ctx context.Context, out chan<- types.RawLine) {
+	defer close(out)
 
-type AppLogEntry struct {
-	AppName   string
-	Entry     types.LogEntry
-	IsStartup bool
-}
-
-// watchedSource is thread-safe for concurrent access.
-type watchedSource struct {
-	mu      sync.RWMutex
-	appName string
-	source  sourceConfig
-	parser  logparser.Parser
-
-	// File-specific fields
-	file   *os.File
-	offset atomic.Int64 // Use atomic for lock-free offset reads
-
-	// Journalctl-specific fields
-	cmd    *exec.Cmd
-	stdout io.ReadCloser
-
-	startupRegex *regexp.Regexp
-
-	// Buffer pool for scanning - initialized per source
-	scanBuf []byte
-}
-
-type Service struct {
-	LogChan   chan AppLogEntry
-	sources   []*watchedSource
-	closeOnce sync.Once // Protects channel close
-	wg        sync.WaitGroup
-}
-
-func New(apps []collectorconfig.ResolvedApp) (*Service, error) {
-	s := &Service{
-		LogChan: make(chan AppLogEntry, 1000),
-		sources: make([]*watchedSource, 0, len(apps)),
+	if err := fs.open(); err != nil {
+		return
 	}
-
-	for _, app := range apps {
-		parser, err := logparser.New(app)
-		if err != nil {
-			return nil, fmt.Errorf("creating parser for app %s: %w", app.Name, err)
-		}
-
-		sourceCfg, err := buildSourceConfig(app)
-		if err != nil {
-			return nil, err
-		}
-
-		ws := &watchedSource{
-			appName: app.Name,
-			parser:  parser,
-			source:  sourceCfg,
-			scanBuf: make([]byte, 0, 64*1024),
-		}
-
-		if app.StartupPattern != "" {
-			re, err := regexp.Compile(app.StartupPattern)
-			if err != nil {
-				slog.Warn("Invalid startup pattern, ignoring", "app", app.Name, "pattern", app.StartupPattern, "error", err)
-			} else {
-				ws.startupRegex = re
-				slog.Info("Startup detection enabled", "app", app.Name, "pattern", app.StartupPattern)
-			}
-		}
-
-		s.sources = append(s.sources, ws)
-	}
-
-	return s, nil
-}
-
-func buildSourceConfig(app collectorconfig.ResolvedApp) (sourceConfig, error) {
-	switch app.SourceKind {
-	case "journalctl":
-		return journalctlSourceConfig{unit: app.Unit, since: app.Since}, nil
-	case "file":
-		return fileSourceConfig{path: app.Path, readFrom: app.ReadFrom}, nil
-	default:
-		return nil, fmt.Errorf("unknown source kind: %s", app.SourceKind)
-	}
-}
-
-func (s *Service) GetAppNames() []string {
-	names := make([]string, 0, len(s.sources))
-	for _, ws := range s.sources {
-		names = append(names, ws.appName)
-	}
-	return names
-}
-
-func (s *Service) Start(ctx context.Context) {
-	// Initialize all sources
-	for _, ws := range s.sources {
-		switch cfg := ws.source.(type) {
-		case fileSourceConfig:
-			if err := s.openFile(ws, cfg); err != nil {
-				slog.Error("Failed to open file", "path", cfg.path, "error", err)
-			}
-		case journalctlSourceConfig:
-			if err := s.startJournalctl(ctx, ws, cfg); err != nil {
-				slog.Error("Failed to start journalctl", "unit", cfg.unit, "error", err)
-			}
-		}
-	}
+	defer fs.close()
 
 	ticker := time.NewTicker(pollInterval)
 	defer ticker.Stop()
 
+	buf := make([]byte, 0, 64*1024)
+
 	for {
 		select {
 		case <-ctx.Done():
-			s.closeAll()
-			s.wg.Wait() // Wait for all goroutines to finish
 			return
 		case <-ticker.C:
-			s.pollAll(ctx)
+			if err := fs.readBatch(out, buf); err != nil {
+				return
+			}
 		}
 	}
 }
 
-func (s *Service) openFile(ws *watchedSource, cfg fileSourceConfig) error {
-	ws.mu.Lock()
-	defer ws.mu.Unlock()
+func (fs *fileSource) open() error {
+	fs.mu.Lock()
+	defer fs.mu.Unlock()
 
-	file, err := os.Open(cfg.path)
+	file, err := os.Open(fs.path)
 	if err != nil {
-		return fmt.Errorf("opening file %s: %w", cfg.path, err)
+		return err
 	}
 
 	offset := int64(0)
-	if cfg.readFrom == readFromEnd {
+	if fs.readFrom == readFromEnd {
 		offset, err = file.Seek(0, io.SeekEnd)
 		if err != nil {
 			file.Close()
-			return fmt.Errorf("seeking to end of %s: %w", cfg.path, err)
+			return err
 		}
 	}
 
-	ws.file = file
-	ws.offset.Store(offset)
-	slog.Info("Watching file", "path", cfg.path, "offset", offset)
+	fs.file = file
+	fs.offset.Store(offset)
 	return nil
 }
 
-func (s *Service) startJournalctl(ctx context.Context, ws *watchedSource, cfg journalctlSourceConfig) error {
-	ws.mu.Lock()
-	defer ws.mu.Unlock()
-
-	cmd := exec.CommandContext(ctx, "journalctl",
-		"-u", cfg.unit,
-		"-f",
-		"-o", "json",
-		"--since", cfg.since,
-	)
-
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return fmt.Errorf("creating stdout pipe for journalctl: %w", err)
-	}
-
-	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("starting journalctl: %w", err)
-	}
-
-	ws.cmd = cmd
-	ws.stdout = stdout
-
-	slog.Info("Watching journalctl", "unit", cfg.unit)
-
-	s.wg.Add(1)
-	go func() {
-		defer s.wg.Done()
-		s.readJournalctl(ctx, ws, cfg.unit)
-	}()
-
-	return nil
-}
-
-func (s *Service) readJournalctl(ctx context.Context, ws *watchedSource, unit string) {
-	ws.mu.RLock()
-	stdout := ws.stdout
-	scanBuf := ws.scanBuf
-	ws.mu.RUnlock()
-
-	if stdout == nil {
-		return
-	}
-
-	scanner := bufio.NewScanner(stdout)
-	scanner.Buffer(scanBuf, maxLineBytes)
-
-	for scanner.Scan() {
-		if ctx.Err() != nil {
-			return
-		}
-
-		line := scanner.Text()
-		if line == "" {
-			continue
-		}
-
-		if stop := s.parseAndDispatch(ctx, ws, line, "journalctl:"+unit); stop {
-			return
-		}
-	}
-
-	if err := scanner.Err(); err != nil && !errors.Is(err, context.Canceled) {
-		slog.Warn("Journalctl scanner error", "unit", unit, "error", err)
-	}
-}
-
-func extractJournalMessage(line string) (string, error) {
-	var data map[string]any
-	if err := json.Unmarshal([]byte(line), &data); err != nil {
-		return "", fmt.Errorf("unmarshaling journal json: %w", err)
-	}
-	msg, ok := data["MESSAGE"]
-	if !ok {
-		return "", errors.New("missing MESSAGE field in journal entry")
-	}
-	return fmt.Sprintf("%v", msg), nil
-}
-
-func (ws *watchedSource) isStartupEntry(entry types.LogEntry) bool {
-	ws.mu.RLock()
-	defer ws.mu.RUnlock()
-	if ws.startupRegex == nil {
-		return false
-	}
-	return ws.startupRegex.MatchString(entry.Message)
-}
-
-func (s *Service) pollAll(ctx context.Context) {
-	for _, ws := range s.sources {
-		cfg, ok := ws.source.(fileSourceConfig)
-		if !ok {
-			continue
-		}
-
-		ws.mu.Lock()
-		needsOpen := ws.file == nil
-		ws.mu.Unlock()
-
-		if needsOpen {
-			if err := s.openFile(ws, cfg); err != nil {
-				continue
-			}
-		}
-		s.readNewLines(ctx, ws, cfg.path)
-	}
-}
-
-func (s *Service) readNewLines(ctx context.Context, ws *watchedSource, path string) {
-	ws.mu.Lock()
-	file := ws.file
-	scanBuf := ws.scanBuf
-	ws.mu.Unlock()
+func (fs *fileSource) readBatch(out chan<- types.RawLine, buf []byte) error {
+	fs.mu.Lock()
+	file := fs.file
+	fs.mu.Unlock()
 
 	if file == nil {
-		return
+		if err := fs.open(); err != nil {
+			return err
+		}
+		file = fs.file
 	}
 
 	info, err := file.Stat()
 	if err != nil {
-		slog.Warn("Failed to stat file", "path", path, "error", err)
-		s.reopenFile(ws, path)
-		return
+		fs.reopen()
+		return nil
 	}
 
-	ws.mu.RLock()
-	currentOffset := ws.offset.Load()
-	ws.mu.RUnlock()
+	fs.mu.Lock()
+	currentOffset := fs.offset.Load()
+	fs.mu.Unlock()
 
 	if info.Size() < currentOffset {
-		slog.Info("File truncated, reopening", "path", path)
-		s.reopenFile(ws, path)
-		return
+		fs.reopen()
+		return nil
 	}
 
 	scanner := bufio.NewScanner(file)
-	scanner.Buffer(scanBuf, maxLineBytes)
+	scanner.Buffer(buf, maxLineBytes)
 
 	count := 0
 	for scanner.Scan() {
-		if ctx.Err() != nil {
-			return
-		}
-
 		line := scanner.Text()
-		if line == "" {
-			continue
+		if line != "" {
+			select {
+			case out <- types.RawLine{App: fs.appName, Line: line}:
+			default:
+				// Channel full, drop
+			}
 		}
-
-		if stop := s.parseAndDispatch(ctx, ws, line, path); stop {
-			return
-		}
-
 		count++
 		if count >= maxBatchSize {
 			break
 		}
 	}
 
-	if err := scanner.Err(); err != nil {
-		slog.Warn("Scanner error", "path", path, "error", err)
-	}
-
 	newOffset, _ := file.Seek(0, io.SeekCurrent)
-	ws.offset.Store(newOffset)
+	fs.offset.Store(newOffset)
+
+	return nil
 }
 
-// parseAndDispatch is the single parse path for all sources.
-// Returns stop=true means caller should terminate loop.
-func (s *Service) parseAndDispatch(ctx context.Context, ws *watchedSource, line, source string) (stop bool) {
-	entry, err := s.parseLine(ws, line)
+func (fs *fileSource) reopen() {
+	fs.mu.Lock()
+	defer fs.mu.Unlock()
+
+	if fs.file != nil {
+		fs.file.Close()
+		fs.file = nil
+	}
+	fs.offset.Store(0)
+}
+
+func (fs *fileSource) close() {
+	fs.mu.Lock()
+	defer fs.mu.Unlock()
+
+	if fs.file != nil {
+		fs.file.Close()
+		fs.file = nil
+	}
+}
+
+// journalctlSource reads from systemd journal.
+type journalctlSource struct {
+	appName string
+	unit    string
+	since   string
+}
+
+func (js *journalctlSource) Name() string { return "journalctl:" + js.unit }
+
+func (js *journalctlSource) Read(ctx context.Context) <-chan types.RawLine {
+	out := make(chan types.RawLine)
+	go js.readLoop(ctx, out)
+	return out
+}
+
+func (js *journalctlSource) readLoop(ctx context.Context, out chan<- types.RawLine) {
+	defer close(out)
+
+	cmd := exec.CommandContext(ctx, "journalctl",
+		"-u", js.unit,
+		"-f",
+		"-o", "json",
+		"--since", js.since,
+	)
+
+	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		slog.Debug("Failed to parse line", "app", ws.appName, "source", source, "error", err)
-		return false
-	}
-
-	isStartup := ws.isStartupEntry(entry)
-	if isStartup {
-		slog.Info("Detected app startup", "app", ws.appName, "message", entry.Message)
-	}
-
-	select {
-	case s.LogChan <- AppLogEntry{AppName: ws.appName, Entry: entry, IsStartup: isStartup}:
-		return false
-	case <-ctx.Done():
-		return true
-	}
-}
-
-func (s *Service) parseLine(ws *watchedSource, line string) (types.LogEntry, error) {
-	ws.mu.RLock()
-	parser := ws.parser
-	sourceType := ws.source.sourceType()
-	ws.mu.RUnlock()
-
-	entry, err := parser.Parse(line)
-	if err == nil {
-		return entry, nil
-	}
-
-	// For journalctl source, try parsing extracted MESSAGE payload
-	if sourceType == sourceTypeJournalctl {
-		raw, extractErr := extractJournalMessage(line)
-		if extractErr == nil {
-			if retryEntry, retryErr := parser.Parse(raw); retryErr == nil {
-				return retryEntry, nil
-			}
-		}
-	}
-
-	return types.LogEntry{}, fmt.Errorf("parsing log line: %w", err)
-}
-
-func (s *Service) reopenFile(ws *watchedSource, path string) {
-	ws.mu.Lock()
-	defer ws.mu.Unlock()
-
-	if ws.file != nil {
-		if err := ws.file.Close(); err != nil {
-			slog.Warn("Error closing file during reopen", "path", path, "error", err)
-		}
-		ws.file = nil
-	}
-
-	file, err := os.Open(path)
-	if err != nil {
-		slog.Warn("Failed to reopen file", "path", path, "error", err)
 		return
 	}
 
-	ws.file = file
-	ws.offset.Store(0)
-}
+	if err := cmd.Start(); err != nil {
+		return
+	}
 
-func (s *Service) closeAll() {
-	s.closeOnce.Do(func() {
-		for _, ws := range s.sources {
-			switch ws.source.sourceType() {
-			case sourceTypeFile:
-				ws.mu.Lock()
-				if ws.file != nil {
-					if err := ws.file.Close(); err != nil {
-						slog.Warn("Error closing file", "path", ws.source.label(), "error", err)
-					}
-					ws.file = nil
-				}
-				ws.mu.Unlock()
+	defer cmd.Wait()
+	defer stdout.Close()
 
-			case sourceTypeJournalctl:
-				ws.mu.Lock()
-				// Try graceful shutdown first
-				if ws.cmd != nil && ws.cmd.Process != nil {
-					if err := ws.cmd.Process.Signal(os.Interrupt); err != nil {
-						slog.Debug("Failed to send interrupt, killing", "unit", ws.source.label(), "error", err)
-						_ = ws.cmd.Process.Kill()
-					}
-				}
-				if ws.stdout != nil {
-					if err := ws.stdout.Close(); err != nil {
-						slog.Warn("Error closing journalctl stdout", "unit", ws.source.label(), "error", err)
-					}
-				}
-				ws.mu.Unlock()
+	buf := make([]byte, 0, 64*1024)
+	scanner := bufio.NewScanner(stdout)
+	scanner.Buffer(buf, maxLineBytes)
+
+	for scanner.Scan() {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+
+		line := scanner.Text()
+		if line == "" {
+			continue
+		}
+
+		// Extract MESSAGE from journal JSON
+		msg := extractJournalMessage(line)
+		if msg != "" {
+			select {
+			case out <- types.RawLine{App: js.appName, Line: msg}:
+			default:
+				// Channel full, drop
 			}
 		}
-		close(s.LogChan)
-	})
+	}
+}
+
+func extractJournalMessage(line string) string {
+	// Quick check to avoid JSON parsing overhead
+	if len(line) < 10 || line[0] != '{' {
+		return ""
+	}
+
+	var data struct {
+		Message string `json:"MESSAGE"`
+	}
+	if err := json.Unmarshal([]byte(line), &data); err != nil {
+		return ""
+	}
+	return data.Message
+}
+
+// Service manages multiple log sources.
+type Service struct {
+	sources   []Source
+	pipelines []*logparser.Pipeline
+	bus       *events.Bus
+	wg        sync.WaitGroup
+}
+
+// New creates a watchdog service for the given apps.
+func New(apps []logparser.Config, bus *events.Bus) (*Service, error) {
+	s := &Service{
+		bus:       bus,
+		sources:   make([]Source, 0, len(apps)),
+		pipelines: make([]*logparser.Pipeline, 0, len(apps)),
+	}
+
+	for _, app := range apps {
+		pipeline, err := logparser.NewPipeline(app)
+		if err != nil {
+			return nil, fmt.Errorf("creating pipeline for %s: %w", app.Name, err)
+		}
+
+		var source Source
+		switch app.SourceKind {
+		case "file":
+			source = &fileSource{
+				appName:  app.Name,
+				path:     app.Path,
+				readFrom: app.ReadFrom,
+			}
+		case "journalctl":
+			source = &journalctlSource{
+				appName: app.Name,
+				unit:    app.Unit,
+				since:   app.Since,
+			}
+		default:
+			return nil, fmt.Errorf("unknown source kind: %s", app.SourceKind)
+		}
+
+		s.sources = append(s.sources, source)
+		s.pipelines = append(s.pipelines, pipeline)
+	}
+
+	return s, nil
+}
+
+// Start begins watching all sources.
+func (s *Service) Start(ctx context.Context) {
+	for i, source := range s.sources {
+		pipeline := s.pipelines[i]
+		s.wg.Add(1)
+		go s.runSource(ctx, source, pipeline)
+	}
+
+	s.wg.Wait()
+}
+
+func (s *Service) runSource(ctx context.Context, source Source, pipeline *logparser.Pipeline) {
+	defer s.wg.Done()
+
+	for line := range source.Read(ctx) {
+		if evt := pipeline.Process(line); evt != nil {
+			s.bus.Publish(evt)
+		}
+	}
+}
+
+// GetAppNames returns the names of all watched apps.
+func (s *Service) GetAppNames() []string {
+	names := make([]string, len(s.pipelines))
+	for i, p := range s.pipelines {
+		names[i] = p.AppName()
+	}
+	return names
 }
