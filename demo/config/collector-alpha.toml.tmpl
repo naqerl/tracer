@@ -1,25 +1,44 @@
 name = "demo-alpha"
-panel_endpoint = "ws://localhost:8080/ingest/ws/ingest?api_key=__API_KEY__"
+panel_endpoint = "ws://localhost:8080/ingest/ws/ingest"
+api_key = "__API_KEY__"
 stats_interval = "30s"
 data_dir = "/demo/data"
 
+[sources]
+  [[sources.file]]
+  id = "alpha-json-file"
+  path = "/demo/logs/alpha-json.log"
+  read_from = "end"
+
+  [[sources.file]]
+  id = "alpha-regex-file"
+  path = "/demo/logs/alpha-regex.log"
+  read_from = "end"
+
+[parsers]
+  [[parsers.json]]
+  id = "json-default"
+  timestamp_field = "timestamp"
+  timestamp_format = "2006-01-02T15:04:05Z07:00"
+  level_field = "level"
+  trace_id_field = "trace_id"
+  message_field = "message"
+
+  [[parsers.regex]]
+  id = "regex-default"
+  pattern = '^(?P<timestamp>[^ ]+ [^ ]+) \[(?P<level>[A-Z]+)\] trace=(?P<trace_id>[^ ]+) msg="(?P<message>[^"]+)" user=(?P<user_id>[^ ]+) request=(?P<request_id>[^ ]+) amount=(?P<amount_usd>[^ ]+)$'
+  timestamp_field = "timestamp"
+  timestamp_format = "2006-01-02 15:04:05"
+  level_field = "level"
+  trace_id_field = "trace_id"
+  message_field = "message"
+
 [[apps]]
 name = "alpha-json"
-path = "/demo/logs/alpha-json.log"
-format = "json"
-timestamp_field = "timestamp"
-timestamp_format = "2006-01-02T15:04:05Z07:00"
-level_field = "level"
-trace_id_field = "trace_id"
-message_field = "message"
+source_ref = "alpha-json-file"
+parser_ref = "json-default"
 
 [[apps]]
 name = "alpha-regex"
-path = "/demo/logs/alpha-regex.log"
-format = "regex"
-pattern = '^(?P<timestamp>[^ ]+ [^ ]+) \[(?P<level>[A-Z]+)\] trace=(?P<trace_id>[^ ]+) msg="(?P<message>[^"]+)" user=(?P<user_id>[^ ]+) request=(?P<request_id>[^ ]+) amount=(?P<amount_usd>[^ ]+)$'
-timestamp_field = "timestamp"
-timestamp_format = "2006-01-02 15:04:05"
-level_field = "level"
-trace_id_field = "trace_id"
-message_field = "message"
+source_ref = "alpha-regex-file"
+parser_ref = "regex-default"
