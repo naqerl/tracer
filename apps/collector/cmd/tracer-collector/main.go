@@ -18,6 +18,7 @@ import (
 	logparser "github.com/ai-shift/tracer/apps/collector/internal/parsing"
 	"github.com/ai-shift/tracer/apps/collector/internal/pipeline"
 	sysstats "github.com/ai-shift/tracer/apps/collector/internal/stats"
+	"github.com/ai-shift/tracer/apps/collector/internal/supervisor"
 	wsclient "github.com/ai-shift/tracer/apps/collector/internal/transport"
 	watchdog "github.com/ai-shift/tracer/apps/collector/internal/watch"
 	"github.com/ai-shift/tracer/libs/logx"
@@ -136,6 +137,14 @@ func main() {
 			slog.Info("System stats enabled", "interval", interval, "data_dir", dataDir)
 		}
 	}
+
+	// Start supervisor to monitor sources and emit error events
+	sourcesForSupervisor := make([]supervisor.Source, len(sources))
+	for i, s := range sources {
+		sourcesForSupervisor[i] = s.(supervisor.Source)
+	}
+	super := supervisor.New(sourcesForSupervisor, bus)
+	go super.Run(ctx)
 
 	// Start pipeline stages
 	// Stage 1: Watchdog reads sources -> raw lines

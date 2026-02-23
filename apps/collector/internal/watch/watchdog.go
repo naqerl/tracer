@@ -4,11 +4,13 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/ai-shift/tracer/libs/types"
@@ -26,6 +28,8 @@ type Source interface {
 	Read(ctx context.Context) <-chan types.RawLine
 	Name() string
 	AppName() string
+	Health() error
+	Restart() error
 }
 
 // Service manages multiple log sources.
@@ -85,6 +89,24 @@ type FileSource struct {
 
 func (fs *FileSource) Name() string    { return fs.Path }
 func (fs *FileSource) AppName() string { return fs.App }
+
+// Health returns nil if the source is healthy.
+func (fs *FileSource) Health() error {
+	fs.mu.Lock()
+	defer fs.mu.Unlock()
+	if fs.file == nil {
+		return fmt.Errorf("file not open")
+	}
+	// Try to stat the file
+	_, err := fs.file.Stat()
+	return err
+}
+
+// Restart closes and reopens the file.
+func (fs *FileSource) Restart() error {
+	fs.close()
+	return fs.open()
+}
 
 func (fs *FileSource) Read(ctx context.Context) <-chan types.RawLine {
 	out := make(chan types.RawLine)
@@ -218,6 +240,8 @@ type JournalctlSource struct {
 	App   string
 	Unit  string
 	Since string
+	cmd   *exec.Cmd
+	mu    sync.Mutex
 }
 
 func (js *JournalctlSource) Name() string    { return "journalctl:" + js.Unit }
@@ -232,24 +256,50 @@ func (js *JournalctlSource) Read(ctx context.Context) <-chan types.RawLine {
 func (js *JournalctlSource) readLoop(ctx context.Context, out chan<- types.RawLine) {
 	defer close(out)
 
-	cmd := exec.CommandContext(ctx, "journalctl",
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+
+		err := js.runOnce(ctx, out)
+		if err != nil {
+			// Exit on context cancellation, otherwise retry
+			if ctx.Err() != nil {
+				return
+			}
+			// Brief pause before retry
+			select {
+			case <-time.After(time.Second):
+				continue
+			case <-ctx.Done():
+				return
+			}
+		}
+		return
+	}
+}
+
+func (js *JournalctlSource) runOnce(ctx context.Context, out chan<- types.RawLine) error {
+	js.mu.Lock()
+	js.cmd = exec.CommandContext(ctx, "journalctl",
 		"-u", js.Unit,
 		"-f",
 		"-o", "json",
 		"--since", js.Since,
 	)
+	cmd := js.cmd
+	js.mu.Unlock()
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		return
+		return err
 	}
 
 	if err := cmd.Start(); err != nil {
-		return
+		return err
 	}
-
-	defer cmd.Wait()
-	defer stdout.Close()
 
 	buf := make([]byte, 0, 64*1024)
 	scanner := bufio.NewScanner(stdout)
@@ -258,7 +308,9 @@ func (js *JournalctlSource) readLoop(ctx context.Context, out chan<- types.RawLi
 	for scanner.Scan() {
 		select {
 		case <-ctx.Done():
-			return
+			stdout.Close()
+			cmd.Wait()
+			return ctx.Err()
 		default:
 		}
 
@@ -272,11 +324,41 @@ func (js *JournalctlSource) readLoop(ctx context.Context, out chan<- types.RawLi
 		if msg != "" {
 			select {
 			case out <- types.RawLine{App: js.App, Line: msg}:
-			default:
-				// Channel full, drop
+			case <-ctx.Done():
+				stdout.Close()
+				cmd.Wait()
+				return ctx.Err()
 			}
 		}
 	}
+
+	stdout.Close()
+	return cmd.Wait()
+}
+
+// Health returns nil if journalctl is running.
+func (js *JournalctlSource) Health() error {
+	js.mu.Lock()
+	defer js.mu.Unlock()
+	if js.cmd == nil || js.cmd.Process == nil {
+		return fmt.Errorf("journalctl not running")
+	}
+	// Check if process is still running by sending signal 0
+	err := js.cmd.Process.Signal(syscall.Signal(0))
+	return err
+}
+
+// Restart kills and restarts journalctl.
+func (js *JournalctlSource) Restart() error {
+	js.mu.Lock()
+	cmd := js.cmd
+	js.mu.Unlock()
+
+	if cmd != nil && cmd.Process != nil {
+		cmd.Process.Kill()
+		cmd.Wait()
+	}
+	return nil
 }
 
 func extractJournalMessage(line string) string {

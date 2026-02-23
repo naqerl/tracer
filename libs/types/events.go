@@ -86,6 +86,19 @@ type RegisterMessage struct {
 	Apps      []string `json:"apps"`
 }
 
+// ErrorEvent represents a source error for reporting to panel.
+type ErrorEvent struct {
+	Time    time.Time `json:"timestamp"`
+	App     string    `json:"app"`
+	ErrType string    `json:"error_type"` // e.g., "unhealthy", "restart_failed"
+	Message string    `json:"message"`
+	Source  string    `json:"source"`
+}
+
+func (e ErrorEvent) EventType() string    { return "error" }
+func (e ErrorEvent) AppName() string      { return e.App }
+func (e ErrorEvent) Timestamp() time.Time { return e.Time }
+
 // RawLine is the input from source listeners (before parsing).
 type RawLine struct {
 	App  string

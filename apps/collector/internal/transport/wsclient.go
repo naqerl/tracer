@@ -2,6 +2,7 @@ package wsclient
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"time"
@@ -175,6 +176,13 @@ func (s *Service) sendEvent(evt types.Event) error {
 		}
 	case types.StatsEvent:
 		msg.Stats = &e.Data
+	case types.ErrorEvent:
+		// Error events are logged as errors with the error details
+		msg.Entry = types.LogEntry{
+			Timestamp: e.Timestamp(),
+			Level:     types.LevelError,
+			Message:   fmt.Sprintf("SOURCE_ERROR[%s]: %s (source: %s)", e.ErrType, e.Message, e.Source),
+		}
 	}
 
 	return s.sendJSON(msg)
