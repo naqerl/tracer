@@ -23,6 +23,19 @@ Default credentials: `demo` / `demo123`.
 make -C demo down
 ```
 
+## Restart only log generators
+
+```bash
+make -C demo restart-loggers
+```
+
+You can also control them separately:
+
+```bash
+make -C demo stop-loggers
+make -C demo start-loggers
+```
+
 ## Reset all demo data
 
 ```bash
