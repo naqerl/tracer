@@ -6,6 +6,7 @@ import (
 
 	panelsvc "github.com/ai-shift/tracer/apps/panel/internal/services/panel"
 	"github.com/ai-shift/tracer/apps/panel/internal/services/permissions"
+
 	authres "github.com/ai-shift/tracer/apps/panel/web/handlers/auth"
 	"github.com/ai-shift/tracer/apps/panel/web/handlers/ingest"
 	"github.com/ai-shift/tracer/apps/panel/web/handlers/landing"
@@ -18,10 +19,10 @@ import (
 
 func Run(deps Dependencies, port string, sampleRate float64, panelURL string) *http.Server {
 	mux := http.NewServeMux()
-	panelService := panelsvc.New(deps.DBManagerx)
 	permissionService := permissions.New(deps.User, deps.Tracker)
+	panelService := panelsvc.New(deps.DBManagerx, permissionService, deps.Ingest, deps.Tracker)
 	authMux := authres.InitMux(deps.Auth, deps.User)
-	panelMux := panel.InitMux(panelService, permissionService, deps.Ingest, deps.Tracker)
+	panelMux := panel.InitMux(panelService)
 
 	mux.Handle("/ingest/", http.StripPrefix("/ingest", ingest.InitMux(deps.Auth, deps.Ingest, sampleRate, deps.Notify.Chan(), deps.Tracker, panelURL)))
 	mux.Handle("/panel/", http.StripPrefix("/panel", panelMux))
