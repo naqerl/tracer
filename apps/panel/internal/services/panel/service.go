@@ -16,9 +16,15 @@ import (
 )
 
 var (
-	ErrAppNotFound  = errors.New("app not found")
-	ErrLogNotFound  = errors.New("log not found")
-	ErrAccessDenied = errors.New("access denied")
+	ErrAppNotFound      = errors.New("app not found")
+	ErrLogNotFound      = errors.New("log not found")
+	ErrAccessDenied     = errors.New("access denied")
+	ErrInvalidCollector = errors.New("invalid collector name")
+	ErrInvalidApp       = errors.New("invalid app name")
+	ErrInvalidGroupID   = errors.New("invalid group ID")
+	ErrInvalidLogID     = errors.New("invalid log ID")
+	ErrInvalidOffset    = errors.New("invalid offset")
+	ErrInvalidLimit     = errors.New("invalid limit")
 )
 
 type Service struct {
@@ -64,6 +70,122 @@ type StatsDisplay struct {
 	Staleness          string // "fresh", "warning", "stale", "old"
 }
 
+// Request structs for service methods
+
+type GetCollectorDetailRequest struct {
+	User          sharedtypes.User
+	CollectorName string
+}
+
+func (r GetCollectorDetailRequest) Validate() error {
+	if r.CollectorName == "" {
+		return fmt.Errorf("collector name is required")
+	}
+	return nil
+}
+
+type GetStatsHistoryRequest struct {
+	User          sharedtypes.User
+	CollectorName string
+	Since         time.Time
+}
+
+func (r GetStatsHistoryRequest) Validate() error {
+	if r.CollectorName == "" {
+		return fmt.Errorf("collector name is required")
+	}
+	return nil
+}
+
+type GetAppAnalyticsRequest struct {
+	User          sharedtypes.User
+	CollectorName string
+	AppName       string
+}
+
+func (r GetAppAnalyticsRequest) Validate() error {
+	if r.CollectorName == "" {
+		return fmt.Errorf("collector name is required")
+	}
+	if r.AppName == "" {
+		return fmt.Errorf("app name is required")
+	}
+	return nil
+}
+
+type GetLogGroupsRequest struct {
+	User          sharedtypes.User
+	CollectorName string
+	AppName       string
+	Level         string
+	Offset        int64
+	Limit         int64
+}
+
+func (r GetLogGroupsRequest) Validate() error {
+	if r.CollectorName == "" {
+		return fmt.Errorf("collector name is required")
+	}
+	if r.AppName == "" {
+		return fmt.Errorf("app name is required")
+	}
+	if r.Offset < 0 {
+		return fmt.Errorf("offset must be non-negative")
+	}
+	if r.Limit <= 0 {
+		return fmt.Errorf("limit must be positive")
+	}
+	return nil
+}
+
+type GetLogDetailRequest struct {
+	User          sharedtypes.User
+	CollectorName string
+	AppName       string
+	GroupID       int64
+	Offset        int64
+	Limit         int64
+}
+
+func (r GetLogDetailRequest) Validate() error {
+	if r.CollectorName == "" {
+		return fmt.Errorf("collector name is required")
+	}
+	if r.AppName == "" {
+		return fmt.Errorf("app name is required")
+	}
+	if r.GroupID <= 0 {
+		return fmt.Errorf("group ID must be positive")
+	}
+	if r.Offset < 0 {
+		return fmt.Errorf("offset must be non-negative")
+	}
+	if r.Limit <= 0 {
+		return fmt.Errorf("limit must be positive")
+	}
+	return nil
+}
+
+type GetLogByIDRequest struct {
+	User          sharedtypes.User
+	CollectorName string
+	AppName       string
+	ID            int64
+}
+
+func (r GetLogByIDRequest) Validate() error {
+	if r.CollectorName == "" {
+		return fmt.Errorf("collector name is required")
+	}
+	if r.AppName == "" {
+		return fmt.Errorf("app name is required")
+	}
+	if r.ID <= 0 {
+		return fmt.Errorf("log ID must be positive")
+	}
+	return nil
+}
+
 // CollectorView provides a complete view of a collector for display,
 // with data pre-filtered according to user permissions.
 type CollectorView struct {
@@ -88,8 +210,8 @@ func (s *Service) queriesForApp(collectorName, appName string) (*db.Queries, err
 	return db.New(sqlDB), nil
 }
 
-func (s *Service) GetAppAnalytics(ctx context.Context, user sharedtypes.User, collectorName, appName string) (*AppStats, []db.ListLogGroupsRow, error) {
-	hasAccess, err := s.permissions.CanAccessApp(ctx, user, appName)
+func (s *Service) GetAppAnalytics(ctx context.Context, req GetAppAnalyticsRequest) (*AppStats, []db.ListLogGroupsRow, error) {
+	hasAccess, err := s.permissions.CanAccessApp(ctx, req.User, req.AppName)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -97,7 +219,7 @@ func (s *Service) GetAppAnalytics(ctx context.Context, user sharedtypes.User, co
 		return nil, nil, ErrAccessDenied
 	}
 
-	queries, err := s.queriesForApp(collectorName, appName)
+	queries, err := s.queriesForApp(req.CollectorName, req.AppName)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -139,8 +261,8 @@ func (s *Service) GetAppAnalytics(ctx context.Context, user sharedtypes.User, co
 	}, grouped, nil
 }
 
-func (s *Service) GetLogDetail(ctx context.Context, user sharedtypes.User, collectorName, appName string, groupID, offset, limit int64) (*LogDetailResult, error) {
-	hasAccess, err := s.permissions.CanAccessApp(ctx, user, appName)
+func (s *Service) GetLogDetail(ctx context.Context, req GetLogDetailRequest) (*LogDetailResult, error) {
+	hasAccess, err := s.permissions.CanAccessApp(ctx, req.User, req.AppName)
 	if err != nil {
 		return nil, err
 	}
@@ -148,12 +270,12 @@ func (s *Service) GetLogDetail(ctx context.Context, user sharedtypes.User, colle
 		return nil, ErrAccessDenied
 	}
 
-	queries, err := s.queriesForApp(collectorName, appName)
+	queries, err := s.queriesForApp(req.CollectorName, req.AppName)
 	if err != nil {
 		return nil, err
 	}
 
-	group, err := queries.GetLogGroupByID(ctx, groupID)
+	group, err := queries.GetLogGroupByID(ctx, req.GroupID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrLogNotFound
@@ -162,15 +284,15 @@ func (s *Service) GetLogDetail(ctx context.Context, user sharedtypes.User, colle
 	}
 
 	logs, err := queries.GetLogsByGroupID(ctx, db.GetLogsByGroupIDParams{
-		GroupID: sql.NullInt64{Int64: groupID, Valid: true},
-		Limit:   limit,
-		Offset:  offset,
+		GroupID: sql.NullInt64{Int64: req.GroupID, Valid: true},
+		Limit:   req.Limit,
+		Offset:  req.Offset,
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	totalCount, err := queries.CountLogsByGroupID(ctx, sql.NullInt64{Int64: groupID, Valid: true})
+	totalCount, err := queries.CountLogsByGroupID(ctx, sql.NullInt64{Int64: req.GroupID, Valid: true})
 	if err != nil {
 		slog.Error("Failed to count logs", "error", err)
 		totalCount = 0
@@ -183,8 +305,8 @@ func (s *Service) GetLogDetail(ctx context.Context, user sharedtypes.User, colle
 	}, nil
 }
 
-func (s *Service) GetLogGroups(ctx context.Context, user sharedtypes.User, collectorName, appName, level string, offset, limit int64) (*LogGroupsResult, error) {
-	hasAccess, err := s.permissions.CanAccessApp(ctx, user, appName)
+func (s *Service) GetLogGroups(ctx context.Context, req GetLogGroupsRequest) (*LogGroupsResult, error) {
+	hasAccess, err := s.permissions.CanAccessApp(ctx, req.User, req.AppName)
 	if err != nil {
 		return nil, err
 	}
@@ -192,7 +314,7 @@ func (s *Service) GetLogGroups(ctx context.Context, user sharedtypes.User, colle
 		return nil, ErrAccessDenied
 	}
 
-	queries, err := s.queriesForApp(collectorName, appName)
+	queries, err := s.queriesForApp(req.CollectorName, req.AppName)
 	if err != nil {
 		return nil, err
 	}
@@ -219,16 +341,16 @@ func (s *Service) GetLogGroups(ctx context.Context, user sharedtypes.User, colle
 	}
 
 	var groups any
-	if level != "" {
+	if req.Level != "" {
 		groups, err = queries.ListLogGroupsByLevel(ctx, db.ListLogGroupsByLevelParams{
-			LOWER:  level,
-			Limit:  limit,
-			Offset: offset,
+			LOWER:  req.Level,
+			Limit:  req.Limit,
+			Offset: req.Offset,
 		})
 	} else {
 		groups, err = queries.ListLogGroups(ctx, db.ListLogGroupsParams{
-			Limit:  limit,
-			Offset: offset,
+			Limit:  req.Limit,
+			Offset: req.Offset,
 		})
 	}
 	if err != nil {
@@ -256,8 +378,8 @@ func (s *Service) GetLogVolumeTimeSeries(ctx context.Context, collectorName, app
 	})
 }
 
-func (s *Service) GetLogByID(ctx context.Context, user sharedtypes.User, collectorName, appName string, id int64) (db.Log, error) {
-	hasAccess, err := s.permissions.CanAccessApp(ctx, user, appName)
+func (s *Service) GetLogByID(ctx context.Context, req GetLogByIDRequest) (db.Log, error) {
+	hasAccess, err := s.permissions.CanAccessApp(ctx, req.User, req.AppName)
 	if err != nil {
 		return db.Log{}, err
 	}
@@ -265,12 +387,12 @@ func (s *Service) GetLogByID(ctx context.Context, user sharedtypes.User, collect
 		return db.Log{}, ErrAccessDenied
 	}
 
-	queries, err := s.queriesForApp(collectorName, appName)
+	queries, err := s.queriesForApp(req.CollectorName, req.AppName)
 	if err != nil {
 		return db.Log{}, err
 	}
 
-	logEntry, err := queries.GetLogByID(ctx, id)
+	logEntry, err := queries.GetLogByID(ctx, req.ID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return db.Log{}, ErrLogNotFound
@@ -324,13 +446,13 @@ func (s *Service) GetCollectorsView(ctx context.Context, user sharedtypes.User) 
 
 // GetCollectorDetail returns a single collector view with access check.
 // Returns ErrAccessDenied if the user doesn't have access to the collector.
-func (s *Service) GetCollectorDetail(ctx context.Context, user sharedtypes.User, collectorName string) (CollectorView, error) {
-	collector, exists := s.tracker.Get(collectorName)
+func (s *Service) GetCollectorDetail(ctx context.Context, req GetCollectorDetailRequest) (CollectorView, error) {
+	collector, exists := s.tracker.Get(req.CollectorName)
 	if !exists {
 		return CollectorView{}, ErrAppNotFound
 	}
 
-	hasAccess, err := s.permissions.CanAccessCollector(ctx, user, collectorName)
+	hasAccess, err := s.permissions.CanAccessCollector(ctx, req.User, req.CollectorName)
 	if err != nil {
 		return CollectorView{}, err
 	}
@@ -347,7 +469,7 @@ func (s *Service) GetCollectorDetail(ctx context.Context, user sharedtypes.User,
 	}
 
 	// Filter apps by user access
-	filteredApps, err := s.permissions.FilterAppsByAccess(ctx, user, collector.Apps)
+	filteredApps, err := s.permissions.FilterAppsByAccess(ctx, req.User, collector.Apps)
 	if err != nil {
 		return CollectorView{}, err
 	}
@@ -375,15 +497,15 @@ func (s *Service) CanAccessApp(ctx context.Context, user sharedtypes.User, appNa
 
 // GetStatsHistory returns stats history for a collector.
 // This is a wrapper around ingest service for now.
-func (s *Service) GetStatsHistory(ctx context.Context, user sharedtypes.User, collectorName string, since time.Time) ([]db.SystemStat, error) {
-	hasAccess, err := s.permissions.CanAccessCollector(ctx, user, collectorName)
+func (s *Service) GetStatsHistory(ctx context.Context, req GetStatsHistoryRequest) ([]db.SystemStat, error) {
+	hasAccess, err := s.permissions.CanAccessCollector(ctx, req.User, req.CollectorName)
 	if err != nil {
 		return nil, err
 	}
 	if !hasAccess {
 		return nil, ErrAccessDenied
 	}
-	return s.ingestSvc.GetStatsHistory(ctx, ingest.CollectorName(collectorName), since)
+	return s.ingestSvc.GetStatsHistory(ctx, ingest.CollectorName(req.CollectorName), req.Since)
 }
 
 // formatStatsForDisplay formats system stats for UI display.

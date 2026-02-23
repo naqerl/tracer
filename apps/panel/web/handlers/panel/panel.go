@@ -76,13 +76,16 @@ func (h *handler) getCollector(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	collectorName := r.PathValue("collector")
-	if collectorName == "" {
-		h.t.RenderError(w, r, "Error", "Collector name required", http.StatusBadRequest)
+	req := panelsvc.GetCollectorDetailRequest{
+		User:          user,
+		CollectorName: r.PathValue("collector"),
+	}
+	if err := req.Validate(); err != nil {
+		h.t.RenderError(w, r, "Error", err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	view, err := h.svc.GetCollectorDetail(r.Context(), user, collectorName)
+	view, err := h.svc.GetCollectorDetail(r.Context(), req)
 	if err != nil {
 		switch {
 		case errors.Is(err, panelsvc.ErrAccessDenied):
@@ -96,7 +99,7 @@ func (h *handler) getCollector(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.t.RenderHTTP(w, r, "collector-overview", map[string]any{
-		"CollectorName": collectorName,
+		"CollectorName": req.CollectorName,
 		"User":          user,
 		"Collector":     view,
 		"Stats":         view.Stats,
@@ -104,7 +107,7 @@ func (h *handler) getCollector(w http.ResponseWriter, r *http.Request) {
 		"Nav": templates.NewNavBuilder().
 			Add("panel", "panel").
 			Add("collectors", "collectors").
-			Add(collectorName, collectorName).
+			Add(req.CollectorName, req.CollectorName).
 			Build(),
 	})
 }
@@ -115,17 +118,22 @@ func (h *handler) getCollectorResources(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	collectorName := r.PathValue("collector")
-	if collectorName == "" {
-		h.t.RenderError(w, r, "Error", "Collector name required", http.StatusBadRequest)
-		return
-	}
 	rangeParam := r.URL.Query().Get("range")
 	if rangeParam == "" {
 		rangeParam = "24h"
 	}
 
-	stats, err := h.svc.GetStatsHistory(r.Context(), user, collectorName, parseTimeRange(rangeParam))
+	req := panelsvc.GetStatsHistoryRequest{
+		User:          user,
+		CollectorName: r.PathValue("collector"),
+		Since:         parseTimeRange(rangeParam),
+	}
+	if err := req.Validate(); err != nil {
+		h.t.RenderError(w, r, "Error", err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	stats, err := h.svc.GetStatsHistory(r.Context(), req)
 	if err != nil {
 		switch {
 		case errors.Is(err, panelsvc.ErrAccessDenied):
@@ -137,8 +145,8 @@ func (h *handler) getCollectorResources(w http.ResponseWriter, r *http.Request) 
 	}
 
 	h.t.RenderHTTP(w, r, "collector-stats", map[string]any{
-		"Title":         collectorName + " Resources",
-		"CollectorName": collectorName,
+		"Title":         req.CollectorName + " Resources",
+		"CollectorName": req.CollectorName,
 		"RangeParam":    rangeParam,
 		"Stats":         stats,
 		"User":          user,
@@ -146,7 +154,7 @@ func (h *handler) getCollectorResources(w http.ResponseWriter, r *http.Request) 
 		"Nav": templates.NewNavBuilder().
 			Add("panel", "panel").
 			Add("collectors", "collectors").
-			Add(collectorName, collectorName).
+			Add(req.CollectorName, req.CollectorName).
 			Add("resources", "resources").
 			Build(),
 	})
@@ -158,13 +166,16 @@ func (h *handler) getCollectorApps(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	collectorName := r.PathValue("collector")
-	if collectorName == "" {
+	req := panelsvc.GetCollectorDetailRequest{
+		User:          user,
+		CollectorName: r.PathValue("collector"),
+	}
+	if err := req.Validate(); err != nil {
 		h.t.RenderError(w, r, "Error", "Collector name required", http.StatusBadRequest)
 		return
 	}
 
-	view, err := h.svc.GetCollectorDetail(r.Context(), user, collectorName)
+	view, err := h.svc.GetCollectorDetail(r.Context(), req)
 	if err != nil {
 		switch {
 		case errors.Is(err, panelsvc.ErrAccessDenied):
@@ -178,15 +189,15 @@ func (h *handler) getCollectorApps(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.t.RenderHTTP(w, r, "collector-apps", map[string]any{
-		"Title":         collectorName + " Apps",
-		"CollectorName": collectorName,
+		"Title":         req.CollectorName + " Apps",
+		"CollectorName": req.CollectorName,
 		"Apps":          view.Apps,
 		"User":          user,
 		"IsAdmin":       user.IsAdmin,
 		"Nav": templates.NewNavBuilder().
 			Add("panel", "panel").
 			Add("collectors", "collectors").
-			Add(collectorName, collectorName).
+			Add(req.CollectorName, req.CollectorName).
 			Add("apps", "apps").
 			Build(),
 	})
@@ -200,10 +211,17 @@ func (h *handler) getApp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	collectorName := r.PathValue("collector")
-	appName := r.PathValue("app")
+	req := panelsvc.GetAppAnalyticsRequest{
+		User:          user,
+		CollectorName: r.PathValue("collector"),
+		AppName:       r.PathValue("app"),
+	}
+	if err := req.Validate(); err != nil {
+		h.t.RenderError(w, r, "Error", err.Error(), http.StatusBadRequest)
+		return
+	}
 
-	stats, grouped, err := h.svc.GetAppAnalytics(r.Context(), user, collectorName, appName)
+	stats, grouped, err := h.svc.GetAppAnalytics(r.Context(), req)
 	if err != nil {
 		switch {
 		case errors.Is(err, panelsvc.ErrAccessDenied):
@@ -217,18 +235,18 @@ func (h *handler) getApp(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.t.RenderHTTP(w, r, "app-page", map[string]any{
-		"Title":         appName + " Analytics",
-		"AppName":       appName,
-		"CollectorName": collectorName,
+		"Title":         req.AppName + " Analytics",
+		"AppName":       req.AppName,
+		"CollectorName": req.CollectorName,
 		"Stats":         stats,
 		"Grouped":       grouped,
 		"IsAdmin":       user.IsAdmin,
 		"Nav": templates.NewNavBuilder().
 			Add("panel", "panel").
 			Add("collectors", "collectors").
-			Add(collectorName, collectorName).
+			Add(req.CollectorName, req.CollectorName).
 			Add("apps", "apps").
-			Add(appName, appName).
+			Add(req.AppName, req.AppName).
 			Build(),
 	})
 }
@@ -239,14 +257,20 @@ func (h *handler) getLogGroups(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	collectorName := r.PathValue("collector")
-	appName := r.PathValue("app")
+	req := panelsvc.GetLogGroupsRequest{
+		User:          user,
+		CollectorName: r.PathValue("collector"),
+		AppName:       r.PathValue("app"),
+		Level:         r.URL.Query().Get("level"),
+		Offset:        parseOffset(r.URL.Query().Get("offset")),
+		Limit:         50,
+	}
+	if err := req.Validate(); err != nil {
+		h.t.RenderError(w, r, "Error", err.Error(), http.StatusBadRequest)
+		return
+	}
 
-	level := r.URL.Query().Get("level")
-	offset := parseOffset(r.URL.Query().Get("offset"))
-	limit := int64(50)
-
-	logGroups, err := h.svc.GetLogGroups(r.Context(), user, collectorName, appName, level, offset, limit)
+	logGroups, err := h.svc.GetLogGroups(r.Context(), req)
 	if err != nil {
 		switch {
 		case errors.Is(err, panelsvc.ErrAccessDenied):
@@ -260,25 +284,25 @@ func (h *handler) getLogGroups(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.t.RenderHTTP(w, r, "app-logs-page", map[string]any{
-		"Title":         appName + " Logs",
-		"AppName":       appName,
-		"CollectorName": collectorName,
+		"Title":         req.AppName + " Logs",
+		"AppName":       req.AppName,
+		"CollectorName": req.CollectorName,
 		"Groups":        logGroups.Groups,
-		"Level":         level,
+		"Level":         req.Level,
 		"TotalCount":    logGroups.TotalCount,
 		"ErrorCount":    logGroups.ErrorCount,
 		"WarnCount":     logGroups.WarnCount,
 		"InfoCount":     logGroups.InfoCount,
-		"Offset":        offset,
-		"Limit":         limit,
+		"Offset":        req.Offset,
+		"Limit":         req.Limit,
 		"User":          user,
 		"IsAdmin":       user.IsAdmin,
 		"Nav": templates.NewNavBuilder().
 			Add("panel", "panel").
 			Add("collectors", "collectors").
-			Add(collectorName, collectorName).
+			Add(req.CollectorName, req.CollectorName).
 			Add("apps", "apps").
-			Add(appName, appName).
+			Add(req.AppName, req.AppName).
 			Add("logs", "logs").
 			Build(),
 	})
@@ -290,8 +314,6 @@ func (h *handler) getLogGroupByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	collectorName := r.PathValue("collector")
-	appName := r.PathValue("app")
 	groupID, err := strconv.ParseInt(r.PathValue("groupID"), 10, 64)
 	if err != nil {
 		h.t.RenderError(w, r, "Error", "Invalid group ID", http.StatusBadRequest)
@@ -299,10 +321,21 @@ func (h *handler) getLogGroupByID(w http.ResponseWriter, r *http.Request) {
 	}
 
 	highlightLogID := parseOffset(r.URL.Query().Get("logID"))
-	offset := parseOffset(r.URL.Query().Get("offset"))
-	limit := int64(50)
 
-	detail, err := h.svc.GetLogDetail(r.Context(), user, collectorName, appName, groupID, offset, limit)
+	req := panelsvc.GetLogDetailRequest{
+		User:          user,
+		CollectorName: r.PathValue("collector"),
+		AppName:       r.PathValue("app"),
+		GroupID:       groupID,
+		Offset:        parseOffset(r.URL.Query().Get("offset")),
+		Limit:         50,
+	}
+	if err := req.Validate(); err != nil {
+		h.t.RenderError(w, r, "Error", err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	detail, err := h.svc.GetLogDetail(r.Context(), req)
 	if err != nil {
 		switch {
 		case errors.Is(err, panelsvc.ErrAccessDenied):
@@ -316,24 +349,24 @@ func (h *handler) getLogGroupByID(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.t.RenderHTTP(w, r, "app-logs-detail-page", map[string]any{
-		"Title":          appName + " Log Details",
-		"AppName":        appName,
-		"CollectorName":  collectorName,
+		"Title":          req.AppName + " Log Details",
+		"AppName":        req.AppName,
+		"CollectorName":  req.CollectorName,
 		"LogGroup":       detail.Group,
 		"Logs":           detail.Logs,
-		"Offset":         offset,
-		"Limit":          limit,
-		"HasMore":        offset+int64(len(detail.Logs)) < detail.TotalCount,
-		"NextOffset":     offset + limit,
+		"Offset":         req.Offset,
+		"Limit":          req.Limit,
+		"HasMore":        req.Offset+int64(len(detail.Logs)) < detail.TotalCount,
+		"NextOffset":     req.Offset + req.Limit,
 		"HighlightLogID": highlightLogID,
 		"User":           user,
 		"IsAdmin":        user.IsAdmin,
 		"Nav": templates.NewNavBuilder().
 			Add("panel", "panel").
 			Add("collectors", "collectors").
-			Add(collectorName, collectorName).
+			Add(req.CollectorName, req.CollectorName).
 			Add("apps", "apps").
-			Add(appName, appName).
+			Add(req.AppName, req.AppName).
 			Add("logs", "logs").
 			Build(),
 	})
@@ -346,17 +379,24 @@ func (h *handler) getLogByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	collectorName := r.PathValue("collector")
-	appName := r.PathValue("app")
-	idStr := r.PathValue("id")
-
-	id, err := strconv.ParseInt(idStr, 10, 64)
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
 		http.Error(w, "Invalid log ID", http.StatusBadRequest)
 		return
 	}
 
-	logEntry, err := h.svc.GetLogByID(r.Context(), user, collectorName, appName, id)
+	req := panelsvc.GetLogByIDRequest{
+		User:          user,
+		CollectorName: r.PathValue("collector"),
+		AppName:       r.PathValue("app"),
+		ID:            id,
+	}
+	if err := req.Validate(); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	logEntry, err := h.svc.GetLogByID(r.Context(), req)
 	if err != nil {
 		switch {
 		case errors.Is(err, panelsvc.ErrAccessDenied):
@@ -371,7 +411,7 @@ func (h *handler) getLogByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	http.Redirect(w, r, fmt.Sprintf("/panel/collectors/%s/apps/%s/logs/groups/%d?logID=%d", collectorName, appName, logEntry.GroupID.Int64, logEntry.ID), http.StatusSeeOther)
+	http.Redirect(w, r, fmt.Sprintf("/panel/collectors/%s/apps/%s/logs/groups/%d?logID=%d", req.CollectorName, req.AppName, logEntry.GroupID.Int64, logEntry.ID), http.StatusSeeOther)
 }
 
 func parseTimeRange(rangeParam string) time.Time {
