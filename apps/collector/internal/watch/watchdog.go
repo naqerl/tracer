@@ -30,6 +30,84 @@ type Source interface {
 	Name() string
 }
 
+// Service manages multiple log sources.
+type Service struct {
+	sources   []Source
+	pipelines []*logparser.Pipeline
+	bus       *events.Bus
+	wg        sync.WaitGroup
+}
+
+// New creates a watchdog service for the given apps.
+func New(apps []logparser.Config, bus *events.Bus) (*Service, error) {
+	s := &Service{
+		bus:       bus,
+		sources:   make([]Source, 0, len(apps)),
+		pipelines: make([]*logparser.Pipeline, 0, len(apps)),
+	}
+
+	for _, app := range apps {
+		pipeline, err := logparser.NewPipeline(app)
+		if err != nil {
+			return nil, fmt.Errorf("creating pipeline for %s: %w", app.Name, err)
+		}
+
+		var source Source
+		switch app.SourceKind {
+		case "file":
+			source = &fileSource{
+				appName:  app.Name,
+				path:     app.Path,
+				readFrom: app.ReadFrom,
+			}
+		case "journalctl":
+			source = &journalctlSource{
+				appName: app.Name,
+				unit:    app.Unit,
+				since:   app.Since,
+			}
+		default:
+			return nil, fmt.Errorf("unknown source kind: %s", app.SourceKind)
+		}
+
+		s.sources = append(s.sources, source)
+		s.pipelines = append(s.pipelines, pipeline)
+	}
+
+	return s, nil
+}
+
+// Start begins watching all sources.
+func (s *Service) Start(ctx context.Context) {
+	for i, source := range s.sources {
+		pipeline := s.pipelines[i]
+		s.wg.Add(1)
+		go s.runSource(ctx, source, pipeline)
+	}
+
+	s.wg.Wait()
+}
+
+// GetAppNames returns the names of all watched apps.
+func (s *Service) GetAppNames() []string {
+	names := make([]string, len(s.pipelines))
+	for i, p := range s.pipelines {
+		names[i] = p.AppName()
+	}
+	return names
+}
+
+// runSource is the goroutine that reads from a source and publishes events.
+func (s *Service) runSource(ctx context.Context, source Source, pipeline *logparser.Pipeline) {
+	defer s.wg.Done()
+
+	for line := range source.Read(ctx) {
+		if evt := pipeline.Process(line); evt != nil {
+			s.bus.Publish(evt)
+		}
+	}
+}
+
 // fileSource reads from a log file.
 type fileSource struct {
 	appName  string
@@ -247,81 +325,4 @@ func extractJournalMessage(line string) string {
 		return ""
 	}
 	return data.Message
-}
-
-// Service manages multiple log sources.
-type Service struct {
-	sources   []Source
-	pipelines []*logparser.Pipeline
-	bus       *events.Bus
-	wg        sync.WaitGroup
-}
-
-// New creates a watchdog service for the given apps.
-func New(apps []logparser.Config, bus *events.Bus) (*Service, error) {
-	s := &Service{
-		bus:       bus,
-		sources:   make([]Source, 0, len(apps)),
-		pipelines: make([]*logparser.Pipeline, 0, len(apps)),
-	}
-
-	for _, app := range apps {
-		pipeline, err := logparser.NewPipeline(app)
-		if err != nil {
-			return nil, fmt.Errorf("creating pipeline for %s: %w", app.Name, err)
-		}
-
-		var source Source
-		switch app.SourceKind {
-		case "file":
-			source = &fileSource{
-				appName:  app.Name,
-				path:     app.Path,
-				readFrom: app.ReadFrom,
-			}
-		case "journalctl":
-			source = &journalctlSource{
-				appName: app.Name,
-				unit:    app.Unit,
-				since:   app.Since,
-			}
-		default:
-			return nil, fmt.Errorf("unknown source kind: %s", app.SourceKind)
-		}
-
-		s.sources = append(s.sources, source)
-		s.pipelines = append(s.pipelines, pipeline)
-	}
-
-	return s, nil
-}
-
-// Start begins watching all sources.
-func (s *Service) Start(ctx context.Context) {
-	for i, source := range s.sources {
-		pipeline := s.pipelines[i]
-		s.wg.Add(1)
-		go s.runSource(ctx, source, pipeline)
-	}
-
-	s.wg.Wait()
-}
-
-func (s *Service) runSource(ctx context.Context, source Source, pipeline *logparser.Pipeline) {
-	defer s.wg.Done()
-
-	for line := range source.Read(ctx) {
-		if evt := pipeline.Process(line); evt != nil {
-			s.bus.Publish(evt)
-		}
-	}
-}
-
-// GetAppNames returns the names of all watched apps.
-func (s *Service) GetAppNames() []string {
-	names := make([]string, len(s.pipelines))
-	for i, p := range s.pipelines {
-		names[i] = p.AppName()
-	}
-	return names
 }
