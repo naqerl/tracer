@@ -72,16 +72,25 @@ func main() {
 	// Create shared event bus
 	bus := events.NewBus(1000)
 
-	// Build source configs for watchdog (just I/O, no parsing)
-	sourceConfigs := make([]watchdog.SourceConfig, len(cfg.Apps))
+	// Build sources for watchdog (just I/O, no parsing)
+	sources := make([]watchdog.Source, len(cfg.Apps))
 	for i, app := range cfg.Apps {
-		sourceConfigs[i] = watchdog.SourceConfig{
-			AppName:  app.Name,
-			Kind:     app.SourceKind,
-			Path:     app.Path,
-			ReadFrom: app.ReadFrom,
-			Unit:     app.Unit,
-			Since:    app.Since,
+		switch app.SourceKind {
+		case "file":
+			sources[i] = &watchdog.FileSource{
+				App:  app.Name,
+				Path: app.Path,
+				From: app.ReadFrom,
+			}
+		case "journalctl":
+			sources[i] = &watchdog.JournalctlSource{
+				App:   app.Name,
+				Unit:  app.Unit,
+				Since: app.Since,
+			}
+		default:
+			slog.Error("Unknown source kind", "app", app.Name, "kind", app.SourceKind)
+			os.Exit(1)
 		}
 	}
 
@@ -95,11 +104,7 @@ func main() {
 	}
 
 	// Initialize watchdog (dumb I/O)
-	watcher, err := watchdog.New(sourceConfigs)
-	if err != nil {
-		slog.Error("Failed to create watchdog", "error", err)
-		os.Exit(1)
-	}
+	watcher := watchdog.New(sources)
 
 	// Initialize pipeline (parsing stage)
 	pipe, err := pipeline.New(pipelineConfigs)

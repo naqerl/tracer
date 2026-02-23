@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -34,35 +33,9 @@ type Service struct {
 	sources []Source
 }
 
-// New creates a watchdog service for the given apps.
-func New(configs []SourceConfig) (*Service, error) {
-	s := &Service{
-		sources: make([]Source, 0, len(configs)),
-	}
-
-	for _, cfg := range configs {
-		var source Source
-		switch cfg.Kind {
-		case "file":
-			source = &fileSource{
-				appName:  cfg.AppName,
-				path:     cfg.Path,
-				readFrom: cfg.ReadFrom,
-			}
-		case "journalctl":
-			source = &journalctlSource{
-				appName: cfg.AppName,
-				unit:    cfg.Unit,
-				since:   cfg.Since,
-			}
-		default:
-			panic(fmt.Sprintf("watchdog: unknown source kind %q for app %s", cfg.Kind, cfg.AppName))
-		}
-
-		s.sources = append(s.sources, source)
-	}
-
-	return s, nil
+// New creates a watchdog service for the given sources.
+func New(sources []Source) *Service {
+	return &Service{sources: sources}
 }
 
 // Start begins watching all sources and emits raw lines to the output channel.
@@ -100,36 +73,26 @@ func (s *Service) AppNames() []string {
 	return names
 }
 
-// SourceConfig configures a log source.
-type SourceConfig struct {
-	AppName  string
-	Kind     string // "file" or "journalctl"
-	Path     string // for file
-	ReadFrom string // for file: "start" or "end"
-	Unit     string // for journalctl
-	Since    string // for journalctl
+// FileSource reads from a log file.
+type FileSource struct {
+	App    string
+	Path   string
+	From   string // "start" or "end"
+	file   *os.File
+	offset atomic.Int64
+	mu     sync.Mutex
 }
 
-// fileSource reads from a log file.
-type fileSource struct {
-	appName  string
-	path     string
-	readFrom string
-	file     *os.File
-	offset   atomic.Int64
-	mu       sync.Mutex
-}
+func (fs *FileSource) Name() string    { return fs.Path }
+func (fs *FileSource) AppName() string { return fs.App }
 
-func (fs *fileSource) Name() string    { return fs.path }
-func (fs *fileSource) AppName() string { return fs.appName }
-
-func (fs *fileSource) Read(ctx context.Context) <-chan types.RawLine {
+func (fs *FileSource) Read(ctx context.Context) <-chan types.RawLine {
 	out := make(chan types.RawLine)
 	go fs.readLoop(ctx, out)
 	return out
 }
 
-func (fs *fileSource) readLoop(ctx context.Context, out chan<- types.RawLine) {
+func (fs *FileSource) readLoop(ctx context.Context, out chan<- types.RawLine) {
 	defer close(out)
 
 	if err := fs.open(); err != nil {
@@ -154,17 +117,17 @@ func (fs *fileSource) readLoop(ctx context.Context, out chan<- types.RawLine) {
 	}
 }
 
-func (fs *fileSource) open() error {
+func (fs *FileSource) open() error {
 	fs.mu.Lock()
 	defer fs.mu.Unlock()
 
-	file, err := os.Open(fs.path)
+	file, err := os.Open(fs.Path)
 	if err != nil {
 		return err
 	}
 
 	offset := int64(0)
-	if fs.readFrom == readFromEnd {
+	if fs.From == readFromEnd {
 		offset, err = file.Seek(0, io.SeekEnd)
 		if err != nil {
 			file.Close()
@@ -177,7 +140,7 @@ func (fs *fileSource) open() error {
 	return nil
 }
 
-func (fs *fileSource) readBatch(out chan<- types.RawLine, buf []byte) error {
+func (fs *FileSource) readBatch(out chan<- types.RawLine, buf []byte) error {
 	fs.mu.Lock()
 	file := fs.file
 	fs.mu.Unlock()
@@ -212,7 +175,7 @@ func (fs *fileSource) readBatch(out chan<- types.RawLine, buf []byte) error {
 		line := scanner.Text()
 		if line != "" {
 			select {
-			case out <- types.RawLine{App: fs.appName, Line: line}:
+			case out <- types.RawLine{App: fs.App, Line: line}:
 			default:
 				// Channel full, drop
 			}
@@ -229,7 +192,7 @@ func (fs *fileSource) readBatch(out chan<- types.RawLine, buf []byte) error {
 	return nil
 }
 
-func (fs *fileSource) reopen() {
+func (fs *FileSource) reopen() {
 	fs.mu.Lock()
 	defer fs.mu.Unlock()
 
@@ -240,7 +203,7 @@ func (fs *fileSource) reopen() {
 	fs.offset.Store(0)
 }
 
-func (fs *fileSource) close() {
+func (fs *FileSource) close() {
 	fs.mu.Lock()
 	defer fs.mu.Unlock()
 
@@ -250,30 +213,30 @@ func (fs *fileSource) close() {
 	}
 }
 
-// journalctlSource reads from systemd journal.
-type journalctlSource struct {
-	appName string
-	unit    string
-	since   string
+// JournalctlSource reads from systemd journal.
+type JournalctlSource struct {
+	App   string
+	Unit  string
+	Since string
 }
 
-func (js *journalctlSource) Name() string    { return "journalctl:" + js.unit }
-func (js *journalctlSource) AppName() string { return js.appName }
+func (js *JournalctlSource) Name() string    { return "journalctl:" + js.Unit }
+func (js *JournalctlSource) AppName() string { return js.App }
 
-func (js *journalctlSource) Read(ctx context.Context) <-chan types.RawLine {
+func (js *JournalctlSource) Read(ctx context.Context) <-chan types.RawLine {
 	out := make(chan types.RawLine)
 	go js.readLoop(ctx, out)
 	return out
 }
 
-func (js *journalctlSource) readLoop(ctx context.Context, out chan<- types.RawLine) {
+func (js *JournalctlSource) readLoop(ctx context.Context, out chan<- types.RawLine) {
 	defer close(out)
 
 	cmd := exec.CommandContext(ctx, "journalctl",
-		"-u", js.unit,
+		"-u", js.Unit,
 		"-f",
 		"-o", "json",
-		"--since", js.since,
+		"--since", js.Since,
 	)
 
 	stdout, err := cmd.StdoutPipe()
@@ -308,7 +271,7 @@ func (js *journalctlSource) readLoop(ctx context.Context, out chan<- types.RawLi
 		msg := extractJournalMessage(line)
 		if msg != "" {
 			select {
-			case out <- types.RawLine{App: js.appName, Line: msg}:
+			case out <- types.RawLine{App: js.App, Line: msg}:
 			default:
 				// Channel full, drop
 			}

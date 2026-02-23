@@ -23,17 +23,15 @@ func TestWatcherReadFromEndSkipsExistingLines(t *testing.T) {
 		t.Fatalf("write existing line: %v", err)
 	}
 
-	cfg := SourceConfig{
-		AppName:  "app",
-		Kind:     "file",
-		Path:     logPath,
-		ReadFrom: "end",
+	sources := []Source{
+		&FileSource{
+			App:  "app",
+			Path: logPath,
+			From: "end",
+		},
 	}
 
-	svc, err := New([]SourceConfig{cfg})
-	if err != nil {
-		t.Fatalf("new watcher: %v", err)
-	}
+	svc := New(sources)
 
 	rawCh := make(chan types.RawLine, 10)
 
@@ -73,17 +71,15 @@ func TestWatcherReadFromStartReadsExistingLines(t *testing.T) {
 		t.Fatalf("write existing line: %v", err)
 	}
 
-	cfg := SourceConfig{
-		AppName:  "app",
-		Kind:     "file",
-		Path:     logPath,
-		ReadFrom: "start",
+	sources := []Source{
+		&FileSource{
+			App:  "app",
+			Path: logPath,
+			From: "start",
+		},
 	}
 
-	svc, err := New([]SourceConfig{cfg})
-	if err != nil {
-		t.Fatalf("new watcher: %v", err)
-	}
+	svc := New(sources)
 
 	rawCh := make(chan types.RawLine, 10)
 
