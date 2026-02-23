@@ -34,15 +34,15 @@ func InitMux(panelSvc *panelsvc.Service) *http.ServeMux {
 	m.HandleFunc("GET /collectors", h.dashboard)
 
 	// Collector
-	m.HandleFunc("GET /collectors/{collector}", h.collectorOverview)
-	m.HandleFunc("GET /collectors/{collector}/resources", h.collectorResources)
-	m.HandleFunc("GET /collectors/{collector}/apps", h.collectorApps)
+	m.HandleFunc("GET /collectors/{collector}", h.getCollector)
+	m.HandleFunc("GET /collectors/{collector}/resources", h.getCollectorResources)
+	m.HandleFunc("GET /collectors/{collector}/apps", h.getCollectorApps)
 
 	// App logs
-	m.HandleFunc("GET /collectors/{collector}/apps/{app}", h.appAnalytics)
-	m.HandleFunc("GET /collectors/{collector}/apps/{app}/logs", h.appLogs)
-	m.HandleFunc("GET /collectors/{collector}/apps/{app}/logs/groups/{groupID}", h.appLogGroup)
-	m.HandleFunc("GET /collectors/{collector}/apps/{app}/logs/{id}", h.getLogByID)
+	m.HandleFunc("GET /collectors/{collector}/apps/{app}", h.getApp)
+	m.HandleFunc("GET /collectors/{collector}/apps/{app}/logs", h.getAppLogs)
+	m.HandleFunc("GET /collectors/{collector}/apps/{app}/logs/groups/{groupID}", h.getAppLogGroupByID)
+	m.HandleFunc("GET /collectors/{collector}/apps/{app}/logs/{id}", h.GetAppLogByID)
 
 	return m
 }
@@ -71,7 +71,7 @@ func (h *handler) dashboard(w http.ResponseWriter, r *http.Request) {
 
 // Collector handlers
 
-func (h *handler) collectorOverview(w http.ResponseWriter, r *http.Request) {
+func (h *handler) getCollector(w http.ResponseWriter, r *http.Request) {
 	user, err := authmw.RequireOrRedirect(w, r)
 	if err != nil {
 		return
@@ -107,7 +107,7 @@ func (h *handler) collectorOverview(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (h *handler) collectorResources(w http.ResponseWriter, r *http.Request) {
+func (h *handler) getCollectorResources(w http.ResponseWriter, r *http.Request) {
 	user, err := authmw.RequireOrRedirect(w, r)
 	if err != nil {
 		return
@@ -150,7 +150,7 @@ func (h *handler) collectorResources(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (h *handler) collectorApps(w http.ResponseWriter, r *http.Request) {
+func (h *handler) getCollectorApps(w http.ResponseWriter, r *http.Request) {
 	user, err := authmw.RequireOrRedirect(w, r)
 	if err != nil {
 		return
@@ -192,7 +192,7 @@ func (h *handler) collectorApps(w http.ResponseWriter, r *http.Request) {
 
 // App logs handlers
 
-func (h *handler) appAnalytics(w http.ResponseWriter, r *http.Request) {
+func (h *handler) getApp(w http.ResponseWriter, r *http.Request) {
 	user, err := authmw.RequireOrRedirect(w, r)
 	if err != nil {
 		return
@@ -249,7 +249,7 @@ func (h *handler) appAnalytics(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (h *handler) appLogs(w http.ResponseWriter, r *http.Request) {
+func (h *handler) getAppLogs(w http.ResponseWriter, r *http.Request) {
 	user, err := authmw.RequireOrRedirect(w, r)
 	if err != nil {
 		return
@@ -320,7 +320,7 @@ func (h *handler) appLogs(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (h *handler) appLogGroup(w http.ResponseWriter, r *http.Request) {
+func (h *handler) getAppLogGroupByID(w http.ResponseWriter, r *http.Request) {
 	user, err := authmw.RequireOrRedirect(w, r)
 	if err != nil {
 		return
@@ -382,7 +382,7 @@ func (h *handler) appLogGroup(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (h *handler) getLogByID(w http.ResponseWriter, r *http.Request) {
+func (h *handler) GetAppLogByID(w http.ResponseWriter, r *http.Request) {
 	user, err := authmw.GetUser(r)
 	if err != nil {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
