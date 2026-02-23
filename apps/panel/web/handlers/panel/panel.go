@@ -29,8 +29,8 @@ func InitMux(svc *panelsvc.Service) *http.ServeMux {
 	}
 
 	// Dashboard
-	m.HandleFunc("GET /", h.dashboard)
-	m.HandleFunc("GET /collectors", h.dashboard)
+	m.HandleFunc("GET /", h.getDashboard)
+	m.HandleFunc("GET /collectors", h.getDashboard)
 
 	// Collector
 	m.HandleFunc("GET /collectors/{collector}", h.getCollector)
@@ -40,15 +40,15 @@ func InitMux(svc *panelsvc.Service) *http.ServeMux {
 	// App logs
 	m.HandleFunc("GET /collectors/{collector}/apps/{app}", h.getApp)
 	m.HandleFunc("GET /collectors/{collector}/apps/{app}/logs", h.getLogGroups)
-	m.HandleFunc("GET /collectors/{collector}/apps/{app}/logs/groups/{groupID}", h.getAppLogGroupByID)
-	m.HandleFunc("GET /collectors/{collector}/apps/{app}/logs/{id}", h.GetAppLogByID)
+	m.HandleFunc("GET /collectors/{collector}/apps/{app}/logs/groups/{groupID}", h.getLogGroupByID)
+	m.HandleFunc("GET /collectors/{collector}/apps/{app}/logs/{id}", h.getLogByID)
 
 	return m
 }
 
 // Dashboard handlers
 
-func (h *handler) dashboard(w http.ResponseWriter, r *http.Request) {
+func (h *handler) getDashboard(w http.ResponseWriter, r *http.Request) {
 	user, err := auth.RequireOrRedirect(w, r)
 	if err != nil {
 		return
@@ -284,7 +284,7 @@ func (h *handler) getLogGroups(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (h *handler) getAppLogGroupByID(w http.ResponseWriter, r *http.Request) {
+func (h *handler) getLogGroupByID(w http.ResponseWriter, r *http.Request) {
 	user, err := auth.RequireOrRedirect(w, r)
 	if err != nil {
 		return
@@ -339,7 +339,7 @@ func (h *handler) getAppLogGroupByID(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (h *handler) GetAppLogByID(w http.ResponseWriter, r *http.Request) {
+func (h *handler) getLogByID(w http.ResponseWriter, r *http.Request) {
 	user, err := auth.GetUser(r)
 	if err != nil {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
