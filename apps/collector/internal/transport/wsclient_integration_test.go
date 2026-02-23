@@ -1,4 +1,4 @@
-package wsclient
+package transport
 
 import (
 	"context"

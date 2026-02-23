@@ -1,15 +1,19 @@
-package collector
+package config
 
 import (
 	"fmt"
+	"net"
 	"os"
+	"time"
 
 	"github.com/BurntSushi/toml"
 )
 
 const (
-	configPathEnv     = "TRACER_CONFIG"
-	defaultConfigPath = "/etc/tracer/config.toml"
+	configPathEnv        = "TRACER_CONFIG"
+	defaultConfigPath    = "/etc/tracer/config.toml"
+	defaultDataDir       = "/"
+	defaultStatsInterval = "30s"
 )
 
 type Collector struct {
@@ -26,6 +30,11 @@ type Collector struct {
 	Parsers Parsers       `toml:"parsers"`
 	AppRefs []AppRef      `toml:"apps"`
 	Apps    []ResolvedApp `toml:"-"`
+
+	// Resolved fields (set during Load with defaults applied)
+	ResolvedName          string        `toml:"-"`
+	ResolvedDataDir       string        `toml:"-"`
+	ResolvedStatsInterval time.Duration `toml:"-"`
 }
 
 type Sources struct {
@@ -79,10 +88,11 @@ type TextParser struct {
 }
 
 type AppRef struct {
-	Name           string `toml:"name"`
-	SourceRef      string `toml:"source_ref"`
-	ParserRef      string `toml:"parser_ref"`
-	StartupPattern string `toml:"startup_pattern,omitempty"`
+	Name            string `toml:"name"`
+	SourceRef       string `toml:"source_ref"`
+	ParserRef       string `toml:"parser_ref"`
+	StartupPattern  string `toml:"startup_pattern,omitempty"`
+	ShutdownPattern string `toml:"shutdown_pattern,omitempty"`
 }
 
 type ResolvedApp struct {
@@ -104,6 +114,7 @@ type ResolvedApp struct {
 	LevelRegex      string
 	TraceIDRegex    string
 	StartupPattern  string
+	ShutdownPattern string
 }
 
 func Load(path string) (*Collector, error) {
@@ -128,6 +139,9 @@ func Load(path string) (*Collector, error) {
 		return nil, fmt.Errorf("invalid config: %w", err)
 	}
 	cfg.Apps = resolvedApps
+
+	// Apply defaults
+	cfg.applyDefaults()
 
 	return &cfg, nil
 }
@@ -331,8 +345,55 @@ func (c *Collector) resolveApps() ([]ResolvedApp, error) {
 			LevelRegex:      prs.LevelRegex,
 			TraceIDRegex:    prs.TraceIDRegex,
 			StartupPattern:  app.StartupPattern,
+			ShutdownPattern: app.ShutdownPattern,
 		})
 	}
 
 	return resolved, nil
+}
+
+func (c *Collector) applyDefaults() {
+	// Name: use config value or auto-detect from outbound IP
+	if c.Name != "" {
+		c.ResolvedName = c.Name
+	} else {
+		c.ResolvedName = getOutboundIP()
+	}
+
+	// DataDir: default to "/"
+	if c.DataDir != "" {
+		c.ResolvedDataDir = c.DataDir
+	} else {
+		c.ResolvedDataDir = defaultDataDir
+	}
+
+	// StatsInterval: default to 30s, parse config value, 0 to disable
+	intervalStr := c.StatsInterval
+	if intervalStr == "" {
+		intervalStr = defaultStatsInterval
+	}
+	if intervalStr == "0" {
+		c.ResolvedStatsInterval = 0
+	} else {
+		d, err := time.ParseDuration(intervalStr)
+		if err != nil {
+			d, _ = time.ParseDuration(defaultStatsInterval)
+		}
+		c.ResolvedStatsInterval = d
+	}
+}
+
+func getOutboundIP() string {
+	conn, err := net.Dial("udp", "8.8.8.8:80")
+	if err != nil {
+		hostname, _ := os.Hostname()
+		if hostname != "" {
+			return hostname
+		}
+		return "unknown"
+	}
+	defer conn.Close()
+
+	localAddr := conn.LocalAddr().(*net.UDPAddr)
+	return localAddr.IP.String()
 }

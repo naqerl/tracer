@@ -1,4 +1,4 @@
-package sysstats
+package stats
 
 import (
 	"bufio"

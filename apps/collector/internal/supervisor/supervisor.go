@@ -6,27 +6,19 @@ import (
 	"time"
 
 	"github.com/ai-shift/tracer/apps/collector/internal/events"
+	"github.com/ai-shift/tracer/apps/collector/internal/watchdog/source"
 	"github.com/ai-shift/tracer/libs/types"
 )
 
-// Source is the interface for supervised sources.
-type Source interface {
-	Read(ctx context.Context) <-chan types.RawLine
-	Health(ctx context.Context) <-chan error
-	Name() string
-	AppName() string
-	Restart() error
-}
-
 // Supervisor monitors sources and restarts unhealthy ones.
 type Supervisor struct {
-	sources        []Source
+	sources        []source.Source
 	bus            *events.Bus
 	restartBackoff time.Duration
 }
 
 // New creates a new supervisor.
-func New(sources []Source, bus *events.Bus) *Supervisor {
+func New(sources []source.Source, bus *events.Bus) *Supervisor {
 	return &Supervisor{
 		sources:        sources,
 		bus:            bus,
@@ -50,7 +42,7 @@ func (s *Supervisor) Run(ctx context.Context) {
 	<-ctx.Done()
 }
 
-func (s *Supervisor) monitorSource(ctx context.Context, src Source) {
+func (s *Supervisor) monitorSource(ctx context.Context, src source.Source) {
 	for {
 		// Check if context is done
 		select {
@@ -60,7 +52,7 @@ func (s *Supervisor) monitorSource(ctx context.Context, src Source) {
 		}
 
 		// Get health channel for this source
-		healthCh := src.Health(ctx)
+		healthCh := src.Health()
 
 		// Wait for health error
 		var err error
@@ -85,7 +77,7 @@ func (s *Supervisor) monitorSource(ctx context.Context, src Source) {
 	}
 }
 
-func (s *Supervisor) restartSource(ctx context.Context, src Source) error {
+func (s *Supervisor) restartSource(ctx context.Context, src source.Source) error {
 	backoff := s.restartBackoff
 	maxBackoff := 5 * time.Minute
 
@@ -108,7 +100,7 @@ func (s *Supervisor) restartSource(ctx context.Context, src Source) error {
 	}
 }
 
-func (s *Supervisor) emitError(src Source, errType string, err error) {
+func (s *Supervisor) emitError(src source.Source, errType string, err error) {
 	evt := types.ErrorEvent{
 		Time:    time.Now(),
 		App:     src.AppName(),
