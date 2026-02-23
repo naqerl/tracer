@@ -1,6 +1,9 @@
 package types
 
-import "time"
+import (
+	"fmt"
+	"time"
+)
 
 // LogLevel represents the severity level of a log entry
 type LogLevel string
@@ -58,13 +61,31 @@ type StatsPayload struct {
 	Stats         *Stats `json:"stats"`
 }
 
+// MessageType represents the type of message sent from collector to panel
+type MessageType string
+
+const (
+	MessageTypeRegister MessageType = "register"
+	MessageTypeLog      MessageType = "log"
+	MessageTypeStartup  MessageType = "startup"
+	MessageTypeStats    MessageType = "stats"
+)
+
+// Validate checks if the message type is valid
+func (mt MessageType) Validate() error {
+	switch mt {
+	case MessageTypeRegister, MessageTypeLog, MessageTypeStartup, MessageTypeStats:
+		return nil
+	}
+	return fmt.Errorf("invalid message type: %s", mt)
+}
+
 // LogMessage is the message format from collectors to panel via WebSocket
-// Deprecated: Use LogPayload or StatsPayload instead
 type LogMessage struct {
-	Type          string   `json:"type"` // "register", "log", "startup", "stats"
-	AppName       string   `json:"app_name"`
-	Apps          []string `json:"apps,omitempty"`           // for registration
-	CollectorName string   `json:"collector_name,omitempty"` // for registration and stats
-	Entry         LogEntry `json:"entry,omitempty"`
-	Stats         *Stats   `json:"stats,omitempty"`
+	Type          MessageType `json:"type"` // "register", "log", "startup", "stats"
+	AppName       string      `json:"app_name"`
+	Apps          []string    `json:"apps,omitempty"`           // for registration
+	CollectorName string      `json:"collector_name,omitempty"` // for registration and stats
+	Entry         LogEntry    `json:"entry,omitempty"`
+	Stats         *Stats      `json:"stats,omitempty"`
 }

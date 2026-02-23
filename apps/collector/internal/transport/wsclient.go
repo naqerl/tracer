@@ -214,7 +214,7 @@ func (s *Service) processLogs(ctx context.Context) {
 
 func (s *Service) sendRegistration() {
 	msg := types.LogMessage{
-		Type:          "register",
+		Type:          types.MessageTypeRegister,
 		Apps:          s.appNames,
 		CollectorName: s.collectorName,
 	}
@@ -240,9 +240,9 @@ func (s *Service) sendRegistration() {
 
 func (s *Service) sendLog(appLog watchdog.AppLogEntry) {
 	// Determine message type based on whether this is a startup entry
-	msgType := "log"
+	msgType := types.MessageTypeLog
 	if appLog.IsStartup {
-		msgType = "startup"
+		msgType = types.MessageTypeStartup
 	}
 
 	msg := types.LogMessage{
@@ -319,7 +319,7 @@ func (s *Service) collectAndSendStats() {
 
 func (s *Service) sendStats(stats *sysstats.Stats) {
 	msg := types.LogMessage{
-		Type:          "stats",
+		Type:          types.MessageTypeStats,
 		CollectorName: s.collectorName,
 		Stats:         stats,
 	}
