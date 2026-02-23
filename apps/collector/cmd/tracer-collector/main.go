@@ -3,24 +3,19 @@ package main
 import (
 	"context"
 	"flag"
-	"fmt"
 	"log/slog"
-	"net"
-	"net/url"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
-	"time"
 
-	collectorconfig "github.com/ai-shift/tracer/apps/collector/internal/config"
+	"github.com/ai-shift/tracer/apps/collector/internal/config"
 	"github.com/ai-shift/tracer/apps/collector/internal/events"
-	logparser "github.com/ai-shift/tracer/apps/collector/internal/parsing"
-	"github.com/ai-shift/tracer/apps/collector/internal/pipeline"
-	sysstats "github.com/ai-shift/tracer/apps/collector/internal/stats"
+	"github.com/ai-shift/tracer/apps/collector/internal/ingest"
+	"github.com/ai-shift/tracer/apps/collector/internal/stats"
 	"github.com/ai-shift/tracer/apps/collector/internal/supervisor"
-	wsclient "github.com/ai-shift/tracer/apps/collector/internal/transport"
-	watchdog "github.com/ai-shift/tracer/apps/collector/internal/watch"
+	"github.com/ai-shift/tracer/apps/collector/internal/transport"
+	"github.com/ai-shift/tracer/apps/collector/internal/watchdog"
+	"github.com/ai-shift/tracer/apps/collector/internal/watchdog/source"
 	"github.com/ai-shift/tracer/libs/logx"
 	"github.com/ai-shift/tracer/libs/types"
 )
@@ -33,42 +28,21 @@ func main() {
 	logx.SetDefault()
 
 	// Load configuration
-	cfg, err := collectorconfig.Load(*configPath)
+	cfg, err := config.Load(*configPath)
 	if err != nil {
 		slog.Error("Failed to load config", "error", err)
 		os.Exit(1)
 	}
 
-	panelEndpoint, err := normalizePanelEndpoint(cfg.PanelEndpoint)
-	if err != nil {
-		slog.Error("Invalid panel endpoint", "error", err)
-		os.Exit(1)
-	}
-
-	// Determine collector name: use config name, or fall back to local IP
-	collectorName := cfg.Name
-	if collectorName == "" {
-		collectorName = getOutboundIP()
-	}
-
 	slog.Info("Starting collector",
-		"name", collectorName,
-		"panel_endpoint", panelEndpoint,
+		"name", cfg.ResolvedName,
+		"panelEndpoint", cfg.PanelEndpoint,
 		"apps", len(cfg.Apps),
 	)
 
-	// Setup context with cancellation
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	// Handle shutdown signals
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-	go func() {
-		sig := <-sigChan
-		slog.Info("Received signal, shutting down", "signal", sig)
-		cancel()
-	}()
+	// Setup context with cancellation on shutdown signals
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
 
 	// Create shared event bus
 	bus := events.NewBus(1000)
@@ -78,75 +52,48 @@ func main() {
 	for i, app := range cfg.Apps {
 		switch app.SourceKind {
 		case "file":
-			sources[i] = &watchdog.FileSource{
-				App:  app.Name,
-				Path: app.Path,
-				From: app.ReadFrom,
-			}
+			sources[i] = source.NewFile(app.Name, app.Path, app.ReadFrom)
 		case "journalctl":
-			sources[i] = &watchdog.JournalctlSource{
-				App:   app.Name,
-				Unit:  app.Unit,
-				Since: app.Since,
-			}
+			sources[i] = source.NewJournalctl(app.Name, app.Unit, app.Since)
 		default:
 			slog.Error("Unknown source kind", "app", app.Name, "kind", app.SourceKind)
 			os.Exit(1)
 		}
 	}
 
-	// Build pipeline configs (for parsing)
-	pipelineConfigs := make([]logparser.Config, len(cfg.Apps))
-	for i, app := range cfg.Apps {
-		pipelineConfigs[i] = logparser.Config{
-			ResolvedApp:     app,
-			ShutdownPattern: "", // Could add to config if needed
-		}
-	}
-
 	// Initialize watchdog (dumb I/O)
 	watcher := watchdog.New(sources)
 
-	// Initialize pipeline (parsing stage)
-	pipe, err := pipeline.New(pipelineConfigs)
+	// Initialize ingest pipeline (parsing and classification stage)
+	pipe, err := ingest.New(cfg.Apps)
 	if err != nil {
 		slog.Error("Failed to create pipeline", "error", err)
 		os.Exit(1)
 	}
 
+	// Collect app names from config
+	appNames := make([]string, len(cfg.Apps))
+	for i, app := range cfg.Apps {
+		appNames[i] = app.Name
+	}
+
 	// Initialize WebSocket client
-	wsClient := wsclient.New(panelEndpoint, cfg.APIKey, collectorName, pipe.AppNames(), bus)
+	wsClient := transport.New(cfg.PanelEndpoint, cfg.APIKey, cfg.ResolvedName, appNames, bus)
 
 	// Create channels for pipeline stages
 	rawLines := make(chan types.RawLine, 100)
 	events := make(chan types.Event, 100)
 
 	// Start stats producer if interval is set
-	if cfg.StatsInterval != "" {
-		interval, err := time.ParseDuration(cfg.StatsInterval)
-		if err != nil {
-			slog.Warn("Invalid stats_interval, disabling stats", "error", err)
-		} else if interval > 0 {
-			dataDir := cfg.DataDir
-			if dataDir == "" {
-				dataDir = "/"
-			}
-			statsCollector := sysstats.New(dataDir)
-			statsProducer := sysstats.NewProducer(statsCollector, interval, bus)
-			go statsProducer.Start(ctx)
-			slog.Info("System stats enabled", "interval", interval, "data_dir", dataDir)
-		}
+	if cfg.ResolvedStatsInterval > 0 {
+		statsCollector := stats.New(cfg.ResolvedDataDir)
+		statsProducer := stats.NewProducer(statsCollector, cfg.ResolvedStatsInterval, bus)
+		go statsProducer.Start(ctx)
+		slog.Info("System stats enabled", "interval", cfg.ResolvedStatsInterval, "data_dir", cfg.ResolvedDataDir)
 	}
 
 	// Start supervisor to monitor sources and emit error events
-	// Convert watchdog sources to supervisor sources
-	sourcesForSupervisor := make([]supervisor.Source, len(sources))
-	for i, s := range sources {
-		sourcesForSupervisor[i] = s.(supervisor.Source)
-	}
-
-	// Start supervisor to monitor sources and emit error events
-	super := supervisor.New(sourcesForSupervisor, bus)
+	super := supervisor.New(sources, bus)
 	go super.Run(ctx)
 
 	// Start pipeline stages
@@ -156,7 +103,7 @@ func main() {
 		close(rawLines)
 	}()
 
-	// Stage 2: Pipeline parses raw lines -> events
+	// Stage 2: Ingest pipeline classifies raw lines -> events
 	go func() {
 		pipe.Run(ctx, rawLines, events)
 		close(events)
@@ -171,47 +118,4 @@ func main() {
 
 	// Start WebSocket client (blocks until shutdown)
 	wsClient.Start(ctx)
-}
-
-func getOutboundIP() string {
-	conn, err := net.Dial("udp", "8.8.8.8:80")
-	if err != nil {
-		hostname, _ := os.Hostname()
-		if hostname != "" {
-			return hostname
-		}
-		return "unknown"
-	}
-	defer conn.Close()
-
-	localAddr := conn.LocalAddr().(*net.UDPAddr)
-	return localAddr.IP.String()
-}
-
-func normalizePanelEndpoint(endpoint string) (string, error) {
-	parsed, err := url.Parse(endpoint)
-	if err != nil {
-		return "", err
-	}
-
-	switch parsed.Scheme {
-	case "http":
-		parsed.Scheme = "ws"
-	case "https":
-		parsed.Scheme = "wss"
-	case "ws", "wss":
-	default:
-		return "", fmt.Errorf("unsupported scheme: %s", parsed.Scheme)
-	}
-
-	cleanPath := strings.TrimSuffix(parsed.Path, "/")
-	if cleanPath == "" {
-		parsed.Path = "/ingest/ws/ingest"
-	} else if cleanPath == "/ingest/ws/ingest" {
-		parsed.Path = cleanPath
-	} else {
-		parsed.Path = cleanPath + "/ingest/ws/ingest"
-	}
-
-	return parsed.String(), nil
 }
