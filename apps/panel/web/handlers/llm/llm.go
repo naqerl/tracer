@@ -35,7 +35,7 @@ func (h *handler) llmDocs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	nav := templates.NewNavBuilder().Add("llm", "LLM API").Build()
+	nav := templates.NewNavBuilder().Add("llm", "llm").Build()
 
 	data := map[string]any{
 		"Title":   "LLM API Documentation",

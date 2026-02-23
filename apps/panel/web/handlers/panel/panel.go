@@ -92,11 +92,12 @@ func (h *handler) collectorOverview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.t.RenderHTTP(w, r, "collector", map[string]any{
+	h.t.RenderHTTP(w, r, "collector-overview", map[string]any{
 		"CollectorName": collectorName,
 		"User":          user,
 		"Collector":     view,
-		"Stats":         view.StatsDisplay,
+		"Stats":         view.Stats,
+		"StatsDisplay":  view.StatsDisplay,
 		"Nav": templates.NewNavBuilder().
 			Add("panel", "panel").
 			Add("collectors", "collectors").
