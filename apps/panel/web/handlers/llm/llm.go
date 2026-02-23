@@ -30,7 +30,7 @@ func InitMux() *http.ServeMux {
 
 // llmDocs serves documentation about available markdown endpoints for LLM tools
 func (h *handler) llmDocs(w http.ResponseWriter, r *http.Request) {
-	user, err := authmw.RequireAuthRedirect(w, r)
+	user, err := authmw.RequireOrRedirect(w, r)
 	if err != nil {
 		return
 	}

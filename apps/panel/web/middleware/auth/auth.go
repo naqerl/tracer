@@ -35,8 +35,8 @@ func GetUser(r *http.Request) (sharedtypes.User, error) {
 	return user, nil
 }
 
-// RequireAuth returns user if authenticated, otherwise writes 401.
-func RequireAuth(w http.ResponseWriter, r *http.Request) (sharedtypes.User, error) {
+// Require returns user if authenticated, otherwise writes 401.
+func Require(w http.ResponseWriter, r *http.Request) (sharedtypes.User, error) {
 	user, err := GetUser(r)
 	if err != nil {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
@@ -45,8 +45,8 @@ func RequireAuth(w http.ResponseWriter, r *http.Request) (sharedtypes.User, erro
 	return user, nil
 }
 
-// RequireAuthRedirect returns user if authenticated, otherwise redirects to login.
-func RequireAuthRedirect(w http.ResponseWriter, r *http.Request) (sharedtypes.User, error) {
+// RequireOrRedirect returns user if authenticated, otherwise redirects to login.
+func RequireOrRedirect(w http.ResponseWriter, r *http.Request) (sharedtypes.User, error) {
 	user, err := GetUser(r)
 	if err != nil {
 		RedirectToLogin(w, r)
