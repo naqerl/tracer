@@ -9,13 +9,6 @@ import (
 	"github.com/ai-shift/tracer/libs/types"
 )
 
-func withDefault(val, def string) string {
-	if val == "" {
-		return def
-	}
-	return val
-}
-
 func normalizeLevel(level string) types.LogLevel {
 	normalized := strings.ToUpper(level)
 	switch normalized {

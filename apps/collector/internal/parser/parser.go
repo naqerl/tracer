@@ -1,8 +1,6 @@
 package parser
 
 import (
-	"strings"
-
 	"github.com/ai-shift/tracer/apps/collector/internal/config"
 	"github.com/ai-shift/tracer/apps/collector/internal/parser/format"
 	"github.com/ai-shift/tracer/libs/types"
@@ -24,30 +22,5 @@ func New(cfg config.ResolvedApp) (Parser, error) {
 		return format.NewText(cfg)
 	default:
 		return nil, ErrUnknownFormat
-	}
-}
-
-// NormalizeLevel converts various level formats to uppercase standard
-func NormalizeLevel(level string) types.LogLevel {
-	normalized := strings.ToUpper(level)
-	switch normalized {
-	case "":
-		return types.LevelInfo
-	case "EMERG", "ALERT", "CRIT", "CRITICAL", "FATAL", "PANIC":
-		return types.LevelError
-	case "ERR", "ERROR":
-		return types.LevelError
-	case "WARNING":
-		return types.LevelWarn
-	case "WARN":
-		return types.LevelWarn
-	case "NOTICE":
-		return types.LevelInfo
-	case "DEBUG":
-		return types.LevelDebug
-	case "INFO":
-		return types.LevelInfo
-	default:
-		return types.LevelInfo
 	}
 }

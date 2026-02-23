@@ -27,11 +27,11 @@ func NewRegex(cfg config.ResolvedApp) (*Regex, error) {
 	return &Regex{
 		source:          cfg.Source,
 		pattern:         pattern,
-		timestampField:  withDefault(cfg.TimestampField, "timestamp"),
+		timestampField:  cfg.TimestampField,
 		timestampFormat: cfg.TimestampFormat,
-		levelField:      withDefault(cfg.LevelField, "level"),
-		traceIDField:    withDefault(cfg.TraceIDField, "trace_id"),
-		messageField:    withDefault(cfg.MessageField, "message"),
+		levelField:      cfg.LevelField,
+		traceIDField:    cfg.TraceIDField,
+		messageField:    cfg.MessageField,
 	}, nil
 }
 

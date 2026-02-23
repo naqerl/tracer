@@ -291,11 +291,11 @@ func (c *Collector) resolveApps() ([]ResolvedApp, error) {
 	for _, p := range c.Parsers.JSON {
 		parsers[p.ID] = ResolvedApp{
 			ParserKind:      "json",
-			TimestampField:  p.TimestampField,
+			TimestampField:  withDefault(p.TimestampField, "timestamp"),
 			TimestampFormat: p.TimestampFormat,
-			LevelField:      p.LevelField,
-			TraceIDField:    p.TraceIDField,
-			MessageField:    p.MessageField,
+			LevelField:      withDefault(p.LevelField, "level"),
+			TraceIDField:    withDefault(p.TraceIDField, "trace_id"),
+			MessageField:    withDefault(p.MessageField, "message"),
 		}
 	}
 
@@ -303,11 +303,11 @@ func (c *Collector) resolveApps() ([]ResolvedApp, error) {
 		parsers[p.ID] = ResolvedApp{
 			ParserKind:      "regex",
 			Pattern:         p.Pattern,
-			TimestampField:  p.TimestampField,
+			TimestampField:  withDefault(p.TimestampField, "timestamp"),
 			TimestampFormat: p.TimestampFormat,
-			LevelField:      p.LevelField,
-			TraceIDField:    p.TraceIDField,
-			MessageField:    p.MessageField,
+			LevelField:      withDefault(p.LevelField, "level"),
+			TraceIDField:    withDefault(p.TraceIDField, "trace_id"),
+			MessageField:    withDefault(p.MessageField, "message"),
 		}
 	}
 
@@ -396,4 +396,11 @@ func getOutboundIP() string {
 
 	localAddr := conn.LocalAddr().(*net.UDPAddr)
 	return localAddr.IP.String()
+}
+
+func withDefault(val, def string) string {
+	if val == "" {
+		return def
+	}
+	return val
 }
