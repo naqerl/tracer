@@ -80,7 +80,7 @@ func main() {
 
 	for _, result := range results {
 		indent := strings.Repeat("  ", result.Depth)
-		
+
 		if result.Error != nil {
 			fmt.Printf("%s❌ %s - ERROR: %v\n", indent, result.URL, result.Error)
 			failed++
@@ -131,7 +131,7 @@ func dfsCrawl(path string, depth int) {
 
 	// Fetch the page
 	resp, body, err := fetch(path)
-	
+
 	// Record result
 	result := CrawlResult{
 		URL:   path,
@@ -168,7 +168,7 @@ func extractLinksFromHTML(htmlStr string) []string {
 
 	var links []string
 	seen := make(map[string]bool)
-	
+
 	var traverse func(*html.Node)
 	traverse = func(n *html.Node) {
 		if n.Type == html.ElementNode && n.Data == "a" {
@@ -187,7 +187,7 @@ func extractLinksFromHTML(htmlStr string) []string {
 			traverse(c)
 		}
 	}
-	
+
 	traverse(doc)
 	return links
 }
@@ -225,7 +225,7 @@ func normalizeURL(raw string) string {
 	if u.Scheme != "" && !strings.HasPrefix(raw, baseURL) {
 		return ""
 	}
-	
+
 	// Parse base URL to compare hosts
 	base, _ := url.Parse(baseURL)
 	if u.Host != "" && u.Host != base.Host {
