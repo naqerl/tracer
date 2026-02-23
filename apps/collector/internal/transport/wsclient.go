@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"net/http"
 	"sync"
 	"time"
 
@@ -24,6 +25,7 @@ const (
 
 type Service struct {
 	endpoint      string
+	apiKey        string
 	collectorName string
 	appNames      []string
 	logChan       <-chan watchdog.AppLogEntry
@@ -41,9 +43,10 @@ type Service struct {
 	connMu sync.Mutex
 }
 
-func New(endpoint, collectorName string, appNames []string, logChan <-chan watchdog.AppLogEntry) *Service {
+func New(endpoint, apiKey, collectorName string, appNames []string, logChan <-chan watchdog.AppLogEntry) *Service {
 	return &Service{
 		endpoint:      endpoint,
+		apiKey:        apiKey,
 		collectorName: collectorName,
 		appNames:      appNames,
 		logChan:       logChan,
@@ -114,7 +117,12 @@ func (s *Service) connect() error {
 		s.conn.Close()
 	}
 
-	conn, _, err := websocket.DefaultDialer.Dial(s.endpoint, nil)
+	headers := http.Header{}
+	if s.apiKey != "" {
+		headers.Set("X-API-Key", s.apiKey)
+	}
+
+	conn, _, err := websocket.DefaultDialer.Dial(s.endpoint, headers)
 	if err != nil {
 		return err
 	}
