@@ -1,0 +1,74 @@
+{{define "notifiers-list"}}
+<div class="bg-bg-secondary p-5">
+    <h2 class="text-fg-secondary text-sm font-medium mb-2">Notifications</h2>
+    
+    <form action="/settings/notifiers" method="POST" class="mb-6">
+        <div class="flex flex-wrap gap-3 items-end">
+            <div>
+                <label for="notifier_name" class="block text-fg-secondary text-sm mb-1">Name</label>
+                <input type="text" id="notifier_name" name="name" placeholder="My Telegram" required class="px-3 py-2 bg-bg border border-bg focus:border-accent focus:outline-none text-fg">
+            </div>
+            <div>
+                <label for="notifier_type" class="block text-fg-secondary text-sm mb-1">Type</label>
+                <select id="notifier_type" name="type" required class="px-3 py-2 bg-bg border border-bg focus:border-accent focus:outline-none text-fg">
+                    <option value="telegram">Telegram</option>
+                </select>
+            </div>
+            <div>
+                <label for="telegram_token" class="block text-fg-secondary text-sm mb-1">Bot Token</label>
+                <input type="text" id="telegram_token" name="telegram_token" placeholder="123456:ABC-DEF..." required class="px-3 py-2 bg-bg border border-bg focus:border-accent focus:outline-none text-fg">
+            </div>
+            <div>
+                <label for="telegram_chat_id" class="block text-fg-secondary text-sm mb-1">Chat ID</label>
+                <input type="number" id="telegram_chat_id" name="telegram_chat_id" placeholder="-100123456789" required class="px-3 py-2 bg-bg border border-bg focus:border-accent focus:outline-none text-fg">
+            </div>
+            <button type="submit" class="px-4 py-2 bg-accent hover:bg-accent/80 text-fg text-sm transition-colors">Add Notifier</button>
+        </div>
+    </form>
+
+    {{if .Notifiers}}
+    <div class="overflow-x-auto">
+        <table class="w-full">
+            <thead>
+                <tr class="border-b border-bg">
+                    <th class="px-3 py-2 text-left text-fg-secondary text-sm font-medium">Name</th>
+                    <th class="px-3 py-2 text-left text-fg-secondary text-sm font-medium">Type</th>
+                    <th class="px-3 py-2 text-left text-fg-secondary text-sm font-medium">Status</th>
+                    <th class="px-3 py-2 text-left text-fg-secondary text-sm font-medium">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {{range .Notifiers}}
+                <tr class="border-b border-bg">
+                    <td class="px-3 py-2">{{.Name}}</td>
+                    <td class="px-3 py-2"><span class="px-2 py-0.5 text-xs bg-[#0088cc] text-white">{{.Type}}</span></td>
+                    <td class="px-3 py-2">
+                        {{if eq .Enabled 1}}
+                        <span class="px-2 py-0.5 text-xs bg-green-600 text-white">Enabled</span>
+                        {{else}}
+                        <span class="px-2 py-0.5 text-xs bg-fg-secondary text-white">Disabled</span>
+                        {{end}}
+                    </td>
+                    <td class="px-3 py-2">
+                        <div class="flex gap-2">
+                            <a href="/settings/notifiers/{{.ID}}/apps" class="px-2 py-1 bg-bg hover:bg-bg/80 text-fg-secondary hover:text-fg text-xs transition-colors">Apps</a>
+                            <form action="/settings/notifiers/{{.ID}}/toggle" method="POST" class="inline">
+                                <button type="submit" class="px-2 py-1 bg-bg hover:bg-bg/80 text-fg-secondary hover:text-fg text-xs transition-colors">
+                                    {{if eq .Enabled 1}}Disable{{else}}Enable{{end}}
+                                </button>
+                            </form>
+                            <form action="/settings/notifiers/{{.ID}}/delete" method="POST" onsubmit="return confirm('Delete notifier {{.Name}}?');" class="inline">
+                                <button type="submit" class="px-2 py-1 bg-red-600 hover:bg-red-700 text-fg text-xs transition-colors">Delete</button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+                {{end}}
+            </tbody>
+        </table>
+    </div>
+    {{else}}
+    <p class="text-center text-fg-secondary py-6">No notifiers configured. Add a Telegram bot to receive error alerts.</p>
+    {{end}}
+</div>
+{{end}}

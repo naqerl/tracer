@@ -1,0 +1,107 @@
+{{define "llm-docs-markdown"}}# Tracer Panel - LLM API Documentation
+
+Access tracer-panel logs and analytics programmatically using markdown-formatted endpoints.
+
+## Authentication
+
+All endpoints require authentication via API key.
+
+### Generate an API Key
+
+1. Navigate to Settings in the web UI
+2. Find the "LLM API Keys" section
+3. Enter a descriptive name (e.g., "Claude Desktop")
+4. Click "Generate Key"
+5. Copy the generated key
+
+### Using Your API Key
+
+Use request header:
+```bash
+curl -H "X-API-Key: YOUR_KEY" "https://panel.example.com/panel.md"
+```
+
+## Permissions
+
+API keys inherit your user's app access permissions:
+- **Admins**: Access all apps and collectors
+- **Regular users**: Access only assigned apps
+
+## Available Endpoints
+
+### Analytics
+
+#### Dashboard
+```
+GET /panel.md
+```
+Lists all collectors with their status, system stats, and app counts.
+
+#### Collector Overview
+```
+GET /panel/collectors/{collector}.md
+```
+Shows system stats and applications for a specific collector.
+
+**Example:**
+```
+GET /panel/collectors/my-server.md
+```
+
+#### App Analytics
+```
+GET /panel/collectors/{collector}/apps/{app}.md
+```
+Shows statistics and grouped logs for a specific application (last 24 hours).
+
+**Example:**
+```
+GET /panel/collectors/my-server/apps/web-api.md
+```
+
+## Response Format
+
+All endpoints return markdown-formatted text with:
+- Headers for sections
+- Bullet lists for structured data
+- Code blocks for JSON context
+- Links to related resources
+
+## Common Use Cases
+
+### Check System Health
+```bash
+curl -H "X-API-Key: YOUR_KEY" \
+  "https://panel.example.com/panel.md"
+```
+
+### View App Statistics and Logs
+```bash
+curl -H "X-API-Key: YOUR_KEY" \
+  "https://panel.example.com/panel/collectors/my-server/apps/web-api.md"
+```
+
+### Monitor Specific Collector
+```bash
+curl -H "X-API-Key: YOUR_KEY" \
+  "https://panel.example.com/panel/collectors/my-server.md"
+```
+
+## Rate Limits
+
+No rate limits are currently enforced, but please be respectful:
+- Cache responses when appropriate
+- Don't poll more frequently than once per minute
+- Use webhooks for real-time notifications (see notifiers in settings)
+
+## Security Notes
+
+- Keep your API keys secure and rotate them regularly
+- Each key is tied to your user account and inherits your permissions
+- You can delete keys at any time from the Settings page
+- Keys are displayed only once when generated
+
+## Need Help?
+
+Visit the web UI at `/llm` for an interactive version of this documentation.
+{{end}}

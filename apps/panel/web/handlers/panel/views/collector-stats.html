@@ -1,0 +1,263 @@
+{{define "collector-stats"}}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    {{template "head"}}
+    <title>{{.Title}}</title>
+    <script src="https://cdn.jsdelivr.net/npm/uplot@1.6.30/dist/uPlot.iife.min.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/uplot@1.6.30/dist/uPlot.min.css">
+    <style>
+        .uplot { margin: 1.5rem 0; touch-action: pan-y pinch-zoom; }
+        .stats-table { width: 100%; border-collapse: collapse; margin-top: 2rem; overflow-x: auto; display: block; -webkit-overflow-scrolling: touch; }
+        .stats-table th, .stats-table td { padding: 0.5rem; text-align: left; border-bottom: 1px solid #1E1E1E; white-space: nowrap; }
+        .stats-table th { font-weight: 600; color: #808080; }
+        .stats-table tr:hover { background-color: #1E1E1E; }
+        .range-tabs { display: flex; gap: 0.5rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
+        .range-tab { 
+            padding: 0.5rem 1rem; 
+            background: #1E1E1E; 
+            color: #EEEEEE; 
+            cursor: pointer;
+            transition: all 0.2s;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 0.875rem;
+        }
+        .range-tab:hover { background: #2A2A2A; }
+        .range-tab.active { background: #5C9CF5; color: #0A0A0A; font-weight: 600; }
+        @media (max-width: 640px) {
+            .range-tab { padding: 0.4rem 0.75rem; font-size: 0.8rem; }
+        }
+    </style>
+</head>
+<body>
+    <div class="max-w-7xl mx-auto p-6 sm:p-6 px-4">
+        {{template "collector-stats-content" .}}
+    </div>
+</body>
+</html>
+{{end}}
+
+{{define "collector-stats-content"}}
+{{template "navbar" .Nav}}
+
+<div class="mb-6">
+    <h1 class="text-2xl font-semibold mb-2">{{.CollectorName}}</h1>
+    <p class="text-fg-secondary">Resource usage over time</p>
+</div>
+
+<!-- Time Range Tabs -->
+<div class="range-tabs">
+    <a href="/panel/collectors/{{.CollectorName}}/resources?range=1h" 
+       class="range-tab {{if eq .RangeParam "1h"}}active{{end}}">1 Hour</a>
+    <a href="/panel/collectors/{{.CollectorName}}/resources?range=6h"
+       class="range-tab {{if eq .RangeParam "6h"}}active{{end}}">6 Hours</a>
+    <a href="/panel/collectors/{{.CollectorName}}/resources?range=24h"
+       class="range-tab {{if eq .RangeParam "24h"}}active{{end}}">24 Hours</a>
+    <a href="/panel/collectors/{{.CollectorName}}/resources?range=7d"
+       class="range-tab {{if eq .RangeParam "7d"}}active{{end}}">7 Days</a>
+    <a href="/panel/collectors/{{.CollectorName}}/resources?range=30d"
+       class="range-tab {{if eq .RangeParam "30d"}}active{{end}}">30 Days</a>
+</div>
+
+{{template "collector-stats-data" .}}
+
+{{end}}
+
+{{define "collector-stats-data"}}
+{{if .Stats}}
+<!-- Charts Container -->
+<div id="charts-container">
+    <div id="cpu-chart"></div>
+    <div id="ram-chart"></div>
+    <div id="disk-chart"></div>
+</div>
+
+<!-- Data Table (Progressive Enhancement Fallback) -->
+<details>
+    <summary class="cursor-pointer text-fg-secondary hover:text-fg mb-2">Show raw data ({{len .Stats}} data points)</summary>
+    <table id="stats-data" class="stats-table text-sm">
+        <thead>
+            <tr>
+                <th>Time</th>
+                <th>CPU %</th>
+                <th>RAM Used</th>
+                <th>RAM Total</th>
+                <th>RAM %</th>
+                <th>Disk Free</th>
+            </tr>
+        </thead>
+        <tbody>
+            {{range .Stats}}
+            <tr data-timestamp="{{.CreatedAt.Unix}}"
+                data-cpu="{{.CpuUsagePercent}}"
+                data-ram-used="{{.MemUsedMb}}"
+                data-ram-total="{{.MemTotalMb}}"
+                data-disk-avail="{{.DiskAvailGb}}">
+                <td>{{.CreatedAt.Format "2006-01-02 15:04:05"}}</td>
+                <td>{{printf "%.1f" .CpuUsagePercent}}%</td>
+                <td>{{.MemUsedMb}} MB</td>
+                <td>{{.MemTotalMb}} MB</td>
+                <td>{{if gt .MemTotalMb 0}}{{printf "%.1f" (divFloat (mulFloat (divFloat (toFloat .MemUsedMb) (toFloat .MemTotalMb)) 100.0) 1.0)}}%{{else}}0%{{end}}</td>
+                <td>{{.DiskAvailGb}} GB</td>
+            </tr>
+            {{end}}
+        </tbody>
+    </table>
+</details>
+
+<!-- Chart Rendering Script -->
+<script>
+(function() {
+    // Extract data from table
+    const rows = document.querySelectorAll('#stats-data tbody tr');
+    if (rows.length === 0) return;
+
+    const timestamps = [];
+    const cpuData = [];
+    const ramUsedData = [];
+    const ramTotalData = [];
+    const diskData = [];
+
+    rows.forEach(row => {
+        timestamps.push(parseInt(row.dataset.timestamp));
+        cpuData.push(parseFloat(row.dataset.cpu));
+        ramUsedData.push(parseInt(row.dataset.ramUsed));
+        ramTotalData.push(parseInt(row.dataset.ramTotal));
+        diskData.push(parseInt(row.dataset.diskAvail));
+    });
+
+    // Calculate RAM percentage
+    const ramPercent = ramUsedData.map((used, i) => 
+        ramTotalData[i] > 0 ? (used / ramTotalData[i]) * 100 : 0
+    );
+
+    // Common chart options
+    const containerWidth = document.getElementById('charts-container').offsetWidth;
+    const isMobile = window.innerWidth < 768;
+    const commonOpts = {
+        width: containerWidth,
+        height: isMobile ? 200 : 250,
+        scales: {
+            x: { time: true }
+        },
+        axes: [
+            { 
+                stroke: "#808080",
+                grid: { stroke: "#1E1E1E", width: 1 },
+                size: isMobile ? 40 : 50
+            },
+            { 
+                stroke: "#808080",
+                size: isMobile ? 50 : 60,
+                grid: { stroke: "#1E1E1E", width: 1 }
+            }
+        ],
+        legend: { show: false },
+        cursor: {
+            drag: { x: false, y: false },
+            focus: { prox: isMobile ? 50 : 30 },
+            points: {
+                size: isMobile ? 6 : 8,
+                width: 2
+            }
+        }
+    };
+
+    // CPU Chart
+    new uPlot({
+        ...commonOpts,
+        title: "CPU Usage",
+        series: [
+            { },
+            { 
+                label: "CPU %", 
+                stroke: "#5C9CF5", 
+                fill: "rgba(92, 156, 245, 0.1)",
+                width: 2
+            }
+        ],
+        axes: [
+            commonOpts.axes[0],
+            { 
+                ...commonOpts.axes[1],
+                values: (u, vals) => vals.map(v => v.toFixed(1) + '%')
+            }
+        ],
+    }, [timestamps, cpuData], document.getElementById('cpu-chart'));
+
+    // RAM Chart
+    new uPlot({
+        ...commonOpts,
+        title: "RAM Usage",
+        series: [
+            { },
+            { 
+                label: "RAM %", 
+                stroke: "#F5A742", 
+                fill: "rgba(245, 167, 66, 0.1)",
+                width: 2
+            }
+        ],
+        axes: [
+            commonOpts.axes[0],
+            { 
+                ...commonOpts.axes[1],
+                values: (u, vals) => vals.map(v => v.toFixed(1) + '%')
+            }
+        ],
+    }, [timestamps, ramPercent], document.getElementById('ram-chart'));
+
+    // Disk Chart
+    new uPlot({
+        ...commonOpts,
+        title: "Disk Available",
+        series: [
+            { },
+            { 
+                label: "Free GB", 
+                stroke: "#22C55E", 
+                fill: "rgba(34, 197, 94, 0.1)",
+                width: 2
+            }
+        ],
+        axes: [
+            commonOpts.axes[0],
+            { 
+                ...commonOpts.axes[1],
+                values: (u, vals) => vals.map(v => v.toFixed(0) + ' GB')
+            }
+        ],
+    }, [timestamps, diskData], document.getElementById('disk-chart'));
+
+    // Handle window resize
+    let resizeTimeout;
+    window.addEventListener('resize', () => {
+        clearTimeout(resizeTimeout);
+        resizeTimeout = setTimeout(() => {
+            const newWidth = document.getElementById('charts-container').offsetWidth;
+            const newIsMobile = window.innerWidth < 768;
+            const newHeight = newIsMobile ? 200 : 250;
+            
+            const charts = document.querySelectorAll('.uplot');
+            charts.forEach(chart => {
+                const uplot = uPlot.charts.find(c => c.root === chart);
+                if (uplot) {
+                    uplot.setSize({ 
+                        width: newWidth, 
+                        height: newHeight 
+                    });
+                }
+            });
+        }, 150);
+    });
+})();
+</script>
+
+{{else}}
+<div class="text-center text-fg-secondary py-12">
+    <p>No stats available for the selected time range.</p>
+    <p class="text-sm mt-2">Stats are collected every 30 seconds when the collector is running.</p>
+</div>
+{{end}}
+{{end}}
