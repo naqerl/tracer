@@ -2,7 +2,6 @@ package wsclient
 
 import (
 	"context"
-	"encoding/json"
 	"log/slog"
 	"net/http"
 	"time"
@@ -139,29 +138,46 @@ func (s *Service) readLoop(done chan<- struct{}) {
 }
 
 func (s *Service) sendRegistration() {
-	msg := types.RegisterMessage{
-		Type:      "register",
-		Collector: s.collectorName,
-		Apps:      s.appNames,
+	msg := types.LogMessage{
+		Type:          types.MessageTypeRegister,
+		CollectorName: s.collectorName,
+		Apps:          s.appNames,
 	}
 	s.sendJSON(msg)
 }
 
 func (s *Service) sendEvent(evt types.Event) error {
-	payload, err := json.Marshal(evt)
-	if err != nil {
-		return err
+	// Convert to LogMessage format expected by panel
+	msgType := types.MessageTypeLog
+	switch evt.EventType() {
+	case "startup":
+		msgType = types.MessageTypeStartup
+	case "stats":
+		msgType = types.MessageTypeStats
 	}
 
-	envelope := types.Envelope{
-		Type:      evt.EventType(),
-		Timestamp: evt.Timestamp(),
-		Collector: s.collectorName,
-		App:       evt.AppName(),
-		Data:      payload,
+	msg := types.LogMessage{
+		Type:          msgType,
+		CollectorName: s.collectorName,
+		AppName:       evt.AppName(),
 	}
 
-	return s.sendJSON(envelope)
+	// Set the appropriate payload based on event type
+	switch e := evt.(type) {
+	case types.LogEvent:
+		msg.Entry = e.Entry
+	case types.StartupEvent:
+		// Create a log entry for startup events
+		msg.Entry = types.LogEntry{
+			Timestamp: e.Timestamp(),
+			Level:     types.LevelInfo,
+			Message:   "STARTUP: " + e.Message,
+		}
+	case types.StatsEvent:
+		msg.Stats = &e.Data
+	}
+
+	return s.sendJSON(msg)
 }
 
 func (s *Service) sendJSON(v any) error {

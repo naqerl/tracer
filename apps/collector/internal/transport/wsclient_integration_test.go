@@ -15,15 +15,15 @@ import (
 	"github.com/ai-shift/tracer/libs/types"
 )
 
-type receivedEnvelope struct {
+type receivedMessage struct {
 	header string
-	env    types.Envelope
+	msg    types.LogMessage
 }
 
 func TestWSClientSendsHeaderRegistrationAndLog(t *testing.T) {
 	t.Parallel()
 
-	recvCh := make(chan receivedEnvelope, 4)
+	recvCh := make(chan receivedMessage, 4)
 	errCh := make(chan error, 1)
 
 	upgrader := websocket.Upgrader{
@@ -45,18 +45,12 @@ func TestWSClientSendsHeaderRegistrationAndLog(t *testing.T) {
 				errCh <- err
 				return
 			}
-			var env types.Envelope
-			if err := json.Unmarshal(payload, &env); err != nil {
-				// Try register message format
-				var reg types.RegisterMessage
-				if err2 := json.Unmarshal(payload, &reg); err2 == nil {
-					recvCh <- receivedEnvelope{header: apiKey, env: types.Envelope{Type: reg.Type}}
-					continue
-				}
+			var msg types.LogMessage
+			if err := json.Unmarshal(payload, &msg); err != nil {
 				errCh <- err
 				return
 			}
-			recvCh <- receivedEnvelope{header: apiKey, env: env}
+			recvCh <- receivedMessage{header: apiKey, msg: msg}
 		}
 	}))
 	defer srv.Close()
@@ -74,8 +68,11 @@ func TestWSClientSendsHeaderRegistrationAndLog(t *testing.T) {
 	if first.header != "secret-key" {
 		t.Fatalf("expected X-API-Key header, got %q", first.header)
 	}
-	if first.env.Type != "register" {
-		t.Fatalf("expected register message first, got %q", first.env.Type)
+	if first.msg.Type != types.MessageTypeRegister {
+		t.Fatalf("expected register message first, got %q", first.msg.Type)
+	}
+	if first.msg.CollectorName != "collector-1" {
+		t.Fatalf("unexpected collector name: %q", first.msg.CollectorName)
 	}
 
 	// Publish a log event
@@ -92,15 +89,18 @@ func TestWSClientSendsHeaderRegistrationAndLog(t *testing.T) {
 	})
 
 	second := awaitWSMessage(t, recvCh, errCh, 4*time.Second)
-	if second.env.Type != "log" {
-		t.Fatalf("expected log message second, got %q", second.env.Type)
+	if second.msg.Type != types.MessageTypeLog {
+		t.Fatalf("expected log message second, got %q", second.msg.Type)
 	}
-	if second.env.App != "app-a" {
-		t.Fatalf("unexpected app name: %q", second.env.App)
+	if second.msg.AppName != "app-a" {
+		t.Fatalf("unexpected app name: %q", second.msg.AppName)
+	}
+	if second.msg.Entry.Message != "hello from test" {
+		t.Fatalf("unexpected message: %q", second.msg.Entry.Message)
 	}
 }
 
-func awaitWSMessage(t *testing.T, recv <-chan receivedEnvelope, errs <-chan error, timeout time.Duration) receivedEnvelope {
+func awaitWSMessage(t *testing.T, recv <-chan receivedMessage, errs <-chan error, timeout time.Duration) receivedMessage {
 	t.Helper()
 	select {
 	case err := <-errs:
@@ -110,5 +110,5 @@ func awaitWSMessage(t *testing.T, recv <-chan receivedEnvelope, errs <-chan erro
 	case <-time.After(timeout):
 		t.Fatalf("timeout waiting for ws message")
 	}
-	return receivedEnvelope{}
+	return receivedMessage{}
 }
