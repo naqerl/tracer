@@ -35,7 +35,6 @@ type Service struct {
 	sources   []Source
 	pipelines []*logparser.Pipeline
 	bus       *events.Bus
-	wg        sync.WaitGroup
 }
 
 // New creates a watchdog service for the given apps.
@@ -79,13 +78,14 @@ func New(apps []logparser.Config, bus *events.Bus) (*Service, error) {
 
 // Start begins watching all sources.
 func (s *Service) Start(ctx context.Context) {
+	var wg sync.WaitGroup
 	for i, source := range s.sources {
 		pipeline := s.pipelines[i]
-		s.wg.Add(1)
-		go s.runSource(ctx, source, pipeline)
+		wg.Go(func() {
+			s.runSource(ctx, source, pipeline)
+		})
 	}
-
-	s.wg.Wait()
+	wg.Wait()
 }
 
 // GetAppNames returns the names of all watched apps.
@@ -97,10 +97,8 @@ func (s *Service) GetAppNames() []string {
 	return names
 }
 
-// runSource is the goroutine that reads from a source and publishes events.
+// runSource reads from a source and publishes events.
 func (s *Service) runSource(ctx context.Context, source Source, pipeline *logparser.Pipeline) {
-	defer s.wg.Done()
-
 	for line := range source.Read(ctx) {
 		if evt := pipeline.Process(line); evt != nil {
 			s.bus.Publish(evt)
