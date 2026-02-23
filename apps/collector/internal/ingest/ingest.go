@@ -2,31 +2,31 @@ package ingest
 
 import (
 	"context"
+	"log/slog"
 
-	"github.com/ai-shift/tracer/apps/collector/internal/classify"
 	"github.com/ai-shift/tracer/apps/collector/internal/config"
-	"github.com/ai-shift/tracer/apps/collector/internal/events"
+	"github.com/ai-shift/tracer/apps/collector/internal/processor"
 	"github.com/ai-shift/tracer/libs/types"
 )
 
-// Pipeline fans out raw lines to classifiers for each app.
+// Pipeline fans out raw lines to processors for each app.
 type Pipeline struct {
-	classifiers map[string]*classify.Classifier
+	processors map[string]*processor.Processor
 }
 
 // New creates a pipeline from app configurations.
 func New(apps []config.ResolvedApp) (*Pipeline, error) {
-	classifiers := make(map[string]*classify.Classifier, len(apps))
+	processors := make(map[string]*processor.Processor, len(apps))
 
 	for _, app := range apps {
-		c, err := classify.New(app)
+		p, err := processor.New(app)
 		if err != nil {
 			return nil, err
 		}
-		classifiers[app.Name] = c
+		processors[app.Name] = p
 	}
 
-	return &Pipeline{classifiers: classifiers}, nil
+	return &Pipeline{processors: processors}, nil
 }
 
 // Run processes raw lines and emits events to the output channel.
@@ -37,40 +37,20 @@ func (p *Pipeline) Run(ctx context.Context, input <-chan types.RawLine, output c
 			return
 		case rl, ok := <-input:
 			if !ok {
+				slog.Info("input channel closed")
 				return
 			}
-			if evt := p.process(rl); evt != nil {
-				select {
-				case output <- evt:
-				case <-ctx.Done():
-					return
-				}
-			}
-		}
-	}
-}
-
-// RunWithBus processes raw lines and publishes directly to event bus.
-func (p *Pipeline) RunWithBus(ctx context.Context, input <-chan types.RawLine, bus *events.Bus) {
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case rl, ok := <-input:
+			proc, ok := p.processors[rl.App]
 			if !ok {
-				return
+				slog.Error("processor not found", "app", rl.App)
+				continue
 			}
-			if evt := p.process(rl); evt != nil {
-				bus.Publish(evt)
+			evt := proc.Process(rl)
+			select {
+			case output <- evt:
+			case <-ctx.Done():
+				return
 			}
 		}
 	}
-}
-
-func (p *Pipeline) process(rl types.RawLine) types.Event {
-	classifier, ok := p.classifiers[rl.App]
-	if !ok {
-		return nil
-	}
-	return classifier.Process(rl)
 }

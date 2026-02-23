@@ -1,4 +1,4 @@
-package classify
+package processor
 
 import (
 	"regexp"
@@ -9,49 +9,49 @@ import (
 	"github.com/ai-shift/tracer/libs/types"
 )
 
-// Classifier parses raw lines and classifies them into events.
-type Classifier struct {
+// Processor parses raw lines and produces typed events.
+type Processor struct {
 	parser        parser.Parser
 	appName       string
 	startupRegex  *regexp.Regexp
 	shutdownRegex *regexp.Regexp
 }
 
-// New creates a classifier for an app.
-func New(app config.ResolvedApp) (*Classifier, error) {
+// New creates a processor for an app.
+func New(app config.ResolvedApp) (*Processor, error) {
 	p, err := parser.New(app)
 	if err != nil {
 		return nil, err
 	}
 
-	c := &Classifier{
-		parser:  p,
-		appName: app.Name,
-	}
+	var startupRegex, shutdownRegex *regexp.Regexp
 
 	if app.StartupPattern != "" {
-		re, err := regexp.Compile(app.StartupPattern)
+		startupRegex, err = regexp.Compile(app.StartupPattern)
 		if err != nil {
 			return nil, parser.ErrInvalidPattern
 		}
-		c.startupRegex = re
 	}
 
 	if app.ShutdownPattern != "" {
-		re, err := regexp.Compile(app.ShutdownPattern)
+		shutdownRegex, err = regexp.Compile(app.ShutdownPattern)
 		if err != nil {
 			return nil, parser.ErrInvalidPattern
 		}
-		c.shutdownRegex = re
 	}
 
-	return c, nil
+	return &Processor{
+		parser:        p,
+		appName:       app.Name,
+		startupRegex:  startupRegex,
+		shutdownRegex: shutdownRegex,
+	}, nil
 }
 
 // Process converts a raw line into an Event.
 // Returns nil if parsing fails or line should be skipped.
-func (c *Classifier) Process(rl types.RawLine) types.Event {
-	entry, err := c.parser.Parse(rl.Line)
+func (p *Processor) Process(rl types.RawLine) types.Event {
+	entry, err := p.parser.Parse(rl.Line)
 	if err != nil {
 		return nil
 	}
@@ -59,25 +59,25 @@ func (c *Classifier) Process(rl types.RawLine) types.Event {
 	msg := entry.Message
 	ts := time.Now()
 
-	if c.startupRegex != nil && c.startupRegex.MatchString(msg) {
+	if p.startupRegex != nil && p.startupRegex.MatchString(msg) {
 		return types.StartupEvent{
 			Time:    ts,
-			App:     c.appName,
+			App:     p.appName,
 			Message: msg,
 		}
 	}
 
-	if c.shutdownRegex != nil && c.shutdownRegex.MatchString(msg) {
+	if p.shutdownRegex != nil && p.shutdownRegex.MatchString(msg) {
 		return types.ShutdownEvent{
 			Time:   ts,
-			App:    c.appName,
+			App:    p.appName,
 			Reason: msg,
 		}
 	}
 
 	return types.LogEvent{
 		Time:  ts,
-		App:   c.appName,
+		App:   p.appName,
 		Entry: entry,
 	}
 }

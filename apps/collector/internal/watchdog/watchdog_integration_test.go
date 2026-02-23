@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ai-shift/tracer/apps/collector/internal/classify"
 	"github.com/ai-shift/tracer/apps/collector/internal/config"
+	"github.com/ai-shift/tracer/apps/collector/internal/processor"
 	"github.com/ai-shift/tracer/apps/collector/internal/watchdog/source"
 	"github.com/ai-shift/tracer/libs/types"
 )
@@ -103,14 +103,14 @@ func TestPipelineJournalctlExtraction(t *testing.T) {
 		MessageField:    "message",
 	}
 
-	cl, err := classify.New(cfg)
+	proc, err := processor.New(cfg)
 	if err != nil {
-		t.Fatalf("new classifier: %v", err)
+		t.Fatalf("new processor: %v", err)
 	}
 
 	line := `{"timestamp":"2026-02-23T10:11:12Z","level":"INFO","trace_id":"trace-77","message":"app started"}`
 	rl := types.RawLine{App: "svc", Line: line}
-	evt := cl.Process(rl)
+	evt := proc.Process(rl)
 
 	logEvt, ok := evt.(types.LogEvent)
 	if !ok {
@@ -141,14 +141,14 @@ func TestPipelineStartupDetection(t *testing.T) {
 		StartupPattern:  "Server started",
 	}
 
-	cl, err := classify.New(cfg)
+	proc, err := processor.New(cfg)
 	if err != nil {
-		t.Fatalf("new classifier: %v", err)
+		t.Fatalf("new processor: %v", err)
 	}
 
 	line := `{"timestamp":"2026-02-23T10:00:00Z","level":"info","message":"Server started on port 8080"}`
 	rl := types.RawLine{App: "app", Line: line}
-	evt := cl.Process(rl)
+	evt := proc.Process(rl)
 
 	startupEvt, ok := evt.(types.StartupEvent)
 	if !ok {
