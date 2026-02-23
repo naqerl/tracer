@@ -10,19 +10,31 @@ import (
 
 	"github.com/ai-shift/tracer/apps/panel/db"
 	"github.com/ai-shift/tracer/apps/panel/internal/dbmanager"
+	"github.com/ai-shift/tracer/apps/panel/internal/services/ingest"
+	"github.com/ai-shift/tracer/apps/panel/internal/services/permissions"
+	sharedtypes "github.com/ai-shift/tracer/libs/types"
 )
 
 var (
-	ErrAppNotFound = errors.New("app not found")
-	ErrLogNotFound = errors.New("log not found")
+	ErrAppNotFound  = errors.New("app not found")
+	ErrLogNotFound  = errors.New("log not found")
+	ErrAccessDenied = errors.New("access denied")
 )
 
 type Service struct {
-	dbManager *dbmanager.Manager
+	dbManager   *dbmanager.Manager
+	permissions *permissions.Service
+	ingestSvc   *ingest.Service
+	tracker     *ingest.Tracker
 }
 
-func New(dbManager *dbmanager.Manager) *Service {
-	return &Service{dbManager: dbManager}
+func New(dbManager *dbmanager.Manager, permissions *permissions.Service, ingestSvc *ingest.Service, tracker *ingest.Tracker) *Service {
+	return &Service{
+		dbManager:   dbManager,
+		permissions: permissions,
+		ingestSvc:   ingestSvc,
+		tracker:     tracker,
+	}
 }
 
 type AppStats struct {
@@ -44,6 +56,25 @@ type LogGroupsResult struct {
 	ErrorCount int64
 	WarnCount  int64
 	InfoCount  int64
+}
+
+// StatsDisplay holds formatted stats data for UI rendering.
+type StatsDisplay struct {
+	TimestampFormatted string
+	Staleness          string // "fresh", "warning", "stale", "old"
+}
+
+// CollectorView provides a complete view of a collector for display,
+// with data pre-filtered according to user permissions.
+type CollectorView struct {
+	Name         string
+	RemoteAddr   string
+	IsConnected  bool
+	ConnectedAt  time.Time
+	LastSeenAt   time.Time
+	Apps         []string // already filtered by user permissions
+	Stats        db.SystemStat
+	StatsDisplay StatsDisplay
 }
 
 func (s *Service) queriesForApp(collectorName, appName string) (*db.Queries, error) {
@@ -215,4 +246,135 @@ func (s *Service) GetLogByID(ctx context.Context, collectorName, appName string,
 		return db.Log{}, fmt.Errorf("get log: %w", err)
 	}
 	return logEntry, nil
+}
+
+// GetCollectorsView returns all collectors with their data filtered for the given user.
+func (s *Service) GetCollectorsView(ctx context.Context, user sharedtypes.User) ([]CollectorView, error) {
+	collectorList := s.tracker.List()
+	views := make([]CollectorView, 0, len(collectorList))
+
+	for _, c := range collectorList {
+		hasAccess, err := s.permissions.CanAccessCollector(ctx, user, c.Name)
+		if err != nil {
+			return nil, err
+		}
+		if !hasAccess {
+			continue
+		}
+
+		view := CollectorView{
+			Name:         c.Name,
+			RemoteAddr:   c.RemoteAddr,
+			IsConnected:  c.IsConnected,
+			ConnectedAt:  c.ConnectedAt,
+			LastSeenAt:   c.LastSeenAt,
+		}
+
+		// Filter apps by user access
+		filteredApps, err := s.permissions.FilterAppsByAccess(ctx, user, c.Apps)
+		if err != nil {
+			return nil, err
+		}
+		view.Apps = filteredApps
+
+		// Get latest stats
+		stats, err := s.ingestSvc.GetLatestStats(ctx, ingest.CollectorName(c.Name))
+		if err == nil {
+			view.Stats = stats
+			view.StatsDisplay = formatStatsForDisplay(stats)
+		}
+
+		views = append(views, view)
+	}
+
+	return views, nil
+}
+
+// GetCollectorDetail returns a single collector view with access check.
+// Returns ErrAccessDenied if the user doesn't have access to the collector.
+func (s *Service) GetCollectorDetail(ctx context.Context, user sharedtypes.User, collectorName string) (CollectorView, error) {
+	collector, exists := s.tracker.Get(collectorName)
+	if !exists {
+		return CollectorView{}, ErrAppNotFound
+	}
+
+	hasAccess, err := s.permissions.CanAccessCollector(ctx, user, collectorName)
+	if err != nil {
+		return CollectorView{}, err
+	}
+	if !hasAccess {
+		return CollectorView{}, ErrAccessDenied
+	}
+
+	view := CollectorView{
+		Name:        collector.Name,
+		RemoteAddr:  collector.RemoteAddr,
+		IsConnected: collector.IsConnected,
+		ConnectedAt: collector.ConnectedAt,
+		LastSeenAt:  collector.LastSeenAt,
+	}
+
+	// Filter apps by user access
+	filteredApps, err := s.permissions.FilterAppsByAccess(ctx, user, collector.Apps)
+	if err != nil {
+		return CollectorView{}, err
+	}
+	view.Apps = filteredApps
+
+	// Get latest stats
+	stats, err := s.ingestSvc.GetLatestStats(ctx, ingest.CollectorName(collector.Name))
+	if err == nil {
+		view.Stats = stats
+		view.StatsDisplay = formatStatsForDisplay(stats)
+	}
+
+	return view, nil
+}
+
+// FilterCollectorApps filters the given apps by user access permissions.
+func (s *Service) FilterCollectorApps(ctx context.Context, user sharedtypes.User, apps []string) ([]string, error) {
+	return s.permissions.FilterAppsByAccess(ctx, user, apps)
+}
+
+// CanAccessApp checks if the user has access to a specific app.
+func (s *Service) CanAccessApp(ctx context.Context, user sharedtypes.User, appName string) (bool, error) {
+	return s.permissions.CanAccessApp(ctx, user, appName)
+}
+
+// GetStatsHistory returns stats history for a collector.
+// This is a wrapper around ingest service for now.
+func (s *Service) GetStatsHistory(ctx context.Context, collectorName string, since time.Time) ([]db.SystemStat, error) {
+	return s.ingestSvc.GetStatsHistory(ctx, ingest.CollectorName(collectorName), since)
+}
+
+// formatStatsForDisplay formats system stats for UI display.
+func formatStatsForDisplay(stats db.SystemStat) StatsDisplay {
+	now := time.Now()
+	age := now.Sub(stats.CreatedAt)
+
+	nowY, nowM, nowD := now.Date()
+	statY, statM, statD := stats.CreatedAt.Date()
+	sameDate := nowY == statY && nowM == statM && nowD == statD
+
+	var staleness string
+	var formatted string
+
+	if !sameDate {
+		staleness = "old"
+		formatted = stats.CreatedAt.Format("2006-01-02 15:04:05")
+	} else if age > 30*time.Minute {
+		staleness = "stale"
+		formatted = stats.CreatedAt.Format("15:04:05")
+	} else if age > 5*time.Minute {
+		staleness = "warning"
+		formatted = stats.CreatedAt.Format("15:04:05")
+	} else {
+		staleness = "fresh"
+		formatted = stats.CreatedAt.Format("15:04:05")
+	}
+
+	return StatsDisplay{
+		TimestampFormatted: formatted,
+		Staleness:          staleness,
+	}
 }
