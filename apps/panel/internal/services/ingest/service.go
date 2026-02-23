@@ -5,11 +5,22 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"log/slog"
+	"math/rand"
 	"time"
 
 	"github.com/ai-shift/tracer/apps/panel/db"
 	"github.com/ai-shift/tracer/apps/panel/internal/dbmanager"
+	"github.com/ai-shift/tracer/apps/panel/internal/services/notify"
 	"github.com/ai-shift/tracer/libs/types"
+)
+
+var (
+	ErrInvalidCollector = errors.New("invalid collector name")
+	ErrInvalidApp       = errors.New("invalid app name")
+	ErrInvalidEntry     = errors.New("invalid log entry")
+	ErrInvalidStats     = errors.New("invalid stats data")
 )
 
 // CollectorName is a type alias for collector names to make APIs clearer.
@@ -30,14 +41,83 @@ type DBManager interface {
 
 // Service manages ingest operations using dbmanager for all DB access.
 type Service struct {
-	dbManager DBManager
+	dbManager  DBManager
+	notifyChan notify.NotificationChan
+	panelURL   string
 }
 
 // New creates a new ingest service.
-func New(dbManager DBManager) *Service {
+func New(dbManager DBManager, notifyChan notify.NotificationChan, panelURL string) *Service {
 	return &Service{
-		dbManager: dbManager,
+		dbManager:  dbManager,
+		notifyChan: notifyChan,
+		panelURL:   panelURL,
 	}
+}
+
+// Request structs for service methods
+
+type RegisterCollectorRequest struct {
+	CollectorName string
+	Apps          []string
+}
+
+func (r RegisterCollectorRequest) Validate() error {
+	if r.CollectorName == "" {
+		return fmt.Errorf("collector name is required")
+	}
+	if len(r.Apps) == 0 {
+		return fmt.Errorf("at least one app is required")
+	}
+	return nil
+}
+
+type InsertStatsRequest struct {
+	CollectorName string
+	Stats         SystemStats
+}
+
+func (r InsertStatsRequest) Validate() error {
+	if r.CollectorName == "" {
+		return fmt.Errorf("collector name is required")
+	}
+	if r.Stats.CreatedAt.IsZero() {
+		return fmt.Errorf("stats timestamp is required")
+	}
+	return nil
+}
+
+type StoreLogRequest struct {
+	CollectorName string
+	AppName       string
+	Entry         types.LogEntry
+	SampleRate    float64
+}
+
+func (r StoreLogRequest) Validate() error {
+	if r.CollectorName == "" {
+		return fmt.Errorf("collector name is required")
+	}
+	if r.AppName == "" {
+		return fmt.Errorf("app name is required")
+	}
+	return nil
+}
+
+type StoreStartupRequest struct {
+	CollectorName string
+	AppName       string
+	Entry         types.LogEntry
+}
+
+func (r StoreStartupRequest) Validate() error {
+	if r.CollectorName == "" {
+		return fmt.Errorf("collector name is required")
+	}
+	if r.AppName == "" {
+		return fmt.Errorf("app name is required")
+	}
+	return nil
 }
 
 // ListCollectors returns all collector names.
@@ -76,22 +156,26 @@ type SystemStats struct {
 
 // InsertSystemStats inserts system statistics for a collector.
 // Creates the collector DB if it doesn't exist.
-func (s *Service) InsertSystemStats(ctx context.Context, collector CollectorName, stats SystemStats) error {
-	sqlDB, err := s.dbManager.CreateCollectorDB(collector.String())
+func (s *Service) InsertSystemStats(ctx context.Context, req InsertStatsRequest) error {
+	if err := req.Validate(); err != nil {
+		return err
+	}
+
+	sqlDB, err := s.dbManager.CreateCollectorDB(req.CollectorName)
 	if err != nil {
 		return err
 	}
 	queries := db.New(sqlDB)
 	return queries.InsertSystemStats(ctx, db.InsertSystemStatsParams{
-		CollectorName:   stats.CollectorName,
-		CpuUsagePercent: stats.CpuUsagePercent,
-		MemTotalMb:      stats.MemTotalMb,
-		MemUsedMb:       stats.MemUsedMb,
-		MemAvailableMb:  stats.MemAvailableMb,
-		DiskTotalGb:     stats.DiskTotalGb,
-		DiskUsedGb:      stats.DiskUsedGb,
-		DiskAvailGb:     stats.DiskAvailGb,
-		CreatedAt:       stats.CreatedAt,
+		CollectorName:   req.Stats.CollectorName,
+		CpuUsagePercent: req.Stats.CpuUsagePercent,
+		MemTotalMb:      req.Stats.MemTotalMb,
+		MemUsedMb:       req.Stats.MemUsedMb,
+		MemAvailableMb:  req.Stats.MemAvailableMb,
+		DiskTotalGb:     req.Stats.DiskTotalGb,
+		DiskUsedGb:      req.Stats.DiskUsedGb,
+		DiskAvailGb:     req.Stats.DiskAvailGb,
+		CreatedAt:       req.Stats.CreatedAt,
 	})
 }
 
@@ -142,20 +226,24 @@ func (s *Service) DeleteOldStats(ctx context.Context, before time.Time) error {
 	return nil
 }
 
-// Register creates all necessary databases for a collector and its apps.
+// RegisterCollector creates all necessary databases for a collector and its apps.
 // This should be called when a collector first connects/register.
-func (s *Service) Register(collectorName string, apps []string) error {
+func (s *Service) RegisterCollector(ctx context.Context, req RegisterCollectorRequest) error {
+	if err := req.Validate(); err != nil {
+		return err
+	}
+
 	// Create collector DB for stats
-	if _, err := s.dbManager.CreateCollectorDB(collectorName); err != nil {
+	if _, err := s.dbManager.CreateCollectorDB(req.CollectorName); err != nil {
 		return err
 	}
 
 	// Create app databases for each app
-	for _, appName := range apps {
+	for _, appName := range req.Apps {
 		if appName == "" {
 			continue
 		}
-		if _, err := s.dbManager.CreateAppDB(collectorName, appName); err != nil {
+		if _, err := s.dbManager.CreateAppDB(req.CollectorName, appName); err != nil {
 			return err
 		}
 	}
@@ -171,54 +259,84 @@ func (s *Service) GetAppDB(collectorName, appName string) (*sql.DB, error) {
 
 // StoreLog stores a log entry for a specific app.
 // It handles log group creation and insertion of the log entry.
-func (s *Service) StoreLog(ctx context.Context, collectorName, appName string, entry types.LogEntry) error {
-	sqlDB, err := s.dbManager.CreateAppDB(collectorName, appName)
+// Returns the log ID for potential notifications.
+// Includes sampling logic and notification sending for errors.
+func (s *Service) StoreLog(ctx context.Context, req StoreLogRequest) (int64, error) {
+	if err := req.Validate(); err != nil {
+		return 0, err
+	}
+
+	// Check if this is an error level log
+	isError := req.Entry.Level == types.LevelError
+
+	// Sampling logic: always persist errors, sample others
+	if !isError && rand.Float64() >= req.SampleRate {
+		return 0, nil // Skipped by sampling
+	}
+
+	sqlDB, err := s.dbManager.CreateAppDB(req.CollectorName, req.AppName)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	queries := db.New(sqlDB)
 
 	// Marshal extra context
 	contextJSON := "{}"
-	if len(entry.Extra) > 0 {
-		if b, err := json.Marshal(entry.Extra); err == nil {
+	if len(req.Entry.Extra) > 0 {
+		if b, err := json.Marshal(req.Entry.Extra); err == nil {
 			contextJSON = string(b)
 		}
 	}
 
 	// Get or create log group for this message and level
 	logGroup, err := queries.GetOrCreateLogGroup(ctx, db.GetOrCreateLogGroupParams{
-		Message: entry.Message,
-		Level:   string(entry.Level),
+		Message: req.Entry.Message,
+		Level:   string(req.Entry.Level),
 	})
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	// Store log entry
-	ts := entry.Timestamp
+	ts := req.Entry.Timestamp
 	if ts.IsZero() {
 		ts = time.Now()
 	}
 	ts = ts.UTC()
 
-	_, err = queries.InsertLog(ctx, db.InsertLogParams{
-		TraceID:   entry.TraceID,
-		Level:     string(entry.Level),
-		Message:   entry.Message,
-		Source:    entry.Source,
+	log, err := queries.InsertLog(ctx, db.InsertLogParams{
+		TraceID:   req.Entry.TraceID,
+		Level:     string(req.Entry.Level),
+		Message:   req.Entry.Message,
+		Source:    req.Entry.Source,
 		Context:   sql.NullString{String: contextJSON, Valid: true},
-		Raw:       entry.Raw,
+		Raw:       req.Entry.Raw,
 		GroupID:   sql.NullInt64{Int64: logGroup.ID, Valid: true},
 		CreatedAt: sql.NullTime{Time: ts, Valid: true},
 	})
-	return err
+	if err != nil {
+		return 0, err
+	}
+
+	logID := log.ID
+
+	// Send notification for errors
+	if isError && s.notifyChan != nil {
+		s.sendErrorNotification(req, logID, logGroup.ID)
+	}
+
+	return logID, nil
 }
 
 // StoreStartup stores a startup log entry for a specific app.
 // Similar to StoreLog but uses "STARTUP" as the level.
-func (s *Service) StoreStartup(ctx context.Context, collectorName, appName string, entry types.LogEntry) error {
-	sqlDB, err := s.dbManager.CreateAppDB(collectorName, appName)
+// Sends startup notification.
+func (s *Service) StoreStartup(ctx context.Context, req StoreStartupRequest) error {
+	if err := req.Validate(); err != nil {
+		return err
+	}
+
+	sqlDB, err := s.dbManager.CreateAppDB(req.CollectorName, req.AppName)
 	if err != nil {
 		return err
 	}
@@ -226,21 +344,21 @@ func (s *Service) StoreStartup(ctx context.Context, collectorName, appName strin
 
 	// Marshal extra context
 	contextJSON := "{}"
-	if len(entry.Extra) > 0 {
-		if b, err := json.Marshal(entry.Extra); err == nil {
+	if len(req.Entry.Extra) > 0 {
+		if b, err := json.Marshal(req.Entry.Extra); err == nil {
 			contextJSON = string(b)
 		}
 	}
 
 	// Use "STARTUP" as the level for startup events
 	level := "STARTUP"
-	if entry.Level != "" {
-		level = string(entry.Level)
+	if req.Entry.Level != "" {
+		level = string(req.Entry.Level)
 	}
 
 	// Get or create log group for this message and level
 	logGroup, err := queries.GetOrCreateLogGroup(ctx, db.GetOrCreateLogGroupParams{
-		Message: entry.Message,
+		Message: req.Entry.Message,
 		Level:   level,
 	})
 	if err != nil {
@@ -248,21 +366,80 @@ func (s *Service) StoreStartup(ctx context.Context, collectorName, appName strin
 	}
 
 	// Store startup entry
-	ts := entry.Timestamp
+	ts := req.Entry.Timestamp
 	if ts.IsZero() {
 		ts = time.Now()
 	}
 	ts = ts.UTC()
 
 	_, err = queries.InsertLog(ctx, db.InsertLogParams{
-		TraceID:   entry.TraceID,
+		TraceID:   req.Entry.TraceID,
 		Level:     level,
-		Message:   entry.Message,
-		Source:    entry.Source,
+		Message:   req.Entry.Message,
+		Source:    req.Entry.Source,
 		Context:   sql.NullString{String: contextJSON, Valid: true},
-		Raw:       entry.Raw,
+		Raw:       req.Entry.Raw,
 		GroupID:   sql.NullInt64{Int64: logGroup.ID, Valid: true},
 		CreatedAt: sql.NullTime{Time: ts, Valid: true},
 	})
-	return err
+	if err != nil {
+		return err
+	}
+
+	// Send startup notification
+	if s.notifyChan != nil {
+		s.sendStartupNotification(req)
+	}
+
+	return nil
+}
+
+// sendErrorNotification sends a notification for error logs
+func (s *Service) sendErrorNotification(req StoreLogRequest, logID, groupID int64) {
+	// Build the alert message with markdown link
+	alertMessage := fmt.Sprintf("```%s```", req.Entry.Message)
+	if s.panelURL != "" {
+		// Include log ID and group ID in URL
+		logsURL := fmt.Sprintf("%s/panel/collectors/%s/apps/%s/logs/%d",
+			s.panelURL,
+			req.CollectorName,
+			req.AppName,
+			logID)
+		alertMessage += fmt.Sprintf("\n\n[view log](%s)", logsURL)
+	}
+
+	select {
+	case s.notifyChan <- notify.Notification{
+		Type:          notify.TypeAlert,
+		CollectorName: req.CollectorName,
+		AppName:       req.AppName,
+		Message:       alertMessage,
+	}:
+	default:
+		slog.Error("Notification channel full, dropping notification")
+	}
+}
+
+// sendStartupNotification sends a notification for app startup
+func (s *Service) sendStartupNotification(req StoreStartupRequest) {
+	// Build the startup message with markdown link
+	startupMessage := req.Entry.Message
+	if s.panelURL != "" {
+		logsURL := fmt.Sprintf("%s/panel/collectors/%s/apps/%s/logs",
+			s.panelURL,
+			req.CollectorName,
+			req.AppName)
+		startupMessage += fmt.Sprintf("\n\n[view logs](%s)", logsURL)
+	}
+
+	select {
+	case s.notifyChan <- notify.Notification{
+		Type:          notify.TypeStartup,
+		CollectorName: req.CollectorName,
+		AppName:       req.AppName,
+		Message:       startupMessage,
+	}:
+	default:
+		slog.Warn("Notification channel full, dropping startup notification")
+	}
 }

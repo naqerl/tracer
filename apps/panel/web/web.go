@@ -24,7 +24,7 @@ func Run(deps Dependencies, port string, sampleRate float64, panelURL string) *h
 	authMux := authres.InitMux(deps.Auth, deps.User)
 	panelMux := panel.InitMux(panelService)
 
-	mux.Handle("/ingest/", http.StripPrefix("/ingest", ingest.InitMux(deps.Auth, deps.Ingest, sampleRate, deps.Notify.Chan(), deps.Tracker, panelURL)))
+	mux.Handle("/ingest/", http.StripPrefix("/ingest", ingest.InitMux(deps.Auth, deps.Ingest, sampleRate, deps.Tracker)))
 	mux.Handle("/panel/", http.StripPrefix("/panel", panelMux))
 	mux.Handle("/auth/", http.StripPrefix("/auth", authMux))
 	mux.Handle("/llm", llm.InitMux())

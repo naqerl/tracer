@@ -61,8 +61,6 @@ func main() {
 	}
 	defer dbManager.Close()
 
-	ingestService := ingest.New(dbManager)
-
 	// Initialize panel database and run migrations
 	panelDB, err := initPanelDB(cfg.DataDir)
 	if err != nil {
@@ -97,7 +95,7 @@ func main() {
 		slog.Info("API key ready", "key", apiKey)
 	}
 
-	// Initialize notification service
+	// Initialize notification service first (needed by ingest)
 	notifyService := notify.New(panelDB, userService)
 	go notifyService.Start(ctx)
 
@@ -106,6 +104,9 @@ func main() {
 		slog.Error("Failed to load notifiers", "error", err)
 		// Continue anyway - notifiers can be added via UI
 	}
+
+	// Initialize ingest service (after notify service)
+	ingestService := ingest.New(dbManager, notifyService.Chan(), cfg.PanelURL)
 
 	// Initialize retention service
 	retentionService := retention.New(dbManager, ingestService, cfg.RetentionDays)
