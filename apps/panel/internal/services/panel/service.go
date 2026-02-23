@@ -175,7 +175,15 @@ func (s *Service) GetLogDetail(ctx context.Context, collectorName, appName strin
 	}, nil
 }
 
-func (s *Service) GetLogGroups(ctx context.Context, collectorName, appName, level string, offset, limit int64) (*LogGroupsResult, error) {
+func (s *Service) GetLogGroups(ctx context.Context, user sharedtypes.User, collectorName, appName, level string, offset, limit int64) (*LogGroupsResult, error) {
+	hasAccess, err := s.permissions.CanAccessApp(ctx, user, appName)
+	if err != nil {
+		return nil, err
+	}
+	if !hasAccess {
+		return nil, ErrAccessDenied
+	}
+
 	queries, err := s.queriesForApp(collectorName, appName)
 	if err != nil {
 		return nil, err

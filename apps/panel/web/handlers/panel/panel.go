@@ -9,7 +9,6 @@ import (
 	"time"
 
 	panelsvc "github.com/ai-shift/tracer/apps/panel/internal/services/panel"
-	"github.com/ai-shift/tracer/apps/panel/web/middleware"
 	"github.com/ai-shift/tracer/apps/panel/web/middleware/auth"
 	"github.com/ai-shift/tracer/apps/panel/web/templates"
 )
@@ -40,7 +39,7 @@ func InitMux(svc *panelsvc.Service) *http.ServeMux {
 
 	// App logs
 	m.HandleFunc("GET /collectors/{collector}/apps/{app}", h.getApp)
-	m.HandleFunc("GET /collectors/{collector}/apps/{app}/logs", h.getAppLogs)
+	m.HandleFunc("GET /collectors/{collector}/apps/{app}/logs", h.getLogGroups)
 	m.HandleFunc("GET /collectors/{collector}/apps/{app}/logs/groups/{groupID}", h.getAppLogGroupByID)
 	m.HandleFunc("GET /collectors/{collector}/apps/{app}/logs/{id}", h.GetAppLogByID)
 
@@ -217,17 +216,6 @@ func (h *handler) getApp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if middleware.IsMarkdownFormat(r) {
-		h.t.RenderMarkdown(w, r, "app-analytics-markdown", map[string]any{
-			"Title":         appName + " Analytics",
-			"AppName":       appName,
-			"CollectorName": collectorName,
-			"Stats":         stats,
-			"Grouped":       grouped,
-		})
-		return
-	}
-
 	h.t.RenderHTTP(w, r, "app-page", map[string]any{
 		"Title":         appName + " Analytics",
 		"AppName":       appName,
@@ -245,7 +233,7 @@ func (h *handler) getApp(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (h *handler) getAppLogs(w http.ResponseWriter, r *http.Request) {
+func (h *handler) getLogGroups(w http.ResponseWriter, r *http.Request) {
 	user, err := auth.RequireOrRedirect(w, r)
 	if err != nil {
 		return
@@ -254,41 +242,20 @@ func (h *handler) getAppLogs(w http.ResponseWriter, r *http.Request) {
 	collectorName := r.PathValue("collector")
 	appName := r.PathValue("app")
 
-	hasAccess, err := h.svc.CanAccessApp(r.Context(), user, appName)
-	if err != nil {
-		h.t.RenderError(w, r, "Error", "Failed to check access", http.StatusInternalServerError)
-		return
-	}
-	if !hasAccess {
-		h.t.RenderError(w, r, "Forbidden", "You don't have access to this app", http.StatusForbidden)
-		return
-	}
-
 	level := r.URL.Query().Get("level")
 	offset := parseOffset(r.URL.Query().Get("offset"))
 	limit := int64(50)
 
-	logGroups, err := h.svc.GetLogGroups(r.Context(), collectorName, appName, level, offset, limit)
+	logGroups, err := h.svc.GetLogGroups(r.Context(), user, collectorName, appName, level, offset, limit)
 	if err != nil {
 		switch {
+		case errors.Is(err, panelsvc.ErrAccessDenied):
+			h.t.RenderError(w, r, "Forbidden", "You don't have access to this app", http.StatusForbidden)
 		case errors.Is(err, panelsvc.ErrAppNotFound):
 			h.t.RenderError(w, r, "Error", "App not found", http.StatusNotFound)
 		default:
 			h.t.RenderError(w, r, "Error", "Failed to fetch log groups", http.StatusInternalServerError)
 		}
-		return
-	}
-
-	if middleware.IsMarkdownFormat(r) {
-		h.t.RenderMarkdown(w, r, "app-logs-markdown", map[string]any{
-			"AppName":       appName,
-			"CollectorName": collectorName,
-			"Groups":        logGroups.Groups,
-			"TotalCount":    logGroups.TotalCount,
-			"ErrorCount":    logGroups.ErrorCount,
-			"WarnCount":     logGroups.WarnCount,
-			"InfoCount":     logGroups.InfoCount,
-		})
 		return
 	}
 
