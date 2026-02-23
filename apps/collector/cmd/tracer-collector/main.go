@@ -73,7 +73,7 @@ func main() {
 	}
 
 	// Initialize WebSocket client
-	wsClient := wsclient.New(panelEndpoint, collectorName, watcher.GetAppNames(), watcher.LogChan)
+	wsClient := wsclient.New(panelEndpoint, cfg.APIKey, collectorName, watcher.GetAppNames(), watcher.LogChan)
 
 	// Configure system stats if interval is set
 	if cfg.StatsInterval != "" {
