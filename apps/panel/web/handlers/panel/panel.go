@@ -18,14 +18,14 @@ import (
 var views embed.FS
 
 type handler struct {
-	t        templates.Templates
+	t   templates.Templates
 	svc *panelsvc.Service
 }
 
 func InitMux(svc *panelsvc.Service) *http.ServeMux {
 	m := http.NewServeMux()
 	h := handler{
-		t:        templates.New(views),
+		t:   templates.New(views),
 		svc: svc,
 	}
 
@@ -204,19 +204,11 @@ func (h *handler) getApp(w http.ResponseWriter, r *http.Request) {
 	collectorName := r.PathValue("collector")
 	appName := r.PathValue("app")
 
-	hasAccess, err := h.svc.CanAccessApp(r.Context(), user, appName)
-	if err != nil {
-		h.t.RenderError(w, r, "Error", "Failed to check access", http.StatusInternalServerError)
-		return
-	}
-	if !hasAccess {
-		h.t.RenderError(w, r, "Forbidden", "You don't have access to this app", http.StatusForbidden)
-		return
-	}
-
-	stats, grouped, err := h.svc.GetAppAnalytics(r.Context(), collectorName, appName)
+	stats, grouped, err := h.svc.GetAppAnalytics(r.Context(), user, collectorName, appName)
 	if err != nil {
 		switch {
+		case errors.Is(err, panelsvc.ErrAccessDenied):
+			h.t.RenderError(w, r, "Forbidden", "You don't have access to this app", http.StatusForbidden)
 		case errors.Is(err, panelsvc.ErrAppNotFound):
 			h.t.RenderError(w, r, "Error", "App not found", http.StatusNotFound)
 		default:

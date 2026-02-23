@@ -88,7 +88,15 @@ func (s *Service) queriesForApp(collectorName, appName string) (*db.Queries, err
 	return db.New(sqlDB), nil
 }
 
-func (s *Service) GetAppAnalytics(ctx context.Context, collectorName, appName string) (*AppStats, []db.ListLogGroupsRow, error) {
+func (s *Service) GetAppAnalytics(ctx context.Context, user sharedtypes.User, collectorName, appName string) (*AppStats, []db.ListLogGroupsRow, error) {
+	hasAccess, err := s.permissions.CanAccessApp(ctx, user, appName)
+	if err != nil {
+		return nil, nil, err
+	}
+	if !hasAccess {
+		return nil, nil, ErrAccessDenied
+	}
+
 	queries, err := s.queriesForApp(collectorName, appName)
 	if err != nil {
 		return nil, nil, err
@@ -263,11 +271,11 @@ func (s *Service) GetCollectorsView(ctx context.Context, user sharedtypes.User) 
 		}
 
 		view := CollectorView{
-			Name:         c.Name,
-			RemoteAddr:   c.RemoteAddr,
-			IsConnected:  c.IsConnected,
-			ConnectedAt:  c.ConnectedAt,
-			LastSeenAt:   c.LastSeenAt,
+			Name:        c.Name,
+			RemoteAddr:  c.RemoteAddr,
+			IsConnected: c.IsConnected,
+			ConnectedAt: c.ConnectedAt,
+			LastSeenAt:  c.LastSeenAt,
 		}
 
 		// Filter apps by user access
