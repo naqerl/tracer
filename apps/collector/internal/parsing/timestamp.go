@@ -1,59 +1,52 @@
 package logparser
 
-import "time"
+import (
+	"fmt"
+	"math"
+	"time"
+)
 
-var defaultTimestampFormats = []string{
-	time.RFC3339,
-	time.RFC3339Nano,
-	"2006-01-02T15:04:05",
-	"2006-01-02 15:04:05",
-	"2006/01/02 15:04:05",
-	"2006-01-02 15:04:05,000",
-	"02/Jan/2006:15:04:05 -0700",
-	"2006/01/02 15:04:05",
-	"Jan 02 15:04:05",
-	"Jan  2 15:04:05",
-	"2006-01-02 15:04:05.000 MST",
-}
-
-func parseTimestampValue(v any, format string) time.Time {
+func parseTimestampValue(v any, format string) (time.Time, error) {
 	switch ts := v.(type) {
 	case string:
 		return parseTimestampString(ts, format)
 	case float64:
-		if ts > 1e12 {
-			return time.UnixMilli(int64(ts))
-		}
-		sec := int64(ts)
-		nsec := int64((ts - float64(sec)) * 1e9)
-		return time.Unix(sec, nsec)
+		return parseTimestampNumber(ts)
 	case int64:
-		if ts > 1e12 {
-			return time.UnixMilli(ts)
-		}
-		return time.Unix(ts, 0)
+		return parseTimestampNumber(float64(ts))
 	case int:
-		if ts > 1e12 {
-			return time.UnixMilli(int64(ts))
-		}
-		return time.Unix(int64(ts), 0)
+		return parseTimestampNumber(float64(ts))
 	default:
-		return time.Now()
+		return time.Time{}, fmt.Errorf("unsupported timestamp type: %T", v)
 	}
 }
 
-func parseTimestampString(ts string, format string) time.Time {
-	if format != "" {
-		if t, err := time.Parse(format, ts); err == nil {
-			return t
-		}
-		return time.Now()
+func parseTimestampString(ts string, format string) (time.Time, error) {
+	if format == "" {
+		return time.Time{}, fmt.Errorf("timestamp_format is required for string timestamps")
 	}
 
-	for _, f := range defaultTimestampFormats {
-		if t, err := time.Parse(f, ts); err == nil {
-			return t
-		}
+	t, err := time.Parse(format, ts)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("parse timestamp %q with format %q: %w", ts, format, err)
 	}
-	return time.Now()
+	return t, nil
+}
+
+// parseTimestampNumber parses epoch timestamps by magnitude:
+// seconds (<1e12), milliseconds (>=1e12), microseconds (>=1e15), nanoseconds (>=1e18).
+func parseTimestampNumber(ts float64) (time.Time, error) {
+	abs := math.Abs(ts)
+	switch {
+	case abs >= 1e18:
+		return time.Unix(0, int64(ts)), nil
+	case abs >= 1e15:
+		return time.UnixMicro(int64(ts)), nil
+	case abs >= 1e12:
+		return time.UnixMilli(int64(ts)), nil
+	default:
+		sec := int64(ts)
+		nsec := int64((ts - float64(sec)) * 1e9)
+		return time.Unix(sec, nsec), nil
+	}
 }

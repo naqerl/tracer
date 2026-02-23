@@ -3,7 +3,6 @@ package logparser
 import (
 	"encoding/json"
 	"fmt"
-	"time"
 
 	collectorconfig "github.com/ai-shift/tracer/apps/collector/internal/config"
 	"github.com/ai-shift/tracer/libs/types"
@@ -20,9 +19,9 @@ type jsonParser struct {
 
 var _ Parser = (*jsonParser)(nil)
 
-func newJSONParser(cfg collectorconfig.App) (*jsonParser, error) {
+func newJSONParser(cfg collectorconfig.ResolvedApp) (*jsonParser, error) {
 	return &jsonParser{
-		source:          cfg.Path,
+		source:          cfg.Source,
 		timestampField:  withDefault(cfg.TimestampField, "timestamp"),
 		timestampFormat: cfg.TimestampFormat,
 		levelField:      withDefault(cfg.LevelField, "level"),
@@ -45,10 +44,14 @@ func (p *jsonParser) Parse(line string) (types.LogEntry, error) {
 
 	// Extract known fields
 	if ts, ok := data[p.timestampField]; ok {
-		entry.Timestamp = parseTimestampValue(ts, p.timestampFormat)
+		parsedTS, err := parseTimestampValue(ts, p.timestampFormat)
+		if err != nil {
+			return types.LogEntry{}, fmt.Errorf("%w: %v", ErrParseFailed, err)
+		}
+		entry.Timestamp = parsedTS
 		delete(data, p.timestampField)
 	} else {
-		entry.Timestamp = time.Now()
+		return types.LogEntry{}, fmt.Errorf("%w: missing timestamp field %q", ErrParseFailed, p.timestampField)
 	}
 
 	if level, ok := data[p.levelField].(string); ok {

@@ -26,19 +26,19 @@ var _ Parser = (*journalctlParser)(nil)
 
 // journalctl priority levels (syslog priority)
 var journalctlPriorityToLevel = map[string]string{
-	"0": "EMERG",
-	"1": "ALERT",
-	"2": "CRIT",
-	"3": "ERROR",
-	"4": "WARN",
-	"5": "NOTICE",
-	"6": "INFO",
-	"7": "DEBUG",
+	"0": string(types.LevelError),
+	"1": string(types.LevelError),
+	"2": string(types.LevelError),
+	"3": string(types.LevelError),
+	"4": string(types.LevelWarn),
+	"5": string(types.LevelInfo),
+	"6": string(types.LevelInfo),
+	"7": string(types.LevelDebug),
 }
 
-func newJournalctlParser(cfg collectorconfig.App) (*journalctlParser, error) {
+func newJournalctlParser(cfg collectorconfig.ResolvedApp) (*journalctlParser, error) {
 	p := &journalctlParser{
-		source:       cfg.Path,
+		source:       cfg.Source,
 		unit:         cfg.Unit,
 		levelField:   "PRIORITY", // Always from journalctl envelope
 		messageField: "MESSAGE",  // Always from journalctl envelope
@@ -60,10 +60,14 @@ func (p *journalctlParser) Parse(line string) (types.LogEntry, error) {
 
 	// Extract timestamp from __REALTIME_TIMESTAMP (microseconds since epoch)
 	if ts, ok := data["__REALTIME_TIMESTAMP"]; ok {
-		entry.Timestamp = parseJournalctlTimestamp(ts)
+		parsedTS, err := parseJournalctlTimestamp(ts)
+		if err != nil {
+			return types.LogEntry{}, fmt.Errorf("%w: %v", ErrParseFailed, err)
+		}
+		entry.Timestamp = parsedTS
 		delete(data, "__REALTIME_TIMESTAMP")
 	} else {
-		entry.Timestamp = time.Now()
+		return types.LogEntry{}, fmt.Errorf("%w: missing __REALTIME_TIMESTAMP", ErrParseFailed)
 	}
 
 	// Extract priority/level from journalctl PRIORITY field
@@ -87,7 +91,7 @@ func (p *journalctlParser) Parse(line string) (types.LogEntry, error) {
 		entry.Message = line
 	}
 
-	entry.Level = types.LogLevel(journalLevel)
+	entry.Level = normalizeLevel(journalLevel)
 
 	// Extract useful metadata from journalctl
 	usefulFields := []string{
@@ -139,7 +143,7 @@ func (p *journalctlParser) Parse(line string) (types.LogEntry, error) {
 	return entry, nil
 }
 
-func parseJournalctlTimestamp(v any) time.Time {
+func parseJournalctlTimestamp(v any) (time.Time, error) {
 	var microseconds int64
 
 	switch ts := v.(type) {
@@ -147,7 +151,7 @@ func parseJournalctlTimestamp(v any) time.Time {
 		var err error
 		microseconds, err = strconv.ParseInt(ts, 10, 64)
 		if err != nil {
-			return time.Now()
+			return time.Time{}, fmt.Errorf("invalid __REALTIME_TIMESTAMP string: %w", err)
 		}
 	case float64:
 		microseconds = int64(ts)
@@ -156,9 +160,9 @@ func parseJournalctlTimestamp(v any) time.Time {
 	case int:
 		microseconds = int64(ts)
 	default:
-		return time.Now()
+		return time.Time{}, fmt.Errorf("unsupported __REALTIME_TIMESTAMP type: %T", v)
 	}
 
 	// __REALTIME_TIMESTAMP is in microseconds since epoch
-	return time.UnixMicro(microseconds)
+	return time.UnixMicro(microseconds), nil
 }

@@ -3,7 +3,6 @@ package logparser
 import (
 	"fmt"
 	"regexp"
-	"time"
 
 	collectorconfig "github.com/ai-shift/tracer/apps/collector/internal/config"
 	"github.com/ai-shift/tracer/libs/types"
@@ -21,14 +20,14 @@ type regexParser struct {
 
 var _ Parser = (*regexParser)(nil)
 
-func newRegexParser(cfg collectorconfig.App) (*regexParser, error) {
+func newRegexParser(cfg collectorconfig.ResolvedApp) (*regexParser, error) {
 	pattern, err := regexp.Compile(cfg.Pattern)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrInvalidPattern, err)
 	}
 
 	return &regexParser{
-		source:          cfg.Path,
+		source:          cfg.Source,
 		pattern:         pattern,
 		timestampField:  withDefault(cfg.TimestampField, "timestamp"),
 		timestampFormat: cfg.TimestampFormat,
@@ -60,10 +59,14 @@ func (p *regexParser) Parse(line string) (types.LogEntry, error) {
 
 	// Extract known fields
 	if ts, ok := groups[p.timestampField]; ok {
-		entry.Timestamp = parseTimestampString(ts, p.timestampFormat)
+		parsedTS, err := parseTimestampString(ts, p.timestampFormat)
+		if err != nil {
+			return types.LogEntry{}, fmt.Errorf("%w: %v", ErrParseFailed, err)
+		}
+		entry.Timestamp = parsedTS
 		delete(groups, p.timestampField)
 	} else {
-		entry.Timestamp = time.Now()
+		return types.LogEntry{}, fmt.Errorf("%w: missing timestamp group %q", ErrParseFailed, p.timestampField)
 	}
 
 	if level, ok := groups[p.levelField]; ok {
