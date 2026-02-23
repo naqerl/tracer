@@ -139,7 +139,15 @@ func (s *Service) GetAppAnalytics(ctx context.Context, user sharedtypes.User, co
 	}, grouped, nil
 }
 
-func (s *Service) GetLogDetail(ctx context.Context, collectorName, appName string, groupID, offset, limit int64) (*LogDetailResult, error) {
+func (s *Service) GetLogDetail(ctx context.Context, user sharedtypes.User, collectorName, appName string, groupID, offset, limit int64) (*LogDetailResult, error) {
+	hasAccess, err := s.permissions.CanAccessApp(ctx, user, appName)
+	if err != nil {
+		return nil, err
+	}
+	if !hasAccess {
+		return nil, ErrAccessDenied
+	}
+
 	queries, err := s.queriesForApp(collectorName, appName)
 	if err != nil {
 		return nil, err
@@ -248,7 +256,15 @@ func (s *Service) GetLogVolumeTimeSeries(ctx context.Context, collectorName, app
 	})
 }
 
-func (s *Service) GetLogByID(ctx context.Context, collectorName, appName string, id int64) (db.Log, error) {
+func (s *Service) GetLogByID(ctx context.Context, user sharedtypes.User, collectorName, appName string, id int64) (db.Log, error) {
+	hasAccess, err := s.permissions.CanAccessApp(ctx, user, appName)
+	if err != nil {
+		return db.Log{}, err
+	}
+	if !hasAccess {
+		return db.Log{}, ErrAccessDenied
+	}
+
 	queries, err := s.queriesForApp(collectorName, appName)
 	if err != nil {
 		return db.Log{}, err

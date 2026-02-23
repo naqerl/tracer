@@ -298,23 +298,15 @@ func (h *handler) getAppLogGroupByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	hasAccess, err := h.svc.CanAccessApp(r.Context(), user, appName)
-	if err != nil {
-		h.t.RenderError(w, r, "Error", "Failed to check access", http.StatusInternalServerError)
-		return
-	}
-	if !hasAccess {
-		h.t.RenderError(w, r, "Forbidden", "You don't have access to this app", http.StatusForbidden)
-		return
-	}
-
 	highlightLogID := parseOffset(r.URL.Query().Get("logID"))
 	offset := parseOffset(r.URL.Query().Get("offset"))
 	limit := int64(50)
 
-	detail, err := h.svc.GetLogDetail(r.Context(), collectorName, appName, groupID, offset, limit)
+	detail, err := h.svc.GetLogDetail(r.Context(), user, collectorName, appName, groupID, offset, limit)
 	if err != nil {
 		switch {
+		case errors.Is(err, panelsvc.ErrAccessDenied):
+			h.t.RenderError(w, r, "Forbidden", "You don't have access to this app", http.StatusForbidden)
 		case errors.Is(err, panelsvc.ErrAppNotFound), errors.Is(err, panelsvc.ErrLogNotFound):
 			h.t.RenderError(w, r, "Error", "Group not found", http.StatusNotFound)
 		default:
@@ -358,25 +350,17 @@ func (h *handler) GetAppLogByID(w http.ResponseWriter, r *http.Request) {
 	appName := r.PathValue("app")
 	idStr := r.PathValue("id")
 
-	hasAccess, err := h.svc.CanAccessApp(r.Context(), user, appName)
-	if err != nil {
-		http.Error(w, "Failed to check access", http.StatusInternalServerError)
-		return
-	}
-	if !hasAccess {
-		http.Error(w, "Forbidden", http.StatusForbidden)
-		return
-	}
-
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
 		http.Error(w, "Invalid log ID", http.StatusBadRequest)
 		return
 	}
 
-	logEntry, err := h.svc.GetLogByID(r.Context(), collectorName, appName, id)
+	logEntry, err := h.svc.GetLogByID(r.Context(), user, collectorName, appName, id)
 	if err != nil {
 		switch {
+		case errors.Is(err, panelsvc.ErrAccessDenied):
+			http.Error(w, "Forbidden", http.StatusForbidden)
 		case errors.Is(err, panelsvc.ErrAppNotFound):
 			http.Error(w, "App not found", http.StatusNotFound)
 		case errors.Is(err, panelsvc.ErrLogNotFound):
