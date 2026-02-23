@@ -373,15 +373,14 @@ func (h *handler) getLogGroupByID(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) getLogByID(w http.ResponseWriter, r *http.Request) {
-	user, err := auth.GetUser(r)
+	user, err := auth.RequireOrRedirect(w, r)
 	if err != nil {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
-		http.Error(w, "Invalid log ID", http.StatusBadRequest)
+		h.t.RenderError(w, r, "Error", "Invalid log ID", http.StatusBadRequest)
 		return
 	}
 
@@ -392,7 +391,7 @@ func (h *handler) getLogByID(w http.ResponseWriter, r *http.Request) {
 		ID:            id,
 	}
 	if err := req.Validate(); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		h.t.RenderError(w, r, "Error", err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -400,18 +399,34 @@ func (h *handler) getLogByID(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		case errors.Is(err, panelsvc.ErrAccessDenied):
-			http.Error(w, "Forbidden", http.StatusForbidden)
+			h.t.RenderError(w, r, "Forbidden", "You don't have access to this app", http.StatusForbidden)
 		case errors.Is(err, panelsvc.ErrAppNotFound):
-			http.Error(w, "App not found", http.StatusNotFound)
+			h.t.RenderError(w, r, "Error", "App not found", http.StatusNotFound)
 		case errors.Is(err, panelsvc.ErrLogNotFound):
-			http.Error(w, "Log not found", http.StatusNotFound)
+			h.t.RenderError(w, r, "Error", "Log not found", http.StatusNotFound)
 		default:
-			http.Error(w, "Failed to get log", http.StatusInternalServerError)
+			h.t.RenderError(w, r, "Error", "Failed to get log", http.StatusInternalServerError)
 		}
 		return
 	}
 
-	http.Redirect(w, r, fmt.Sprintf("/panel/collectors/%s/apps/%s/logs/groups/%d?logID=%d", req.CollectorName, req.AppName, logEntry.GroupID.Int64, logEntry.ID), http.StatusSeeOther)
+	h.t.RenderHTTP(w, r, "app-log-page", map[string]any{
+		"Title":         fmt.Sprintf("Log #%d", logEntry.ID),
+		"CollectorName": req.CollectorName,
+		"AppName":       req.AppName,
+		"Log":           logEntry,
+		"User":          user,
+		"IsAdmin":       user.IsAdmin,
+		"Nav": templates.NewNavBuilder().
+			Add("panel", "panel").
+			Add("collectors", "collectors").
+			Add(req.CollectorName, req.CollectorName).
+			Add("apps", "apps").
+			Add(req.AppName, req.AppName).
+			Add("logs", "logs").
+			Add("log", "log").
+			Build(),
+	})
 }
 
 func parseTimeRange(rangeParam string) time.Time {
