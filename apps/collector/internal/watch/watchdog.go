@@ -3,6 +3,8 @@ package watchdog
 import (
 	"bufio"
 	"context"
+	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"os"
@@ -18,6 +20,7 @@ import (
 const (
 	pollInterval = 100 * time.Millisecond
 	maxBatchSize = 100
+	maxLineBytes = 1024 * 1024
 )
 
 type sourceType int
@@ -33,7 +36,8 @@ type sourceConfig interface {
 }
 
 type fileSourceConfig struct {
-	path string
+	path     string
+	readFrom string
 }
 
 func (c fileSourceConfig) sourceType() sourceType {
@@ -45,7 +49,8 @@ func (c fileSourceConfig) label() string {
 }
 
 type journalctlSourceConfig struct {
-	unit string
+	unit  string
+	since string
 }
 
 func (c journalctlSourceConfig) sourceType() sourceType {
@@ -80,7 +85,7 @@ type Service struct {
 	sources []*watchedSource
 }
 
-func New(apps []collectorconfig.App) (*Service, error) {
+func New(apps []collectorconfig.ResolvedApp) (*Service, error) {
 	s := &Service{
 		LogChan: make(chan AppLogEntry, 1000),
 		sources: make([]*watchedSource, 0, len(apps)),
@@ -119,12 +124,15 @@ func New(apps []collectorconfig.App) (*Service, error) {
 	return s, nil
 }
 
-func buildSourceConfig(app collectorconfig.App) (sourceConfig, error) {
-	if app.Format == "journalctl" {
-		return journalctlSourceConfig{unit: app.Unit}, nil
+func buildSourceConfig(app collectorconfig.ResolvedApp) (sourceConfig, error) {
+	switch app.SourceKind {
+	case "journalctl":
+		return journalctlSourceConfig{unit: app.Unit, since: app.Since}, nil
+	case "file":
+		return fileSourceConfig{path: app.Path, readFrom: app.ReadFrom}, nil
+	default:
+		return nil, fmt.Errorf("unknown source kind: %s", app.SourceKind)
 	}
-
-	return fileSourceConfig{path: app.Path}, nil
 }
 
 func (s *Service) GetAppNames() []string {
@@ -169,10 +177,14 @@ func (s *Service) openFile(ws *watchedSource, cfg fileSourceConfig) error {
 		return err
 	}
 
-	offset, err := file.Seek(0, io.SeekEnd)
-	if err != nil {
-		file.Close()
-		return err
+	offset := int64(0)
+	if cfg.readFrom == "end" {
+		var err error
+		offset, err = file.Seek(0, io.SeekEnd)
+		if err != nil {
+			file.Close()
+			return err
+		}
 	}
 
 	ws.file = file
@@ -186,7 +198,7 @@ func (s *Service) startJournalctl(ctx context.Context, ws *watchedSource, cfg jo
 		"-u", cfg.unit,
 		"-f",
 		"-o", "json",
-		"--since", "now",
+		"--since", cfg.since,
 	)
 
 	stdout, err := cmd.StdoutPipe()
@@ -211,7 +223,7 @@ func (s *Service) startJournalctl(ctx context.Context, ws *watchedSource, cfg jo
 func (s *Service) readJournalctl(ctx context.Context, ws *watchedSource, unit string) {
 	scanner := bufio.NewScanner(ws.stdout)
 	buf := make([]byte, 0, 64*1024)
-	scanner.Buffer(buf, 1024*1024)
+	scanner.Buffer(buf, maxLineBytes)
 
 	for scanner.Scan() {
 		if ctx.Err() != nil {
@@ -223,29 +235,27 @@ func (s *Service) readJournalctl(ctx context.Context, ws *watchedSource, unit st
 			continue
 		}
 
-		entry, err := ws.parser.Parse(line)
-		if err != nil {
-			slog.Error("Failed to parse journalctl line", "error", err, "unit", unit, "line", line)
-			continue
-		}
-
-		isStartup := ws.isStartupEntry(entry)
-		if isStartup {
-			slog.Info("Detected app startup", "app", ws.appName, "message", entry.Message)
-		}
-
-		select {
-		case s.LogChan <- AppLogEntry{AppName: ws.appName, Entry: entry, IsStartup: isStartup}:
-		case <-ctx.Done():
+		_, stop := s.parseAndDispatch(ctx, ws, line, "journalctl:"+unit)
+		if stop {
 			return
-		default:
-			slog.Warn("Log channel full, dropping entry")
 		}
 	}
 
 	if err := scanner.Err(); err != nil {
 		slog.Warn("Journalctl scanner error", "unit", unit, "error", err)
 	}
+}
+
+func extractJournalMessage(line string) (string, error) {
+	var data map[string]any
+	if err := json.Unmarshal([]byte(line), &data); err != nil {
+		return "", err
+	}
+	msg, ok := data["MESSAGE"]
+	if !ok {
+		return "", fmt.Errorf("missing MESSAGE field")
+	}
+	return fmt.Sprintf("%v", msg), nil
 }
 
 func (ws *watchedSource) isStartupEntry(entry types.LogEntry) bool {
@@ -286,6 +296,8 @@ func (s *Service) readNewLines(ctx context.Context, ws *watchedSource, path stri
 	}
 
 	scanner := bufio.NewScanner(ws.file)
+	buf := make([]byte, 0, 64*1024)
+	scanner.Buffer(buf, maxLineBytes)
 	count := 0
 
 	for scanner.Scan() {
@@ -298,21 +310,12 @@ func (s *Service) readNewLines(ctx context.Context, ws *watchedSource, path stri
 			continue
 		}
 
-		entry, err := ws.parser.Parse(line)
-		if err != nil {
-			slog.Debug("Failed to parse line", "error", err, "line", line)
+		dispatched, stop := s.parseAndDispatch(ctx, ws, line, path)
+		if stop {
+			return
+		}
+		if !dispatched {
 			continue
-		}
-
-		isStartup := ws.isStartupEntry(entry)
-		if isStartup {
-			slog.Info("Detected app startup", "app", ws.appName, "message", entry.Message)
-		}
-
-		select {
-		case s.LogChan <- AppLogEntry{AppName: ws.appName, Entry: entry, IsStartup: isStartup}:
-		default:
-			slog.Warn("Log channel full, dropping entry")
 		}
 
 		count++
@@ -327,6 +330,48 @@ func (s *Service) readNewLines(ctx context.Context, ws *watchedSource, path stri
 
 	newOffset, _ := ws.file.Seek(0, io.SeekCurrent)
 	ws.offset = newOffset
+}
+
+// parseAndDispatch is the single parse path for all sources.
+// Returns (dispatched, stop). stop=true means caller should terminate loop.
+func (s *Service) parseAndDispatch(ctx context.Context, ws *watchedSource, line, source string) (bool, bool) {
+	entry, err := s.parseLine(ws, line)
+	if err != nil {
+		slog.Debug("Failed to parse line", "app", ws.appName, "source", source, "error", err, "line", line)
+		return false, false
+	}
+
+	isStartup := ws.isStartupEntry(entry)
+	if isStartup {
+		slog.Info("Detected app startup", "app", ws.appName, "message", entry.Message)
+	}
+
+	select {
+	case s.LogChan <- AppLogEntry{AppName: ws.appName, Entry: entry, IsStartup: isStartup}:
+		return true, false
+	case <-ctx.Done():
+		return false, true
+	default:
+		slog.Warn("Log channel full, dropping entry")
+		return false, false
+	}
+}
+
+func (s *Service) parseLine(ws *watchedSource, line string) (types.LogEntry, error) {
+	entry, err := ws.parser.Parse(line)
+	if err == nil {
+		return entry, nil
+	}
+
+	// For journalctl source, non-journal parsers can parse raw MESSAGE payload.
+	if ws.source.sourceType() == sourceTypeJournalctl {
+		raw, extractErr := extractJournalMessage(line)
+		if extractErr == nil {
+			return ws.parser.Parse(raw)
+		}
+	}
+
+	return types.LogEntry{}, err
 }
 
 func (s *Service) reopenFile(ws *watchedSource, path string) {
