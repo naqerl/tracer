@@ -12,8 +12,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/ai-shift/tracer/apps/collector/internal/events"
-	logparser "github.com/ai-shift/tracer/apps/collector/internal/parsing"
 	"github.com/ai-shift/tracer/libs/types"
 )
 
@@ -28,82 +26,88 @@ const (
 type Source interface {
 	Read(ctx context.Context) <-chan types.RawLine
 	Name() string
+	AppName() string
 }
 
 // Service manages multiple log sources.
 type Service struct {
-	sources   []Source
-	pipelines []*logparser.Pipeline
-	bus       *events.Bus
+	sources []Source
 }
 
 // New creates a watchdog service for the given apps.
-func New(apps []logparser.Config, bus *events.Bus) (*Service, error) {
+func New(configs []SourceConfig) (*Service, error) {
 	s := &Service{
-		bus:       bus,
-		sources:   make([]Source, 0, len(apps)),
-		pipelines: make([]*logparser.Pipeline, 0, len(apps)),
+		sources: make([]Source, 0, len(configs)),
 	}
 
-	for _, app := range apps {
-		pipeline, err := logparser.NewPipeline(app)
-		if err != nil {
-			return nil, fmt.Errorf("creating pipeline for %s: %w", app.Name, err)
-		}
-
+	for _, cfg := range configs {
 		var source Source
-		switch app.SourceKind {
+		switch cfg.Kind {
 		case "file":
 			source = &fileSource{
-				appName:  app.Name,
-				path:     app.Path,
-				readFrom: app.ReadFrom,
+				appName:  cfg.AppName,
+				path:     cfg.Path,
+				readFrom: cfg.ReadFrom,
 			}
 		case "journalctl":
 			source = &journalctlSource{
-				appName: app.Name,
-				unit:    app.Unit,
-				since:   app.Since,
+				appName: cfg.AppName,
+				unit:    cfg.Unit,
+				since:   cfg.Since,
 			}
 		default:
-			panic(fmt.Sprintf("watchdog: unknown source kind %q for app %s", app.SourceKind, app.Name))
+			panic(fmt.Sprintf("watchdog: unknown source kind %q for app %s", cfg.Kind, cfg.AppName))
 		}
 
 		s.sources = append(s.sources, source)
-		s.pipelines = append(s.pipelines, pipeline)
 	}
 
 	return s, nil
 }
 
-// Start begins watching all sources.
-func (s *Service) Start(ctx context.Context) {
+// Start begins watching all sources and emits raw lines to the output channel.
+func (s *Service) Start(ctx context.Context, output chan<- types.RawLine) {
 	var wg sync.WaitGroup
-	for i, source := range s.sources {
-		pipeline := s.pipelines[i]
+	for _, source := range s.sources {
 		wg.Go(func() {
-			s.runSource(ctx, source, pipeline)
+			for line := range source.Read(ctx) {
+				select {
+				case output <- line:
+				case <-ctx.Done():
+					return
+				}
+			}
 		})
 	}
 	wg.Wait()
 }
 
-// GetAppNames returns the names of all watched apps.
-func (s *Service) GetAppNames() []string {
-	names := make([]string, len(s.pipelines))
-	for i, p := range s.pipelines {
-		names[i] = p.AppName()
+// SourceNames returns the names of all sources.
+func (s *Service) SourceNames() []string {
+	names := make([]string, len(s.sources))
+	for i, src := range s.sources {
+		names[i] = src.Name()
 	}
 	return names
 }
 
-// runSource reads from a source and publishes events.
-func (s *Service) runSource(ctx context.Context, source Source, pipeline *logparser.Pipeline) {
-	for line := range source.Read(ctx) {
-		if evt := pipeline.Process(line); evt != nil {
-			s.bus.Publish(evt)
-		}
+// AppNames returns the app names of all sources.
+func (s *Service) AppNames() []string {
+	names := make([]string, len(s.sources))
+	for i, src := range s.sources {
+		names[i] = src.AppName()
 	}
+	return names
+}
+
+// SourceConfig configures a log source.
+type SourceConfig struct {
+	AppName  string
+	Kind     string // "file" or "journalctl"
+	Path     string // for file
+	ReadFrom string // for file: "start" or "end"
+	Unit     string // for journalctl
+	Since    string // for journalctl
 }
 
 // fileSource reads from a log file.
@@ -116,7 +120,8 @@ type fileSource struct {
 	mu       sync.Mutex
 }
 
-func (fs *fileSource) Name() string { return fs.path }
+func (fs *fileSource) Name() string    { return fs.path }
+func (fs *fileSource) AppName() string { return fs.appName }
 
 func (fs *fileSource) Read(ctx context.Context) <-chan types.RawLine {
 	out := make(chan types.RawLine)
@@ -252,7 +257,8 @@ type journalctlSource struct {
 	since   string
 }
 
-func (js *journalctlSource) Name() string { return "journalctl:" + js.unit }
+func (js *journalctlSource) Name() string    { return "journalctl:" + js.unit }
+func (js *journalctlSource) AppName() string { return js.appName }
 
 func (js *journalctlSource) Read(ctx context.Context) <-chan types.RawLine {
 	out := make(chan types.RawLine)

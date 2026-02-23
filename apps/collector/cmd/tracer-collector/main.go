@@ -16,10 +16,12 @@ import (
 	collectorconfig "github.com/ai-shift/tracer/apps/collector/internal/config"
 	"github.com/ai-shift/tracer/apps/collector/internal/events"
 	logparser "github.com/ai-shift/tracer/apps/collector/internal/parsing"
+	"github.com/ai-shift/tracer/apps/collector/internal/pipeline"
 	sysstats "github.com/ai-shift/tracer/apps/collector/internal/stats"
 	wsclient "github.com/ai-shift/tracer/apps/collector/internal/transport"
 	watchdog "github.com/ai-shift/tracer/apps/collector/internal/watch"
 	"github.com/ai-shift/tracer/libs/logx"
+	"github.com/ai-shift/tracer/libs/types"
 )
 
 func main() {
@@ -70,7 +72,20 @@ func main() {
 	// Create shared event bus
 	bus := events.NewBus(1000)
 
-	// Build pipeline configs from app configs
+	// Build source configs for watchdog (just I/O, no parsing)
+	sourceConfigs := make([]watchdog.SourceConfig, len(cfg.Apps))
+	for i, app := range cfg.Apps {
+		sourceConfigs[i] = watchdog.SourceConfig{
+			AppName:  app.Name,
+			Kind:     app.SourceKind,
+			Path:     app.Path,
+			ReadFrom: app.ReadFrom,
+			Unit:     app.Unit,
+			Since:    app.Since,
+		}
+	}
+
+	// Build pipeline configs (for parsing)
 	pipelineConfigs := make([]logparser.Config, len(cfg.Apps))
 	for i, app := range cfg.Apps {
 		pipelineConfigs[i] = logparser.Config{
@@ -79,15 +94,26 @@ func main() {
 		}
 	}
 
-	// Initialize watchdog
-	watcher, err := watchdog.New(pipelineConfigs, bus)
+	// Initialize watchdog (dumb I/O)
+	watcher, err := watchdog.New(sourceConfigs)
 	if err != nil {
 		slog.Error("Failed to create watchdog", "error", err)
 		os.Exit(1)
 	}
 
+	// Initialize pipeline (parsing stage)
+	pipe, err := pipeline.New(pipelineConfigs)
+	if err != nil {
+		slog.Error("Failed to create pipeline", "error", err)
+		os.Exit(1)
+	}
+
 	// Initialize WebSocket client
-	wsClient := wsclient.New(panelEndpoint, cfg.APIKey, collectorName, watcher.GetAppNames(), bus)
+	wsClient := wsclient.New(panelEndpoint, cfg.APIKey, collectorName, pipe.AppNames(), bus)
+
+	// Create channels for pipeline stages
+	rawLines := make(chan types.RawLine, 100)
+	events := make(chan types.Event, 100)
 
 	// Start stats producer if interval is set
 	if cfg.StatsInterval != "" {
@@ -106,9 +132,28 @@ func main() {
 		}
 	}
 
-	// Start services
-	go watcher.Start(ctx)
-	wsClient.Start(ctx) // Blocks until shutdown
+	// Start pipeline stages
+	// Stage 1: Watchdog reads sources -> raw lines
+	go func() {
+		watcher.Start(ctx, rawLines)
+		close(rawLines)
+	}()
+
+	// Stage 2: Pipeline parses raw lines -> events
+	go func() {
+		pipe.Run(ctx, rawLines, events)
+		close(events)
+	}()
+
+	// Stage 3: Fan-in events to bus
+	go func() {
+		for evt := range events {
+			bus.Publish(evt)
+		}
+	}()
+
+	// Start WebSocket client (blocks until shutdown)
+	wsClient.Start(ctx)
 }
 
 func getOutboundIP() string {

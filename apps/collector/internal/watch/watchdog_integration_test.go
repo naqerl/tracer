@@ -9,7 +9,6 @@ import (
 	"time"
 
 	collectorconfig "github.com/ai-shift/tracer/apps/collector/internal/config"
-	"github.com/ai-shift/tracer/apps/collector/internal/events"
 	logparser "github.com/ai-shift/tracer/apps/collector/internal/parsing"
 	"github.com/ai-shift/tracer/libs/types"
 )
@@ -24,31 +23,23 @@ func TestWatcherReadFromEndSkipsExistingLines(t *testing.T) {
 		t.Fatalf("write existing line: %v", err)
 	}
 
-	bus := events.NewBus(10)
-	cfg := logparser.Config{
-		ResolvedApp: collectorconfig.ResolvedApp{
-			Name:            "app",
-			SourceKind:      "file",
-			Path:            logPath,
-			ReadFrom:        "end",
-			Source:          logPath,
-			ParserKind:      "json",
-			TimestampField:  "timestamp",
-			TimestampFormat: time.RFC3339,
-			LevelField:      "level",
-			TraceIDField:    "trace_id",
-			MessageField:    "message",
-		},
+	cfg := SourceConfig{
+		AppName:  "app",
+		Kind:     "file",
+		Path:     logPath,
+		ReadFrom: "end",
 	}
 
-	svc, err := New([]logparser.Config{cfg}, bus)
+	svc, err := New([]SourceConfig{cfg})
 	if err != nil {
 		t.Fatalf("new watcher: %v", err)
 	}
 
+	rawCh := make(chan types.RawLine, 10)
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go svc.Start(ctx)
+	go svc.Start(ctx, rawCh)
 
 	// Give watcher time to open file and seek to end.
 	time.Sleep(200 * time.Millisecond)
@@ -63,10 +54,12 @@ func TestWatcherReadFromEndSkipsExistingLines(t *testing.T) {
 	}
 	_ = f.Close()
 
-	ch := bus.Subscribe()
-	got := awaitLog(t, ch, 3*time.Second)
-	if got.Entry.Message != "new" {
-		t.Fatalf("expected only newly appended line, got message=%q", got.Entry.Message)
+	got := awaitRawLine(t, rawCh, 3*time.Second)
+	if got.Line != newLine {
+		t.Fatalf("expected newly appended line, got %q", got.Line)
+	}
+	if got.App != "app" {
+		t.Fatalf("expected app=app, got %q", got.App)
 	}
 }
 
@@ -80,36 +73,27 @@ func TestWatcherReadFromStartReadsExistingLines(t *testing.T) {
 		t.Fatalf("write existing line: %v", err)
 	}
 
-	bus := events.NewBus(10)
-	cfg := logparser.Config{
-		ResolvedApp: collectorconfig.ResolvedApp{
-			Name:            "app",
-			SourceKind:      "file",
-			Path:            logPath,
-			ReadFrom:        "start",
-			Source:          logPath,
-			ParserKind:      "json",
-			TimestampField:  "timestamp",
-			TimestampFormat: time.RFC3339,
-			LevelField:      "level",
-			TraceIDField:    "trace_id",
-			MessageField:    "message",
-		},
+	cfg := SourceConfig{
+		AppName:  "app",
+		Kind:     "file",
+		Path:     logPath,
+		ReadFrom: "start",
 	}
 
-	svc, err := New([]logparser.Config{cfg}, bus)
+	svc, err := New([]SourceConfig{cfg})
 	if err != nil {
 		t.Fatalf("new watcher: %v", err)
 	}
 
+	rawCh := make(chan types.RawLine, 10)
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go svc.Start(ctx)
+	go svc.Start(ctx, rawCh)
 
-	ch := bus.Subscribe()
-	got := awaitLog(t, ch, 3*time.Second)
-	if got.Entry.Message != "existing" {
-		t.Fatalf("expected existing line to be read first, got message=%q", got.Entry.Message)
+	got := awaitRawLine(t, rawCh, 3*time.Second)
+	if got.Line != existing {
+		t.Fatalf("expected existing line, got %q", got.Line)
 	}
 }
 
@@ -160,8 +144,8 @@ func TestPipelineStartupDetection(t *testing.T) {
 		ResolvedApp: collectorconfig.ResolvedApp{
 			Name:            "app",
 			SourceKind:      "file",
-			Path:            "/tmp/app.log",
 			Source:          "/tmp/app.log",
+			Path:            "/tmp/app.log",
 			ParserKind:      "json",
 			TimestampField:  "timestamp",
 			TimestampFormat: time.RFC3339,
@@ -193,19 +177,15 @@ func TestPipelineStartupDetection(t *testing.T) {
 	}
 }
 
-func awaitLog(t *testing.T, ch <-chan types.Event, timeout time.Duration) types.LogEvent {
+func awaitRawLine(t *testing.T, ch <-chan types.RawLine, timeout time.Duration) types.RawLine {
 	t.Helper()
 	select {
 	case got := <-ch:
-		logEvt, ok := got.(types.LogEvent)
-		if !ok {
-			t.Fatalf("expected LogEvent, got %T", got)
-		}
-		return logEvt
+		return got
 	case <-time.After(timeout):
-		t.Fatalf("timed out waiting for log entry")
+		t.Fatalf("timed out waiting for raw line")
 	}
-	return types.LogEvent{}
+	return types.RawLine{}
 }
 
 func jsonLine(ts, msg string) string {
