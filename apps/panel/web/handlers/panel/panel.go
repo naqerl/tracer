@@ -2,6 +2,7 @@ package panel
 
 import (
 	"embed"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -117,28 +118,23 @@ func (h *handler) collectorResources(w http.ResponseWriter, r *http.Request) {
 		h.t.RenderError(w, r, "Error", "Collector name required", http.StatusBadRequest)
 		return
 	}
-	_, err = h.panelSvc.GetCollectorDetail(r.Context(), user, collectorName)
-	if err != nil {
-		if err == panelsvc.ErrAccessDenied {
-			h.t.RenderError(w, r, "Forbidden", "You don't have access to this collector", http.StatusForbidden)
-			return
-		}
-		h.t.RenderError(w, r, "Error", "Collector not found", http.StatusNotFound)
-		return
-	}
-
 	rangeParam := r.URL.Query().Get("range")
 	if rangeParam == "" {
 		rangeParam = "24h"
 	}
 
-	stats, err := h.panelSvc.GetStatsHistory(r.Context(), collectorName, parseTimeRange(rangeParam))
+	stats, err := h.panelSvc.GetStatsHistory(r.Context(), user, collectorName, parseTimeRange(rangeParam))
 	if err != nil {
-		h.t.RenderError(w, r, "Error", "Failed to get stats history", http.StatusInternalServerError)
+		switch {
+		case errors.Is(err, panelsvc.ErrAccessDenied):
+			h.t.RenderError(w, r, "Forbidden", "You don't have access to this collector", http.StatusForbidden)
+		default:
+			h.t.RenderError(w, r, "Error", "Failed to get stats history", http.StatusInternalServerError)
+		}
 		return
 	}
 
-	data := map[string]any{
+	h.t.RenderHTTP(w, r, "collector-stats", map[string]any{
 		"Title":         collectorName + " Resources",
 		"CollectorName": collectorName,
 		"RangeParam":    rangeParam,
@@ -151,9 +147,7 @@ func (h *handler) collectorResources(w http.ResponseWriter, r *http.Request) {
 			Add(collectorName, collectorName).
 			Add("resources", "resources").
 			Build(),
-	}
-
-	h.t.RenderHTTP(w, r, "collector-stats", data)
+	})
 }
 
 func (h *handler) collectorApps(w http.ResponseWriter, r *http.Request) {
@@ -170,11 +164,14 @@ func (h *handler) collectorApps(w http.ResponseWriter, r *http.Request) {
 
 	view, err := h.panelSvc.GetCollectorDetail(r.Context(), user, collectorName)
 	if err != nil {
-		if err == panelsvc.ErrAccessDenied {
+		switch {
+		case errors.Is(err, panelsvc.ErrAccessDenied):
 			h.t.RenderError(w, r, "Forbidden", "You don't have access to this collector", http.StatusForbidden)
-			return
+		case errors.Is(err, panelsvc.ErrAppNotFound):
+			h.t.RenderError(w, r, "Error", "Collector not found", http.StatusNotFound)
+		default:
+			h.t.RenderError(w, r, "Error", "Failed to get collector", http.StatusInternalServerError)
 		}
-		h.t.RenderError(w, r, "Error", "Collector not found", http.StatusNotFound)
 		return
 	}
 

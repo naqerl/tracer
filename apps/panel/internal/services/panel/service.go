@@ -343,7 +343,14 @@ func (s *Service) CanAccessApp(ctx context.Context, user sharedtypes.User, appNa
 
 // GetStatsHistory returns stats history for a collector.
 // This is a wrapper around ingest service for now.
-func (s *Service) GetStatsHistory(ctx context.Context, collectorName string, since time.Time) ([]db.SystemStat, error) {
+func (s *Service) GetStatsHistory(ctx context.Context, user sharedtypes.User, collectorName string, since time.Time) ([]db.SystemStat, error) {
+	hasAccess, err := s.permissions.CanAccessCollector(ctx, user, collectorName)
+	if err != nil {
+		return nil, err
+	}
+	if !hasAccess {
+		return nil, ErrAccessDenied
+	}
 	return s.ingestSvc.GetStatsHistory(ctx, ingest.CollectorName(collectorName), since)
 }
 
