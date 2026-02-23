@@ -10,7 +10,7 @@ import (
 
 	panelsvc "github.com/ai-shift/tracer/apps/panel/internal/services/panel"
 	"github.com/ai-shift/tracer/apps/panel/web/middleware"
-	authmw "github.com/ai-shift/tracer/apps/panel/web/middleware/auth"
+	"github.com/ai-shift/tracer/apps/panel/web/middleware/auth"
 	"github.com/ai-shift/tracer/apps/panel/web/templates"
 )
 
@@ -19,14 +19,14 @@ var views embed.FS
 
 type handler struct {
 	t        templates.Templates
-	panelSvc *panelsvc.Service
+	svc *panelsvc.Service
 }
 
-func InitMux(panelSvc *panelsvc.Service) *http.ServeMux {
+func InitMux(svc *panelsvc.Service) *http.ServeMux {
 	m := http.NewServeMux()
 	h := handler{
 		t:        templates.New(views),
-		panelSvc: panelSvc,
+		svc: svc,
 	}
 
 	// Dashboard
@@ -50,12 +50,12 @@ func InitMux(panelSvc *panelsvc.Service) *http.ServeMux {
 // Dashboard handlers
 
 func (h *handler) dashboard(w http.ResponseWriter, r *http.Request) {
-	user, err := authmw.RequireOrRedirect(w, r)
+	user, err := auth.RequireOrRedirect(w, r)
 	if err != nil {
 		return
 	}
 
-	collectors, err := h.panelSvc.GetCollectorsView(r.Context(), user)
+	collectors, err := h.svc.GetCollectorsView(r.Context(), user)
 	if err != nil {
 		h.t.RenderError(w, r, "Error", "Failed to get collectors", http.StatusInternalServerError)
 		return
@@ -72,7 +72,7 @@ func (h *handler) dashboard(w http.ResponseWriter, r *http.Request) {
 // Collector handlers
 
 func (h *handler) getCollector(w http.ResponseWriter, r *http.Request) {
-	user, err := authmw.RequireOrRedirect(w, r)
+	user, err := auth.RequireOrRedirect(w, r)
 	if err != nil {
 		return
 	}
@@ -83,13 +83,16 @@ func (h *handler) getCollector(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	view, err := h.panelSvc.GetCollectorDetail(r.Context(), user, collectorName)
+	view, err := h.svc.GetCollectorDetail(r.Context(), user, collectorName)
 	if err != nil {
-		if err == panelsvc.ErrAccessDenied {
+		switch {
+		case errors.Is(err, panelsvc.ErrAccessDenied):
 			h.t.RenderError(w, r, "Forbidden", "You don't have access to this collector", http.StatusForbidden)
-			return
+		case errors.Is(err, panelsvc.ErrAppNotFound):
+			h.t.RenderError(w, r, "Error", "Collector not found", http.StatusNotFound)
+		default:
+			h.t.RenderError(w, r, "Error", "Failed to get collector", http.StatusInternalServerError)
 		}
-		h.t.RenderError(w, r, "Error", "Collector not found", http.StatusNotFound)
 		return
 	}
 
@@ -108,7 +111,7 @@ func (h *handler) getCollector(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) getCollectorResources(w http.ResponseWriter, r *http.Request) {
-	user, err := authmw.RequireOrRedirect(w, r)
+	user, err := auth.RequireOrRedirect(w, r)
 	if err != nil {
 		return
 	}
@@ -123,7 +126,7 @@ func (h *handler) getCollectorResources(w http.ResponseWriter, r *http.Request) 
 		rangeParam = "24h"
 	}
 
-	stats, err := h.panelSvc.GetStatsHistory(r.Context(), user, collectorName, parseTimeRange(rangeParam))
+	stats, err := h.svc.GetStatsHistory(r.Context(), user, collectorName, parseTimeRange(rangeParam))
 	if err != nil {
 		switch {
 		case errors.Is(err, panelsvc.ErrAccessDenied):
@@ -151,7 +154,7 @@ func (h *handler) getCollectorResources(w http.ResponseWriter, r *http.Request) 
 }
 
 func (h *handler) getCollectorApps(w http.ResponseWriter, r *http.Request) {
-	user, err := authmw.RequireOrRedirect(w, r)
+	user, err := auth.RequireOrRedirect(w, r)
 	if err != nil {
 		return
 	}
@@ -162,7 +165,7 @@ func (h *handler) getCollectorApps(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	view, err := h.panelSvc.GetCollectorDetail(r.Context(), user, collectorName)
+	view, err := h.svc.GetCollectorDetail(r.Context(), user, collectorName)
 	if err != nil {
 		switch {
 		case errors.Is(err, panelsvc.ErrAccessDenied):
@@ -193,7 +196,7 @@ func (h *handler) getCollectorApps(w http.ResponseWriter, r *http.Request) {
 // App logs handlers
 
 func (h *handler) getApp(w http.ResponseWriter, r *http.Request) {
-	user, err := authmw.RequireOrRedirect(w, r)
+	user, err := auth.RequireOrRedirect(w, r)
 	if err != nil {
 		return
 	}
@@ -201,7 +204,7 @@ func (h *handler) getApp(w http.ResponseWriter, r *http.Request) {
 	collectorName := r.PathValue("collector")
 	appName := r.PathValue("app")
 
-	hasAccess, err := h.panelSvc.CanAccessApp(r.Context(), user, appName)
+	hasAccess, err := h.svc.CanAccessApp(r.Context(), user, appName)
 	if err != nil {
 		h.t.RenderError(w, r, "Error", "Failed to check access", http.StatusInternalServerError)
 		return
@@ -211,13 +214,14 @@ func (h *handler) getApp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	stats, grouped, err := h.panelSvc.GetAppAnalytics(r.Context(), collectorName, appName)
+	stats, grouped, err := h.svc.GetAppAnalytics(r.Context(), collectorName, appName)
 	if err != nil {
-		if err == panelsvc.ErrAppNotFound {
+		switch {
+		case errors.Is(err, panelsvc.ErrAppNotFound):
 			h.t.RenderError(w, r, "Error", "App not found", http.StatusNotFound)
-			return
+		default:
+			h.t.RenderError(w, r, "Error", "Failed to fetch analytics", http.StatusInternalServerError)
 		}
-		h.t.RenderError(w, r, "Error", "Failed to fetch analytics", http.StatusInternalServerError)
 		return
 	}
 
@@ -250,7 +254,7 @@ func (h *handler) getApp(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) getAppLogs(w http.ResponseWriter, r *http.Request) {
-	user, err := authmw.RequireOrRedirect(w, r)
+	user, err := auth.RequireOrRedirect(w, r)
 	if err != nil {
 		return
 	}
@@ -258,7 +262,7 @@ func (h *handler) getAppLogs(w http.ResponseWriter, r *http.Request) {
 	collectorName := r.PathValue("collector")
 	appName := r.PathValue("app")
 
-	hasAccess, err := h.panelSvc.CanAccessApp(r.Context(), user, appName)
+	hasAccess, err := h.svc.CanAccessApp(r.Context(), user, appName)
 	if err != nil {
 		h.t.RenderError(w, r, "Error", "Failed to check access", http.StatusInternalServerError)
 		return
@@ -272,13 +276,14 @@ func (h *handler) getAppLogs(w http.ResponseWriter, r *http.Request) {
 	offset := parseOffset(r.URL.Query().Get("offset"))
 	limit := int64(50)
 
-	logGroups, err := h.panelSvc.GetLogGroups(r.Context(), collectorName, appName, level, offset, limit)
+	logGroups, err := h.svc.GetLogGroups(r.Context(), collectorName, appName, level, offset, limit)
 	if err != nil {
-		if err == panelsvc.ErrAppNotFound {
+		switch {
+		case errors.Is(err, panelsvc.ErrAppNotFound):
 			h.t.RenderError(w, r, "Error", "App not found", http.StatusNotFound)
-			return
+		default:
+			h.t.RenderError(w, r, "Error", "Failed to fetch log groups", http.StatusInternalServerError)
 		}
-		h.t.RenderError(w, r, "Error", "Failed to fetch log groups", http.StatusInternalServerError)
 		return
 	}
 
@@ -321,7 +326,7 @@ func (h *handler) getAppLogs(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) getAppLogGroupByID(w http.ResponseWriter, r *http.Request) {
-	user, err := authmw.RequireOrRedirect(w, r)
+	user, err := auth.RequireOrRedirect(w, r)
 	if err != nil {
 		return
 	}
@@ -334,7 +339,7 @@ func (h *handler) getAppLogGroupByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	hasAccess, err := h.panelSvc.CanAccessApp(r.Context(), user, appName)
+	hasAccess, err := h.svc.CanAccessApp(r.Context(), user, appName)
 	if err != nil {
 		h.t.RenderError(w, r, "Error", "Failed to check access", http.StatusInternalServerError)
 		return
@@ -348,13 +353,14 @@ func (h *handler) getAppLogGroupByID(w http.ResponseWriter, r *http.Request) {
 	offset := parseOffset(r.URL.Query().Get("offset"))
 	limit := int64(50)
 
-	detail, err := h.panelSvc.GetLogDetail(r.Context(), collectorName, appName, groupID, offset, limit)
+	detail, err := h.svc.GetLogDetail(r.Context(), collectorName, appName, groupID, offset, limit)
 	if err != nil {
-		if err == panelsvc.ErrAppNotFound || err == panelsvc.ErrLogNotFound {
+		switch {
+		case errors.Is(err, panelsvc.ErrAppNotFound), errors.Is(err, panelsvc.ErrLogNotFound):
 			h.t.RenderError(w, r, "Error", "Group not found", http.StatusNotFound)
-			return
+		default:
+			h.t.RenderError(w, r, "Error", "Failed to fetch logs", http.StatusInternalServerError)
 		}
-		h.t.RenderError(w, r, "Error", "Failed to fetch logs", http.StatusInternalServerError)
 		return
 	}
 
@@ -383,7 +389,7 @@ func (h *handler) getAppLogGroupByID(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) GetAppLogByID(w http.ResponseWriter, r *http.Request) {
-	user, err := authmw.GetUser(r)
+	user, err := auth.GetUser(r)
 	if err != nil {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
@@ -393,7 +399,7 @@ func (h *handler) GetAppLogByID(w http.ResponseWriter, r *http.Request) {
 	appName := r.PathValue("app")
 	idStr := r.PathValue("id")
 
-	hasAccess, err := h.panelSvc.CanAccessApp(r.Context(), user, appName)
+	hasAccess, err := h.svc.CanAccessApp(r.Context(), user, appName)
 	if err != nil {
 		http.Error(w, "Failed to check access", http.StatusInternalServerError)
 		return
@@ -409,17 +415,16 @@ func (h *handler) GetAppLogByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	logEntry, err := h.panelSvc.GetLogByID(r.Context(), collectorName, appName, id)
+	logEntry, err := h.svc.GetLogByID(r.Context(), collectorName, appName, id)
 	if err != nil {
-		if err == panelsvc.ErrAppNotFound {
+		switch {
+		case errors.Is(err, panelsvc.ErrAppNotFound):
 			http.Error(w, "App not found", http.StatusNotFound)
-			return
-		}
-		if err == panelsvc.ErrLogNotFound {
+		case errors.Is(err, panelsvc.ErrLogNotFound):
 			http.Error(w, "Log not found", http.StatusNotFound)
-			return
+		default:
+			http.Error(w, "Failed to get log", http.StatusInternalServerError)
 		}
-		http.Error(w, "Failed to get log", http.StatusInternalServerError)
 		return
 	}
 
@@ -453,21 +458,6 @@ func parseTimeRange(rangeParam string) time.Time {
 		return time.Now().Add(-time.Duration(value) * 24 * time.Hour)
 	default:
 		return time.Now().Add(-24 * time.Hour)
-	}
-}
-
-func getBucketGranularity(rangeParam string) string {
-	switch rangeParam {
-	case "1h":
-		return "1min"
-	case "6h", "24h":
-		return "5min"
-	case "7d":
-		return "15min"
-	case "30d":
-		return "1hour"
-	default:
-		return "5min"
 	}
 }
 
