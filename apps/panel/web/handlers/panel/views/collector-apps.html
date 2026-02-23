@@ -16,11 +16,7 @@
 {{define "collector-apps-content"}}
 {{template "navbar" .Nav}}
 
-<div hx-get="/panel/collectors/{{.CollectorName}}/apps/entries"
-     hx-trigger="load"
-     hx-swap="innerHTML">
-    <p class="text-fg-secondary py-4">Loading apps...</p>
-</div>
+{{template "collector-apps-data" .}}
 {{end}}
 
 {{define "collector-apps-data"}}

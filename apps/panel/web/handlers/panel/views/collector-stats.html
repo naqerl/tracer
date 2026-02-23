@@ -60,12 +60,7 @@
        class="range-tab {{if eq .RangeParam "30d"}}active{{end}}">30 Days</a>
 </div>
 
-<div id="collector-resources-content"
-     hx-get="/panel/collectors/{{.CollectorName}}/resources/entries?range={{.RangeParam}}"
-     hx-trigger="load"
-     hx-swap="innerHTML">
-    <p class="text-fg-secondary py-4">Loading resources...</p>
-</div>
+{{template "collector-stats-data" .}}
 
 {{end}}
 

@@ -20,7 +20,7 @@
 {{define "dashboard-content"}}
 {{template "navbar" .Nav}}
 
-<div hx-get="/panel/collectors/entries" hx-trigger="every 10s" hx-swap="innerHTML">
+<div>
     {{template "collectors-sections" .}}
 </div>
 {{end}}

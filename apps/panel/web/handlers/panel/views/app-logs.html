@@ -31,65 +31,12 @@
         <div class="max-w-7xl mx-auto p-6">
             {{template "navbar" .Nav}}
 
-            <!-- Log Volume Chart Section -->
-            <div class="bg-bg-secondary p-5 mb-6">
-                <h2 class="text-lg font-medium mb-4">Log Volume</h2>
-
-                <!-- Time Range Tabs -->
-                <div class="range-tabs" id="chart-range-tabs">
-                    <a href="#" data-range="1h" class="range-tab">1h</a>
-                    <a href="#" data-range="6h" class="range-tab">6h</a>
-                    <a href="#" data-range="24h" class="range-tab active">24h</a>
-                    <a href="#" data-range="7d" class="range-tab">7d</a>
-                    <a href="#" data-range="30d" class="range-tab">30d</a>
-                </div>
-
-                <!-- Chart Data Container (Lazy Loaded) -->
-                <div id="chart-data-container"
-                     hx-get="/panel/collectors/{{.CollectorName}}/apps/{{.AppName}}/logs/volume?range=24h"
-                     hx-trigger="load"
-                     hx-swap="innerHTML">
-                    <div class="flex items-center justify-center py-12">
-                        <svg class="animate-spin h-8 w-8 text-accent" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                        </svg>
-                        <span class="ml-3 text-fg-secondary">Loading chart...</span>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Logs Container - Lazy loaded -->
+            <!-- Logs Container -->
             <div class="bg-bg-secondary p-5">
                 <h2 class="text-lg font-medium mb-4">Log Groups</h2>
-                <div id="logs-content" hx-get="/panel/collectors/{{.CollectorName}}/apps/{{.AppName}}/logs/entries" hx-trigger="load once, every 10s" hx-swap="innerHTML">
-                    <p class="text-fg-secondary text-center py-4">Loading logs...</p>
-                </div>
+                {{template "app-logs-table" .}}
             </div>
         </div>
-
-        <!-- Range Tab Click Handler -->
-        <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            const tabs = document.querySelectorAll('#chart-range-tabs .range-tab');
-            tabs.forEach(tab => {
-                tab.addEventListener('click', function(e) {
-                    e.preventDefault();
-                    const range = this.dataset.range;
-
-                    // Update active state
-                    tabs.forEach(t => t.classList.remove('active'));
-                    this.classList.add('active');
-
-                    // Trigger HTMX load
-                    htmx.ajax('GET', `/panel/collectors/{{.CollectorName}}/apps/{{.AppName}}/logs/volume?range=${range}`, {
-                        target: '#chart-data-container',
-                        swap: 'innerHTML'
-                    });
-                });
-            });
-        });
-        </script>
     </body>
 </html>
 {{end}}
@@ -100,10 +47,10 @@
     <!-- Filter tabs -->
     <div class="flex items-center justify-between mb-4">
         <div class="flex gap-2">
-            <button type="button" class="px-3 py-1.5 text-sm transition-colors {{if not .Level}}text-fg font-medium{{else}}text-fg-secondary hover:text-fg{{end}}" hx-get="/panel/collectors/{{.CollectorName}}/apps/{{.AppName}}/logs/entries" hx-swap="innerHTML" hx-target="#logs-content">All ({{.TotalCount}})</button>
-            <button type="button" class="px-3 py-1.5 text-sm transition-colors {{if eq .Level "error"}}text-red-500 font-medium{{else}}text-fg-secondary hover:text-red-400{{end}}" hx-get="/panel/collectors/{{.CollectorName}}/apps/{{.AppName}}/logs/entries?level=error" hx-swap="innerHTML" hx-target="#logs-content">Errors ({{.ErrorCount}})</button>
-            <button type="button" class="px-3 py-1.5 text-sm transition-colors {{if eq .Level "warn"}}text-yellow-500 font-medium{{else}}text-fg-secondary hover:text-yellow-400{{end}}" hx-get="/panel/collectors/{{.CollectorName}}/apps/{{.AppName}}/logs/entries?level=warn" hx-swap="innerHTML" hx-target="#logs-content">Warnings ({{.WarnCount}})</button>
-            <button type="button" class="px-3 py-1.5 text-sm transition-colors {{if eq .Level "info"}}text-blue-500 font-medium{{else}}text-fg-secondary hover:text-blue-400{{end}}" hx-get="/panel/collectors/{{.CollectorName}}/apps/{{.AppName}}/logs/entries?level=info" hx-swap="innerHTML" hx-target="#logs-content">Info ({{.InfoCount}})</button>
+            <a href="/panel/collectors/{{.CollectorName}}/apps/{{.AppName}}/logs" class="px-3 py-1.5 text-sm transition-colors {{if not .Level}}text-fg font-medium{{else}}text-fg-secondary hover:text-fg{{end}}">All ({{.TotalCount}})</a>
+            <a href="/panel/collectors/{{.CollectorName}}/apps/{{.AppName}}/logs?level=error" class="px-3 py-1.5 text-sm transition-colors {{if eq .Level "error"}}text-red-500 font-medium{{else}}text-fg-secondary hover:text-red-400{{end}}">Errors ({{.ErrorCount}})</a>
+            <a href="/panel/collectors/{{.CollectorName}}/apps/{{.AppName}}/logs?level=warn" class="px-3 py-1.5 text-sm transition-colors {{if eq .Level "warn"}}text-yellow-500 font-medium{{else}}text-fg-secondary hover:text-yellow-400{{end}}">Warnings ({{.WarnCount}})</a>
+            <a href="/panel/collectors/{{.CollectorName}}/apps/{{.AppName}}/logs?level=info" class="px-3 py-1.5 text-sm transition-colors {{if eq .Level "info"}}text-blue-500 font-medium{{else}}text-fg-secondary hover:text-blue-400{{end}}">Info ({{.InfoCount}})</a>
         </div>
     </div>
 
@@ -139,13 +86,9 @@
                 </tr>
                 {{end}}
                 {{if .HasMore}}
-                <tr id="load-more-trigger"
-                    hx-get="/panel/collectors/{{.CollectorName}}/apps/{{$.AppName}}/logs/entries?{{if .Level}}level={{.Level}}&{{end}}offset={{.NextOffset}}"
-                    hx-trigger="revealed"
-                    hx-swap="outerHTML"
-                    class="sm:table-row">
+                <tr class="sm:table-row">
                     <td colspan="{{if not .Level}}3{{else}}2{{end}}" class="text-center text-fg-secondary py-4">
-                        <span class="inline-block">Loading more...</span>
+                        <a href="/panel/collectors/{{.CollectorName}}/apps/{{.AppName}}/logs?{{if .Level}}level={{.Level}}&{{end}}offset={{.NextOffset}}" class="text-accent hover:underline">Load more...</a>
                     </td>
                 </tr>
                 {{end}}
@@ -170,13 +113,9 @@
 </tr>
 {{end}}
 {{if .HasMore}}
-<tr id="load-more-trigger"
-    hx-get="/panel/collectors/{{.CollectorName}}/apps/{{.AppName}}/logs/entries?{{if .Level}}level={{.Level}}&{{end}}offset={{.NextOffset}}"
-    hx-trigger="revealed"
-    hx-swap="outerHTML"
-    class="sm:table-row">
+<tr class="sm:table-row">
     <td colspan="{{if not .Level}}3{{else}}2{{end}}" class="text-center text-fg-secondary py-4">
-        <span class="inline-block">Loading more...</span>
+        <a href="/panel/collectors/{{.CollectorName}}/apps/{{.AppName}}/logs?{{if .Level}}level={{.Level}}&{{end}}offset={{.NextOffset}}" class="text-accent hover:underline">Load more...</a>
     </td>
 </tr>
 {{else}}
@@ -208,11 +147,7 @@
                     <h2 class="text-lg font-medium mb-2">Log Details</h2>
                     <p class="text-fg-secondary text-sm mb-4 break-words">{{.LogGroup.Message}}</p>
 
-                    <div hx-get="/panel/collectors/{{.CollectorName}}/apps/{{.AppName}}/logs/groups/{{.LogGroup.ID}}/entries{{if .HighlightLogID}}?logID={{.HighlightLogID}}{{end}}"
-                         hx-trigger="load"
-                         hx-swap="innerHTML">
-                        <p class="text-fg-secondary text-center py-4">Loading logs...</p>
-                    </div>
+                    {{template "app-logs-detail" .}}
                 </div>
             </div>
         </body>
@@ -262,13 +197,9 @@
             </tr>
             {{end}}
             {{if .HasMore}}
-            <tr id="load-more-logs-trigger"
-                hx-get="/panel/collectors/{{.CollectorName}}/apps/{{.AppName}}/logs/groups/{{.LogGroup.ID}}/entries?offset={{.NextOffset}}"
-                hx-trigger="revealed"
-                hx-swap="outerHTML"
-                class="sm:table-row">
+            <tr class="sm:table-row">
                 <td colspan="3" class="text-center text-fg-secondary py-4">
-                    <span class="inline-block">Loading more...</span>
+                    <a href="/panel/collectors/{{.CollectorName}}/apps/{{.AppName}}/logs/groups/{{.LogGroup.ID}}?offset={{.NextOffset}}" class="text-accent hover:underline">Load more...</a>
                 </td>
             </tr>
             {{end}}
@@ -315,13 +246,9 @@ document.addEventListener('DOMContentLoaded', function() {
 </tr>
 {{end}}
 {{if .HasMore}}
-<tr id="load-more-logs-trigger"
-    hx-get="/panel/collectors/{{.CollectorName}}/apps/{{.AppName}}/logs/groups/{{.LogGroup.ID}}/entries?offset={{.NextOffset}}"
-    hx-trigger="revealed"
-    hx-swap="outerHTML"
-    class="sm:table-row">
+<tr class="sm:table-row">
     <td colspan="3" class="text-center text-fg-secondary py-4">
-        <span class="inline-block">Loading more...</span>
+        <a href="/panel/collectors/{{.CollectorName}}/apps/{{.AppName}}/logs/groups/{{.LogGroup.ID}}?offset={{.NextOffset}}" class="text-accent hover:underline">Load more...</a>
     </td>
 </tr>
 {{else}}
