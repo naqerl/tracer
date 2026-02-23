@@ -67,7 +67,7 @@ func New(apps []logparser.Config, bus *events.Bus) (*Service, error) {
 				since:   app.Since,
 			}
 		default:
-			return nil, fmt.Errorf("unknown source kind: %s", app.SourceKind)
+			panic(fmt.Sprintf("watchdog: unknown source kind %q for app %s", app.SourceKind, app.Name))
 		}
 
 		s.sources = append(s.sources, source)
