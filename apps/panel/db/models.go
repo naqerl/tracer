@@ -19,9 +19,7 @@ type Log struct {
 	TraceID   string
 	Level     string
 	Message   string
-	Source    string
 	Context   sql.NullString
-	Raw       string
 	GroupID   sql.NullInt64
 	CreatedAt sql.NullTime
 }

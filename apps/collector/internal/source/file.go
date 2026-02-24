@@ -25,11 +25,11 @@ type fileSource struct {
 
 // NewFile creates a new file source.
 // Enforces creation of the error channel for health monitoring.
-func NewFile(app, path, from string) Source {
+func NewFile(cfg FileConfig) Source {
 	return &fileSource{
-		app:   app,
-		path:  path,
-		from:  from,
+		app:   cfg.AppName,
+		path:  cfg.Path,
+		from:  cfg.ReadFrom,
 		errCh: make(chan error, 1),
 	}
 }

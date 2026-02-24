@@ -308,9 +308,7 @@ func (s *Service) StoreLog(ctx context.Context, req StoreLogRequest) (int64, err
 		TraceID:   req.Entry.TraceID,
 		Level:     string(req.Entry.Level),
 		Message:   req.Entry.Message,
-		Source:    req.Entry.Source,
 		Context:   sql.NullString{String: contextJSON, Valid: true},
-		Raw:       req.Entry.Raw,
 		GroupID:   sql.NullInt64{Int64: logGroup.ID, Valid: true},
 		CreatedAt: sql.NullTime{Time: ts, Valid: true},
 	})
@@ -376,9 +374,7 @@ func (s *Service) StoreStartup(ctx context.Context, req StoreStartupRequest) err
 		TraceID:   req.Entry.TraceID,
 		Level:     level,
 		Message:   req.Entry.Message,
-		Source:    req.Entry.Source,
 		Context:   sql.NullString{String: contextJSON, Valid: true},
-		Raw:       req.Entry.Raw,
 		GroupID:   sql.NullInt64{Int64: logGroup.ID, Valid: true},
 		CreatedAt: sql.NullTime{Time: ts, Valid: true},
 	})

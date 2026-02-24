@@ -15,7 +15,6 @@ import (
 	"github.com/ai-shift/tracer/apps/collector/internal/supervisor"
 	"github.com/ai-shift/tracer/apps/collector/internal/transport"
 	"github.com/ai-shift/tracer/apps/collector/internal/watchdog"
-	"github.com/ai-shift/tracer/apps/collector/internal/watchdog/source"
 	"github.com/ai-shift/tracer/libs/logx"
 	"github.com/ai-shift/tracer/libs/types"
 )
@@ -24,10 +23,9 @@ func main() {
 	configPath := flag.String("config", "", "path to config file")
 	flag.Parse()
 
-	// Setup structured logging
 	logx.SetDefault()
 
-	// Load configuration
+
 	cfg, err := config.Load(*configPath)
 	if err != nil {
 		slog.Error("Failed to load config", "error", err)
@@ -44,78 +42,69 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	// Create shared event bus
-	bus := events.NewBus(1000)
+        if err := serve(ctx, cfg); err != nil {
+                log.Fatalf("failed to serve: %w", err)
+        }
+}
 
-	// Build sources for watchdog (just I/O, no parsing)
-	sources := make([]watchdog.Source, len(cfg.Apps))
-	for i, app := range cfg.Apps {
-		switch app.SourceKind {
-		case "file":
-			sources[i] = source.NewFile(app.Name, app.Path, app.ReadFrom)
-		case "journalctl":
-			sources[i] = source.NewJournalctl(app.Name, app.Unit, app.Since)
-		default:
-			slog.Error("Unknown source kind", "app", app.Name, "kind", app.SourceKind)
-			os.Exit(1)
-		}
-	}
+func serve(ctx context.Context, cfg config.Config) error {
+        var wg sync.WaitGroup
+        mpsc := make(chan type.Event, 1000)
+        
+        // Sources
+        var sources map[string]source.Source
+        for _, spec := range cfg.Sources {
+                source := source.New(spec.Params)
+                name := fmt.Printf("source:%s", spec.ID)
+                sources[spec.ID] = super.Vised(source, name)
+        }
+        if len(sources) != cfg.Sources {
+                return fmt.Errorf("source ids should be unique")
+        }
 
-	// Initialize watchdog (dumb I/O)
-	watcher := watchdog.New(sources)
+        // Parsers
+        var parsers map[string]parser.Parser
+        for _, spec := range cfg.Sources {
+                parsers[spec.ID] = parser.New(spec.Params)
+        }
+        if len(parsers) != cfg.Parsers {
+                return fmt.Errorf("source ids should be unique")
+        }
 
-	// Initialize ingest pipeline (parsing and classification stage)
-	pipe, err := ingest.New(cfg.Apps)
-	if err != nil {
-		slog.Error("Failed to create pipeline", "error", err)
-		os.Exit(1)
-	}
+        // Create apps
+        var apps []app.App
+        for _, spec := range cfg.Apps {
+                s, ok := sources[spec.SourceID]
+                if !ok {
+                        return fmt.Errorf("source with id=%s not found", spec.SourceID)
+                }
+                p, ok := parsers[spec.ParserID]
+                if !ok {
+                        return fmt.Errorf("parser with id=%s not found", spec.ParserID)
+                }
+                apps = append(apps, app.New(s, p, spec.Name))
+        }
 
-	// Collect app names from config
-	appNames := make([]string, len(cfg.Apps))
-	for i, app := range cfg.Apps {
-		appNames[i] = app.Name
-	}
+        // Resource monitor
+        resMonitor = resources.New(cfg.Resources, bus)
 
-	// Initialize WebSocket client
-	wsClient := transport.New(cfg.PanelEndpoint, cfg.APIKey, cfg.ResolvedName, appNames, bus)
+        // Transport
+        transport = super.Vised(transport.New(ctx, bus), "transport")
 
-	// Create channels for pipeline stages
-	rawLines := make(chan types.RawLine, 100)
-	events := make(chan types.Event, 100)
-
-	// Start stats producer if interval is set
-	if cfg.ResolvedStatsInterval > 0 {
-		statsCollector := stats.New(cfg.ResolvedDataDir)
-		statsProducer := stats.NewProducer(statsCollector, cfg.ResolvedStatsInterval, bus)
-		go statsProducer.Start(ctx)
-		slog.Info("System stats enabled", "interval", cfg.ResolvedStatsInterval, "data_dir", cfg.ResolvedDataDir)
-	}
-
-	// Start supervisor to monitor sources and emit error events
-	super := supervisor.New(sources, bus)
-	go super.Run(ctx)
-
-	// Start pipeline stages
-	// Stage 1: Watchdog reads sources -> raw lines
-	go func() {
-		watcher.Start(ctx, rawLines)
-		close(rawLines)
-	}()
-
-	// Stage 2: Ingest pipeline classifies raw lines -> events
-	go func() {
-		pipe.Run(ctx, rawLines, events)
-		close(events)
-	}()
-
-	// Stage 3: Fan-in events to bus
-	go func() {
-		for evt := range events {
-			bus.Publish(evt)
-		}
-	}()
-
-	// Start WebSocket client (blocks until shutdown)
-	wsClient.Start(ctx)
+        // Run
+        wg.Go(func () { transport.Start(ctx, bus) })
+        wg.Go(func () {
+                for stat := range.resMonitor.Produce(ctx) {
+                        mpsc <- stat
+                }
+        })
+        wg.Go(func () { app.Start(ctx, bus) })
+        for _, app := range apps {
+                wg.Go(func () {
+                        for log := range app.Produce(ctx) {
+                                mpsc <- stat
+                        }
+                })
+        }
+        wg.wait()
 }

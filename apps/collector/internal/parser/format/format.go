@@ -9,6 +9,14 @@ import (
 	"github.com/ai-shift/tracer/libs/types"
 )
 
+type Schema struct {
+	LevelField      string
+	TraceIDField    string
+	MessageField    string
+	TimestampField  string
+	TimestampFormat string
+}
+
 func normalizeLevel(level string) types.LogLevel {
 	normalized := strings.ToUpper(level)
 	switch normalized {

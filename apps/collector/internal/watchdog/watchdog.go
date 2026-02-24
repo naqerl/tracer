@@ -5,7 +5,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/ai-shift/tracer/apps/collector/internal/watchdog/source"
+	"github.com/ai-shift/tracer/apps/collector/internal/source"
 	"github.com/ai-shift/tracer/libs/types"
 )
 

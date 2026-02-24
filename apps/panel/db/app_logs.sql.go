@@ -97,7 +97,7 @@ func (q *Queries) DeleteOldLogs(ctx context.Context, createdAt sql.NullTime) err
 }
 
 const findLogsByTraceID = `-- name: FindLogsByTraceID :many
-SELECT id, trace_id, level, message, source, context, raw, group_id, created_at FROM logs
+SELECT id, trace_id, level, message, context, group_id, created_at FROM logs
 WHERE trace_id = ?
 ORDER BY created_at
 `
@@ -116,9 +116,7 @@ func (q *Queries) FindLogsByTraceID(ctx context.Context, traceID string) ([]Log,
 			&i.TraceID,
 			&i.Level,
 			&i.Message,
-			&i.Source,
 			&i.Context,
-			&i.Raw,
 			&i.GroupID,
 			&i.CreatedAt,
 		); err != nil {
@@ -136,7 +134,7 @@ func (q *Queries) FindLogsByTraceID(ctx context.Context, traceID string) ([]Log,
 }
 
 const getLogByID = `-- name: GetLogByID :one
-SELECT id, trace_id, level, message, source, context, raw, group_id, created_at FROM logs
+SELECT id, trace_id, level, message, context, group_id, created_at FROM logs
 WHERE id = ?
 `
 
@@ -148,9 +146,7 @@ func (q *Queries) GetLogByID(ctx context.Context, id int64) (Log, error) {
 		&i.TraceID,
 		&i.Level,
 		&i.Message,
-		&i.Source,
 		&i.Context,
-		&i.Raw,
 		&i.GroupID,
 		&i.CreatedAt,
 	)
@@ -335,18 +331,16 @@ func (q *Queries) GetPercentiles(ctx context.Context, createdAt sql.NullTime) (G
 }
 
 const insertLog = `-- name: InsertLog :one
-INSERT INTO logs (trace_id, level, message, source, context, raw, group_id, created_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-RETURNING id, trace_id, level, message, source, context, raw, group_id, created_at
+INSERT INTO logs (trace_id, level, message, context, group_id, created_at)
+VALUES (?, ?, ?, ?, ?, ?)
+RETURNING id, trace_id, level, message, context, group_id, created_at
 `
 
 type InsertLogParams struct {
 	TraceID   string
 	Level     string
 	Message   string
-	Source    string
 	Context   sql.NullString
-	Raw       string
 	GroupID   sql.NullInt64
 	CreatedAt sql.NullTime
 }
@@ -356,9 +350,7 @@ func (q *Queries) InsertLog(ctx context.Context, arg InsertLogParams) (Log, erro
 		arg.TraceID,
 		arg.Level,
 		arg.Message,
-		arg.Source,
 		arg.Context,
-		arg.Raw,
 		arg.GroupID,
 		arg.CreatedAt,
 	)
@@ -368,9 +360,7 @@ func (q *Queries) InsertLog(ctx context.Context, arg InsertLogParams) (Log, erro
 		&i.TraceID,
 		&i.Level,
 		&i.Message,
-		&i.Source,
 		&i.Context,
-		&i.Raw,
 		&i.GroupID,
 		&i.CreatedAt,
 	)
@@ -500,7 +490,7 @@ func (q *Queries) ListLogGroupsByLevel(ctx context.Context, arg ListLogGroupsByL
 }
 
 const listLogsByLevel = `-- name: ListLogsByLevel :many
-SELECT id, trace_id, level, message, source, context, raw, group_id, created_at FROM logs
+SELECT id, trace_id, level, message, context, group_id, created_at FROM logs
 WHERE level = ?
 ORDER BY created_at DESC
 LIMIT ?
@@ -525,9 +515,7 @@ func (q *Queries) ListLogsByLevel(ctx context.Context, arg ListLogsByLevelParams
 			&i.TraceID,
 			&i.Level,
 			&i.Message,
-			&i.Source,
 			&i.Context,
-			&i.Raw,
 			&i.GroupID,
 			&i.CreatedAt,
 		); err != nil {
@@ -545,7 +533,7 @@ func (q *Queries) ListLogsByLevel(ctx context.Context, arg ListLogsByLevelParams
 }
 
 const listRecentLogs = `-- name: ListRecentLogs :many
-SELECT id, trace_id, level, message, source, context, raw, group_id, created_at FROM logs
+SELECT id, trace_id, level, message, context, group_id, created_at FROM logs
 ORDER BY created_at DESC
 LIMIT ?
 `
@@ -564,9 +552,7 @@ func (q *Queries) ListRecentLogs(ctx context.Context, limit int64) ([]Log, error
 			&i.TraceID,
 			&i.Level,
 			&i.Message,
-			&i.Source,
 			&i.Context,
-			&i.Raw,
 			&i.GroupID,
 			&i.CreatedAt,
 		); err != nil {
@@ -584,7 +570,7 @@ func (q *Queries) ListRecentLogs(ctx context.Context, limit int64) ([]Log, error
 }
 
 const searchLogs = `-- name: SearchLogs :many
-SELECT id, trace_id, level, message, source, context, raw, group_id, created_at FROM logs
+SELECT id, trace_id, level, message, context, group_id, created_at FROM logs
 WHERE message LIKE ?
 ORDER BY created_at DESC
 LIMIT ?
@@ -609,9 +595,7 @@ func (q *Queries) SearchLogs(ctx context.Context, arg SearchLogsParams) ([]Log, 
 			&i.TraceID,
 			&i.Level,
 			&i.Message,
-			&i.Source,
 			&i.Context,
-			&i.Raw,
 			&i.GroupID,
 			&i.CreatedAt,
 		); err != nil {

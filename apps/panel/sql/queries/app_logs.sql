@@ -1,6 +1,6 @@
 -- name: InsertLog :one
-INSERT INTO logs (trace_id, level, message, source, context, raw, group_id, created_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO logs (trace_id, level, message, context, group_id, created_at)
+VALUES (?, ?, ?, ?, ?, ?)
 RETURNING *;
 
 -- name: GetOrCreateLogGroup :one
@@ -72,18 +72,18 @@ FROM logs
 WHERE group_id = ?;
 
 -- name: ListRecentLogs :many
-SELECT * FROM logs
+SELECT id, trace_id, level, message, context, group_id, created_at FROM logs
 ORDER BY created_at DESC
 LIMIT ?;
 
 -- name: ListLogsByLevel :many
-SELECT * FROM logs
+SELECT id, trace_id, level, message, context, group_id, created_at FROM logs
 WHERE level = ?
 ORDER BY created_at DESC
 LIMIT ?;
 
 -- name: FindLogsByTraceID :many
-SELECT * FROM logs
+SELECT id, trace_id, level, message, context, group_id, created_at FROM logs
 WHERE trace_id = ?
 ORDER BY created_at;
 
@@ -98,11 +98,11 @@ DELETE FROM logs
 WHERE created_at < ?;
 
 -- name: GetLogByID :one
-SELECT * FROM logs
+SELECT id, trace_id, level, message, context, group_id, created_at FROM logs
 WHERE id = ?;
 
 -- name: SearchLogs :many
-SELECT * FROM logs
+SELECT id, trace_id, level, message, context, group_id, created_at FROM logs
 WHERE message LIKE ?
 ORDER BY created_at DESC
 LIMIT ?;

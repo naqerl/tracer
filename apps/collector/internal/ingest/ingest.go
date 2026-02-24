@@ -4,7 +4,6 @@ import (
 	"context"
 	"log/slog"
 
-	"github.com/ai-shift/tracer/apps/collector/internal/config"
 	"github.com/ai-shift/tracer/apps/collector/internal/processor"
 	"github.com/ai-shift/tracer/libs/types"
 )
@@ -14,19 +13,9 @@ type Pipeline struct {
 	processors map[string]*processor.Processor
 }
 
-// New creates a pipeline from app configurations.
-func New(apps []config.ResolvedApp) (*Pipeline, error) {
-	processors := make(map[string]*processor.Processor, len(apps))
-
-	for _, app := range apps {
-		p, err := processor.New(app)
-		if err != nil {
-			return nil, err
-		}
-		processors[app.Name] = p
-	}
-
-	return &Pipeline{processors: processors}, nil
+// New creates a pipeline from resolved processors.
+func New(processors map[string]*processor.Processor) *Pipeline {
+	return &Pipeline{processors: processors}
 }
 
 // Run processes raw lines and emits events to the output channel.

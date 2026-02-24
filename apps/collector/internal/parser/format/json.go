@@ -4,68 +4,48 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/ai-shift/tracer/apps/collector/internal/config"
 	"github.com/ai-shift/tracer/libs/types"
 )
 
 // JSON parses JSON formatted log lines.
 type JSON struct {
-	source          string
-	timestampField  string
-	timestampFormat string
-	levelField      string
-	traceIDField    string
-	messageField    string
+	Schema Schema
 }
 
-// NewJSON creates a new JSON parser.
-func NewJSON(cfg config.ResolvedApp) (*JSON, error) {
-	return &JSON{
-		source:          cfg.Source,
-		timestampField:  cfg.TimestampField,
-		timestampFormat: cfg.TimestampFormat,
-		levelField:      cfg.LevelField,
-		traceIDField:    cfg.TraceIDField,
-		messageField:    cfg.MessageField,
-	}, nil
-}
-
-func (p *JSON) Parse(line string) (types.LogEntry, error) {
+func (p JSON) Parse(line string) (types.LogEntry, error) {
 	var data map[string]any
 	if err := json.Unmarshal([]byte(line), &data); err != nil {
 		return types.LogEntry{}, fmt.Errorf("parse failed: %w", err)
 	}
 
 	entry := types.LogEntry{
-		Source: p.source,
-		Raw:    line,
-		Extra:  make(map[string]string),
+		Extra: make(map[string]string),
 	}
 
-	if ts, ok := data[p.timestampField]; ok {
-		parsedTS, err := parseTimestampValue(ts, p.timestampFormat)
+	if ts, ok := data[p.Schema.TimestampField]; ok {
+		parsedTS, err := parseTimestampValue(ts, p.Schema.TimestampFormat)
 		if err != nil {
 			return types.LogEntry{}, fmt.Errorf("parse failed: %w", err)
 		}
 		entry.Timestamp = parsedTS
-		delete(data, p.timestampField)
+		delete(data, p.Schema.TimestampField)
 	} else {
-		return types.LogEntry{}, fmt.Errorf("parse failed: missing timestamp field %q", p.timestampField)
+		return types.LogEntry{}, fmt.Errorf("parse failed: missing timestamp field %q", p.Schema.TimestampField)
 	}
 
-	if level, ok := data[p.levelField].(string); ok {
+	if level, ok := data[p.Schema.LevelField].(string); ok {
 		entry.Level = normalizeLevel(level)
-		delete(data, p.levelField)
+		delete(data, p.Schema.LevelField)
 	}
 
-	if traceID, ok := data[p.traceIDField].(string); ok {
+	if traceID, ok := data[p.Schema.TraceIDField].(string); ok {
 		entry.TraceID = traceID
-		delete(data, p.traceIDField)
+		delete(data, p.Schema.TraceIDField)
 	}
 
-	if msg, ok := data[p.messageField].(string); ok {
+	if msg, ok := data[p.Schema.MessageField].(string); ok {
 		entry.Message = msg
-		delete(data, p.messageField)
+		delete(data, p.Schema.MessageField)
 	} else {
 		entry.Message = line
 	}

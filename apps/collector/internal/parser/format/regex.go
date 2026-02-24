@@ -4,80 +4,55 @@ import (
 	"fmt"
 	"regexp"
 
-	"github.com/ai-shift/tracer/apps/collector/internal/config"
 	"github.com/ai-shift/tracer/libs/types"
 )
 
 type Regex struct {
-	source          string
-	pattern         *regexp.Regexp
-	timestampField  string
-	timestampFormat string
-	levelField      string
-	traceIDField    string
-	messageField    string
+	Pattern *regexp.Regexp
+	Schema  Schema
 }
 
-func NewRegex(cfg config.ResolvedApp) (*Regex, error) {
-	pattern, err := regexp.Compile(cfg.Pattern)
-	if err != nil {
-		return nil, fmt.Errorf("invalid pattern: %w", err)
-	}
-
-	return &Regex{
-		source:          cfg.Source,
-		pattern:         pattern,
-		timestampField:  cfg.TimestampField,
-		timestampFormat: cfg.TimestampFormat,
-		levelField:      cfg.LevelField,
-		traceIDField:    cfg.TraceIDField,
-		messageField:    cfg.MessageField,
-	}, nil
-}
-
-func (p *Regex) Parse(line string) (types.LogEntry, error) {
-	matches := p.pattern.FindStringSubmatch(line)
+func (p Regex) Parse(line string) (types.LogEntry, error) {
+	matches := p.Pattern.FindStringSubmatch(line)
 	if matches == nil {
 		return types.LogEntry{}, fmt.Errorf("no match")
 	}
 
 	groups := make(map[string]string)
-	for i, name := range p.pattern.SubexpNames() {
+	for i, name := range p.Pattern.SubexpNames() {
 		if i > 0 && name != "" && i < len(matches) {
 			groups[name] = matches[i]
 		}
 	}
 
 	entry := types.LogEntry{
-		Source: p.source,
-		Raw:    line,
-		Extra:  make(map[string]string),
+		Extra: make(map[string]string),
 	}
 
-	if ts, ok := groups[p.timestampField]; ok {
-		parsedTS, err := parseTimestampString(ts, p.timestampFormat)
+	if ts, ok := groups[p.Schema.TimestampField]; ok {
+		parsedTS, err := parseTimestampString(ts, p.Schema.TimestampFormat)
 		if err != nil {
 			return types.LogEntry{}, fmt.Errorf("parse failed: %w", err)
 		}
 		entry.Timestamp = parsedTS
-		delete(groups, p.timestampField)
+		delete(groups, p.Schema.TimestampField)
 	} else {
-		return types.LogEntry{}, fmt.Errorf("missing timestamp group %q", p.timestampField)
+		return types.LogEntry{}, fmt.Errorf("missing timestamp group %q", p.Schema.TimestampField)
 	}
 
-	if level, ok := groups[p.levelField]; ok {
+	if level, ok := groups[p.Schema.LevelField]; ok {
 		entry.Level = normalizeLevel(level)
-		delete(groups, p.levelField)
+		delete(groups, p.Schema.LevelField)
 	}
 
-	if traceID, ok := groups[p.traceIDField]; ok {
+	if traceID, ok := groups[p.Schema.TraceIDField]; ok {
 		entry.TraceID = traceID
-		delete(groups, p.traceIDField)
+		delete(groups, p.Schema.TraceIDField)
 	}
 
-	if msg, ok := groups[p.messageField]; ok {
+	if msg, ok := groups[p.Schema.MessageField]; ok {
 		entry.Message = msg
-		delete(groups, p.messageField)
+		delete(groups, p.Schema.MessageField)
 	} else {
 		entry.Message = line
 	}

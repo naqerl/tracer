@@ -4,10 +4,16 @@ import (
 	"regexp"
 	"time"
 
-	"github.com/ai-shift/tracer/apps/collector/internal/config"
 	"github.com/ai-shift/tracer/apps/collector/internal/parser"
 	"github.com/ai-shift/tracer/libs/types"
 )
+
+// Config contains processor configuration
+type Config struct {
+	AppName         string
+	StartupPattern  string
+	ShutdownPattern string
+}
 
 // Processor parses raw lines and produces typed events.
 type Processor struct {
@@ -18,23 +24,19 @@ type Processor struct {
 }
 
 // New creates a processor for an app.
-func New(app config.ResolvedApp) (*Processor, error) {
-	p, err := parser.New(app)
-	if err != nil {
-		return nil, err
-	}
-
+func New(cfg Config, p parser.Parser) (*Processor, error) {
 	var startupRegex, shutdownRegex *regexp.Regexp
+	var err error
 
-	if app.StartupPattern != "" {
-		startupRegex, err = regexp.Compile(app.StartupPattern)
+	if cfg.StartupPattern != "" {
+		startupRegex, err = regexp.Compile(cfg.StartupPattern)
 		if err != nil {
 			return nil, parser.ErrInvalidPattern
 		}
 	}
 
-	if app.ShutdownPattern != "" {
-		shutdownRegex, err = regexp.Compile(app.ShutdownPattern)
+	if cfg.ShutdownPattern != "" {
+		shutdownRegex, err = regexp.Compile(cfg.ShutdownPattern)
 		if err != nil {
 			return nil, parser.ErrInvalidPattern
 		}
@@ -42,7 +44,7 @@ func New(app config.ResolvedApp) (*Processor, error) {
 
 	return &Processor{
 		parser:        p,
-		appName:       app.Name,
+		appName:       cfg.AppName,
 		startupRegex:  startupRegex,
 		shutdownRegex: shutdownRegex,
 	}, nil

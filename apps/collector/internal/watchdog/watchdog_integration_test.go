@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ai-shift/tracer/apps/collector/internal/config"
+	"github.com/ai-shift/tracer/apps/collector/internal/parser/format"
 	"github.com/ai-shift/tracer/apps/collector/internal/processor"
 	"github.com/ai-shift/tracer/apps/collector/internal/watchdog/source"
 	"github.com/ai-shift/tracer/libs/types"
@@ -25,7 +25,11 @@ func TestWatcherReadFromEndSkipsExistingLines(t *testing.T) {
 	}
 
 	sources := []Source{
-		source.NewFile("app", logPath, "end"),
+		source.NewFile(source.FileConfig{
+			AppName:  "app",
+			Path:     logPath,
+			ReadFrom: "end",
+		}),
 	}
 
 	svc := New(sources)
@@ -69,7 +73,11 @@ func TestWatcherReadFromStartReadsExistingLines(t *testing.T) {
 	}
 
 	sources := []Source{
-		source.NewFile("app", logPath, "start"),
+		source.NewFile(source.FileConfig{
+			AppName:  "app",
+			Path:     logPath,
+			ReadFrom: "start",
+		}),
 	}
 
 	svc := New(sources)
@@ -89,21 +97,22 @@ func TestWatcherReadFromStartReadsExistingLines(t *testing.T) {
 func TestPipelineJournalctlExtraction(t *testing.T) {
 	t.Parallel()
 
-	cfg := config.ResolvedApp{
-		Name:            "svc",
-		SourceKind:      "journalctl",
-		Source:          "journalctl:svc.service",
-		Unit:            "svc.service",
-		Since:           "now",
-		ParserKind:      "json",
+	parserCfg := config.JSONConfig{
 		TimestampField:  "timestamp",
 		TimestampFormat: time.RFC3339,
 		LevelField:      "level",
 		TraceIDField:    "trace_id",
 		MessageField:    "message",
 	}
+	p, err := format.NewJSON(parserCfg)
+	if err != nil {
+		t.Fatalf("new parser: %v", err)
+	}
 
-	proc, err := processor.New(cfg)
+	procCfg := processor.Config{
+		AppName: "svc",
+	}
+	proc, err := processor.New(procCfg, p)
 	if err != nil {
 		t.Fatalf("new processor: %v", err)
 	}
@@ -128,20 +137,22 @@ func TestPipelineJournalctlExtraction(t *testing.T) {
 func TestPipelineStartupDetection(t *testing.T) {
 	t.Parallel()
 
-	cfg := config.ResolvedApp{
-		Name:            "app",
-		SourceKind:      "file",
-		Source:          "/tmp/app.log",
-		Path:            "/tmp/app.log",
-		ParserKind:      "json",
+	parserCfg := config.JSONConfig{
 		TimestampField:  "timestamp",
 		TimestampFormat: time.RFC3339,
 		LevelField:      "level",
 		MessageField:    "message",
-		StartupPattern:  "Server started",
+	}
+	p, err := format.NewJSON(parserCfg)
+	if err != nil {
+		t.Fatalf("new parser: %v", err)
 	}
 
-	proc, err := processor.New(cfg)
+	procCfg := processor.Config{
+		AppName:        "app",
+		StartupPattern: "Server started",
+	}
+	proc, err := processor.New(procCfg, p)
 	if err != nil {
 		t.Fatalf("new processor: %v", err)
 	}

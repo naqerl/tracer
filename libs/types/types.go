@@ -41,8 +41,6 @@ type LogEntry struct {
 	Level     LogLevel          `json:"level"`
 	TraceID   string            `json:"trace_id"`
 	Message   string            `json:"message"`
-	Source    string            `json:"source"`
-	Raw       string            `json:"raw"`
 	Extra     map[string]string `json:"extra,omitempty"`
 }
 

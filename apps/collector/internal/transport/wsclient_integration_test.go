@@ -83,8 +83,6 @@ func TestWSClientSendsHeaderRegistrationAndLog(t *testing.T) {
 			Timestamp: time.Now(),
 			Level:     types.LevelInfo,
 			Message:   "hello from test",
-			Source:    "/tmp/test.log",
-			Raw:       `{"message":"hello from test"}`,
 		},
 	})
 

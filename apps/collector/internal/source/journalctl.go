@@ -24,11 +24,11 @@ type journalctlSource struct {
 
 // NewJournalctl creates a new journalctl source.
 // Enforces creation of the error channel for health monitoring.
-func NewJournalctl(app, unit, since string) Source {
+func NewJournalctl(cfg JournalctlConfig) Source {
 	return &journalctlSource{
-		app:   app,
-		unit:  unit,
-		since: since,
+		app:   cfg.AppName,
+		unit:  cfg.Unit,
+		since: cfg.Since,
 		errCh: make(chan error, 1),
 	}
 }

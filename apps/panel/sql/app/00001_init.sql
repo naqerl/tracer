@@ -13,16 +13,13 @@ CREATE TABLE IF NOT EXISTS logs (
     trace_id TEXT NOT NULL DEFAULT '',
     level TEXT NOT NULL,
     message TEXT NOT NULL,
-    source TEXT NOT NULL,
     context TEXT DEFAULT '{}',
-    raw TEXT NOT NULL,
     group_id INTEGER REFERENCES log_groups(id),
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_logs_trace_id ON logs(trace_id) WHERE trace_id != '';
 CREATE INDEX IF NOT EXISTS idx_logs_level ON logs(level);
 CREATE INDEX IF NOT EXISTS idx_logs_created_at ON logs(created_at);
-CREATE INDEX IF NOT EXISTS idx_logs_source ON logs(source);
 CREATE INDEX IF NOT EXISTS idx_logs_group_id ON logs(group_id);
 
 -- +goose Down
