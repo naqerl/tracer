@@ -1,44 +1,44 @@
+[transport]
 name = "demo-beta"
-panel_endpoint = "ws://localhost:8080/ingest/ws/ingest"
+panel_host = "ws://localhost:8080/ingest/ws/ingest"
 api_key = "__API_KEY__"
+
+[stats]
 stats_interval = "30s"
-data_dir = "/demo/data"
 
-[sources]
-  [[sources.file]]
-  id = "beta-json-file"
-  path = "/demo/logs/beta-json.log"
-  read_from = "end"
+[parsers.json-beta]
+type = "json"
+[parsers.json-beta.params]
+timestamp_field = "time"
+timestamp_format = "2006-01-02T15:04:05Z07:00"
+level_field = "severity"
+trace_id_field = "trace"
+message_field = "msg"
 
-  [[sources.file]]
-  id = "beta-regex-file"
-  path = "/demo/logs/beta-regex.log"
-  read_from = "end"
-
-[parsers]
-  [[parsers.json]]
-  id = "json-beta"
-  timestamp_field = "time"
-  timestamp_format = "2006-01-02T15:04:05Z07:00"
-  level_field = "severity"
-  trace_id_field = "trace"
-  message_field = "msg"
-
-  [[parsers.regex]]
-  id = "regex-beta"
-  pattern = '^(?P<timestamp>[0-9T:+-]+)\|(?P<level>[A-Z]+)\|trace=(?P<trace_id>[^|]+)\|msg=(?P<message>[^|]+)\|channel=(?P<channel>[^|]+)\|target=(?P<target>[^|]+)\|attempt=(?P<attempt>[^|]+)$'
-  timestamp_field = "timestamp"
-  timestamp_format = "2006-01-02T15:04:05Z07:00"
-  level_field = "level"
-  trace_id_field = "trace_id"
-  message_field = "message"
+[parsers.regex-beta]
+type = "regex"
+[parsers.regex-beta.params]
+pattern = '^(?P<timestamp>[0-9T:+-]+)\|(?P<level>[A-Z]+)\|trace=(?P<trace_id>[^|]+)\|msg=(?P<message>[^|]+)\|channel=(?P<channel>[^|]+)\|target=(?P<target>[^|]+)\|attempt=(?P<attempt>[^|]+)$'
+timestamp_field = "timestamp"
+timestamp_format = "2006-01-02T15:04:05Z07:00"
+level_field = "level"
+trace_id_field = "trace_id"
+message_field = "message"
 
 [[apps]]
 name = "beta-json"
-source_ref = "beta-json-file"
-parser_ref = "json-beta"
+parser_id = "json-beta"
+[apps.source]
+type = "file"
+[apps.source.params]
+path = "/demo/logs/beta-json.log"
+read_from = "end"
 
 [[apps]]
 name = "beta-regex"
-source_ref = "beta-regex-file"
-parser_ref = "regex-beta"
+parser_id = "regex-beta"
+[apps.source]
+type = "file"
+[apps.source.params]
+path = "/demo/logs/beta-regex.log"
+read_from = "end"
