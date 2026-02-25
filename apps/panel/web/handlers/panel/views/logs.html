@@ -92,8 +92,8 @@
     </td>
 </tr>
 {{else}}
-<tr class="sm:table-row">
-    <td colspan="{{if not .Level}}3{{else}}2{{end}}" class="text-center py-6">
+<tr class="flex flex-col sm:table-row">
+    <td colspan="{{if not .Level}}3{{else}}2{{end}}" class="text-center py-6 mt-2">
         <span class="text-xs text-fg-secondary/60">No more data</span>
     </td>
 </tr>
@@ -225,8 +225,8 @@ document.addEventListener('DOMContentLoaded', function() {
     </td>
 </tr>
 {{else}}
-<tr class="sm:table-row">
-    <td colspan="3" class="text-center py-6">
+<tr class="flex flex-col sm:table-row">
+    <td colspan="3" class="text-center py-6 mt-2">
         <span class="text-xs text-fg-secondary/60">No more data</span>
     </td>
 </tr>
