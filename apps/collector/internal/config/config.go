@@ -4,7 +4,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/BurntSushi/toml"
+	"gopkg.in/yaml.v3"
 
 	"tracer/apps/collector/internal/parser"
 	"tracer/apps/collector/internal/source"
@@ -14,31 +14,31 @@ import (
 
 const (
 	configPathEnv     = "TRACER_CONFIG"
-	defaultConfigPath = "/etc/tracer/config.toml"
+	defaultConfigPath = "/etc/tracer/collector.yaml"
 	defaultDataDir    = "/usr/lib/tracer/"
 )
 
-// Config is the pure TOML configuration representation
+// Config is the pure YAML configuration representation
 type Config struct {
-	Transport transport.Spec `toml:"transport"`
+	Transport transport.Spec `yaml:"transport"`
 
-	Stats stats.Spec `toml:"stats"`
+	Stats stats.Spec `yaml:"stats"`
 
-	Parsers map[string]parser.Spec `toml:"parsers"`
-	Apps    []AppSpec              `toml:"apps"`
+	Parsers map[string]parser.Spec `yaml:"parsers"`
+	Apps    []AppSpec              `yaml:"apps"`
 }
 
 type AppSpec struct {
-	Name      string        `toml:"name"`
-	ParserID  string        `toml:"parser_id"`
-	Source    source.Spec   `toml:"source"`
-	Lifecycle LifecycleSpec `toml:"lifecycle"`
+	Name      string        `yaml:"name"`
+	ParserID  string        `yaml:"parser_id"`
+	Source    source.Spec   `yaml:"source"`
+	Lifecycle LifecycleSpec `yaml:"lifecycle"`
 }
 
 type LifecycleSpec struct {
-	StartPattern   string `toml:"start_pattern"`
-	RestartPattern string `toml:"restart_pattern"`
-	ExitPattern    string `toml:"exit_pattern"`
+	StartPattern   string `yaml:"start_pattern"`
+	RestartPattern string `yaml:"restart_pattern"`
+	ExitPattern    string `yaml:"exit_pattern"`
 }
 
 // Load reads and parses configuration file
@@ -50,8 +50,13 @@ func Load(path string) Config {
 		path = defaultConfigPath
 	}
 
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		log.Fatalf("failed to read config: %s", err)
+	}
+
 	var cfg Config
-	if _, err := toml.DecodeFile(path, &cfg); err != nil {
+	if err := yaml.Unmarshal(raw, &cfg); err != nil {
 		log.Fatalf("failed to decode config: %s", err)
 	}
 

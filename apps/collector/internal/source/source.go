@@ -8,8 +8,8 @@ import (
 )
 
 type Spec struct {
-	Type   string            `toml:"type"`
-	Params map[string]string `toml:"params"`
+	Type   string            `yaml:"type"`
+	Params map[string]string `yaml:"params"`
 }
 
 type Source interface {

@@ -9,7 +9,7 @@ import (
 )
 
 type Spec struct {
-	StatsInterval time.Duration `toml:"stats_interval"`
+	StatsInterval time.Duration `yaml:"stats_interval"`
 }
 
 type Stats struct {
