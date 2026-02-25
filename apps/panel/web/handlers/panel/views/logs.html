@@ -8,7 +8,7 @@
   <body>
     <div id="log-groups">
       <h2 class="text-lg font-medium mb-4">Log Groups</h2>
-      <div class="flex flex-col gap-2 mb-6 px-4">
+      <div class="flex flex-col gap-2 mb-6">
         {{template "level-filter" .}}
       </div>
       {{template "log-groups-table" .}}
@@ -26,7 +26,7 @@
   <a hx-get="/panel/collectors/{{$.Collector}}/apps/{{$.App}}/logs?since={{$.Since}}{{$query}}"
      hx-push-url="false"
      hx-target="#log-groups"
-     class="flex flex-col items-center gap-1 pb-2 cursor-pointer {{if $isActive}}text-fg{{else}}text-fg-secondary hover:text-fg{{end}}">
+     class="flex flex-col items-center gap-1 cursor-pointer {{if $isActive}}text-fg{{else}}text-fg-secondary hover:text-fg{{end}}">
     <span class="text-sm">{{.Label}}</span>
     <span class="w-1.5 h-1.5 rounded-full {{if $isActive}}bg-{{.Color}}{{else}}bg-transparent{{end}}"></span>
   </a>
@@ -38,42 +38,34 @@
 <table id="logs-table-container" class="w-full">
   <thead class="hidden sm:table-header-group">
     <tr class="border-b border-bg-secondary text-left text-fg-secondary text-sm">
-      <th class="hidden px-4">Group ID</th>
-      {{if not .Level}}<th class="py-2 px-4 font-medium">Level</th>{{end}}
-      <th class="py-2 px-4 font-medium">Message</th>
-      <th class="py-2 px-4 font-medium text-right">Count</th>
+      <th class="hidden">Group ID</th>
+      {{if not .Level}}<th class="pb-2 pr-4 font-medium">Level</th>{{end}}
+      <th class="pb-2 pr-4 font-medium text-right">Count</th>
+      <th class="pb-2 pl-4 font-medium">Message</th>
     </tr>
   </thead>
   <tbody>
     {{if not .Groups}}
     <tr>
-      <td colspan="{{if not .Level}}4{{else}}3{{end}}" class="text-center text-fg-secondary py-8 px-4">No logs available</td>
+      <td colspan="{{if not .Level}}4{{else}}3{{end}}" class="text-center text-fg-secondary py-8">No logs available</td>
     </tr>
     {{end}}
     {{range .Groups}}
-    <tr class="group border-b border-bg-secondary hover:bg-bg-secondary/50 transition-colors">
-      <td class="hidden px-4">
-        <a href="/panel/collectors/{{$.Collector}}/apps/{{$.App}}/logs?group={{.ID}}" class="block">{{.ID}}</a>
-      </td>
-      {{if not $.Level}}<td class="hidden sm:table-cell py-3 px-4 text-xs capitalize{{if eq .Level `error`}} text-red-500{{else if eq .Level `warn`}} text-yellow-500{{else if eq .Level `info`}} text-blue-500{{end}}">
-        <a href="/panel/collectors/{{$.Collector}}/apps/{{$.App}}/logs?group={{.ID}}" class="block">{{.Level}}</a>
-      </td>{{end}}
-      <td class="py-3 px-4 relative">
-        <a href="/panel/collectors/{{$.Collector}}/apps/{{$.App}}/logs?group={{.ID}}" class="block before:absolute before:inset-0">
-          {{/* Desktop: just message */}}
-          <span class="hidden sm:inline">{{.Message}}</span>
-          {{/* Mobile: level, count on one line; message on new line */}}
+    <tr class="group border-b border-bg-secondary opacity-60 hover:opacity-100 transition-opacity duration-700 hover:duration-150 py-2">
+      <td class="hidden">{{.ID}}</td>
+      {{if not $.Level}}<td class="hidden sm:table-cell pr-4 text-xs capitalize{{if eq .Level `error`}} text-red-500{{else if eq .Level `warn`}} text-yellow-500{{else if eq .Level `info`}} text-blue-500{{end}}">{{.Level}}</td>{{end}}
+      <td class="hidden sm:table-cell pr-4 text-right">{{.Count}}</td>
+      <td class="sm:pl-4">
+        <a href="/panel/collectors/{{$.Collector}}/apps/{{$.App}}/logs?group={{.ID}}" class="block">
+          <span class="hidden sm:inline capitalize">{{.Message}}</span>
           <span class="sm:hidden flex flex-col gap-1">
-            <span class="flex items-center gap-2">
-              {{if not $.Level}}<span class="text-xs capitalize{{if eq .Level `error`}} text-red-500{{else if eq .Level `warn`}} text-yellow-500{{else if eq .Level `info`}} text-blue-500{{end}}">{{.Level}}</span>{{end}}
-              <span class="text-xs text-fg-secondary">{{.Count}}</span>
+            <span class="capitalize">{{.Message}}</span>
+            <span class="flex items-center gap-2 text-xs text-fg-secondary">
+              {{if not $.Level}}<span class="capitalize{{if eq .Level `error`}} text-red-500{{else if eq .Level `warn`}} text-yellow-500{{else if eq .Level `info`}} text-blue-500{{end}}">{{.Level}}</span>{{end}}
+              <span>{{.Count}} entries</span>
             </span>
-            <span>{{.Message}}</span>
           </span>
         </a>
-      </td>
-      <td class="hidden sm:table-cell py-3 px-4 text-right relative">
-        <a href="/panel/collectors/{{$.Collector}}/apps/{{$.App}}/logs?group={{.ID}}" class="block">{{.Count}}</a>
       </td>
     </tr>
     {{end}}
