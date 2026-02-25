@@ -283,17 +283,10 @@ func (h *handler) getLogGroups(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.t.RenderHTTP(w, r, "log-groups", map[string]any{
-		"Groups": groups,
-		"Level":  req.Level,
-		"User":   user,
-		"Nav": templates.NewNavBuilder().
-			Add("panel", "panel").
-			Add("collectors", "collectors").
-			Add(req.CollectorName, req.CollectorName).
-			Add("apps", "apps").
-			Add(req.AppName, req.AppName).
-			Add("logs", "logs").
-			Build(),
+		"Groups":        groups,
+		"Level":         req.Level,
+		"CollectorName": req.CollectorName,
+		"AppName":       req.AppName,
 	})
 }
 

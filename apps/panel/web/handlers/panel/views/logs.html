@@ -1,43 +1,16 @@
 {{define "log-groups"}}
 <!DOCTYPE html>
 <html lang="en">
-    <head>
-        {{template "head"}}
-        <title>{{.AppName}} Logs - Tracer</title>
-        <!-- Add uPlot library -->
-        <script src="https://cdn.jsdelivr.net/npm/uplot@1.6.30/dist/uPlot.iife.min.js"></script>
-        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/uplot@1.6.30/dist/uPlot.min.css">
-        <style>
-            .uplot { margin: 1.5rem 0; touch-action: pan-y pinch-zoom; }
-            .range-tabs { display: flex; gap: 0.5rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
-            .range-tab {
-                padding: 0.5rem 1rem;
-                background: #1E1E1E;
-                color: #EEEEEE;
-                cursor: pointer;
-                transition: all 0.2s;
-                text-decoration: none;
-                display: inline-block;
-                font-size: 0.875rem;
-            }
-            .range-tab:hover { background: #2A2A2A; }
-            .range-tab.active { background: #5C9CF5; color: #0A0A0A; font-weight: 600; }
-            @media (max-width: 640px) {
-                .range-tab { padding: 0.4rem 0.75rem; font-size: 0.8rem; }
-            }
-        </style>
-    </head>
-    <body>
-        <div class="max-w-7xl mx-auto p-6">
-            {{template "navbar" .Nav}}
-
-            <!-- Logs Container -->
-            <div class="bg-bg-secondary p-5">
-                <h2 class="text-lg font-medium mb-4">Log Groups</h2>
-                {{template "app-logs-table" .}}
-            </div>
-        </div>
-    </body>
+<head>
+    {{template "head"}}
+    <title>Log Groups - Tracer</title>
+</head>
+<body>
+    <div class="bg-bg-secondary p-5">
+        <h2 class="text-lg font-medium mb-4">Log Groups</h2>
+        {{template "app-logs-table" .}}
+    </div>
+</body>
 </html>
 {{end}}
 
