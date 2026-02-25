@@ -311,7 +311,7 @@ func (s *Service) StoreLog(ctx context.Context, req StoreLogRequest) (int64, err
 		Message:   req.Entry.Message,
 		Context:   sql.NullString{String: contextJSON, Valid: true},
 		GroupID:   sql.NullInt64{Int64: logGroup.ID, Valid: true},
-		CreatedAt: sql.NullTime{Time: ts, Valid: true},
+		CreatedAt: ts,
 	})
 	if err != nil {
 		return 0, err

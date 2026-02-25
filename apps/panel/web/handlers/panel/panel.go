@@ -235,11 +235,11 @@ func (h *handler) getApp(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.t.RenderHTTP(w, r, "app", map[string]any{
-		"Title":         req.AppName + " Analytics",
-		"AppName":       req.AppName,
-		"CollectorName": req.CollectorName,
-		"Stats":         stats,
-		"IsAdmin":       user.IsAdmin,
+		"Title":     req.AppName + " Analytics",
+		"App":       req.AppName,
+		"Collector": req.CollectorName,
+		"Stats":     stats,
+		"IsAdmin":   user.IsAdmin,
 		"Nav": templates.NewNavBuilder().
 			Add("panel", "panel").
 			Add("collectors", "collectors").
@@ -269,7 +269,7 @@ func (h *handler) getLogGroups(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	logGroups, err := h.svc.GetLogGroups(r.Context(), req)
+	groups, err := h.svc.GetLogGroups(r.Context(), req)
 	if err != nil {
 		switch {
 		case errors.Is(err, panelsvc.ErrAccessDenied):
@@ -283,19 +283,9 @@ func (h *handler) getLogGroups(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.t.RenderHTTP(w, r, "log-groups", map[string]any{
-		"Title":         req.AppName + " Logs",
-		"AppName":       req.AppName,
-		"CollectorName": req.CollectorName,
-		"Groups":        logGroups.Groups,
-		"Level":         req.Level,
-		"TotalCount":    logGroups.TotalCount,
-		"ErrorCount":    logGroups.ErrorCount,
-		"WarnCount":     logGroups.WarnCount,
-		"InfoCount":     logGroups.InfoCount,
-		"Offset":        req.Offset,
-		"Limit":         req.Limit,
-		"User":          user,
-		"IsAdmin":       user.IsAdmin,
+		"Groups": groups,
+		"Level":  req.Level,
+		"User":   user,
 		"Nav": templates.NewNavBuilder().
 			Add("panel", "panel").
 			Add("collectors", "collectors").

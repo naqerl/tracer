@@ -8,6 +8,7 @@ package db
 import (
 	"context"
 	"database/sql"
+	"time"
 )
 
 const countByLevel = `-- name: CountByLevel :many
@@ -22,7 +23,7 @@ type CountByLevelRow struct {
 	Count int64
 }
 
-func (q *Queries) CountByLevel(ctx context.Context, createdAt sql.NullTime) ([]CountByLevelRow, error) {
+func (q *Queries) CountByLevel(ctx context.Context, createdAt time.Time) ([]CountByLevelRow, error) {
 	rows, err := q.db.QueryContext(ctx, countByLevel, createdAt)
 	if err != nil {
 		return nil, err
@@ -91,7 +92,7 @@ DELETE FROM logs
 WHERE created_at < ?
 `
 
-func (q *Queries) DeleteOldLogs(ctx context.Context, createdAt sql.NullTime) error {
+func (q *Queries) DeleteOldLogs(ctx context.Context, createdAt time.Time) error {
 	_, err := q.db.ExecContext(ctx, deleteOldLogs, createdAt)
 	return err
 }
@@ -193,7 +194,7 @@ ORDER BY time_bucket ASC, level
 
 type GetLogVolumeTimeSeriesParams struct {
 	Granularity interface{}
-	Since       sql.NullTime
+	Since       time.Time
 }
 
 type GetLogVolumeTimeSeriesRow struct {
@@ -244,7 +245,7 @@ type GetLogsByGroupIDRow struct {
 	ID        int64
 	Level     string
 	Context   sql.NullString
-	CreatedAt sql.NullTime
+	CreatedAt time.Time
 }
 
 // Get all individual logs for a specific group
@@ -318,7 +319,7 @@ type GetPercentilesRow struct {
 	Infos    int64
 }
 
-func (q *Queries) GetPercentiles(ctx context.Context, createdAt sql.NullTime) (GetPercentilesRow, error) {
+func (q *Queries) GetPercentiles(ctx context.Context, createdAt time.Time) (GetPercentilesRow, error) {
 	row := q.db.QueryRowContext(ctx, getPercentiles, createdAt)
 	var i GetPercentilesRow
 	err := row.Scan(
@@ -342,7 +343,7 @@ type InsertLogParams struct {
 	Message   string
 	Context   sql.NullString
 	GroupID   sql.NullInt64
-	CreatedAt sql.NullTime
+	CreatedAt time.Time
 }
 
 func (q *Queries) InsertLog(ctx context.Context, arg InsertLogParams) (Log, error) {
@@ -373,32 +374,34 @@ SELECT
     lg.message,
     lg.level,
     COUNT(l.id) as count,
-    MAX(l.created_at) as latest_at,
-    lg.created_at as group_created_at
+    (SELECT created_at FROM logs WHERE group_id = lg.id ORDER BY created_at DESC LIMIT 1) as latest_at,
+    lg.created_at as created_at
 FROM log_groups lg
-LEFT JOIN logs l ON l.group_id = lg.id
+INNER JOIN logs l ON l.group_id = lg.id
+WHERE lg.level like ?
 GROUP BY lg.id, lg.message, lg.level, lg.created_at
 ORDER BY count DESC, latest_at DESC
 LIMIT ? OFFSET ?
 `
 
 type ListLogGroupsParams struct {
+	Level  string
 	Limit  int64
 	Offset int64
 }
 
 type ListLogGroupsRow struct {
-	ID             int64
-	Message        string
-	Level          string
-	Count          int64
-	LatestAt       interface{}
-	GroupCreatedAt sql.NullTime
+	ID        int64
+	Message   string
+	Level     string
+	Count     int64
+	LatestAt  time.Time
+	CreatedAt time.Time
 }
 
 // List all log groups with their counts and latest timestamp
 func (q *Queries) ListLogGroups(ctx context.Context, arg ListLogGroupsParams) ([]ListLogGroupsRow, error) {
-	rows, err := q.db.QueryContext(ctx, listLogGroups, arg.Limit, arg.Offset)
+	rows, err := q.db.QueryContext(ctx, listLogGroups, arg.Level, arg.Limit, arg.Offset)
 	if err != nil {
 		return nil, err
 	}
@@ -412,69 +415,7 @@ func (q *Queries) ListLogGroups(ctx context.Context, arg ListLogGroupsParams) ([
 			&i.Level,
 			&i.Count,
 			&i.LatestAt,
-			&i.GroupCreatedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listLogGroupsByLevel = `-- name: ListLogGroupsByLevel :many
-SELECT
-    lg.id,
-    lg.message,
-    lg.level,
-    COUNT(l.id) as count,
-    MAX(l.created_at) as latest_at,
-    lg.created_at as group_created_at
-FROM log_groups lg
-INNER JOIN logs l ON l.group_id = lg.id
-WHERE LOWER(lg.level) = LOWER(?)
-GROUP BY lg.id, lg.message, lg.level, lg.created_at
-ORDER BY count DESC, latest_at DESC
-LIMIT ? OFFSET ?
-`
-
-type ListLogGroupsByLevelParams struct {
-	LOWER  string
-	Limit  int64
-	Offset int64
-}
-
-type ListLogGroupsByLevelRow struct {
-	ID             int64
-	Message        string
-	Level          string
-	Count          int64
-	LatestAt       interface{}
-	GroupCreatedAt sql.NullTime
-}
-
-// List log groups filtered by level with counts
-func (q *Queries) ListLogGroupsByLevel(ctx context.Context, arg ListLogGroupsByLevelParams) ([]ListLogGroupsByLevelRow, error) {
-	rows, err := q.db.QueryContext(ctx, listLogGroupsByLevel, arg.LOWER, arg.Limit, arg.Offset)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []ListLogGroupsByLevelRow
-	for rows.Next() {
-		var i ListLogGroupsByLevelRow
-		if err := rows.Scan(
-			&i.ID,
-			&i.Message,
-			&i.Level,
-			&i.Count,
-			&i.LatestAt,
-			&i.GroupCreatedAt,
+			&i.CreatedAt,
 		); err != nil {
 			return nil, err
 		}

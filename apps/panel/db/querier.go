@@ -13,7 +13,7 @@ import (
 type Querier interface {
 	AddNotifierApp(ctx context.Context, arg AddNotifierAppParams) error
 	AddUserApp(ctx context.Context, arg AddUserAppParams) error
-	CountByLevel(ctx context.Context, createdAt sql.NullTime) ([]CountByLevelRow, error)
+	CountByLevel(ctx context.Context, createdAt time.Time) ([]CountByLevelRow, error)
 	// Count total log groups
 	CountLogGroups(ctx context.Context) (int64, error)
 	// Count log groups filtered by level
@@ -31,7 +31,7 @@ type Querier interface {
 	CreateUserAPIKey(ctx context.Context, arg CreateUserAPIKeyParams) (UserApiKey, error)
 	DeleteExpiredSessions(ctx context.Context, expiresAt time.Time) error
 	DeleteNotifier(ctx context.Context, id int64) error
-	DeleteOldLogs(ctx context.Context, createdAt sql.NullTime) error
+	DeleteOldLogs(ctx context.Context, createdAt time.Time) error
 	DeleteOldStats(ctx context.Context, createdAt time.Time) error
 	DeleteSession(ctx context.Context, id string) error
 	DeleteUser(ctx context.Context, id int64) error
@@ -58,7 +58,7 @@ type Querier interface {
 	GetNotifiersForApp(ctx context.Context, appName string) ([]Notifier, error)
 	// Get existing log group by message and level, or create if doesn't exist
 	GetOrCreateLogGroup(ctx context.Context, arg GetOrCreateLogGroupParams) (LogGroup, error)
-	GetPercentiles(ctx context.Context, createdAt sql.NullTime) (GetPercentilesRow, error)
+	GetPercentiles(ctx context.Context, createdAt time.Time) (GetPercentilesRow, error)
 	GetSession(ctx context.Context, id string) (Session, error)
 	GetStatsHistory(ctx context.Context, createdAt time.Time) ([]SystemStat, error)
 	GetUserAPIKey(ctx context.Context, apiKey string) (UserApiKey, error)
@@ -73,8 +73,6 @@ type Querier interface {
 	ListEnabledNotifiers(ctx context.Context) ([]Notifier, error)
 	// List all log groups with their counts and latest timestamp
 	ListLogGroups(ctx context.Context, arg ListLogGroupsParams) ([]ListLogGroupsRow, error)
-	// List log groups filtered by level with counts
-	ListLogGroupsByLevel(ctx context.Context, arg ListLogGroupsByLevelParams) ([]ListLogGroupsByLevelRow, error)
 	ListLogsByLevel(ctx context.Context, arg ListLogsByLevelParams) ([]Log, error)
 	ListNotifiers(ctx context.Context) ([]Notifier, error)
 	ListNotifiersByUser(ctx context.Context, userID int64) ([]Notifier, error)

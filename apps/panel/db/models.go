@@ -28,14 +28,14 @@ type Log struct {
 	Message   string
 	Context   sql.NullString
 	GroupID   sql.NullInt64
-	CreatedAt sql.NullTime
+	CreatedAt time.Time
 }
 
 type LogGroup struct {
 	ID        int64
 	Message   string
 	Level     string
-	CreatedAt sql.NullTime
+	CreatedAt time.Time
 }
 
 type Notifier struct {

@@ -57,11 +57,7 @@ type LogDetailResult struct {
 }
 
 type LogGroupsResult struct {
-	Groups     any
-	TotalCount int64
-	ErrorCount int64
-	WarnCount  int64
-	InfoCount  int64
+	Groups any
 }
 
 // StatsDisplay holds formatted stats data for UI rendering.
@@ -299,65 +295,56 @@ func (s *Service) GetLogDetail(ctx context.Context, req GetLogDetailRequest) (*L
 	}, nil
 }
 
-func (s *Service) GetLogGroups(ctx context.Context, req GetLogGroupsRequest) (*LogGroupsResult, error) {
+type LogGroup struct {
+	ID        int64
+	Message   string
+	Level     string
+	Count     int64
+	LatestAt  time.Time
+	CreatedAt time.Time
+}
+
+func (s *Service) GetLogGroups(ctx context.Context, req GetLogGroupsRequest) ([]LogGroup, error) {
+	var groups []LogGroup
+
 	hasAccess, err := s.permissions.CanAccessApp(ctx, req.User, req.AppName)
 	if err != nil {
-		return nil, err
+		return groups, err
 	}
 	if !hasAccess {
-		return nil, ErrAccessDenied
+		return groups, ErrAccessDenied
 	}
 
 	queries, err := s.queriesForApp(req.CollectorName, req.AppName)
 	if err != nil {
-		return nil, err
+		return groups, err
 	}
 
-	totalCount, err := queries.CountLogGroups(ctx)
-	if err != nil {
-		slog.Error("Failed to count log groups", "error", err)
-		totalCount = 0
+	if req.Level == "" {
+		req.Level = "%"
 	}
-	errorCount, err := queries.CountLogGroupsByLevel(ctx, "error")
-	if err != nil {
-		slog.Error("Failed to count error groups", "error", err)
-		errorCount = 0
-	}
-	warnCount, err := queries.CountLogGroupsByLevel(ctx, "warn")
-	if err != nil {
-		slog.Error("Failed to count warn groups", "error", err)
-		warnCount = 0
-	}
-	infoCount, err := queries.CountLogGroupsByLevel(ctx, "info")
-	if err != nil {
-		slog.Error("Failed to count info groups", "error", err)
-		infoCount = 0
-	}
-
-	var groups any
-	if req.Level != "" {
-		groups, err = queries.ListLogGroupsByLevel(ctx, db.ListLogGroupsByLevelParams{
-			LOWER:  req.Level,
-			Limit:  req.Limit,
-			Offset: req.Offset,
-		})
-	} else {
-		groups, err = queries.ListLogGroups(ctx, db.ListLogGroupsParams{
-			Limit:  req.Limit,
-			Offset: req.Offset,
-		})
-	}
+	gRows, err := queries.ListLogGroups(ctx, db.ListLogGroupsParams{
+		Limit:  req.Limit,
+		Offset: req.Offset,
+		Level:  req.Level,
+	})
 	if err != nil {
 		return nil, err
 	}
 
-	return &LogGroupsResult{
-		Groups:     groups,
-		TotalCount: totalCount,
-		ErrorCount: errorCount,
-		WarnCount:  warnCount,
-		InfoCount:  infoCount,
-	}, nil
+	// TODO: Map to []LogGroup
+	for _, g := range gRows {
+		groups = append(groups, LogGroup{
+			ID:        g.ID,
+			Message:   g.Message,
+			Level:     g.Level,
+			Count:     g.Count,
+			LatestAt:  g.LatestAt,
+			CreatedAt: g.CreatedAt,
+		})
+	}
+
+	return groups, nil
 }
 
 func (s *Service) GetLogVolumeTimeSeries(ctx context.Context, collectorName, appName string, since time.Time, granularity string) ([]db.GetLogVolumeTimeSeriesRow, error) {
@@ -367,7 +354,7 @@ func (s *Service) GetLogVolumeTimeSeries(ctx context.Context, collectorName, app
 	}
 
 	return queries.GetLogVolumeTimeSeries(ctx, db.GetLogVolumeTimeSeriesParams{
-		Since:       sql.NullTime{Time: since, Valid: true},
+		Since:       since,
 		Granularity: granularity,
 	})
 }

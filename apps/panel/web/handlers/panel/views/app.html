@@ -50,6 +50,11 @@
                 </div>
             </div>
         </div>
+
+        <div
+          hx-get="/panel/collectors/{{.Collector}}/apps/{{.App}}/logs"
+          hx-trigger="load"
+        ></div>
 </body>
 </html>
 {{end}}

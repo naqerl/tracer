@@ -2,7 +2,6 @@ package retention
 
 import (
 	"context"
-	"database/sql"
 	"log/slog"
 	"time"
 
@@ -54,7 +53,7 @@ func (s *Service) runCleanup(ctx context.Context) {
 		return
 	}
 
-	cutoff := sql.NullTime{Time: time.Now().AddDate(0, 0, -s.retentionDays), Valid: true}
+	cutoff := time.Now().AddDate(0, 0, -s.retentionDays)
 
 	// For each ingest, list apps and cleanup
 	for _, collector := range ingestList {
@@ -82,7 +81,7 @@ func (s *Service) runCleanup(ctx context.Context) {
 				continue
 			}
 
-			slog.Debug("Cleaned up old logs", "collector", collector, "app", appName, "cutoff", cutoff.Time)
+			slog.Debug("Cleaned up old logs", "collector", collector, "app", appName, "cutoff", cutoff)
 		}
 	}
 
