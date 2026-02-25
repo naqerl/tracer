@@ -96,43 +96,81 @@ func (h *handler) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) processMessage(ctx context.Context, connID, remoteAddr string, message []byte) {
-	var msg types.LogMessage
-	if err := json.Unmarshal(message, &msg); err != nil {
-		slog.Error("Failed to parse log message", "error", err)
+	var hdr struct {
+		Type types.EventType `json:"type"`
+	}
+	if err := json.Unmarshal(message, &hdr); err != nil {
+		slog.Error("Failed to parse websocket message header", "error", err)
+		return
+	}
+	if err := hdr.Type.Validate(); err != nil {
+		slog.Warn("Invalid websocket message type", "error", err)
 		return
 	}
 
-	// Validate message type
-	if err := msg.Type.Validate(); err != nil {
-		slog.Warn("Invalid message type", "error", err)
-		return
-	}
-
-	// Handle each message type with switch case
-	switch msg.Type {
-	case types.MessageTypeRegister:
-		h.handleRegistration(ctx, connID, remoteAddr, msg)
-
-	case types.MessageTypeStats:
-		h.handleStats(ctx, msg)
-
-	case types.MessageTypeStartup:
-		h.handleStartup(ctx, msg)
-
-	case types.MessageTypeLog:
-		h.handleLog(ctx, msg)
+	switch hdr.Type {
+	case types.EventTypeRegister:
+		var reg types.RegisterMessage
+		if err := json.Unmarshal(message, &reg); err != nil {
+			slog.Error("Failed to parse collector registration", "error", err)
+			return
+		}
+		h.handleRegistration(ctx, connID, remoteAddr, reg)
+	default:
+		var env types.Envelope
+		if err := json.Unmarshal(message, &env); err != nil {
+			slog.Error("Failed to parse ingest envelope", "error", err)
+			return
+		}
+		h.handleEnvelope(ctx, env)
 	}
 }
 
-func (h *handler) handleLog(ctx context.Context, msg types.LogMessage) {
+func (h *handler) handleEnvelope(ctx context.Context, env types.Envelope) {
+	switch env.Type {
+	case types.EventTypeLog:
+		var evt types.LogEvent
+		if err := json.Unmarshal(env.Data, &evt); err != nil {
+			slog.Warn("Failed to decode log event", "error", err, "collector", env.Collector)
+			return
+		}
+		h.handleLog(ctx, env.Collector, evt.App, evt.Entry, env.Timestamp)
+	case types.EventTypeStats:
+		var evt types.StatsEvent
+		if err := json.Unmarshal(env.Data, &evt); err != nil {
+			slog.Warn("Failed to decode stats event", "error", err, "collector", env.Collector)
+			return
+		}
+		h.handleStats(ctx, env.Collector, evt.Data)
+	case types.EventTypeError:
+		var evt types.ErrorEvent
+		if err := json.Unmarshal(env.Data, &evt); err != nil {
+			slog.Warn("Failed to decode error event", "error", err, "collector", env.Collector)
+			return
+		}
+		entry := types.LogEntry{
+			Timestamp: evt.Timestamp(),
+			Level:     types.LevelError,
+			Message:   "SOURCE_ERROR[" + evt.ErrType + "]: " + evt.Message + " (source: " + evt.Source + ")",
+		}
+		h.handleLog(ctx, env.Collector, evt.App, entry, env.Timestamp)
+	default:
+		slog.Warn("Unhandled envelope type", "type", env.Type)
+	}
+}
+
+func (h *handler) handleLog(ctx context.Context, collector, app string, entry types.LogEntry, envelopeTS time.Time) {
+	if entry.Timestamp.IsZero() {
+		entry.Timestamp = envelopeTS
+	}
 	req := ingest.StoreLogRequest{
-		CollectorName: msg.CollectorName,
-		AppName:       msg.AppName,
-		Entry:         msg.Entry,
+		CollectorName: collector,
+		AppName:       app,
+		Entry:         entry,
 		SampleRate:    h.sampleRate,
 	}
 	if err := req.Validate(); err != nil {
-		slog.Warn("Invalid log request", "error", err, "collector", msg.CollectorName, "app", msg.AppName)
+		slog.Warn("Invalid log request", "error", err, "collector", collector, "app", app)
 		return
 	}
 
@@ -174,10 +212,10 @@ func extractIP(remoteAddr string) string {
 	return remoteAddr
 }
 
-func (h *handler) handleRegistration(ctx context.Context, connID, remoteAddr string, msg types.LogMessage) {
+func (h *handler) handleRegistration(ctx context.Context, connID, remoteAddr string, msg types.RegisterMessage) {
 	// Construct request from message
 	req := ingest.RegisterCollectorRequest{
-		CollectorName: msg.CollectorName,
+		CollectorName: msg.Collector,
 		Apps:          msg.Apps,
 	}
 
@@ -216,26 +254,6 @@ func (h *handler) pingLoop(conn *websocket.Conn) {
 	}
 }
 
-// handleStartup processes app startup notifications
-// Startup messages are always persisted and trigger a notification
-func (h *handler) handleStartup(ctx context.Context, msg types.LogMessage) {
-	req := ingest.StoreStartupRequest{
-		CollectorName: msg.CollectorName,
-		AppName:       msg.AppName,
-		Entry:         msg.Entry,
-	}
-	if err := req.Validate(); err != nil {
-		slog.Warn("Invalid startup request", "error", err, "collector", msg.CollectorName, "app", msg.AppName)
-		return
-	}
-
-	slog.Info("App startup detected", "app", req.AppName, "message", req.Entry.Message)
-
-	if err := h.ingestService.StoreStartup(ctx, req); err != nil {
-		slog.Error("Failed to store startup log", "error", err, "app", req.AppName)
-	}
-}
-
 func (h *handler) listCollectors(w http.ResponseWriter, r *http.Request) {
 	if !h.requireCollectorAPIKey(w, r) {
 		return
@@ -250,14 +268,9 @@ func (h *handler) listCollectors(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// handleStats processes system statistics from ingests
-func (h *handler) handleStats(ctx context.Context, msg types.LogMessage) {
-	if msg.Stats == nil {
-		slog.Warn("Received stats without stats data")
-		return
-	}
-
-	ts := msg.Stats.Timestamp
+// handleStats processes system statistics from collectors.
+func (h *handler) handleStats(ctx context.Context, collector string, stats types.Stats) {
+	ts := stats.Timestamp
 	if ts.IsZero() {
 		ts = time.Now()
 	}
@@ -265,29 +278,29 @@ func (h *handler) handleStats(ctx context.Context, msg types.LogMessage) {
 	ts = ts.UTC()
 
 	req := ingest.InsertStatsRequest{
-		CollectorName: msg.CollectorName,
+		CollectorName: collector,
 		Stats: ingest.SystemStats{
-			CollectorName:   msg.CollectorName,
-			CpuUsagePercent: msg.Stats.CPUUsagePercent,
-			MemTotalMb:      int64(msg.Stats.MemTotalMB),
-			MemUsedMb:       int64(msg.Stats.MemUsedMB),
-			MemAvailableMb:  int64(msg.Stats.MemAvailableMB),
-			DiskTotalGb:     int64(msg.Stats.DiskTotalGB),
-			DiskUsedGb:      int64(msg.Stats.DiskUsedGB),
-			DiskAvailGb:     int64(msg.Stats.DiskAvailGB),
+			CollectorName:   collector,
+			CpuUsagePercent: stats.CPUUsagePercent,
+			MemTotalMb:      int64(stats.MemTotalMB),
+			MemUsedMb:       int64(stats.MemUsedMB),
+			MemAvailableMb:  int64(stats.MemAvailableMB),
+			DiskTotalGb:     int64(stats.DiskTotalGB),
+			DiskUsedGb:      int64(stats.DiskUsedGB),
+			DiskAvailGb:     int64(stats.DiskAvailGB),
 			CreatedAt:       ts,
 		},
 	}
 	if err := req.Validate(); err != nil {
-		slog.Warn("Invalid stats request", "error", err, "collector", msg.CollectorName)
+		slog.Warn("Invalid stats request", "error", err, "collector", collector)
 		return
 	}
 
 	err := h.ingestService.InsertSystemStats(ctx, req)
 	if err != nil {
-		slog.Error("Failed to store system stats", "error", err, "collector", msg.CollectorName)
+		slog.Error("Failed to store system stats", "error", err, "collector", collector)
 		return
 	}
 
-	slog.Debug("Stored system stats", "collector", msg.CollectorName, "cpu", msg.Stats.CPUUsagePercent)
+	slog.Debug("Stored system stats", "collector", collector, "cpu", stats.CPUUsagePercent)
 }

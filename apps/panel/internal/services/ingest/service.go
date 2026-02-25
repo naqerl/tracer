@@ -104,22 +104,6 @@ func (r StoreLogRequest) Validate() error {
 	return nil
 }
 
-type StoreStartupRequest struct {
-	CollectorName string
-	AppName       string
-	Entry         types.LogEntry
-}
-
-func (r StoreStartupRequest) Validate() error {
-	if r.CollectorName == "" {
-		return fmt.Errorf("collector name is required")
-	}
-	if r.AppName == "" {
-		return fmt.Errorf("app name is required")
-	}
-	return nil
-}
-
 // ListCollectors returns all collector names.
 func (s *Service) ListCollectors() ([]CollectorName, error) {
 	names, err := s.dbManager.ListCollectors()
@@ -326,70 +310,6 @@ func (s *Service) StoreLog(ctx context.Context, req StoreLogRequest) (int64, err
 	return logID, nil
 }
 
-// StoreStartup stores a startup log entry for a specific app.
-// Similar to StoreLog but uses "STARTUP" as the level.
-// Sends startup notification.
-func (s *Service) StoreStartup(ctx context.Context, req StoreStartupRequest) error {
-	if err := req.Validate(); err != nil {
-		return err
-	}
-
-	sqlDB, err := s.dbManager.CreateAppDB(req.CollectorName, req.AppName)
-	if err != nil {
-		return err
-	}
-	queries := db.New(sqlDB)
-
-	// Marshal extra context
-	contextJSON := "{}"
-	if len(req.Entry.Extra) > 0 {
-		if b, err := json.Marshal(req.Entry.Extra); err == nil {
-			contextJSON = string(b)
-		}
-	}
-
-	// Use "STARTUP" as the level for startup events
-	level := "STARTUP"
-	if req.Entry.Level != "" {
-		level = string(req.Entry.Level)
-	}
-
-	// Get or create log group for this message and level
-	logGroup, err := queries.GetOrCreateLogGroup(ctx, db.GetOrCreateLogGroupParams{
-		Message: req.Entry.Message,
-		Level:   level,
-	})
-	if err != nil {
-		return err
-	}
-
-	// Store startup entry
-	ts := req.Entry.Timestamp
-	if ts.IsZero() {
-		ts = time.Now()
-	}
-	ts = ts.UTC()
-
-	_, err = queries.InsertLog(ctx, db.InsertLogParams{
-		TraceID:   req.Entry.TraceID,
-		Level:     level,
-		Message:   req.Entry.Message,
-		Context:   sql.NullString{String: contextJSON, Valid: true},
-		GroupID:   sql.NullInt64{Int64: logGroup.ID, Valid: true},
-		CreatedAt: sql.NullTime{Time: ts, Valid: true},
-	})
-	if err != nil {
-		return err
-	}
-
-	// Send startup notification
-	if s.notifyChan != nil {
-		s.sendStartupNotification(req)
-	}
-
-	return nil
-}
-
 // sendErrorNotification sends a notification for error logs
 func (s *Service) sendErrorNotification(req StoreLogRequest, logID, groupID int64) {
 	// Build the alert message with markdown link
@@ -413,29 +333,5 @@ func (s *Service) sendErrorNotification(req StoreLogRequest, logID, groupID int6
 	}:
 	default:
 		slog.Error("Notification channel full, dropping notification")
-	}
-}
-
-// sendStartupNotification sends a notification for app startup
-func (s *Service) sendStartupNotification(req StoreStartupRequest) {
-	// Build the startup message with markdown link
-	startupMessage := req.Entry.Message
-	if s.panelURL != "" {
-		logsURL := fmt.Sprintf("%s/panel/collectors/%s/apps/%s/logs",
-			s.panelURL,
-			req.CollectorName,
-			req.AppName)
-		startupMessage += fmt.Sprintf("\n\n[view logs](%s)", logsURL)
-	}
-
-	select {
-	case s.notifyChan <- notify.Notification{
-		Type:          notify.TypeStartup,
-		CollectorName: req.CollectorName,
-		AppName:       req.AppName,
-		Message:       startupMessage,
-	}:
-	default:
-		slog.Warn("Notification channel full, dropping startup notification")
 	}
 }
