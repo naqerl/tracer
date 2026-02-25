@@ -1,9 +1,9 @@
 package super
 
 type Supervisee interface {
-        Start() error
+	Start() error
 }
 
 func Vise(s Supervisee, name string) Supervisee {
-        panic("not implemented")
+	panic("not implemented")
 }

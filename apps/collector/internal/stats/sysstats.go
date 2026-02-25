@@ -7,32 +7,18 @@ import (
 	"strings"
 	"syscall"
 	"time"
-
-	"github.com/ai-shift/tracer/libs/types"
 )
 
-// Stats is an alias to the shared types.Stats for backward compatibility
-type Stats = types.Stats
-
-// Collector collects system statistics
-type Collector struct {
-	dataDir string
-
+// SystemStats collects system statistics
+type SystemStats struct {
 	// For CPU calculation between samples
 	lastCPUIdle  uint64
 	lastCPUTotal uint64
 }
 
-// New creates a new system stats collector
-func New(dataDir string) *Collector {
-	return &Collector{
-		dataDir: dataDir,
-	}
-}
-
 // Collect gathers current system statistics
-func (c *Collector) Collect() (*Stats, error) {
-	stats := &Stats{
+func (c *SystemStats) Snapshot() (Stats, error) {
+	stats := Stats{
 		Timestamp: time.Now(),
 	}
 
@@ -63,7 +49,7 @@ func (c *Collector) Collect() (*Stats, error) {
 
 // getCPUUsage calculates CPU usage percentage since last call
 // Reads /proc/stat: cpu user nice system idle iowait irq softirq steal guest guest_nice
-func (c *Collector) getCPUUsage() (float64, error) {
+func (c *SystemStats) getCPUUsage() (float64, error) {
 	file, err := os.Open("/proc/stat")
 	if err != nil {
 		return 0, err
@@ -115,7 +101,7 @@ func (c *Collector) getCPUUsage() (float64, error) {
 
 // getMemStats reads memory information from /proc/meminfo
 // Returns total, used, available in MB
-func (c *Collector) getMemStats() (total, used, available uint64, err error) {
+func (c *SystemStats) getMemStats() (total, used, available uint64, err error) {
 	file, err := os.Open("/proc/meminfo")
 	if err != nil {
 		return 0, 0, 0, err
@@ -163,18 +149,10 @@ func (c *Collector) getMemStats() (total, used, available uint64, err error) {
 
 // getDiskStats gets disk usage for the data directory
 // Returns total, used, available in GB
-func (c *Collector) getDiskStats() (total, used, available uint64, err error) {
-	path := c.dataDir
-	if path == "" {
-		path = "/"
-	}
-
+func (c *SystemStats) getDiskStats() (total, used, available uint64, err error) {
 	var stat syscall.Statfs_t
-	if err := syscall.Statfs(path, &stat); err != nil {
-		// Fallback to root
-		if err := syscall.Statfs("/", &stat); err != nil {
-			return 0, 0, 0, err
-		}
+	if err := syscall.Statfs("/", &stat); err != nil {
+		return 0, 0, 0, err
 	}
 
 	// Calculate in bytes first, then convert to GB
