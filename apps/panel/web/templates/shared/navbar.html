@@ -5,24 +5,47 @@
     <a href="/settings" class="text-lg font-medium hover:text-accent transition-colors">/settings</a>
   </div>
   
-  <form class="flex items-center gap-2 text-sm" onsubmit="return false;">
-    <label for="since" class="text-fg-secondary">since</label>
-    <select id="since" name="since" 
-            class="bg-bg-secondary border border-bg-secondary focus:border-accent focus:outline-none cursor-pointer"
-            onchange="window.location.href = window.location.pathname + '?since=' + encodeURIComponent(this.value)">
-      <option value="1h">1h</option>
-      <option value="6h">6h</option>
-      <option value="24h">24h</option>
-      <option value="7d">7d</option>
-      <option value="30d">30d</option>
-    </select>
+  <form class="flex items-center gap-1 text-sm" onsubmit="return false;">
+    <input type="hidden" id="since" name="since" value="24h">
+    <div class="relative" id="since-dropdown">
+      <button type="button" 
+              class="flex items-center gap-1 text-fg-secondary hover:text-fg transition-colors cursor-pointer"
+              onclick="document.getElementById('since-options').classList.toggle('hidden')">
+        <span>since</span>
+        <span id="since-label">24h</span>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+      </button>
+      <div id="since-options" class="hidden absolute right-0 top-full mt-1 bg-bg border border-bg-secondary shadow-lg min-w-[4rem] z-50">
+        <button type="button" class="block w-full text-left px-3 py-1.5 text-sm hover:bg-bg-secondary transition-colors" onclick="navbarSelectSince('1h')">1h</button>
+        <button type="button" class="block w-full text-left px-3 py-1.5 text-sm hover:bg-bg-secondary transition-colors" onclick="navbarSelectSince('6h')">6h</button>
+        <button type="button" class="block w-full text-left px-3 py-1.5 text-sm hover:bg-bg-secondary transition-colors" onclick="navbarSelectSince('24h')">24h</button>
+        <button type="button" class="block w-full text-left px-3 py-1.5 text-sm hover:bg-bg-secondary transition-colors" onclick="navbarSelectSince('7d')">7d</button>
+        <button type="button" class="block w-full text-left px-3 py-1.5 text-sm hover:bg-bg-secondary transition-colors" onclick="navbarSelectSince('30d')">30d</button>
+      </div>
+    </div>
   </form>
   <script>
     (function() {
       const params = new URLSearchParams(window.location.search);
       const since = params.get('since') || '24h';
       document.getElementById('since').value = since;
+      document.getElementById('since-label').textContent = since;
     })();
+    
+    function navbarSelectSince(val) {
+      document.getElementById('since').value = val;
+      document.getElementById('since-label').textContent = val;
+      document.getElementById('since-options').classList.add('hidden');
+      window.location.href = window.location.pathname + '?since=' + encodeURIComponent(val);
+    }
+    
+    // Close dropdown when clicking outside
+    document.addEventListener('click', function(e) {
+      const dropdown = document.getElementById('since-dropdown');
+      if (!dropdown.contains(e.target)) {
+        document.getElementById('since-options').classList.add('hidden');
+      }
+    });
   </script>
 </nav>
 {{end}}
