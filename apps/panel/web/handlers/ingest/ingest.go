@@ -135,6 +135,13 @@ func (h *handler) handleEnvelope(ctx context.Context, env types.Envelope) {
 			return
 		}
 		h.handleLog(ctx, env.Collector, evt.App, evt.Entry, env.Timestamp)
+	case types.EventTypeLifecycle:
+		var evt types.LifecycleEvent
+		if err := json.Unmarshal(env.Data, &evt); err != nil {
+			slog.Warn("Failed to decode lifecycle event", "error", err, "collector", env.Collector)
+			return
+		}
+		h.handleLifecycle(ctx, env.Collector, evt, env.Timestamp)
 	case types.EventTypeStats:
 		var evt types.StatsEvent
 		if err := json.Unmarshal(env.Data, &evt); err != nil {
@@ -156,6 +163,33 @@ func (h *handler) handleEnvelope(ctx context.Context, env types.Envelope) {
 		h.handleLog(ctx, env.Collector, evt.App, entry, env.Timestamp)
 	default:
 		slog.Warn("Unhandled envelope type", "type", env.Type)
+	}
+}
+
+func (h *handler) handleLifecycle(ctx context.Context, collector string, evt types.LifecycleEvent, envelopeTS time.Time) {
+	ts := evt.Timestamp()
+	if ts.IsZero() {
+		ts = envelopeTS
+	}
+	if ts.IsZero() {
+		ts = time.Now().UTC()
+	}
+	ts = ts.UTC()
+
+	req := ingest.StoreLifecycleRequest{
+		CollectorName: collector,
+		AppName:       evt.App,
+		Kind:          evt.Kind,
+		RawLine:       evt.RawLine,
+		Timestamp:     ts,
+	}
+	if err := req.Validate(); err != nil {
+		slog.Warn("Invalid lifecycle request", "error", err, "collector", collector, "app", evt.App)
+		return
+	}
+
+	if err := h.ingestService.StoreLifecycle(ctx, req); err != nil {
+		slog.Error("Failed to store lifecycle event", "error", err, "collector", collector, "app", evt.App, "kind", evt.Kind)
 	}
 }
 

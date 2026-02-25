@@ -14,6 +14,13 @@ type Config struct {
 	Value string
 }
 
+type LifecycleEvent struct {
+	ID        int64
+	Kind      string
+	RawLine   string
+	CreatedAt time.Time
+}
+
 type Log struct {
 	ID        int64
 	TraceID   string

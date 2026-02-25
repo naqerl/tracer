@@ -67,6 +67,7 @@ type Querier interface {
 	GetUserApps(ctx context.Context, userID int64) ([]string, error)
 	GetUserByID(ctx context.Context, id int64) (User, error)
 	GetUserByUsername(ctx context.Context, username string) (User, error)
+	InsertLifecycleEvent(ctx context.Context, arg InsertLifecycleEventParams) (LifecycleEvent, error)
 	InsertLog(ctx context.Context, arg InsertLogParams) (Log, error)
 	InsertSystemStats(ctx context.Context, arg InsertSystemStatsParams) error
 	ListEnabledNotifiers(ctx context.Context) ([]Notifier, error)
@@ -77,6 +78,7 @@ type Querier interface {
 	ListLogsByLevel(ctx context.Context, arg ListLogsByLevelParams) ([]Log, error)
 	ListNotifiers(ctx context.Context) ([]Notifier, error)
 	ListNotifiersByUser(ctx context.Context, userID int64) ([]Notifier, error)
+	ListRecentLifecycleEvents(ctx context.Context, limit int64) ([]LifecycleEvent, error)
 	ListRecentLogs(ctx context.Context, limit int64) ([]Log, error)
 	ListUsers(ctx context.Context) ([]User, error)
 	RemoveAllNotifierApps(ctx context.Context, notifierID int64) error

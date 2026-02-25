@@ -104,6 +104,33 @@ func (r StoreLogRequest) Validate() error {
 	return nil
 }
 
+type StoreLifecycleRequest struct {
+	CollectorName string
+	AppName       string
+	Kind          types.LifecycleKind
+	RawLine       string
+	Timestamp     time.Time
+}
+
+func (r StoreLifecycleRequest) Validate() error {
+	if r.CollectorName == "" {
+		return fmt.Errorf("collector name is required")
+	}
+	if r.AppName == "" {
+		return fmt.Errorf("app name is required")
+	}
+	if err := r.Kind.Validate(); err != nil {
+		return err
+	}
+	if r.RawLine == "" {
+		return fmt.Errorf("raw line is required")
+	}
+	if r.Timestamp.IsZero() {
+		return fmt.Errorf("timestamp is required")
+	}
+	return nil
+}
+
 // ListCollectors returns all collector names.
 func (s *Service) ListCollectors() ([]CollectorName, error) {
 	names, err := s.dbManager.ListCollectors()
@@ -308,6 +335,26 @@ func (s *Service) StoreLog(ctx context.Context, req StoreLogRequest) (int64, err
 	}
 
 	return logID, nil
+}
+
+// StoreLifecycle stores lifecycle events in a dedicated app-level table.
+func (s *Service) StoreLifecycle(ctx context.Context, req StoreLifecycleRequest) error {
+	if err := req.Validate(); err != nil {
+		return err
+	}
+
+	sqlDB, err := s.dbManager.CreateAppDB(req.CollectorName, req.AppName)
+	if err != nil {
+		return err
+	}
+	queries := db.New(sqlDB)
+
+	_, err = queries.InsertLifecycleEvent(ctx, db.InsertLifecycleEventParams{
+		Kind:      string(req.Kind),
+		RawLine:   req.RawLine,
+		CreatedAt: req.Timestamp.UTC(),
+	})
+	return err
 }
 
 // sendErrorNotification sends a notification for error logs
