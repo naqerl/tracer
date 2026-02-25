@@ -47,12 +47,25 @@ func (rm ResourceMonitor) Produce(ctx context.Context) <-chan types.Event {
 		for {
 			select {
 			case <-ticker.C:
-				_, err := stats.Snapshot()
+				snapshot, err := stats.Snapshot()
 				if err == nil {
-					out <- types.StatsEvent{}
-					panic("not implemented")
+					out <- types.StatsEvent{
+						Time: snapshot.Timestamp,
+						Data: types.Stats{
+							CPUUsagePercent: snapshot.CPUUsagePercent,
+							MemTotalMB:      snapshot.MemTotalMB,
+							MemUsedMB:       snapshot.MemUsedMB,
+							MemAvailableMB:  snapshot.MemAvailableMB,
+							DiskTotalGB:     snapshot.DiskTotalGB,
+							DiskUsedGB:      snapshot.DiskUsedGB,
+							DiskAvailGB:     snapshot.DiskAvailGB,
+							Timestamp:       snapshot.Timestamp,
+						},
+					}
 				} else {
 					out <- types.ErrorEvent{
+						Time:    time.Now(),
+						ErrType: "stats_snapshot_failed",
 						Source:  "resource_monitor",
 						Message: err.Error(),
 					}
