@@ -354,7 +354,24 @@ func (s *Service) StoreLifecycle(ctx context.Context, req StoreLifecycleRequest)
 		RawLine:   req.RawLine,
 		CreatedAt: req.Timestamp.UTC(),
 	})
-	return err
+	if err != nil {
+		return err
+	}
+
+	if s.notifyChan != nil {
+		select {
+		case s.notifyChan <- notify.Notification{
+			Type:          notify.TypeLifecycle,
+			CollectorName: req.CollectorName,
+			AppName:       req.AppName,
+			Message:       string(req.Kind),
+		}:
+		default:
+			slog.Error("Notification channel full, dropping lifecycle notification")
+		}
+	}
+
+	return nil
 }
 
 // sendErrorNotification sends a notification for error logs

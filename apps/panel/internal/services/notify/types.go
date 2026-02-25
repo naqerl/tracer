@@ -5,7 +5,7 @@ type NotificationType string
 
 const (
 	TypeAlert        NotificationType = "alert"        // Error alerts requiring attention
-	TypeStartup      NotificationType = "startup"      // App startup notifications
+	TypeLifecycle    NotificationType = "lifecycle"    // App lifecycle notifications (start/restart/exit)
 	TypeWelcome      NotificationType = "welcome"      // Welcome message for new notifiers
 	TypeSubscription NotificationType = "subscription" // Subscription confirmation
 )

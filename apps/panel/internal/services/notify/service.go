@@ -191,8 +191,8 @@ func (s *Service) dispatch(n Notification, notifiers []Notifier) {
 	switch n.Type {
 	case TypeAlert:
 		prefix = "⚠️ alert"
-	case TypeStartup:
-		prefix = "🚀 startup"
+	case TypeLifecycle:
+		prefix = "lifecycle"
 	case TypeWelcome:
 		prefix = "👋 welcome"
 	case TypeSubscription:
