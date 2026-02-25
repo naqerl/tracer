@@ -9,7 +9,6 @@ import (
 
 	"github.com/gorilla/websocket"
 
-	"github.com/ai-shift/tracer/apps/collector/internal/events"
 	"github.com/ai-shift/tracer/libs/types"
 )
 
@@ -23,22 +22,18 @@ const (
 
 // Service handles WebSocket connection to panel.
 type Service struct {
-	endpoint      string
-	apiKey        string
-	collectorName string
-	appNames      []string
-	bus           *events.Bus
-	conn          *websocket.Conn
+	spec     Spec
+	appNames []string
+	conn     *websocket.Conn
+	events   <-chan types.Event
 }
 
 // New creates a WebSocket client service.
-func New(endpoint, apiKey, collectorName string, appNames []string, bus *events.Bus) *Service {
-	return &Service{
-		endpoint:      endpoint,
-		apiKey:        apiKey,
-		collectorName: collectorName,
-		appNames:      appNames,
-		bus:           bus,
+func New(spec Spec, appNames []string, events <-chan types.Event) Service {
+	return Service{
+		spec:     spec,
+		appNames: appNames,
+		events:   events,
 	}
 }
 
@@ -54,14 +49,14 @@ func (s *Service) Start(ctx context.Context) {
 		}
 
 		if err := s.connect(); err != nil {
-			slog.Error("Failed to connect to panel", "endpoint", s.endpoint, "error", err)
+			slog.Error("Failed to connect to panel", "host", s.spec.PanelHost, "error", err)
 			time.Sleep(reconnectWait)
 			reconnectWait = min(reconnectWait*2, maxReconnectWait)
 			continue
 		}
 
 		reconnectWait = reconnectDelay
-		slog.Info("Connected to panel", "endpoint", s.endpoint)
+		slog.Info("Connected to panel", "host", s.spec.PanelHost)
 
 		s.sendRegistration()
 
@@ -79,11 +74,10 @@ func (s *Service) connect() error {
 	}
 
 	headers := http.Header{}
-	if s.apiKey != "" {
-		headers.Set("X-API-Key", s.apiKey)
-	}
+	headers.Set("X-API-Key", s.spec.APIKey)
 
-	conn, _, err := websocket.DefaultDialer.Dial(s.endpoint, headers)
+	// TODO: Build a complete websocket URI
+	conn, _, err := websocket.DefaultDialer.Dial(s.spec.PanelHost, headers)
 	if err != nil {
 		return err
 	}
@@ -99,11 +93,6 @@ func (s *Service) connect() error {
 }
 
 func (s *Service) run(ctx context.Context) error {
-	ch := s.bus.Subscribe()
-	defer func() {
-		// Note: bus channels are not closed on unsubscribe in current implementation
-	}()
-
 	pingTicker := time.NewTicker(pingInterval)
 	defer pingTicker.Stop()
 
@@ -117,7 +106,7 @@ func (s *Service) run(ctx context.Context) error {
 			return nil
 		case <-pongDone:
 			return websocket.ErrBadHandshake
-		case evt := <-ch:
+		case evt := <-s.events:
 			if err := s.sendEvent(evt); err != nil {
 				return err
 			}
@@ -141,7 +130,7 @@ func (s *Service) readLoop(done chan<- struct{}) {
 func (s *Service) sendRegistration() {
 	msg := types.LogMessage{
 		Type:          types.MessageTypeRegister,
-		CollectorName: s.collectorName,
+		CollectorName: s.spec.Name,
 		Apps:          s.appNames,
 	}
 	s.sendJSON(msg)
@@ -159,7 +148,7 @@ func (s *Service) sendEvent(evt types.Event) error {
 
 	msg := types.LogMessage{
 		Type:          msgType,
-		CollectorName: s.collectorName,
+		CollectorName: s.spec.Name,
 		AppName:       evt.AppName(),
 	}
 
