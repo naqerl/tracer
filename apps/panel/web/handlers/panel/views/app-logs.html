@@ -313,15 +313,14 @@ document.addEventListener('DOMContentLoaded', function() {
         'error': { color: '#EF4444', label: 'Errors' },
         'warn': { color: '#F59E0B', label: 'Warnings' },
         'info': { color: '#3B82F6', label: 'Info' },
-        'debug': { color: '#6B7280', label: 'Debug' },
-        'startup': { color: '#10B981', label: 'Startup' }
+        'debug': { color: '#6B7280', label: 'Debug' }
     };
 
     // Build series data
     const series = [{ }]; // timestamps
     const seriesData = [unixTimestamps];
     const activeLevels = Object.keys(dataByLevel).sort((a, b) => {
-        const order = ['error', 'warn', 'info', 'debug', 'startup'];
+        const order = ['error', 'warn', 'info', 'debug'];
         return order.indexOf(a) - order.indexOf(b);
     });
 
