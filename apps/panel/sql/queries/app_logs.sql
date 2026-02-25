@@ -33,26 +33,11 @@ SELECT
     lg.message,
     lg.level,
     COUNT(l.id) as count,
-    MAX(l.created_at) as latest_at,
-    lg.created_at as group_created_at
-FROM log_groups lg
-LEFT JOIN logs l ON l.group_id = lg.id
-GROUP BY lg.id, lg.message, lg.level, lg.created_at
-ORDER BY count DESC, latest_at DESC
-LIMIT ? OFFSET ?;
-
--- name: ListLogGroupsByLevel :many
--- List log groups filtered by level with counts
-SELECT
-    lg.id,
-    lg.message,
-    lg.level,
-    COUNT(l.id) as count,
-    MAX(l.created_at) as latest_at,
-    lg.created_at as group_created_at
+    (SELECT created_at FROM logs WHERE group_id = lg.id ORDER BY created_at DESC LIMIT 1) as latest_at,
+    lg.created_at as created_at
 FROM log_groups lg
 INNER JOIN logs l ON l.group_id = lg.id
-WHERE LOWER(lg.level) = LOWER(?)
+WHERE lg.level like ?
 GROUP BY lg.id, lg.message, lg.level, lg.created_at
 ORDER BY count DESC, latest_at DESC
 LIMIT ? OFFSET ?;
@@ -135,4 +120,3 @@ FROM logs
 WHERE created_at >= sqlc.arg(since)
 GROUP BY time_bucket, LOWER(level)
 ORDER BY time_bucket ASC, level;
-
