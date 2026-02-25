@@ -19,7 +19,7 @@ type SystemStats struct {
 // Collect gathers current system statistics
 func (c *SystemStats) Snapshot() (Stats, error) {
 	stats := Stats{
-		Timestamp: time.Now(),
+		Timestamp: time.Now().UTC(),
 	}
 
 	// Collect CPU usage

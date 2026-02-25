@@ -89,9 +89,6 @@ func (a App) Produce(ctx context.Context) <-chan types.Event {
 					}
 					entry, err := a.parser.Parse(line)
 					if err == nil {
-						if entry.Timestamp.IsZero() {
-							entry.Timestamp = time.Now().UTC()
-						}
 						if !emit(types.LogEvent{
 							Time:  entry.Timestamp,
 							App:   a.Name,

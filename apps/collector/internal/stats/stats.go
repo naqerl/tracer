@@ -69,7 +69,7 @@ func (rm ResourceMonitor) Produce(ctx context.Context) <-chan types.Event {
 					}
 				} else {
 					out <- types.ErrorEvent{
-						Time:    time.Now(),
+						Time:    time.Now().UTC(),
 						ErrType: "stats_snapshot_failed",
 						Source:  "resource_monitor",
 						Message: err.Error(),
