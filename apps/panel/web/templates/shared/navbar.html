@@ -1,0 +1,25 @@
+{{define "navbar"}}
+<nav class="flex items-center justify-between px-4 py-3 border-b border-bg-secondary" aria-label="Main navigation">
+  <a href="/panel" class="text-lg font-medium hover:text-accent transition-colors">/panel</a>
+  
+  <form class="flex items-center gap-2" onsubmit="return false;">
+    <label for="since" class="text-sm text-fg-secondary">since</label>
+    <select id="since" name="since" 
+            class="bg-bg-secondary text-sm px-3 py-1.5 border border-bg-secondary focus:border-accent focus:outline-none cursor-pointer"
+            onchange="window.location.href = window.location.pathname + '?since=' + encodeURIComponent(this.value)">
+      <option value="1h">1h</option>
+      <option value="6h">6h</option>
+      <option value="24h">24h</option>
+      <option value="7d">7d</option>
+      <option value="30d">30d</option>
+    </select>
+  </form>
+  <script>
+    (function() {
+      const params = new URLSearchParams(window.location.search);
+      const since = params.get('since') || '24h';
+      document.getElementById('since').value = since;
+    })();
+  </script>
+</nav>
+{{end}}

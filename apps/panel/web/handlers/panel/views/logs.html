@@ -9,25 +9,12 @@
     <div id="log-groups">
       <h2 class="text-lg font-medium mb-4">Log Groups</h2>
       <div class="flex flex-col gap-2 mb-6 px-4">
-        {{template "time-range-filter" .}}
         {{template "level-filter" .}}
       </div>
       {{template "log-groups-table" .}}
     </div>
   </body>
 </html>
-{{end}}
-
-{{define "time-range-filter"}}
-<div class="flex flex-wrap gap-6">
-  {{range .TimeRanges}}
-  {{$isActive := or (eq $.Since .Val) (and .Default (eq $.Since ""))}}
-  <a hx-get="/panel/collectors/{{$.Collector}}/apps/{{$.App}}/logs?since={{.Val}}{{if $.Level}}&level={{$.Level}}{{end}}"
-     hx-push-url="false"
-     hx-target="#log-groups"
-     class="py-1.5 text-sm transition-colors cursor-pointer {{if $isActive}}text-fg font-medium{{else}}text-fg-secondary hover:text-fg{{end}}">{{.Label}}</a>
-  {{end}}
-</div>
 {{end}}
 
 {{define "level-filter"}}
