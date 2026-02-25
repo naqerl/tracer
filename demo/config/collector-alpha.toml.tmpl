@@ -28,6 +28,10 @@ message_field = "message"
 [[apps]]
 name = "alpha-json"
 parser_id = "json-default"
+[apps.lifecycle]
+start_pattern = "SERVICE_LIFECYCLE start"
+restart_pattern = "SERVICE_LIFECYCLE restart"
+exit_pattern = "SERVICE_LIFECYCLE exit"
 [apps.source]
 type = "file"
 [apps.source.params]
@@ -37,6 +41,10 @@ read_from = "end"
 [[apps]]
 name = "alpha-regex"
 parser_id = "regex-default"
+[apps.lifecycle]
+start_pattern = "SERVICE_LIFECYCLE start"
+restart_pattern = "SERVICE_LIFECYCLE restart"
+exit_pattern = "SERVICE_LIFECYCLE exit"
 [apps.source]
 type = "file"
 [apps.source.params]
