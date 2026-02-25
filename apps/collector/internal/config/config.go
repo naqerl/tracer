@@ -1,33 +1,39 @@
 package config
 
 import (
-	"fmt"
-	"net"
+	"log"
 	"os"
-	"time"
 
 	"github.com/BurntSushi/toml"
+
+	"github.com/ai-shift/tracer/apps/collector/internal/parser"
+	"github.com/ai-shift/tracer/apps/collector/internal/source"
+	"github.com/ai-shift/tracer/apps/collector/internal/stats"
+	"github.com/ai-shift/tracer/apps/collector/internal/transport"
 )
 
 const (
-	configPathEnv        = "TRACER_CONFIG"
-	defaultConfigPath    = "/etc/tracer/config.toml"
-	defaultDataDir       = "/usr/lib/tracer/"
+	configPathEnv     = "TRACER_CONFIG"
+	defaultConfigPath = "/etc/tracer/config.toml"
+	defaultDataDir    = "/usr/lib/tracer/"
 )
 
 // Config is the pure TOML configuration representation
 type Config struct {
-	Name             string `toml:"name"`
-	PanelHost        string `toml:"panel_host"`
-	APIKey           string `toml:"api_key"`
+	Transport transport.Spec `toml:"transport"`
 
-        Stats stats.Spec `toml:"stats"`
-        
+	Stats stats.Spec `toml:"stats"`
+
 	Sources []source.Spec `toml:"sources"`
 	Parsers []parser.Spec `toml:"parsers"`
-	Apps    []app.Spec   `toml:"apps"`
+	Apps    []AppRef      `toml:"apps"`
 }
 
+type AppRef struct {
+	Name     string `toml:"name"`
+	SourceID string `toml:"source_id"`
+	ParserID string `toml:"parser_id"`
+}
 
 // Load reads and parses configuration file
 func Load(path string) Config {
