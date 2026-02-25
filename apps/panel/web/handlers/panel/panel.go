@@ -133,7 +133,6 @@ func (h *handler) getCollector(w http.ResponseWriter, r *http.Request) {
 		"Collector":     view,
 		"Stats":         view.Stats,
 		"StatsDisplay":  view.StatsDisplay,
-
 	})
 }
 
@@ -176,7 +175,6 @@ func (h *handler) getCollectorResources(w http.ResponseWriter, r *http.Request) 
 		"Stats":         stats,
 		"User":          user,
 		"IsAdmin":       user.IsAdmin,
-
 	})
 }
 
@@ -214,7 +212,6 @@ func (h *handler) getCollectorApps(w http.ResponseWriter, r *http.Request) {
 		"Apps":          view.Apps,
 		"User":          user,
 		"IsAdmin":       user.IsAdmin,
-
 	})
 }
 
@@ -255,7 +252,6 @@ func (h *handler) getApp(w http.ResponseWriter, r *http.Request) {
 		"Collector": req.CollectorName,
 		"Stats":     stats,
 		"IsAdmin":   user.IsAdmin,
-
 	})
 }
 
@@ -312,12 +308,12 @@ func (h *handler) getLogGroups(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.t.RenderHTTP(w, r, "log-groups", map[string]any{
-		"Groups":      groups,
-		"Level":       req.Level,
-		"Since":       r.URL.Query().Get("since"),
-		"Collector":   req.CollectorName,
-		"App":         req.AppName,
-		"TimeRanges":  timeRanges,
+		"Groups":       groups,
+		"Level":        req.Level,
+		"Since":        r.URL.Query().Get("since"),
+		"Collector":    req.CollectorName,
+		"App":          req.AppName,
+		"TimeRanges":   timeRanges,
 		"LevelFilters": levelFilters,
 	})
 }
@@ -375,7 +371,6 @@ func (h *handler) getLogGroupByID(w http.ResponseWriter, r *http.Request) {
 		"HighlightLogID": highlightLogID,
 		"User":           user,
 		"IsAdmin":        user.IsAdmin,
-
 	})
 }
 
@@ -424,7 +419,6 @@ func (h *handler) getLogByID(w http.ResponseWriter, r *http.Request) {
 		"Log":           logEntry,
 		"User":          user,
 		"IsAdmin":       user.IsAdmin,
-
 	})
 }
 

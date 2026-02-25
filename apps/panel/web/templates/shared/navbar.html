@@ -1,11 +1,14 @@
 {{define "navbar"}}
 <nav class="flex items-center justify-between px-4 py-3 border-b border-bg-secondary" aria-label="Main navigation">
-  <a href="/panel" class="text-lg font-medium hover:text-accent transition-colors">/panel</a>
+  <div class="flex gap-6">
+    <a href="/panel" class="text-lg font-medium hover:text-accent transition-colors">/panel</a>
+    <a href="/settings" class="text-lg font-medium hover:text-accent transition-colors">/settings</a>
+  </div>
   
-  <form class="flex items-center gap-2" onsubmit="return false;">
-    <label for="since" class="text-sm text-fg-secondary">since</label>
+  <form class="flex items-center gap-2 text-sm" onsubmit="return false;">
+    <label for="since" class="text-fg-secondary">since</label>
     <select id="since" name="since" 
-            class="bg-bg-secondary text-sm px-3 py-1.5 border border-bg-secondary focus:border-accent focus:outline-none cursor-pointer"
+            class="bg-bg-secondary border border-bg-secondary focus:border-accent focus:outline-none cursor-pointer"
             onchange="window.location.href = window.location.pathname + '?since=' + encodeURIComponent(this.value)">
       <option value="1h">1h</option>
       <option value="6h">6h</option>
