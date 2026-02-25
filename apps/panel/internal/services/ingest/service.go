@@ -81,9 +81,6 @@ func (r InsertStatsRequest) Validate() error {
 	if r.CollectorName == "" {
 		return fmt.Errorf("collector name is required")
 	}
-	if r.Stats.CreatedAt.IsZero() {
-		return fmt.Errorf("stats timestamp is required")
-	}
 	return nil
 }
 
@@ -124,9 +121,6 @@ func (r StoreLifecycleRequest) Validate() error {
 	}
 	if r.RawLine == "" {
 		return fmt.Errorf("raw line is required")
-	}
-	if r.Timestamp.IsZero() {
-		return fmt.Errorf("timestamp is required")
 	}
 	return nil
 }
@@ -309,11 +303,7 @@ func (s *Service) StoreLog(ctx context.Context, req StoreLogRequest) (int64, err
 	}
 
 	// Store log entry
-	ts := req.Entry.Timestamp
-	if ts.IsZero() {
-		ts = time.Now()
-	}
-	ts = ts.UTC()
+	ts := req.Entry.Timestamp.UTC()
 
 	log, err := queries.InsertLog(ctx, db.InsertLogParams{
 		TraceID:   req.Entry.TraceID,

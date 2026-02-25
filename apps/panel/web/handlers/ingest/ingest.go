@@ -134,14 +134,14 @@ func (h *handler) handleEnvelope(ctx context.Context, env types.Envelope) {
 			slog.Warn("Failed to decode log event", "error", err, "collector", env.Collector)
 			return
 		}
-		h.handleLog(ctx, env.Collector, evt.App, evt.Entry, env.Timestamp)
+		h.handleLog(ctx, env.Collector, evt.App, evt.Entry)
 	case types.EventTypeLifecycle:
 		var evt types.LifecycleEvent
 		if err := json.Unmarshal(env.Data, &evt); err != nil {
 			slog.Warn("Failed to decode lifecycle event", "error", err, "collector", env.Collector)
 			return
 		}
-		h.handleLifecycle(ctx, env.Collector, evt, env.Timestamp)
+		h.handleLifecycle(ctx, env.Collector, evt)
 	case types.EventTypeStats:
 		var evt types.StatsEvent
 		if err := json.Unmarshal(env.Data, &evt); err != nil {
@@ -160,21 +160,14 @@ func (h *handler) handleEnvelope(ctx context.Context, env types.Envelope) {
 			Level:     types.LevelError,
 			Message:   "SOURCE_ERROR[" + evt.ErrType + "]: " + evt.Message + " (source: " + evt.Source + ")",
 		}
-		h.handleLog(ctx, env.Collector, evt.App, entry, env.Timestamp)
+		h.handleLog(ctx, env.Collector, evt.App, entry)
 	default:
 		slog.Warn("Unhandled envelope type", "type", env.Type)
 	}
 }
 
-func (h *handler) handleLifecycle(ctx context.Context, collector string, evt types.LifecycleEvent, envelopeTS time.Time) {
-	ts := evt.Timestamp()
-	if ts.IsZero() {
-		ts = envelopeTS
-	}
-	if ts.IsZero() {
-		ts = time.Now().UTC()
-	}
-	ts = ts.UTC()
+func (h *handler) handleLifecycle(ctx context.Context, collector string, evt types.LifecycleEvent) {
+	ts := evt.Timestamp().UTC()
 
 	req := ingest.StoreLifecycleRequest{
 		CollectorName: collector,
@@ -193,10 +186,7 @@ func (h *handler) handleLifecycle(ctx context.Context, collector string, evt typ
 	}
 }
 
-func (h *handler) handleLog(ctx context.Context, collector, app string, entry types.LogEntry, envelopeTS time.Time) {
-	if entry.Timestamp.IsZero() {
-		entry.Timestamp = envelopeTS
-	}
+func (h *handler) handleLog(ctx context.Context, collector, app string, entry types.LogEntry) {
 	req := ingest.StoreLogRequest{
 		CollectorName: collector,
 		AppName:       app,
@@ -304,12 +294,7 @@ func (h *handler) listCollectors(w http.ResponseWriter, r *http.Request) {
 
 // handleStats processes system statistics from collectors.
 func (h *handler) handleStats(ctx context.Context, collector string, stats types.Stats) {
-	ts := stats.Timestamp
-	if ts.IsZero() {
-		ts = time.Now()
-	}
-	// Normalize to UTC for consistent storage
-	ts = ts.UTC()
+	ts := stats.Timestamp.UTC()
 
 	req := ingest.InsertStatsRequest{
 		CollectorName: collector,
