@@ -379,15 +379,17 @@ SELECT
 FROM log_groups lg
 INNER JOIN logs l ON l.group_id = lg.id
 WHERE lg.level like ?
+  AND l.created_at >= ?
 GROUP BY lg.id, lg.message, lg.level, lg.created_at
 ORDER BY count DESC, latest_at DESC
 LIMIT ? OFFSET ?
 `
 
 type ListLogGroupsParams struct {
-	Level  string
-	Limit  int64
-	Offset int64
+	Level     string
+	CreatedAt time.Time
+	Limit     int64
+	Offset    int64
 }
 
 type ListLogGroupsRow struct {
@@ -401,7 +403,12 @@ type ListLogGroupsRow struct {
 
 // List all log groups with their counts and latest timestamp
 func (q *Queries) ListLogGroups(ctx context.Context, arg ListLogGroupsParams) ([]ListLogGroupsRow, error) {
-	rows, err := q.db.QueryContext(ctx, listLogGroups, arg.Level, arg.Limit, arg.Offset)
+	rows, err := q.db.QueryContext(ctx, listLogGroups,
+		arg.Level,
+		arg.CreatedAt,
+		arg.Limit,
+		arg.Offset,
+	)
 	if err != nil {
 		return nil, err
 	}

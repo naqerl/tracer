@@ -38,6 +38,7 @@ SELECT
 FROM log_groups lg
 INNER JOIN logs l ON l.group_id = lg.id
 WHERE lg.level like ?
+  AND l.created_at >= ?
 GROUP BY lg.id, lg.message, lg.level, lg.created_at
 ORDER BY count DESC, latest_at DESC
 LIMIT ? OFFSET ?;

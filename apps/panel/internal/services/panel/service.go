@@ -114,6 +114,7 @@ type GetLogGroupsRequest struct {
 	CollectorName string
 	AppName       string
 	Level         string
+	Since         time.Time
 	Offset        int64
 	Limit         int64
 }
@@ -324,9 +325,10 @@ func (s *Service) GetLogGroups(ctx context.Context, req GetLogGroupsRequest) ([]
 		req.Level = "%"
 	}
 	gRows, err := queries.ListLogGroups(ctx, db.ListLogGroupsParams{
-		Limit:  req.Limit,
-		Offset: req.Offset,
-		Level:  req.Level,
+		Level:     req.Level,
+		CreatedAt: req.Since,
+		Limit:     req.Limit,
+		Offset:    req.Offset,
 	})
 	if err != nil {
 		return nil, err
