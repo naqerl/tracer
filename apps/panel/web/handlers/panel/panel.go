@@ -4,6 +4,7 @@ import (
 	"embed"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"time"
@@ -250,6 +251,24 @@ func (h *handler) getApp(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func parseSince(since string) time.Time {
+	if since == "" {
+		return time.Now().Add(-24 * time.Hour) // default to 24h
+	}
+	duration, err := time.ParseDuration(since)
+	if err != nil {
+		// Try parsing as days (e.g., "7d" -> "168h")
+		if len(since) > 1 && since[len(since)-1] == 'd' {
+			days, err := strconv.Atoi(since[:len(since)-1])
+			if err == nil {
+				return time.Now().Add(-time.Duration(days) * 24 * time.Hour)
+			}
+		}
+		return time.Now().Add(-24 * time.Hour) // fallback
+	}
+	return time.Now().Add(-duration)
+}
+
 func (h *handler) getLogGroups(w http.ResponseWriter, r *http.Request) {
 	user, err := auth.RequireOrRedirect(w, r)
 	if err != nil {
@@ -261,6 +280,7 @@ func (h *handler) getLogGroups(w http.ResponseWriter, r *http.Request) {
 		CollectorName: r.PathValue("collector"),
 		AppName:       r.PathValue("app"),
 		Level:         r.URL.Query().Get("level"),
+		Since:         parseSince(r.URL.Query().Get("since")),
 		Offset:        parseOffset(r.URL.Query().Get("offset")),
 		Limit:         50,
 	}
@@ -271,6 +291,7 @@ func (h *handler) getLogGroups(w http.ResponseWriter, r *http.Request) {
 
 	groups, err := h.svc.GetLogGroups(r.Context(), req)
 	if err != nil {
+		slog.Error("GetLogGroups failed", "error", err, "collector", req.CollectorName, "app", req.AppName)
 		switch {
 		case errors.Is(err, panelsvc.ErrAccessDenied):
 			h.t.RenderError(w, r, "Forbidden", "You don't have access to this app", http.StatusForbidden)
@@ -285,6 +306,7 @@ func (h *handler) getLogGroups(w http.ResponseWriter, r *http.Request) {
 	h.t.RenderHTTP(w, r, "log-groups", map[string]any{
 		"Groups":        groups,
 		"Level":         req.Level,
+		"Since":         r.URL.Query().Get("since"),
 		"CollectorName": req.CollectorName,
 		"AppName":       req.AppName,
 	})

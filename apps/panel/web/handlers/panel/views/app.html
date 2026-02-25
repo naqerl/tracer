@@ -52,7 +52,7 @@
         </div>
 
         <div
-          hx-get="/panel/collectors/{{.Collector}}/apps/{{.App}}/logs"
+          hx-get="/panel/collectors/{{.Collector}}/apps/{{.App}}/logs?since=24h"
           hx-trigger="load"
           hx-push-url="false"
         ></div>

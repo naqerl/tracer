@@ -8,6 +8,34 @@
 <body>
     <div class="bg-bg-secondary p-5">
         <h2 class="text-lg font-medium mb-4">Log Groups</h2>
+        
+        <!-- Time Range Tabs -->
+        <div class="flex flex-wrap gap-2 mb-4">
+            <a href="/panel/collectors/{{.CollectorName}}/apps/{{.AppName}}/logs?since=1h{{if .Level}}&level={{.Level}}{{end}}"
+               class="px-3 py-1.5 text-sm transition-colors {{if eq .Since "1h"}}text-fg font-medium{{else}}text-fg-secondary hover:text-fg{{end}}">1h</a>
+            <a href="/panel/collectors/{{.CollectorName}}/apps/{{.AppName}}/logs?since=6h{{if .Level}}&level={{.Level}}{{end}}"
+               class="px-3 py-1.5 text-sm transition-colors {{if eq .Since "6h"}}text-fg font-medium{{else}}text-fg-secondary hover:text-fg{{end}}">6h</a>
+            <a href="/panel/collectors/{{.CollectorName}}/apps/{{.AppName}}/logs?since=24h{{if .Level}}&level={{.Level}}{{end}}"
+               class="px-3 py-1.5 text-sm transition-colors {{if or (eq .Since "24h") (eq .Since "")}}text-fg font-medium{{else}}text-fg-secondary hover:text-fg{{end}}">24h</a>
+            <a href="/panel/collectors/{{.CollectorName}}/apps/{{.AppName}}/logs?since=7d{{if .Level}}&level={{.Level}}{{end}}"
+               class="px-3 py-1.5 text-sm transition-colors {{if eq .Since "7d"}}text-fg font-medium{{else}}text-fg-secondary hover:text-fg{{end}}">7d</a>
+            <a href="/panel/collectors/{{.CollectorName}}/apps/{{.AppName}}/logs?since=30d{{if .Level}}&level={{.Level}}{{end}}"
+               class="px-3 py-1.5 text-sm transition-colors {{if eq .Since "30d"}}text-fg font-medium{{else}}text-fg-secondary hover:text-fg{{end}}">30d</a>
+        </div>
+        
+        <!-- Level Filter Tabs -->
+        <div class="flex flex-wrap gap-2 mb-4">
+            <a href="/panel/collectors/{{.CollectorName}}/apps/{{.AppName}}/logs?since={{.Since}}"
+               class="px-3 py-1.5 text-sm transition-colors {{if not .Level}}text-fg font-medium{{else}}text-fg-secondary hover:text-fg{{end}}">All</a>
+            <a href="/panel/collectors/{{.CollectorName}}/apps/{{.AppName}}/logs?since={{.Since}}&level=error"
+               class="px-3 py-1.5 text-sm transition-colors {{if eq .Level "error"}}text-red-500 font-medium{{else}}text-fg-secondary hover:text-red-400{{end}}">Errors</a>
+            <a href="/panel/collectors/{{.CollectorName}}/apps/{{.AppName}}/logs?since={{.Since}}&level=warn"
+               class="px-3 py-1.5 text-sm transition-colors {{if eq .Level "warn"}}text-yellow-500 font-medium{{else}}text-fg-secondary hover:text-yellow-400{{end}}">Warnings</a>
+            <a href="/panel/collectors/{{.CollectorName}}/apps/{{.AppName}}/logs?since={{.Since}}&level=info"
+               class="px-3 py-1.5 text-sm transition-colors {{if eq .Level "info"}}text-blue-500 font-medium{{else}}text-fg-secondary hover:text-blue-400{{end}}">Info</a>
+        </div>
+        
+        <!-- Log Groups Table -->
         {{template "app-logs-table" .}}
     </div>
 </body>
@@ -15,18 +43,7 @@
 {{end}}
 
 {{define "app-logs-table"}}
-{{if eq .Offset 0}}
 <div id="logs-content">
-    <!-- Filter tabs -->
-    <div class="flex items-center justify-between mb-4">
-        <div class="flex gap-2">
-            <a href="/panel/collectors/{{.CollectorName}}/apps/{{.AppName}}/logs" class="px-3 py-1.5 text-sm transition-colors {{if not .Level}}text-fg font-medium{{else}}text-fg-secondary hover:text-fg{{end}}">All ({{.TotalCount}})</a>
-            <a href="/panel/collectors/{{.CollectorName}}/apps/{{.AppName}}/logs?level=error" class="px-3 py-1.5 text-sm transition-colors {{if eq .Level "error"}}text-red-500 font-medium{{else}}text-fg-secondary hover:text-red-400{{end}}">Errors ({{.ErrorCount}})</a>
-            <a href="/panel/collectors/{{.CollectorName}}/apps/{{.AppName}}/logs?level=warn" class="px-3 py-1.5 text-sm transition-colors {{if eq .Level "warn"}}text-yellow-500 font-medium{{else}}text-fg-secondary hover:text-yellow-400{{end}}">Warnings ({{.WarnCount}})</a>
-            <a href="/panel/collectors/{{.CollectorName}}/apps/{{.AppName}}/logs?level=info" class="px-3 py-1.5 text-sm transition-colors {{if eq .Level "info"}}text-blue-500 font-medium{{else}}text-fg-secondary hover:text-blue-400{{end}}">Info ({{.InfoCount}})</a>
-        </div>
-    </div>
-
     <!-- Responsive table view -->
     <div class="bg-bg overflow-x-auto">
         <table class="w-full border-separate border-spacing-y-2 sm:border-spacing-y-0">
@@ -61,7 +78,13 @@
                 {{if .HasMore}}
                 <tr class="sm:table-row">
                     <td colspan="{{if not .Level}}3{{else}}2{{end}}" class="text-center text-fg-secondary py-4">
-                        <a href="/panel/collectors/{{.CollectorName}}/apps/{{.AppName}}/logs?{{if .Level}}level={{.Level}}&{{end}}offset={{.NextOffset}}" class="text-accent hover:underline">Load more...</a>
+                        <a href="/panel/collectors/{{.CollectorName}}/apps/{{.AppName}}/logs?since={{.Since}}{{if .Level}}&level={{.Level}}{{end}}&offset={{.NextOffset}}" class="text-accent hover:underline">Load more...</a>
+                    </td>
+                </tr>
+                {{else}}
+                <tr class="flex flex-col sm:table-row">
+                    <td colspan="{{if not .Level}}3{{else}}2{{end}}" class="text-center py-6 mt-2">
+                        <span class="text-xs text-fg-secondary/60">No more data</span>
                     </td>
                 </tr>
                 {{end}}
@@ -69,63 +92,33 @@
         </table>
     </div>
 </div>
-{{else}}
-{{range .Groups}}
-<tr class="flex flex-col mb-2 sm:table-row sm:border-b sm:border-bg-secondary hover:bg-bg-secondary/50 transition-colors">
-    {{if not $.Level}}<td class="hidden sm:table-cell px-4 py-3"><span class="text-xs font-medium uppercase">{{.Level}}</span></td>{{end}}
-    <td class="px-4 py-3 bg-bg-secondary sm:bg-transparent first:rounded-t-lg last:rounded-b-lg sm:first:rounded-none sm:last:rounded-none break-words overflow-hidden">
-        <a href="/panel/collectors/{{$.CollectorName}}/apps/{{$.AppName}}/logs/groups/{{.ID}}" class="block text-fg hover:text-accent transition-colors" title="View log details">
-            {{if not $.Level}}<span class="text-xs font-medium uppercase text-fg-secondary sm:hidden">{{.Level}}: </span>{{end}}{{.Message}}
-        </a>
-    </td>
-    <td class="px-4 py-3 bg-bg-secondary sm:bg-transparent text-left sm:text-right first:rounded-t-lg last:rounded-b-lg sm:first:rounded-none sm:last:rounded-none whitespace-nowrap">
-        <a href="/panel/collectors/{{$.CollectorName}}/apps/{{$.AppName}}/logs/groups/{{.ID}}" class="inline-flex items-center justify-center min-w-[2rem] px-2 py-0.5 text-sm font-medium bg-bg sm:bg-bg-secondary text-fg-secondary rounded hover:bg-accent hover:text-bg transition-colors" title="View log details">
-            {{.Count}}
-        </a>
-    </td>
-</tr>
-{{end}}
-{{if .HasMore}}
-<tr class="sm:table-row">
-    <td colspan="{{if not .Level}}3{{else}}2{{end}}" class="text-center text-fg-secondary py-4">
-        <a href="/panel/collectors/{{.CollectorName}}/apps/{{.AppName}}/logs?{{if .Level}}level={{.Level}}&{{end}}offset={{.NextOffset}}" class="text-accent hover:underline">Load more...</a>
-    </td>
-</tr>
-{{else}}
-<tr class="flex flex-col sm:table-row">
-    <td colspan="{{if not .Level}}3{{else}}2{{end}}" class="text-center py-6 mt-2">
-        <span class="text-xs text-fg-secondary/60">No more data</span>
-    </td>
-</tr>
-{{end}}
-{{end}}
 {{end}}
 
-    {{define "app-logs-detail-page"}}
-    <!DOCTYPE html>
-    <html lang="en">
-        <head>
-            {{template "head"}}
-            <title>{{.AppName}} Log Details - Tracer</title>
-        </head>
-        <body>
-            <div class="max-w-7xl mx-auto p-6">
-                {{template "navbar" .Nav}}
+{{define "app-logs-detail-page"}}
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        {{template "head"}}
+        <title>{{.AppName}} Log Details - Tracer</title>
+    </head>
+    <body>
+        <div class="max-w-7xl mx-auto p-6">
+            {{template "navbar" .Nav}}
 
-                <div class="bg-bg-secondary p-5">
-                    <div class="mb-4">
-                        <a href="/panel/collectors/{{.CollectorName}}/apps/{{.AppName}}/logs" class="text-accent hover:underline text-sm">&larr; Back to Groups</a>
-                    </div>
-
-                    <h2 class="text-lg font-medium mb-2">Log Details</h2>
-                    <p class="text-fg-secondary text-sm mb-4 break-words">{{.LogGroup.Message}}</p>
-
-                    {{template "app-logs-detail" .}}
+            <div class="bg-bg-secondary p-5">
+                <div class="mb-4">
+                    <a href="/panel/collectors/{{.CollectorName}}/apps/{{.AppName}}/logs" class="text-accent hover:underline text-sm">&larr; Back to Groups</a>
                 </div>
+
+                <h2 class="text-lg font-medium mb-2">Log Details</h2>
+                <p class="text-fg-secondary text-sm mb-4 break-words">{{.LogGroup.Message}}</p>
+
+                {{template "app-logs-detail" .}}
             </div>
-        </body>
-    </html>
-    {{end}}
+        </div>
+    </body>
+</html>
+{{end}}
 
 {{define "app-logs-detail"}}
 {{if eq .Offset 0}}
@@ -173,6 +166,12 @@
             <tr class="sm:table-row">
                 <td colspan="3" class="text-center text-fg-secondary py-4">
                     <a href="/panel/collectors/{{.CollectorName}}/apps/{{.AppName}}/logs/groups/{{.LogGroup.ID}}?offset={{.NextOffset}}" class="text-accent hover:underline">Load more...</a>
+                </td>
+            </tr>
+            {{else}}
+            <tr class="flex flex-col sm:table-row">
+                <td colspan="3" class="text-center py-6 mt-2">
+                    <span class="text-xs text-fg-secondary/60">No more data</span>
                 </td>
             </tr>
             {{end}}
