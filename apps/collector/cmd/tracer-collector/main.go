@@ -47,37 +47,30 @@ func serve(ctx context.Context, cfg config.Config) error {
 	var wg sync.WaitGroup
 	mpsc := make(chan types.Event, 1000)
 
-	// Sources
-	sources := make(map[string]source.Source, len(cfg.Sources))
-	for _, spec := range cfg.Sources {
-		sources[spec.ID] = source.New(spec)
-	}
-	if len(sources) != len(cfg.Sources) {
-		return fmt.Errorf("source ids should be unique")
-	}
-
 	// Parsers
 	parsers := make(map[string]parser.Parser, len(cfg.Parsers))
-	for _, spec := range cfg.Parsers {
-		parsers[spec.ID] = parser.New(spec)
-	}
-	if len(parsers) != len(cfg.Parsers) {
-		return fmt.Errorf("source ids should be unique")
+	for id, spec := range cfg.Parsers {
+		if _, exists := parsers[id]; exists {
+			return fmt.Errorf("duplicate parser id: %s", id)
+		}
+		spec.ID = id
+		parsers[id] = parser.New(spec)
 	}
 
 	// Create apps
-	var apps []app.App
-	var appNames []string
+	apps := make(map[string]app.App, len(cfg.Apps))
+	appNames := make([]string, 0, len(cfg.Apps))
 	for _, spec := range cfg.Apps {
-		s, ok := sources[spec.SourceID]
-		if !ok {
-			return fmt.Errorf("source with id=%s not found", spec.SourceID)
+		if _, exists := apps[spec.Name]; exists {
+			return fmt.Errorf("duplicate app name: %s", spec.Name)
 		}
+
 		p, ok := parsers[spec.ParserID]
 		if !ok {
 			return fmt.Errorf("parser with id=%s not found", spec.ParserID)
 		}
-		apps = append(apps, app.New(s, p, spec.Name))
+		s := source.New(spec.Source)
+		apps[spec.Name] = app.New(s, p, spec.Name)
 		appNames = append(appNames, spec.Name)
 	}
 
@@ -91,13 +84,21 @@ func serve(ctx context.Context, cfg config.Config) error {
 	wg.Go(func() { transport.Start(ctx) })
 	wg.Go(func() {
 		for evt := range statsMonitor.Produce(ctx) {
-			mpsc <- evt
+			select {
+			case mpsc <- evt:
+			case <-ctx.Done():
+				return
+			}
 		}
 	})
 	for _, app := range apps {
 		wg.Go(func() {
 			for evt := range app.Produce(ctx) {
-				mpsc <- evt
+				select {
+				case mpsc <- evt:
+				case <-ctx.Done():
+					return
+				}
 			}
 		})
 	}
