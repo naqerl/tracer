@@ -26,7 +26,7 @@
   <a hx-get="/panel/collectors/{{$.Collector}}/apps/{{$.App}}/logs?since={{$.Since}}{{$query}}"
      hx-push-url="false"
      hx-target="#log-groups"
-     class="flex flex-col items-center gap-1 cursor-pointer {{if $isActive}}text-fg{{else}}text-fg-secondary hover:text-fg{{end}}">
+     class="flex flex-col items-center gap-1 cursor-pointer {{if $isActive}}text-fg{{else}}text-fg-secondary{{end}} {{if and (not $isActive) (eq .Val `error`)}}hover:text-red-500{{else if and (not $isActive) (eq .Val `warn`)}}hover:text-yellow-500{{else if and (not $isActive) (eq .Val `info`)}}hover:text-blue-500{{else if not $isActive}}hover:text-fg{{end}}">
     <span class="text-sm">{{.Label}}</span>
     <span class="w-1.5 h-1.5 rounded-full {{if $isActive}}bg-{{.Color}}{{else}}bg-transparent{{end}}"></span>
   </a>
@@ -35,37 +35,34 @@
 {{end}}
 
 {{define "log-groups-table"}}
-<table id="logs-table-container" class="w-full">
-  <thead class="hidden sm:table-header-group">
-    <tr class="border-b border-bg-secondary text-left text-fg-secondary text-sm">
+<table id="logs-table" class="w-full">
+  <thead class="border-b border-bg-secondary">
+    <tr class="text-left text-fg text-sm">
       <th class="hidden">Group ID</th>
-      {{if not .Level}}<th class="pb-2 pr-4 font-medium">Level</th>{{end}}
-      <th class="pb-2 pr-4 font-medium text-right">Count</th>
-      <th class="pb-2 pl-4 font-medium">Message</th>
+      <th class="pb-2 font-medium">Message</th>
+      <th class="pb-2 font-medium w-[1%] pr-2"></th>
+      <th class="pb-2 font-medium w-[1%] whitespace-nowrap text-right">Count</th>
     </tr>
   </thead>
   <tbody>
     {{if not .Groups}}
     <tr>
-      <td colspan="{{if not .Level}}4{{else}}3{{end}}" class="text-center text-fg-secondary py-8">No logs available</td>
+      <td colspan="4" class="text-center text-fg-secondary py-8">No logs available</td>
     </tr>
     {{end}}
     {{range .Groups}}
-    <tr class="group border-b border-bg-secondary opacity-60 hover:opacity-100 transition-opacity duration-700 hover:duration-150 py-2">
+    <tr class="group opacity-60 hover:opacity-100 transition-opacity duration-700 hover:duration-150">
       <td class="hidden">{{.ID}}</td>
-      {{if not $.Level}}<td class="hidden sm:table-cell pr-4 text-xs capitalize{{if eq .Level `error`}} text-red-500{{else if eq .Level `warn`}} text-yellow-500{{else if eq .Level `info`}} text-blue-500{{end}}">{{.Level}}</td>{{end}}
-      <td class="hidden sm:table-cell pr-4 text-right">{{.Count}}</td>
-      <td class="sm:pl-4">
-        <a href="/panel/collectors/{{$.Collector}}/apps/{{$.App}}/logs?group={{.ID}}" class="block">
-          <span class="hidden sm:inline capitalize">{{.Message}}</span>
-          <span class="sm:hidden flex flex-col gap-1">
-            <span class="capitalize">{{.Message}}</span>
-            <span class="flex items-center gap-2 text-xs text-fg-secondary">
-              {{if not $.Level}}<span class="capitalize{{if eq .Level `error`}} text-red-500{{else if eq .Level `warn`}} text-yellow-500{{else if eq .Level `info`}} text-blue-500{{end}}">{{.Level}}</span>{{end}}
-              <span>{{.Count}} entries</span>
-            </span>
-          </span>
-        </a>
+      <td class="w-full align-middle">
+        <a href="/panel/collectors/{{$.Collector}}/apps/{{$.App}}/logs?group={{.ID}}" class="block py-2 sm:py-1 capitalize">{{.Message}}</a>
+      </td>
+      <td class="w-[1%] whitespace-nowrap align-middle pr-2">
+        {{if not $.Level}}
+        <span class="inline-block w-1.5 h-1.5 rounded-full{{if eq .Level `error`}} bg-red-500{{else if eq .Level `warn`}} bg-yellow-500{{else if eq .Level `info`}} bg-blue-500{{else}} bg-fg-secondary{{end}}"></span>
+        {{end}}
+      </td>
+      <td class="w-[1%] whitespace-nowrap align-middle text-fg-secondary text-right">
+        <span class="text-xs sm:text-sm">{{.Count}}</span>
       </td>
     </tr>
     {{end}}
