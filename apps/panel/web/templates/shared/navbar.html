@@ -1,8 +1,8 @@
 {{define "navbar"}}
 <nav class="flex items-center justify-between px-4 py-3 border-b border-bg-secondary" aria-label="Main navigation">
-  <div class="flex gap-6">
-    <a href="/panel" class="text-lg font-medium hover:text-accent transition-colors">/panel</a>
-    <a href="/settings" class="text-lg font-medium hover:text-accent transition-colors">/settings</a>
+  <div class="flex gap-6" id="nav-links">
+    <a href="/panel" class="text-lg font-medium hover:text-fg transition-colors" data-nav="panel">/panel</a>
+    <a href="/settings" class="text-lg font-medium hover:text-fg transition-colors" data-nav="settings">/settings</a>
   </div>
   
   <form class="flex items-center gap-1 text-sm" onsubmit="return false;">
@@ -30,6 +30,17 @@
       const since = params.get('since') || '24h';
       document.getElementById('since').value = since;
       document.getElementById('since-label').textContent = since;
+      
+      // Highlight active nav link
+      const path = window.location.pathname;
+      document.querySelectorAll('#nav-links a').forEach(function(link) {
+        const nav = link.getAttribute('data-nav');
+        if (path === '/' + nav) {
+          link.classList.remove('text-fg-secondary');
+        } else {
+          link.classList.add('text-fg-secondary');
+        }
+      });
     })();
     
     function navbarSelectSince(val) {
