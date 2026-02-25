@@ -2,6 +2,7 @@ package transport
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -128,52 +129,26 @@ func (s *Service) readLoop(done chan<- struct{}) {
 }
 
 func (s *Service) sendRegistration() {
-	msg := types.LogMessage{
-		Type:          types.MessageTypeRegister,
-		CollectorName: s.spec.Name,
-		Apps:          s.appNames,
+	msg := types.RegisterMessage{
+		Type:      types.EventTypeRegister,
+		Collector: s.spec.Name,
+		Apps:      s.appNames,
 	}
 	s.sendJSON(msg)
 }
 
 func (s *Service) sendEvent(evt types.Event) error {
-	// Convert to LogMessage format expected by panel
-	msgType := types.MessageTypeLog
-	switch evt.EventType() {
-	case "startup":
-		msgType = types.MessageTypeStartup
-	case "stats":
-		msgType = types.MessageTypeStats
+	payload, err := json.Marshal(evt)
+	if err != nil {
+		return fmt.Errorf("could not marshal payload: %w", err)
 	}
 
-	msg := types.LogMessage{
-		Type:          msgType,
-		CollectorName: s.spec.Name,
-		AppName:       evt.AppName(),
+	msg := types.Envelope{
+		Type:      evt.EventType(),
+		Timestamp: time.Now().UTC(),
+		Collector: s.spec.Name,
+		Data:      payload,
 	}
-
-	// Set the appropriate payload based on event type
-	switch e := evt.(type) {
-	case types.LogEvent:
-		msg.Entry = e.Entry
-	case types.StartupEvent:
-		// Create a log entry for startup events
-		msg.Entry = types.LogEntry{
-			Timestamp: e.Timestamp(),
-			Level:     types.LevelInfo,
-			Message:   "STARTUP: " + e.Message,
-		}
-	case types.StatsEvent:
-		msg.Stats = &e.Data
-	case types.ErrorEvent:
-		// Error events are logged as errors with the error details
-		msg.Entry = types.LogEntry{
-			Timestamp: e.Timestamp(),
-			Level:     types.LevelError,
-			Message:   fmt.Sprintf("SOURCE_ERROR[%s]: %s (source: %s)", e.ErrType, e.Message, e.Source),
-		}
-	}
-
 	return s.sendJSON(msg)
 }
 

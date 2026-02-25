@@ -30,17 +30,29 @@ func (a App) Produce(ctx context.Context) <-chan types.Event {
 	go func() {
 		defer close(out)
 		backoff := 250 * time.Millisecond
+		emit := func(evt types.Event) bool {
+			select {
+			case out <- evt:
+				return true
+			case <-ctx.Done():
+				return false
+			}
+		}
+
 		for {
 			if ctx.Err() != nil {
 				return
 			}
 
 			if err := a.source.Open(ctx); err != nil {
-				out <- types.ErrorEvent{
+				if !emit(types.ErrorEvent{
+					Time:    time.Now().UTC(),
 					App:     a.Name,
 					Source:  "source",
 					ErrType: "source_open_failure",
 					Message: err.Error(),
+				}) {
+					return
 				}
 			} else {
 				for {
@@ -50,26 +62,38 @@ func (a App) Produce(ctx context.Context) <-chan types.Event {
 						if ctx.Err() != nil {
 							return
 						}
-						out <- types.ErrorEvent{
+						if !emit(types.ErrorEvent{
+							Time:    time.Now().UTC(),
 							App:     a.Name,
 							Source:  "source",
 							ErrType: "source_read_failure",
 							Message: err.Error(),
+						}) {
+							return
 						}
 						break
 					}
 					entry, err := a.parser.Parse(line)
 					if err == nil {
-						out <- types.LogEvent{
+						if entry.Timestamp.IsZero() {
+							entry.Timestamp = time.Now().UTC()
+						}
+						if !emit(types.LogEvent{
+							Time:  entry.Timestamp,
 							App:   a.Name,
 							Entry: entry,
+						}) {
+							return
 						}
 					} else {
-						out <- types.ErrorEvent{
+						if !emit(types.ErrorEvent{
+							Time:    time.Now().UTC(),
 							App:     a.Name,
 							Source:  "parser",
 							ErrType: "parse_error",
 							Message: err.Error(),
+						}) {
+							return
 						}
 					}
 				}
