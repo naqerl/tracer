@@ -1,0 +1,52 @@
+transport:
+  name: demo-beta
+  panel_host: localhost:8080
+  api_key: __API_KEY__
+
+stats:
+  stats_interval: 30s
+
+parsers:
+  json-beta:
+    type: json
+    params:
+      timestamp_field: time
+      timestamp_format: "2006-01-02T15:04:05Z07:00"
+      level_field: severity
+      trace_id_field: trace
+      message_field: msg
+
+  regex-beta:
+    type: regex
+    params:
+      pattern: '^(?P<timestamp>[0-9T:+-]+)\|(?P<level>[A-Z]+)\|trace=(?P<trace_id>[^|]+)\|msg=(?P<message>[^|]+)\|channel=(?P<channel>[^|]+)\|target=(?P<target>[^|]+)\|attempt=(?P<attempt>[^|]+)$'
+      timestamp_field: timestamp
+      timestamp_format: "2006-01-02T15:04:05Z07:00"
+      level_field: level
+      trace_id_field: trace_id
+      message_field: message
+
+apps:
+  - name: beta-json
+    parser_id: json-beta
+    lifecycle:
+      start_pattern: SERVICE_LIFECYCLE start
+      restart_pattern: SERVICE_LIFECYCLE restart
+      exit_pattern: SERVICE_LIFECYCLE exit
+    source:
+      type: file
+      params:
+        path: /demo/logs/beta-json.log
+        read_from: end
+
+  - name: beta-regex
+    parser_id: regex-beta
+    lifecycle:
+      start_pattern: SERVICE_LIFECYCLE start
+      restart_pattern: SERVICE_LIFECYCLE restart
+      exit_pattern: SERVICE_LIFECYCLE exit
+    source:
+      type: file
+      params:
+        path: /demo/logs/beta-regex.log
+        read_from: end

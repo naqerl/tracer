@@ -30,8 +30,8 @@ up: down build
 	@podman pod create --name $(DEMO_POD) -p $(DEMO_PORT):8080 >/dev/null
 	@podman run -d --name $(DEMO_POD)-panel --pod $(DEMO_POD) \
 		-v $(DEMO_VOL_PANEL):/demo/data \
-		-v $(DEMO_DIR)/config/panel.toml:/demo/panel.toml:ro \
-		$(DEMO_IMAGE) tracer-panel -config /demo/panel.toml >/dev/null
+		-v $(DEMO_DIR)/config/panel.yaml:/demo/panel.yaml:ro \
+		$(DEMO_IMAGE) tracer-panel -config /demo/panel.yaml >/dev/null
 	@podman run --rm --name $(DEMO_POD)-init --pod $(DEMO_POD) \
 		-v $(DEMO_VOL_PANEL):/demo/data \
 		-v $(DEMO_VOL_SHARED):/demo/shared \
@@ -41,14 +41,14 @@ up: down build
 		-v $(DEMO_VOL_PANEL):/demo/data \
 		-v $(DEMO_VOL_SHARED):/demo/shared:ro \
 		-v $(DEMO_VOL_ALPHA):/demo/logs \
-		-v $(DEMO_DIR)/config/collector-alpha.toml.tmpl:/demo/collector.toml.tmpl:ro \
-		$(DEMO_IMAGE) bash -lc 'while [ ! -s /demo/shared/api_key ]; do sleep 1; done; key=$$(cat /demo/shared/api_key); sed "s|__API_KEY__|$${key}|g" /demo/collector.toml.tmpl > /tmp/collector.toml; exec tracer-collector -config /tmp/collector.toml' >/dev/null
+		-v $(DEMO_DIR)/config/collector-alpha.yaml.tmpl:/demo/collector.yaml.tmpl:ro \
+		$(DEMO_IMAGE) bash -lc 'while [ ! -s /demo/shared/api_key ]; do sleep 1; done; key=$$(cat /demo/shared/api_key); sed "s|__API_KEY__|$${key}|g" /demo/collector.yaml.tmpl > /tmp/collector.yaml; exec tracer-collector -config /tmp/collector.yaml' >/dev/null
 	@podman run -d --name $(DEMO_POD)-collector-beta --pod $(DEMO_POD) \
 		-v $(DEMO_VOL_PANEL):/demo/data \
 		-v $(DEMO_VOL_SHARED):/demo/shared:ro \
 		-v $(DEMO_VOL_BETA):/demo/logs \
-		-v $(DEMO_DIR)/config/collector-beta.toml.tmpl:/demo/collector.toml.tmpl:ro \
-		$(DEMO_IMAGE) bash -lc 'while [ ! -s /demo/shared/api_key ]; do sleep 1; done; key=$$(cat /demo/shared/api_key); sed "s|__API_KEY__|$${key}|g" /demo/collector.toml.tmpl > /tmp/collector.toml; exec tracer-collector -config /tmp/collector.toml' >/dev/null
+		-v $(DEMO_DIR)/config/collector-beta.yaml.tmpl:/demo/collector.yaml.tmpl:ro \
+		$(DEMO_IMAGE) bash -lc 'while [ ! -s /demo/shared/api_key ]; do sleep 1; done; key=$$(cat /demo/shared/api_key); sed "s|__API_KEY__|$${key}|g" /demo/collector.yaml.tmpl > /tmp/collector.yaml; exec tracer-collector -config /tmp/collector.yaml' >/dev/null
 	@echo "Demo is running:"
 	@echo "  Panel URL:  $(DEMO_PANEL_URL)"
 	@echo "  Credentials: demo / demo123"
@@ -74,8 +74,8 @@ up-live-reload: down
 		-v $(DEMO_VOL_GOMOD):/go/pkg/mod \
 		-v $(DEMO_VOL_GOCACHE):/root/.cache/go-build \
 		-v $(DEMO_VOL_PANEL):/demo/data \
-		-v $(DEMO_DIR)/config/panel.toml:/demo/panel.toml:ro \
-		$(DEMO_DEV_IMAGE) bash -lc 'export PATH="/usr/local/go/bin:/go/bin:$$PATH"; command -v air >/dev/null 2>&1 || go install github.com/air-verse/air@latest; export TRACER_PANEL_CONFIG=/demo/panel.toml; cd /workspace; exec air -c /workspace/demo/config/air-panel.toml' >/dev/null
+		-v $(DEMO_DIR)/config/panel.yaml:/demo/panel.yaml:ro \
+		$(DEMO_DEV_IMAGE) bash -lc 'export PATH="/usr/local/go/bin:/go/bin:$$PATH"; command -v air >/dev/null 2>&1 || go install github.com/air-verse/air@latest; export TRACER_PANEL_CONFIG=/demo/panel.yaml; cd /workspace; exec air --build.cmd "go build -o /tmp/tracer-panel ./apps/panel/cmd/tracer-panel" --build.bin "/tmp/tracer-panel" --build.include_ext "go,html,tmpl,yaml" --build.exclude_dir ".git,tmp,vendor,node_modules" --build.delay "500" --build.stop_on_error "true" --log.time "true"' >/dev/null
 	@$(MAKE) start-loggers
 	@podman run -d --name $(DEMO_POD)-collector-alpha --pod $(DEMO_POD) \
 		-v $(ROOT_DIR):/workspace \
@@ -84,8 +84,8 @@ up-live-reload: down
 		-v $(DEMO_VOL_PANEL):/demo/data \
 		-v $(DEMO_VOL_SHARED):/demo/shared:ro \
 		-v $(DEMO_VOL_ALPHA):/demo/logs \
-		-v $(DEMO_DIR)/config/collector-alpha.toml.tmpl:/demo/collector.toml.tmpl:ro \
-		$(DEMO_DEV_IMAGE) bash -lc 'export PATH="/usr/local/go/bin:/go/bin:$$PATH"; command -v air >/dev/null 2>&1 || go install github.com/air-verse/air@latest; while [ ! -s /demo/shared/api_key ]; do sleep 1; done; key=$$(cat /demo/shared/api_key); sed "s|__API_KEY__|$${key}|g" /demo/collector.toml.tmpl > /demo/collector.toml; export TRACER_CONFIG=/demo/collector.toml; cd /workspace; exec air -c /workspace/demo/config/air-collector.toml' >/dev/null
+		-v $(DEMO_DIR)/config/collector-alpha.yaml.tmpl:/demo/collector.yaml.tmpl:ro \
+		$(DEMO_DEV_IMAGE) bash -lc 'export PATH="/usr/local/go/bin:/go/bin:$$PATH"; command -v air >/dev/null 2>&1 || go install github.com/air-verse/air@latest; while [ ! -s /demo/shared/api_key ]; do sleep 1; done; key=$$(cat /demo/shared/api_key); sed "s|__API_KEY__|$${key}|g" /demo/collector.yaml.tmpl > /demo/collector.yaml; export TRACER_CONFIG=/demo/collector.yaml; cd /workspace; exec air --build.cmd "go build -o /tmp/tracer-collector ./apps/collector/cmd/tracer-collector" --build.bin "/tmp/tracer-collector" --build.include_ext "go,yaml,tmpl" --build.exclude_dir ".git,tmp,vendor,node_modules" --build.delay "500" --build.stop_on_error "true" --log.time "true"' >/dev/null
 	@podman run -d --name $(DEMO_POD)-collector-beta --pod $(DEMO_POD) \
 		-v $(ROOT_DIR):/workspace \
 		-v $(DEMO_VOL_GOMOD):/go/pkg/mod \
@@ -93,8 +93,8 @@ up-live-reload: down
 		-v $(DEMO_VOL_PANEL):/demo/data \
 		-v $(DEMO_VOL_SHARED):/demo/shared:ro \
 		-v $(DEMO_VOL_BETA):/demo/logs \
-		-v $(DEMO_DIR)/config/collector-beta.toml.tmpl:/demo/collector.toml.tmpl:ro \
-		$(DEMO_DEV_IMAGE) bash -lc 'export PATH="/usr/local/go/bin:/go/bin:$$PATH"; command -v air >/dev/null 2>&1 || go install github.com/air-verse/air@latest; while [ ! -s /demo/shared/api_key ]; do sleep 1; done; key=$$(cat /demo/shared/api_key); sed "s|__API_KEY__|$${key}|g" /demo/collector.toml.tmpl > /demo/collector.toml; export TRACER_CONFIG=/demo/collector.toml; cd /workspace; exec air -c /workspace/demo/config/air-collector.toml' >/dev/null
+		-v $(DEMO_DIR)/config/collector-beta.yaml.tmpl:/demo/collector.yaml.tmpl:ro \
+		$(DEMO_DEV_IMAGE) bash -lc 'export PATH="/usr/local/go/bin:/go/bin:$$PATH"; command -v air >/dev/null 2>&1 || go install github.com/air-verse/air@latest; while [ ! -s /demo/shared/api_key ]; do sleep 1; done; key=$$(cat /demo/shared/api_key); sed "s|__API_KEY__|$${key}|g" /demo/collector.yaml.tmpl > /demo/collector.yaml; export TRACER_CONFIG=/demo/collector.yaml; cd /workspace; exec air --build.cmd "go build -o /tmp/tracer-collector ./apps/collector/cmd/tracer-collector" --build.bin "/tmp/tracer-collector" --build.include_ext "go,yaml,tmpl" --build.exclude_dir ".git,tmp,vendor,node_modules" --build.delay "500" --build.stop_on_error "true" --log.time "true"' >/dev/null
 	@echo "Demo is running in live-reload mode:"
 	@echo "  Panel URL:  $(DEMO_PANEL_URL)"
 	@echo "  Credentials: demo / demo123"
