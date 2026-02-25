@@ -36,9 +36,7 @@ func New(fsys fs.FS) Templates {
 		"toFloat":        toFloat,
 		"divFloat":       divFloat,
 		"mulFloat":       mulFloat,
-		"sub":            func(a, b int) int { return a - b },
-		"isPanelPath":    isPanelPath,
-		"isSettingsPath": isSettingsPath,
+		"sub": func(a, b int) int { return a - b },
 	}
 
 	// Parse shared templates first
@@ -85,63 +83,6 @@ func (t Templates) RenderMarkdown(w http.ResponseWriter, r *http.Request, name s
 		slog.Error("Template error", "template", name, "error", err)
 		http.Error(w, "Internal error", http.StatusInternalServerError)
 	}
-}
-
-// BreadcrumbSegment represents a single segment in the breadcrumb path
-type BreadcrumbSegment struct {
-	Text string // lowercase text, e.g., "panel", "aishift", "apps", "mimi"
-	URL  string // full URL up to this segment, e.g., "/panel/aishift"
-}
-
-// NavData holds data for the shared navbar template
-type NavData struct {
-	Breadcrumbs []BreadcrumbSegment
-}
-
-// NavBuilder helps construct breadcrumb navigation
-type NavBuilder struct {
-	segments []BreadcrumbSegment
-}
-
-// NewNavBuilder creates a new navigation builder
-func NewNavBuilder() *NavBuilder {
-	return &NavBuilder{
-		segments: make([]BreadcrumbSegment, 0),
-	}
-}
-
-// Add appends a segment to the breadcrumb
-func (b *NavBuilder) Add(text, urlPart string) *NavBuilder {
-	var url string
-	if len(b.segments) > 0 {
-		url = b.segments[len(b.segments)-1].URL + "/" + urlPart
-	} else {
-		url = "/" + urlPart
-	}
-	b.segments = append(b.segments, BreadcrumbSegment{
-		Text: text,
-		URL:  url,
-	})
-	return b
-}
-
-// Build returns the NavData
-func (b *NavBuilder) Build() NavData {
-	return NavData{
-		Breadcrumbs: b.segments,
-	}
-}
-
-// NewNavData creates navbar data (kept for backwards compatibility during migration)
-func NewNavData(title, activePage, username string) NavData {
-	// Convert old format to new breadcrumb format
-	builder := NewNavBuilder()
-	if activePage == "panel" {
-		builder.Add("panel", "panel")
-	} else if activePage == "settings" {
-		builder.Add("settings", "settings")
-	}
-	return builder.Build()
 }
 
 func formatDate(t any) string {
@@ -243,20 +184,6 @@ func divFloat(a, b float64) float64 {
 
 func mulFloat(a, b float64) float64 {
 	return a * b
-}
-
-func isPanelPath(breadcrumbs []BreadcrumbSegment) bool {
-	if len(breadcrumbs) == 0 {
-		return false
-	}
-	return breadcrumbs[0].Text == "panel"
-}
-
-func isSettingsPath(breadcrumbs []BreadcrumbSegment) bool {
-	if len(breadcrumbs) == 0 {
-		return false
-	}
-	return breadcrumbs[0].Text == "settings"
 }
 
 func parseContext(v any) map[string]string {

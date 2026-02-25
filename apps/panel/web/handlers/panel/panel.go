@@ -94,7 +94,6 @@ func (h *handler) getDashboard(w http.ResponseWriter, r *http.Request) {
 		"Title":      "Panel",
 		"User":       user,
 		"Collectors": collectors,
-		"Nav":        templates.NewNavBuilder().Add("panel", "panel").Build(),
 	})
 }
 
@@ -134,11 +133,7 @@ func (h *handler) getCollector(w http.ResponseWriter, r *http.Request) {
 		"Collector":     view,
 		"Stats":         view.Stats,
 		"StatsDisplay":  view.StatsDisplay,
-		"Nav": templates.NewNavBuilder().
-			Add("panel", "panel").
-			Add("collectors", "collectors").
-			Add(req.CollectorName, req.CollectorName).
-			Build(),
+
 	})
 }
 
@@ -181,12 +176,7 @@ func (h *handler) getCollectorResources(w http.ResponseWriter, r *http.Request) 
 		"Stats":         stats,
 		"User":          user,
 		"IsAdmin":       user.IsAdmin,
-		"Nav": templates.NewNavBuilder().
-			Add("panel", "panel").
-			Add("collectors", "collectors").
-			Add(req.CollectorName, req.CollectorName).
-			Add("resources", "resources").
-			Build(),
+
 	})
 }
 
@@ -224,12 +214,7 @@ func (h *handler) getCollectorApps(w http.ResponseWriter, r *http.Request) {
 		"Apps":          view.Apps,
 		"User":          user,
 		"IsAdmin":       user.IsAdmin,
-		"Nav": templates.NewNavBuilder().
-			Add("panel", "panel").
-			Add("collectors", "collectors").
-			Add(req.CollectorName, req.CollectorName).
-			Add("apps", "apps").
-			Build(),
+
 	})
 }
 
@@ -270,13 +255,7 @@ func (h *handler) getApp(w http.ResponseWriter, r *http.Request) {
 		"Collector": req.CollectorName,
 		"Stats":     stats,
 		"IsAdmin":   user.IsAdmin,
-		"Nav": templates.NewNavBuilder().
-			Add("panel", "panel").
-			Add("collectors", "collectors").
-			Add(req.CollectorName, req.CollectorName).
-			Add("apps", "apps").
-			Add(req.AppName, req.AppName).
-			Build(),
+
 	})
 }
 
@@ -396,14 +375,7 @@ func (h *handler) getLogGroupByID(w http.ResponseWriter, r *http.Request) {
 		"HighlightLogID": highlightLogID,
 		"User":           user,
 		"IsAdmin":        user.IsAdmin,
-		"Nav": templates.NewNavBuilder().
-			Add("panel", "panel").
-			Add("collectors", "collectors").
-			Add(req.CollectorName, req.CollectorName).
-			Add("apps", "apps").
-			Add(req.AppName, req.AppName).
-			Add("logs", "logs").
-			Build(),
+
 	})
 }
 
@@ -452,15 +424,7 @@ func (h *handler) getLogByID(w http.ResponseWriter, r *http.Request) {
 		"Log":           logEntry,
 		"User":          user,
 		"IsAdmin":       user.IsAdmin,
-		"Nav": templates.NewNavBuilder().
-			Add("panel", "panel").
-			Add("collectors", "collectors").
-			Add(req.CollectorName, req.CollectorName).
-			Add("apps", "apps").
-			Add(req.AppName, req.AppName).
-			Add("logs", "logs").
-			Add("log", "log").
-			Build(),
+
 	})
 }
 

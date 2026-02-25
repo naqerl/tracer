@@ -116,7 +116,6 @@ func (h *handler) buildSettingsPageData(w http.ResponseWriter, r *http.Request) 
 		"Title":       "Settings - Tracer",
 		"CurrentUser": user,
 		"IsAdmin":     isAdmin,
-		"Nav":         templates.NewNavData("Settings", "settings", user.Username),
 	}
 
 	// Admin-only data
@@ -249,7 +248,7 @@ func (h *handler) getUserAppsEntries(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) buildUserAppsData(w http.ResponseWriter, r *http.Request) (map[string]any, bool) {
-	currentUser, err := authmw.RequireAdmin(w, r)
+	_, err := authmw.RequireAdmin(w, r)
 	if err != nil {
 		return nil, false
 	}
@@ -290,7 +289,6 @@ func (h *handler) buildUserAppsData(w http.ResponseWriter, r *http.Request) (map
 		"UserApps":  userAppMap,
 		"AllApps":   allApps,
 		"HasNoApps": len(allApps) == 0,
-		"Nav":       templates.NewNavData("Manage App Access", "settings", currentUser.Username),
 	}
 
 	return data, true
@@ -850,7 +848,6 @@ func (h *handler) buildNotifierAppsData(w http.ResponseWriter, r *http.Request) 
 		"Subscriptions": subscriptionMap, // map[string]bool (key: "collector:app")
 		"CollectorApps": collectorApps,   // map[string][]string
 		"IsAdmin":       user.IsAdmin,
-		"Nav":           templates.NewNavData("Configure Notifier Apps", "settings", user.Username),
 	}
 
 	return data, true

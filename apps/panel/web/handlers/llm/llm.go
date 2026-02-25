@@ -35,13 +35,10 @@ func (h *handler) llmDocs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	nav := templates.NewNavBuilder().Add("llm", "llm").Build()
-
 	data := map[string]any{
 		"Title":   "LLM API Documentation",
 		"User":    user,
 		"IsAdmin": user.IsAdmin,
-		"Nav":     nav,
 		"BaseURL": r.Host,
 	}
 
