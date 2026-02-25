@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"time"
 
 	"github.com/ai-shift/tracer/apps/collector/internal/parser"
 	"github.com/ai-shift/tracer/apps/collector/internal/source"
@@ -28,29 +29,63 @@ func (a App) Produce(ctx context.Context) <-chan types.Event {
 	out := make(chan types.Event, 100)
 	go func() {
 		defer close(out)
-		lines := a.source.Lines(ctx)
-
+		backoff := 250 * time.Millisecond
 		for {
+			if ctx.Err() != nil {
+				return
+			}
+
+			if err := a.source.Open(ctx); err != nil {
+				out <- types.ErrorEvent{
+					App:     a.Name,
+					Source:  "source",
+					ErrType: "source_open_failure",
+					Message: err.Error(),
+				}
+			} else {
+				for {
+					line, err := a.source.Next(ctx)
+					if err != nil {
+						_ = a.source.Close()
+						if ctx.Err() != nil {
+							return
+						}
+						out <- types.ErrorEvent{
+							App:     a.Name,
+							Source:  "source",
+							ErrType: "source_read_failure",
+							Message: err.Error(),
+						}
+						break
+					}
+					entry, err := a.parser.Parse(line)
+					if err == nil {
+						out <- types.LogEvent{
+							App:   a.Name,
+							Entry: entry,
+						}
+					} else {
+						out <- types.ErrorEvent{
+							App:     a.Name,
+							Source:  "parser",
+							ErrType: "parse_error",
+							Message: err.Error(),
+						}
+					}
+				}
+			}
+
+			timer := time.NewTimer(backoff)
 			select {
 			case <-ctx.Done():
+				timer.Stop()
 				return
-			case line, ok := <-lines:
-				if !ok {
-					return
-				}
-
-				entry, err := a.parser.Parse(line)
-				if err == nil {
-					out <- types.LogEvent{
-						App:   a.Name,
-						Entry: entry,
-					}
-				} else {
-					out <- types.ErrorEvent{
-						App:     a.Name,
-						Source:  "parser",
-						Message: err.Error(),
-					}
+			case <-timer.C:
+			}
+			if backoff < 5*time.Second {
+				backoff *= 2
+				if backoff > 5*time.Second {
+					backoff = 5 * time.Second
 				}
 			}
 		}

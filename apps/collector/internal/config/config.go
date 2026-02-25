@@ -24,15 +24,14 @@ type Config struct {
 
 	Stats stats.Spec `toml:"stats"`
 
-	Sources []source.Spec `toml:"sources"`
-	Parsers []parser.Spec `toml:"parsers"`
-	Apps    []AppRef      `toml:"apps"`
+	Parsers map[string]parser.Spec `toml:"parsers"`
+	Apps    []AppSpec              `toml:"apps"`
 }
 
-type AppRef struct {
-	Name     string `toml:"name"`
-	SourceID string `toml:"source_id"`
-	ParserID string `toml:"parser_id"`
+type AppSpec struct {
+	Name     string      `toml:"name"`
+	ParserID string      `toml:"parser_id"`
+	Source   source.Spec `toml:"source"`
 }
 
 // Load reads and parses configuration file
