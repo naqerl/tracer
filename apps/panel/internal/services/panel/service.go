@@ -210,18 +210,20 @@ func (s *Service) queriesForApp(collectorName, appName string) (*db.Queries, err
 	return db.New(sqlDB), nil
 }
 
-func (s *Service) GetAppAnalytics(ctx context.Context, req GetAppAnalyticsRequest) (*AppStats, []db.ListLogGroupsRow, error) {
+// FIXME: Stop db handjob
+func (s *Service) GetAppAnalytics(ctx context.Context, req GetAppAnalyticsRequest) (AppStats, error) {
+	var stats AppStats
 	hasAccess, err := s.permissions.CanAccessApp(ctx, req.User, req.AppName)
 	if err != nil {
-		return nil, nil, err
+		return stats, err
 	}
 	if !hasAccess {
-		return nil, nil, ErrAccessDenied
+		return stats, ErrAccessDenied
 	}
 
 	queries, err := s.queriesForApp(req.CollectorName, req.AppName)
 	if err != nil {
-		return nil, nil, err
+		return stats, err
 	}
 
 	totalCount, err := queries.CountLogGroups(ctx)
@@ -245,20 +247,12 @@ func (s *Service) GetAppAnalytics(ctx context.Context, req GetAppAnalyticsReques
 		infoCount = 0
 	}
 
-	grouped, err := queries.ListLogGroups(ctx, db.ListLogGroupsParams{
-		Limit:  20,
-		Offset: 0,
-	})
-	if err != nil {
-		return nil, nil, err
-	}
-
-	return &AppStats{
+	return AppStats{
 		Total:    totalCount,
 		Errors:   errorCount,
 		Warnings: warnCount,
 		Infos:    infoCount,
-	}, grouped, nil
+	}, nil
 }
 
 func (s *Service) GetLogDetail(ctx context.Context, req GetLogDetailRequest) (*LogDetailResult, error) {

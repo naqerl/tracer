@@ -1,12 +1,9 @@
-{{define "app-page"}}
+{{define "app"}}
 <!DOCTYPE html>
 <html lang="en">
 <head>
     {{template "head"}}
     <title>{{.AppName}} - Tracer</title>
-    <!-- Add uPlot library -->
-    <script src="https://cdn.jsdelivr.net/npm/uplot@1.6.30/dist/uPlot.iife.min.js"></script>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/uplot@1.6.30/dist/uPlot.min.css">
     <style>
         .uplot { margin: 1.5rem 0; touch-action: pan-y pinch-zoom; }
         .range-tabs { display: flex; gap: 0.5rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
@@ -53,34 +50,6 @@
                 </div>
             </div>
         </div>
-
-        <!-- Recent Logs -->
-        {{template "app-logs" .}}
 </body>
 </html>
-{{end}}
-
-{{define "app-logs"}}
-<div class="bg-bg-secondary p-5">
-    <div class="flex items-center justify-between mb-4">
-        <h2 class="text-lg font-medium">Recent Logs</h2>
-        <a href="/panel/collectors/{{.CollectorName}}/apps/{{.AppName}}/logs" class="text-accent hover:underline text-sm">View All &rarr;</a>
-    </div>
-    {{if .Grouped}}
-    <div class="space-y-2">
-        {{range .Grouped}}
-        <div class="bg-bg p-3 border border-bg-secondary hover:border-accent/50 transition-colors">
-            <div class="flex items-start justify-between">
-                <div class="flex-1">
-                    <span class="text-sm">{{.Message}}</span>
-                </div>
-                <span class="ml-3 px-2 py-0.5 text-xs bg-bg-secondary rounded">{{.Count}}</span>
-            </div>
-        </div>
-        {{end}}
-    </div>
-    {{else}}
-    <p class="text-fg-secondary text-center py-4">No recent logs</p>
-    {{end}}
-</div>
 {{end}}

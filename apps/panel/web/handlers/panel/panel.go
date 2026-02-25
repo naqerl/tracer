@@ -221,7 +221,7 @@ func (h *handler) getApp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	stats, grouped, err := h.svc.GetAppAnalytics(r.Context(), req)
+	stats, err := h.svc.GetAppAnalytics(r.Context(), req)
 	if err != nil {
 		switch {
 		case errors.Is(err, panelsvc.ErrAccessDenied):
@@ -234,12 +234,11 @@ func (h *handler) getApp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.t.RenderHTTP(w, r, "app-page", map[string]any{
+	h.t.RenderHTTP(w, r, "app", map[string]any{
 		"Title":         req.AppName + " Analytics",
 		"AppName":       req.AppName,
 		"CollectorName": req.CollectorName,
 		"Stats":         stats,
-		"Grouped":       grouped,
 		"IsAdmin":       user.IsAdmin,
 		"Nav": templates.NewNavBuilder().
 			Add("panel", "panel").
@@ -283,7 +282,7 @@ func (h *handler) getLogGroups(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.t.RenderHTTP(w, r, "app-logs-page", map[string]any{
+	h.t.RenderHTTP(w, r, "log-groups", map[string]any{
 		"Title":         req.AppName + " Logs",
 		"AppName":       req.AppName,
 		"CollectorName": req.CollectorName,
