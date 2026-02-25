@@ -29,9 +29,16 @@ type Config struct {
 }
 
 type AppSpec struct {
-	Name     string      `toml:"name"`
-	ParserID string      `toml:"parser_id"`
-	Source   source.Spec `toml:"source"`
+	Name      string        `toml:"name"`
+	ParserID  string        `toml:"parser_id"`
+	Source    source.Spec   `toml:"source"`
+	Lifecycle LifecycleSpec `toml:"lifecycle"`
+}
+
+type LifecycleSpec struct {
+	StartPattern   string `toml:"start_pattern"`
+	RestartPattern string `toml:"restart_pattern"`
+	ExitPattern    string `toml:"exit_pattern"`
 }
 
 // Load reads and parses configuration file

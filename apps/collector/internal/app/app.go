@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"tracer/apps/collector/internal/lifecycle"
 	"tracer/apps/collector/internal/parser"
 	"tracer/apps/collector/internal/source"
 	"tracer/libs/types"
@@ -12,16 +13,18 @@ import (
 type App struct {
 	Name string
 
-	source source.Source
-	parser parser.Parser
+	source    source.Source
+	parser    parser.Parser
+	lifecycle lifecycle.Detector
 }
 
-func New(s source.Source, p parser.Parser, name string) App {
+func New(s source.Source, p parser.Parser, lifecycle lifecycle.Detector, name string) App {
 	return App{
 		Name: name,
 
-		source: s,
-		parser: p,
+		source:    s,
+		parser:    p,
+		lifecycle: lifecycle,
 	}
 }
 
@@ -72,6 +75,17 @@ func (a App) Produce(ctx context.Context) <-chan types.Event {
 							return
 						}
 						break
+					}
+					if kind, ok := a.lifecycle.Detect(line); ok {
+						if !emit(types.LifecycleEvent{
+							Time:    time.Now().UTC(),
+							App:     a.Name,
+							Kind:    kind,
+							RawLine: line,
+						}) {
+							return
+						}
+						continue
 					}
 					entry, err := a.parser.Parse(line)
 					if err == nil {

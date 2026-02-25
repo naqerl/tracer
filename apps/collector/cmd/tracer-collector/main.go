@@ -12,6 +12,7 @@ import (
 
 	"tracer/apps/collector/internal/app"
 	"tracer/apps/collector/internal/config"
+	"tracer/apps/collector/internal/lifecycle"
 	"tracer/apps/collector/internal/parser"
 	"tracer/apps/collector/internal/source"
 	"tracer/apps/collector/internal/stats"
@@ -70,7 +71,13 @@ func serve(ctx context.Context, cfg config.Config) error {
 			return fmt.Errorf("parser with id=%s not found", spec.ParserID)
 		}
 		s := source.New(spec.Source)
-		apps[spec.Name] = app.New(s, p, spec.Name)
+
+		lfc, err := lifecycle.New(spec.Lifecycle)
+		if err != nil {
+			return fmt.Errorf("invalid lifecycle config for app %s: %w", spec.Name, err)
+		}
+
+		apps[spec.Name] = app.New(s, p, lfc, spec.Name)
 		appNames = append(appNames, spec.Name)
 	}
 
