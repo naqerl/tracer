@@ -1,9 +1,6 @@
 package types
 
-import (
-	"fmt"
-	"time"
-)
+import "time"
 
 // LogLevel represents the severity level of a log entry
 type LogLevel string
@@ -42,49 +39,4 @@ type LogEntry struct {
 	TraceID   string            `json:"trace_id"`
 	Message   string            `json:"message"`
 	Extra     map[string]string `json:"extra,omitempty"`
-}
-
-// LogPayload is the internal collector representation of a log entry.
-// It carries enrichment metadata (AppName, IsStartup) alongside the parsed entry.
-type LogPayload struct {
-	AppName   string   `json:"app_name"`
-	Entry     LogEntry `json:"entry"`
-	IsStartup bool     `json:"is_startup"`
-}
-
-// StatsPayload is the message format for stats from collectors to panel via WebSocket
-type StatsPayload struct {
-	Type          string `json:"type"` // "stats"
-	AppName       string `json:"app_name"`
-	CollectorName string `json:"collector_name"`
-	Stats         *Stats `json:"stats"`
-}
-
-// MessageType represents the type of message sent from collector to panel
-type MessageType string
-
-const (
-	MessageTypeRegister MessageType = "register"
-	MessageTypeLog      MessageType = "log"
-	MessageTypeStartup  MessageType = "startup"
-	MessageTypeStats    MessageType = "stats"
-)
-
-// Validate checks if the message type is valid
-func (mt MessageType) Validate() error {
-	switch mt {
-	case MessageTypeRegister, MessageTypeLog, MessageTypeStartup, MessageTypeStats:
-		return nil
-	}
-	return fmt.Errorf("invalid message type: %s", mt)
-}
-
-// LogMessage is the message format from collectors to panel via WebSocket
-type LogMessage struct {
-	Type          MessageType `json:"type"` // "register", "log", "startup", "stats"
-	AppName       string      `json:"app_name"`
-	Apps          []string    `json:"apps,omitempty"`           // for registration
-	CollectorName string      `json:"collector_name,omitempty"` // for registration and stats
-	Entry         LogEntry    `json:"entry,omitempty"`
-	Stats         *Stats      `json:"stats,omitempty"`
 }
