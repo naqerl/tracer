@@ -1,350 +1,87 @@
 {{define "log-groups"}}
 <!DOCTYPE html>
 <html lang="en">
-<head>
+  <head>
     {{template "head"}}
     <title>Log Groups - Tracer</title>
-</head>
-<body>
-    <div class="bg-bg-secondary p-5">
-        <h2 class="text-lg font-medium mb-4">Log Groups</h2>
-        
-        <!-- Time Range Tabs -->
-        <div class="flex flex-wrap gap-2 mb-4">
-            <a href="/panel/collectors/{{.CollectorName}}/apps/{{.AppName}}/logs?since=1h{{if .Level}}&level={{.Level}}{{end}}"
-               class="px-3 py-1.5 text-sm transition-colors {{if eq .Since "1h"}}text-fg font-medium{{else}}text-fg-secondary hover:text-fg{{end}}">1h</a>
-            <a href="/panel/collectors/{{.CollectorName}}/apps/{{.AppName}}/logs?since=6h{{if .Level}}&level={{.Level}}{{end}}"
-               class="px-3 py-1.5 text-sm transition-colors {{if eq .Since "6h"}}text-fg font-medium{{else}}text-fg-secondary hover:text-fg{{end}}">6h</a>
-            <a href="/panel/collectors/{{.CollectorName}}/apps/{{.AppName}}/logs?since=24h{{if .Level}}&level={{.Level}}{{end}}"
-               class="px-3 py-1.5 text-sm transition-colors {{if or (eq .Since "24h") (eq .Since "")}}text-fg font-medium{{else}}text-fg-secondary hover:text-fg{{end}}">24h</a>
-            <a href="/panel/collectors/{{.CollectorName}}/apps/{{.AppName}}/logs?since=7d{{if .Level}}&level={{.Level}}{{end}}"
-               class="px-3 py-1.5 text-sm transition-colors {{if eq .Since "7d"}}text-fg font-medium{{else}}text-fg-secondary hover:text-fg{{end}}">7d</a>
-            <a href="/panel/collectors/{{.CollectorName}}/apps/{{.AppName}}/logs?since=30d{{if .Level}}&level={{.Level}}{{end}}"
-               class="px-3 py-1.5 text-sm transition-colors {{if eq .Since "30d"}}text-fg font-medium{{else}}text-fg-secondary hover:text-fg{{end}}">30d</a>
-        </div>
-        
-        <!-- Level Filter Tabs -->
-        <div class="flex flex-wrap gap-2 mb-4">
-            <a href="/panel/collectors/{{.CollectorName}}/apps/{{.AppName}}/logs?since={{.Since}}"
-               class="px-3 py-1.5 text-sm transition-colors {{if not .Level}}text-fg font-medium{{else}}text-fg-secondary hover:text-fg{{end}}">All</a>
-            <a href="/panel/collectors/{{.CollectorName}}/apps/{{.AppName}}/logs?since={{.Since}}&level=error"
-               class="px-3 py-1.5 text-sm transition-colors {{if eq .Level "error"}}text-red-500 font-medium{{else}}text-fg-secondary hover:text-red-400{{end}}">Errors</a>
-            <a href="/panel/collectors/{{.CollectorName}}/apps/{{.AppName}}/logs?since={{.Since}}&level=warn"
-               class="px-3 py-1.5 text-sm transition-colors {{if eq .Level "warn"}}text-yellow-500 font-medium{{else}}text-fg-secondary hover:text-yellow-400{{end}}">Warnings</a>
-            <a href="/panel/collectors/{{.CollectorName}}/apps/{{.AppName}}/logs?since={{.Since}}&level=info"
-               class="px-3 py-1.5 text-sm transition-colors {{if eq .Level "info"}}text-blue-500 font-medium{{else}}text-fg-secondary hover:text-blue-400{{end}}">Info</a>
-        </div>
-        
-        <!-- Log Groups Table -->
-        {{template "app-logs-table" .}}
+  </head>
+  <body>
+    <div id="log-groups">
+      <h2 class="text-lg font-medium mb-4">Log Groups</h2>
+      <div class="flex flex-col gap-2 mb-6">
+      {{template "time-range-filter" .}}
+      {{template "level-filter" .}}
+      </div>
+      {{template "app-logs-table" .}}
     </div>
-</body>
+  </body>
 </html>
+{{end}}
+
+{{define "time-range-filter"}}
+<div id="time-range-filter" class="flex flex-wrap gap-6">
+  {{range .TimeRanges}}
+  {{$isActive := or (eq $.Since .Val) (and .Default (eq $.Since ""))}}
+  <a hx-get="/panel/collectors/{{$.Collector}}/apps/{{$.App}}/logs?since={{.Val}}{{if $.Level}}&level={{$.Level}}{{end}}"
+     hx-push-url="false"
+     hx-target="#log-groups"
+     class="py-1.5 text-sm transition-colors cursor-pointer {{if $isActive}}text-fg font-medium{{else}}text-fg-secondary hover:text-fg{{end}}">{{.Label}}</a>
+  {{end}}
+</div>
+{{end}}
+
+{{define "level-filter"}}
+<div id="level-filter" class="flex flex-wrap gap-6">
+  {{range .LevelFilters}}
+  {{$isActive := or (and (eq .Val "") (not $.Level)) (eq $.Level .Val)}}
+  {{$query := ""}}
+  {{if ne .Val ""}}{{$query = printf "&level=%s" .Val}}{{end}}
+  <a hx-get="/panel/collectors/{{$.Collector}}/apps/{{$.App}}/logs?since={{$.Since}}{{$query}}"
+     hx-push-url="false"
+     hx-target="#log-groups"
+     class="flex flex-col items-center gap-1 pb-2 cursor-pointer {{if $isActive}}text-fg{{else}}text-fg-secondary hover:text-fg{{end}}">
+    <span class="text-sm">{{.Label}}</span>
+    <span class="w-1.5 h-1.5 rounded-full {{if $isActive}}bg-{{.Color}}{{else}}bg-transparent{{end}}"></span>
+  </a>
+  {{end}}
+</div>
 {{end}}
 
 {{define "app-logs-table"}}
-<div id="logs-content">
-    <!-- Responsive table view -->
-    <div class="bg-bg overflow-x-auto">
-        <table class="w-full border-separate border-spacing-y-2 sm:border-spacing-y-0">
-            <thead class="hidden sm:table-header-group">
-                <tr class="border-b border-bg-secondary">
-                    {{if not .Level}}<th class="px-4 py-3 text-left text-fg-secondary text-sm font-medium">Level</th>{{end}}
-                    <th class="px-4 py-3 text-left text-fg-secondary text-sm font-medium">Message</th>
-                    <th class="px-4 py-3 text-right text-fg-secondary text-sm font-medium">Count</th>
-                </tr>
-            </thead>
-            <tbody id="groups-tbody">
-                {{if not .Groups}}
-                <tr>
-                    <td colspan="{{if not .Level}}3{{else}}2{{end}}" class="text-center text-fg-secondary py-8">No logs available</td>
-                </tr>
-                {{end}}
-                {{range .Groups}}
-                <tr class="flex flex-col mb-2 sm:table-row sm:border-b sm:border-bg-secondary hover:bg-bg-secondary/50 transition-colors">
-                    {{if not $.Level}}<td class="hidden sm:table-cell px-4 py-3"><span class="text-xs font-medium uppercase">{{.Level}}</span></td>{{end}}
-                    <td class="px-4 py-3 bg-bg-secondary sm:bg-transparent first:rounded-t-lg last:rounded-b-lg sm:first:rounded-none sm:last:rounded-none break-words overflow-hidden">
-                        <a href="/panel/collectors/{{$.CollectorName}}/apps/{{$.AppName}}/logs/groups/{{.ID}}" class="block text-fg hover:text-accent transition-colors" title="View log details">
-                            {{if not $.Level}}<span class="text-xs font-medium uppercase text-fg-secondary sm:hidden">{{.Level}}: </span>{{end}}{{.Message}}
-                        </a>
-                    </td>
-                    <td class="px-4 py-3 bg-bg-secondary sm:bg-transparent text-left sm:text-right first:rounded-t-lg last:rounded-b-lg sm:first:rounded-none sm:last:rounded-none whitespace-nowrap">
-                        <a href="/panel/collectors/{{$.CollectorName}}/apps/{{$.AppName}}/logs/groups/{{.ID}}" class="inline-flex items-center justify-center min-w-[2rem] px-2 py-0.5 text-sm font-medium bg-bg sm:bg-bg-secondary text-fg-secondary rounded hover:bg-accent hover:text-bg transition-colors" title="View log details">
-                            {{.Count}}
-                        </a>
-                    </td>
-                </tr>
-                {{end}}
-                {{if .HasMore}}
-                <tr class="sm:table-row">
-                    <td colspan="{{if not .Level}}3{{else}}2{{end}}" class="text-center text-fg-secondary py-4">
-                        <a href="/panel/collectors/{{.CollectorName}}/apps/{{.AppName}}/logs?since={{.Since}}{{if .Level}}&level={{.Level}}{{end}}&offset={{.NextOffset}}" class="text-accent hover:underline">Load more...</a>
-                    </td>
-                </tr>
-                {{else}}
-                <tr class="flex flex-col sm:table-row">
-                    <td colspan="{{if not .Level}}3{{else}}2{{end}}" class="text-center py-6 mt-2">
-                        <span class="text-xs text-fg-secondary/60">No more data</span>
-                    </td>
-                </tr>
-                {{end}}
-            </tbody>
-        </table>
-    </div>
-</div>
-{{end}}
-
-{{define "app-logs-detail-page"}}
-<!DOCTYPE html>
-<html lang="en">
-    <head>
-        {{template "head"}}
-        <title>{{.AppName}} Log Details - Tracer</title>
-    </head>
-    <body>
-        <div class="max-w-7xl mx-auto p-6">
-            {{template "navbar" .Nav}}
-
-            <div class="bg-bg-secondary p-5">
-                <div class="mb-4">
-                    <a href="/panel/collectors/{{.CollectorName}}/apps/{{.AppName}}/logs" class="text-accent hover:underline text-sm">&larr; Back to Groups</a>
-                </div>
-
-                <h2 class="text-lg font-medium mb-2">Log Details</h2>
-                <p class="text-fg-secondary text-sm mb-4 break-words">{{.LogGroup.Message}}</p>
-
-                {{template "app-logs-detail" .}}
-            </div>
-        </div>
-    </body>
-</html>
-{{end}}
-
-{{define "app-logs-detail"}}
-{{if eq .Offset 0}}
-<!-- Responsive table view -->
-<div class="bg-bg overflow-x-auto">
-    <table class="w-full border-separate border-spacing-y-2 sm:border-spacing-y-0">
-        <thead class="hidden sm:table-header-group">
-            <tr class="border-b border-bg-secondary">
-                <th class="px-4 py-3 text-left text-fg-secondary text-sm font-medium">Level</th>
-                <th class="px-4 py-3 text-left text-fg-secondary text-sm font-medium">Context</th>
-                <th class="px-4 py-3 text-right text-fg-secondary text-sm font-medium">Time</th>
-            </tr>
-        </thead>
-        <tbody id="logs-tbody">
-            {{if not .Logs}}
-            <tr>
-                <td colspan="3" class="text-center text-fg-secondary py-8">No logs in this group</td>
-            </tr>
-            {{end}}
-            {{range .Logs}}
-            <tr class="flex flex-col mb-2 sm:table-row sm:border-b sm:border-bg-secondary hover:bg-bg-secondary/50 transition-colors {{if eq .ID $.HighlightLogID}}bg-accent/10 border-l-2 border-accent{{end}}" id="log-{{.ID}}">
-                <td class="px-4 py-3 bg-bg-secondary sm:bg-transparent first:rounded-t-lg last:rounded-b-lg sm:first:rounded-none sm:last:rounded-none sm:align-top">
-                    <a href="/panel/collectors/{{$.CollectorName}}/apps/{{$.AppName}}/logs/{{.ID}}" class="text-fg hover:text-accent transition-colors" title="View log details">
-                        <span class="text-fg-secondary text-sm sm:hidden">Level: </span><span class="text-xs font-medium uppercase">{{.Level}}</span>
-                    </a>
-                </td>
-                <td class="px-4 py-3 bg-bg-secondary sm:bg-transparent first:rounded-t-lg last:rounded-b-lg sm:first:rounded-none sm:last:rounded-none">
-                    <a href="/panel/collectors/{{$.CollectorName}}/apps/{{$.AppName}}/logs/{{.ID}}" class="block text-fg hover:text-accent transition-colors" title="View log details">
-                        {{if .Context.Valid}}
-                        <span class="text-fg-secondary text-sm block mb-1 sm:hidden">Context:</span>
-                        <pre class="bg-bg p-2 text-xs overflow-x-auto max-w-3xl whitespace-pre-wrap break-words"><code class="context-json">{{.Context.String}}</code></pre>
-                        {{else}}
-                        <pre class="bg-bg p-2 text-xs"><code>{}</code></pre>
-                        {{end}}
-                    </a>
-                </td>
-                <td class="px-4 py-3 bg-bg-secondary sm:bg-transparent text-left sm:text-right first:rounded-t-lg last:rounded-b-lg sm:first:rounded-none sm:last:rounded-none text-fg-secondary text-sm sm:align-top">
-                    <a href="/panel/collectors/{{$.CollectorName}}/apps/{{$.AppName}}/logs/{{.ID}}" class="text-fg hover:text-accent transition-colors" title="View log details">
-                        <span class="sm:hidden">Time: </span>{{formatDateTime .CreatedAt}}
-                    </a>
-                </td>
-            </tr>
-            {{end}}
-            {{if .HasMore}}
-            <tr class="sm:table-row">
-                <td colspan="3" class="text-center text-fg-secondary py-4">
-                    <a href="/panel/collectors/{{.CollectorName}}/apps/{{.AppName}}/logs/groups/{{.LogGroup.ID}}?offset={{.NextOffset}}" class="text-accent hover:underline">Load more...</a>
-                </td>
-            </tr>
-            {{else}}
-            <tr class="flex flex-col sm:table-row">
-                <td colspan="3" class="text-center py-6 mt-2">
-                    <span class="text-xs text-fg-secondary/60">No more data</span>
-                </td>
-            </tr>
-            {{end}}
-        </tbody>
-    </table>
-</div>
-
-<script>
-// Pretty-print JSON context
-document.addEventListener('DOMContentLoaded', function() {
-    document.querySelectorAll('.context-json').forEach(function(el) {
-        try {
-            const json = JSON.parse(el.textContent);
-            el.textContent = JSON.stringify(json, null, 2);
-        } catch(e) {
-            // If not valid JSON, leave as-is
-        }
-    });
-});
-</script>
-{{else}}
-{{range .Logs}}
-<tr class="flex flex-col mb-2 sm:table-row sm:border-b sm:border-bg-secondary hover:bg-bg-secondary/50 transition-colors {{if eq .ID $.HighlightLogID}}bg-accent/10 border-l-2 border-accent{{end}}" id="log-{{.ID}}">
-    <td class="px-4 py-3 bg-bg-secondary sm:bg-transparent first:rounded-t-lg last:rounded-b-lg sm:first:rounded-none sm:last:rounded-none sm:align-top">
-        <a href="/panel/collectors/{{$.CollectorName}}/apps/{{$.AppName}}/logs/{{.ID}}" class="text-fg hover:text-accent transition-colors" title="View log details">
-            <span class="text-fg-secondary text-sm sm:hidden">Level: </span><span class="text-xs font-medium uppercase">{{.Level}}</span>
-        </a>
-    </td>
-    <td class="px-4 py-3 bg-bg-secondary sm:bg-transparent first:rounded-t-lg last:rounded-b-lg sm:first:rounded-none sm:last:rounded-none">
-        <a href="/panel/collectors/{{$.CollectorName}}/apps/{{$.AppName}}/logs/{{.ID}}" class="block text-fg hover:text-accent transition-colors" title="View log details">
-            {{if .Context.Valid}}
-            <span class="text-fg-secondary text-sm block mb-1 sm:hidden">Context:</span>
-            <pre class="bg-bg p-2 text-xs overflow-x-auto max-w-3xl whitespace-pre-wrap break-words"><code class="context-json">{{.Context.String}}</code></pre>
-            {{else}}
-            <pre class="bg-bg p-2 text-xs"><code>{}</code></pre>
-            {{end}}
-        </a>
-    </td>
-    <td class="px-4 py-3 bg-bg-secondary sm:bg-transparent text-left sm:text-right first:rounded-t-lg last:rounded-b-lg sm:first:rounded-none sm:last:rounded-none text-fg-secondary text-sm sm:align-top">
-        <a href="/panel/collectors/{{$.CollectorName}}/apps/{{$.AppName}}/logs/{{.ID}}" class="text-fg hover:text-accent transition-colors" title="View log details">
-            <span class="sm:hidden">Time: </span>{{formatDateTime .CreatedAt}}
-        </a>
-    </td>
-</tr>
-{{end}}
-{{if .HasMore}}
-<tr class="sm:table-row">
-    <td colspan="3" class="text-center text-fg-secondary py-4">
-        <a href="/panel/collectors/{{.CollectorName}}/apps/{{.AppName}}/logs/groups/{{.LogGroup.ID}}?offset={{.NextOffset}}" class="text-accent hover:underline">Load more...</a>
-    </td>
-</tr>
-{{else}}
-<tr class="flex flex-col sm:table-row">
-    <td colspan="3" class="text-center py-6 mt-2">
-        <span class="text-xs text-fg-secondary/60">No more data</span>
-    </td>
-</tr>
-{{end}}
-{{end}}
-{{end}}
-
-{{define "app-logs-chart-data"}}
-{{if .TimeSeries}}
-<!-- Chart Container -->
-<div id="log-volume-chart"></div>
-
-<!-- Data Table (Hidden, for progressive enhancement) -->
-<table id="chart-data-table" style="display: none;">
-    <tbody>
-        {{range .TimeSeries}}
-        <tr data-timestamp="{{.TimeBucket}}" data-level="{{.Level}}" data-count="{{.Count}}"></tr>
-        {{end}}
-    </tbody>
+<table id="logs-table-container" class="w-full">
+  <thead class="hidden sm:table-header-group">
+    <tr class="border-b border-bg-secondary text-left text-fg-secondary text-sm">
+      {{if not .Level}}<th class="px-4 py-2 font-medium">Level</th>{{end}}
+      <th class="px-4 py-2 font-medium">Message</th>
+      <th class="px-4 py-2 font-medium text-right">Count</th>
+    </tr>
+  </thead>
+  <tbody>
+    {{if not .Groups}}
+    <tr>
+      <td colspan="{{if not .Level}}3{{else}}2{{end}}" class="text-center text-fg-secondary py-8">No logs available</td>
+    </tr>
+    {{end}}
+    {{range .Groups}}
+    <tr class="border-b border-bg-secondary">
+      {{if not $.Level}}<td class="hidden sm:table-cell py-3 text-xs capitalize{{if eq .Level `error`}} text-red-500{{else if eq .Level `warn`}} text-yellow-500{{else if eq .Level `info`}} text-blue-500{{end}}">{{.Level}}</td>{{end}}
+      <td class="py-3">
+        {{/* Desktop: just message */}}
+        <span class="hidden sm:inline">{{.Message}}</span>
+        {{/* Mobile: level, count on one line; message on new line */}}
+        <span class="sm:hidden flex flex-col gap-1">
+          <span class="flex items-center gap-2">
+            {{if not $.Level}}<span class="text-xs capitalize{{if eq .Level `error`}} text-red-500{{else if eq .Level `warn`}} text-yellow-500{{else if eq .Level `info`}} text-blue-500{{end}}">{{.Level}}</span>{{end}}
+            <span class="text-xs text-fg-secondary">{{.Count}}</span>
+          </span>
+          <span>{{.Message}}</span>
+        </span>
+      </td>
+      <td class="hidden sm:table-cell py-3 text-right">
+        {{.Count}}
+      </td>
+    </tr>
+    {{end}}
+  </tbody>
 </table>
-
-<!-- Chart Rendering Script -->
-<script>
-(function() {
-    const rows = document.querySelectorAll('#chart-data-table tbody tr');
-    if (rows.length === 0) {
-        document.getElementById('log-volume-chart').innerHTML =
-            '<p class="text-center text-fg-secondary py-8">No log data available for this time range.</p>';
-        return;
-    }
-
-    // Parse data and organize by level
-    const dataByLevel = {};
-    const timestamps = new Set();
-
-    rows.forEach(row => {
-        const timestamp = row.dataset.timestamp;
-        const level = row.dataset.level;
-        const count = parseInt(row.dataset.count);
-
-        timestamps.add(timestamp);
-
-        if (!dataByLevel[level]) {
-            dataByLevel[level] = {};
-        }
-        dataByLevel[level][timestamp] = count;
-    });
-
-    // Convert to Unix timestamps for uPlot
-    const sortedTimestamps = Array.from(timestamps).sort();
-    const unixTimestamps = sortedTimestamps.map(ts => {
-        return Math.floor(new Date(ts.replace(' ', 'T') + 'Z').getTime() / 1000);
-    });
-
-    // Define log level order and colors
-    const levelConfig = {
-        'error': { color: '#EF4444', label: 'Errors' },
-        'warn': { color: '#F59E0B', label: 'Warnings' },
-        'info': { color: '#3B82F6', label: 'Info' },
-        'debug': { color: '#6B7280', label: 'Debug' }
-    };
-
-    // Build series data
-    const series = [{ }]; // timestamps
-    const seriesData = [unixTimestamps];
-    const activeLevels = Object.keys(dataByLevel).sort((a, b) => {
-        const order = ['error', 'warn', 'info', 'debug'];
-        return order.indexOf(a) - order.indexOf(b);
-    });
-
-    activeLevels.forEach(level => {
-        const config = levelConfig[level] || { color: '#808080', label: level };
-        const data = sortedTimestamps.map(ts => dataByLevel[level][ts] || 0);
-
-        series.push({
-            label: config.label,
-            stroke: config.color,
-            fill: config.color + '33',
-            width: 2
-        });
-        seriesData.push(data);
-    });
-
-    // Chart configuration
-    const isMobile = window.innerWidth < 768;
-    const opts = {
-        width: document.getElementById('log-volume-chart').offsetWidth,
-        height: isMobile ? 250 : 300,
-        scales: { x: { time: true } },
-        axes: [
-            { stroke: "#808080", grid: { stroke: "#1E1E1E" }, size: isMobile ? 40 : 50 },
-            { stroke: "#808080", grid: { stroke: "#1E1E1E" }, size: isMobile ? 50 : 60,
-              values: (u, vals) => vals.map(v => v.toFixed(0)) }
-        ],
-        series: series,
-        legend: { show: true, live: true },
-        cursor: {
-            focus: { prox: isMobile ? 50 : 30 }
-        }
-    };
-
-    const chart = new uPlot(opts, seriesData, document.getElementById('log-volume-chart'));
-
-    // Handle window resize
-    let resizeTimeout;
-    window.addEventListener('resize', () => {
-        clearTimeout(resizeTimeout);
-        resizeTimeout = setTimeout(() => {
-            const newWidth = document.getElementById('log-volume-chart').offsetWidth;
-            const newHeight = window.innerWidth < 768 ? 250 : 300;
-            chart.setSize({ width: newWidth, height: newHeight });
-        }, 150);
-    });
-})();
-</script>
-
-{{else}}
-<div class="text-center text-fg-secondary py-12">
-    <p>No log data available for the selected time range.</p>
-</div>
-{{end}}
 {{end}}

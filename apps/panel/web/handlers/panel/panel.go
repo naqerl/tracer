@@ -22,6 +22,35 @@ type handler struct {
 	svc *panelsvc.Service
 }
 
+// TimeRange represents a time range option for the filter
+type TimeRange struct {
+	Val     string
+	Label   string
+	Default bool
+}
+
+// LevelFilter represents a log level filter option
+type LevelFilter struct {
+	Val   string
+	Label string
+	Color string
+}
+
+var timeRanges = []TimeRange{
+	{Val: "1h", Label: "1h"},
+	{Val: "6h", Label: "6h"},
+	{Val: "24h", Label: "24h", Default: true},
+	{Val: "7d", Label: "7d"},
+	{Val: "30d", Label: "30d"},
+}
+
+var levelFilters = []LevelFilter{
+	{Val: "", Label: "All", Color: "fg"},
+	{Val: "error", Label: "Errors", Color: "red-500"},
+	{Val: "warn", Label: "Warnings", Color: "yellow-500"},
+	{Val: "info", Label: "Info", Color: "blue-500"},
+}
+
 func InitMux(svc *panelsvc.Service) *http.ServeMux {
 	m := http.NewServeMux()
 	h := handler{
@@ -304,11 +333,13 @@ func (h *handler) getLogGroups(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.t.RenderHTTP(w, r, "log-groups", map[string]any{
-		"Groups":        groups,
-		"Level":         req.Level,
-		"Since":         r.URL.Query().Get("since"),
-		"CollectorName": req.CollectorName,
-		"AppName":       req.AppName,
+		"Groups":      groups,
+		"Level":       req.Level,
+		"Since":       r.URL.Query().Get("since"),
+		"Collector":   req.CollectorName,
+		"App":         req.AppName,
+		"TimeRanges":  timeRanges,
+		"LevelFilters": levelFilters,
 	})
 }
 
