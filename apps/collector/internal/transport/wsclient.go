@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -74,11 +76,15 @@ func (s *Service) connect() error {
 		s.conn.Close()
 	}
 
+	wsURL, err := panelWSURL(s.spec.PanelHost)
+	if err != nil {
+		return err
+	}
+
 	headers := http.Header{}
 	headers.Set("X-API-Key", s.spec.APIKey)
 
-	// TODO: Build a complete websocket URI
-	conn, _, err := websocket.DefaultDialer.Dial(s.spec.PanelHost, headers)
+	conn, _, err := websocket.DefaultDialer.Dial(wsURL, headers)
 	if err != nil {
 		return err
 	}
@@ -91,6 +97,38 @@ func (s *Service) connect() error {
 
 	s.conn = conn
 	return nil
+}
+
+func panelWSURL(panelHost string) (string, error) {
+	raw := strings.TrimSpace(panelHost)
+	if raw == "" {
+		return "", fmt.Errorf("panel_host is empty")
+	}
+	if !strings.Contains(raw, "://") {
+		raw = "ws://" + raw
+	}
+
+	u, err := url.Parse(raw)
+	if err != nil {
+		return "", fmt.Errorf("invalid panel_host %q: %w", panelHost, err)
+	}
+	if u.Host == "" {
+		return "", fmt.Errorf("invalid panel_host %q: missing host", panelHost)
+	}
+
+	switch u.Scheme {
+	case "ws", "wss":
+	case "http":
+		u.Scheme = "ws"
+	case "https":
+		u.Scheme = "wss"
+	default:
+		return "", fmt.Errorf("invalid panel_host scheme %q (expected ws, wss, http, https, or host:port)", u.Scheme)
+	}
+
+	u.Path = "/ingest/ws"
+	u.RawPath = ""
+	return u.String(), nil
 }
 
 func (s *Service) run(ctx context.Context) error {
