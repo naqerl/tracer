@@ -159,87 +159,78 @@ setup_directories() {
 # Create example configuration files
 create_configs() {
     # Collector config (only if doesn't exist)
-    if [[ ! -f "${CONFIG_DIR}/collector.toml" ]]; then
+    if [[ ! -f "${CONFIG_DIR}/collector.yaml" ]]; then
         log_info "Creating collector configuration..."
-        cat > "${CONFIG_DIR}/collector.toml" << 'EOF'
+        cat > "${CONFIG_DIR}/collector.yaml" << 'EOF'
 # Tracer Collector Configuration
 # Documentation: https://github.com/ai-shift/tracer
 
-# Collector name (identifies this collector in the panel)
-name = "my-collector"
+transport:
+  # Collector name (identifies this collector in the panel)
+  name: my-collector
+  # Panel host and port (no protocol)
+  panel_host: localhost:8080
+  # Collector API key
+  api_key: YOUR_API_KEY
 
-# Panel WebSocket endpoint
-panel_endpoint = "ws://localhost:8080/ingest/ws/ingest"
+stats:
+  # System stats collection interval
+  stats_interval: 30s
 
-# Collector API key
-api_key = "YOUR_API_KEY"
+parsers:
+  json-default:
+    type: json
+    params:
+      timestamp_field: timestamp
+      timestamp_format: "2006-01-02T15:04:05Z07:00"
+      level_field: level
+      trace_id_field: trace_id
+      message_field: message
 
-# System stats collection interval (optional, e.g. "30s", "1m")
-# stats_interval = "30s"
-
-# Each app entry creates a separate application in the panel
-# The 'name' field is the app identifier that will appear in the dashboard
-
-# Example: JSON application logs
-# [[apps]]
-# name = "my-app"
-# path = "/var/log/my-app/app.log"
-# format = "json"
-# # Optional: detect app restarts
-# # startup_pattern = "Server started"
-
-# Example: systemd service via journalctl
-# [[apps]]
-# name = "my-service"
-# format = "journalctl"
-# unit = "my-service"
-# # Optional: parse MESSAGE field content with regex
-# # pattern = '^(?P<level>\w+):\s+(?P<message>.+)$'
-
-# Example: Nginx access logs
-# [[apps]]
-# name = "nginx"
-# path = "/var/log/nginx/access.log"
-# format = "regex"
-# pattern = '^(?P<ip>\S+) \S+ \S+ \[(?P<timestamp>[^\]]+)\] "(?P<method>\S+) (?P<path>\S+) \S+" (?P<status>\d+) (?P<bytes>\d+) "(?P<referer>[^"]*)" "(?P<user_agent>[^"]*)"'
-# timestamp_field = "timestamp"
-# level_field = "status"
-# message_field = "path"
+# Each app entry creates a separate application in the panel.
+# Add as many entries as needed.
+apps:
+  # Example: JSON app logs from a file
+  - name: my-app
+    parser_id: json-default
+    lifecycle:
+      start_pattern: "SERVICE_LIFECYCLE start"
+      restart_pattern: "SERVICE_LIFECYCLE restart"
+      exit_pattern: "SERVICE_LIFECYCLE exit"
+    source:
+      type: file
+      params:
+        path: /var/log/my-app/app.log
+        read_from: end
 EOF
-        chmod 644 "${CONFIG_DIR}/collector.toml"
+        chmod 644 "${CONFIG_DIR}/collector.yaml"
     else
         log_warn "Collector config already exists, skipping"
     fi
     
     # Panel config (only if doesn't exist and not collector-only mode)
     if [[ "$COLLECTOR_ONLY" != "1" ]]; then
-        if [[ ! -f "${CONFIG_DIR}/panel.toml" ]]; then
+        if [[ ! -f "${CONFIG_DIR}/panel.yaml" ]]; then
             log_info "Creating panel configuration..."
-            cat > "${CONFIG_DIR}/panel.toml" << EOF
+            cat > "${CONFIG_DIR}/panel.yaml" << EOF
 # Tracer Panel Configuration
 # Documentation: https://github.com/ai-shift/tracer
 
-port = "8080"
-data_dir = "${DATA_DIR}"
+port: "8080"
+data_dir: "${DATA_DIR}"
 
 # Panel URL (optional, used in email/notification links)
-# panel_url = "https://tracer.example.com"
+# panel_url: "https://tracer.example.com"
 
 # Percentage of non-error logs to persist (0.0 - 1.0)
 # Errors are always persisted at 100%
-sample_rate = 0.1
+sample_rate: 0.1
 
 # Days to keep logs before automatic cleanup
-retention_days = 90
-
-
-# Telegram alerts (optional)
-[telegram]
-token = ""
-chat_id = 0
+retention_days: 90
 EOF
-            chmod 640 "${CONFIG_DIR}/panel.toml"
-            chown root:${TRACER_GROUP} "${CONFIG_DIR}/panel.toml"
+            chmod 640 "${CONFIG_DIR}/panel.yaml"
+            chown root:${TRACER_GROUP} "${CONFIG_DIR}/panel.yaml"
         else
             log_warn "Panel config already exists, skipping"
         fi
@@ -261,7 +252,7 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=${INSTALL_DIR}/tracer-collector -config ${CONFIG_DIR}/collector.toml
+ExecStart=${INSTALL_DIR}/tracer-collector -config ${CONFIG_DIR}/collector.yaml
 Restart=always
 RestartSec=5
 
@@ -288,7 +279,7 @@ Wants=tracer-panel.service
 
 [Service]
 Type=simple
-ExecStart=${INSTALL_DIR}/tracer-collector -config ${CONFIG_DIR}/collector.toml
+ExecStart=${INSTALL_DIR}/tracer-collector -config ${CONFIG_DIR}/collector.yaml
 Restart=always
 RestartSec=5
 
@@ -316,7 +307,7 @@ After=network.target
 Type=simple
 User=${TRACER_USER}
 Group=${TRACER_GROUP}
-ExecStart=${INSTALL_DIR}/tracer-panel -config ${CONFIG_DIR}/panel.toml
+ExecStart=${INSTALL_DIR}/tracer-panel -config ${CONFIG_DIR}/panel.yaml
 Restart=always
 RestartSec=5
 
@@ -351,16 +342,16 @@ print_instructions() {
         echo "Mode: Collector only (no panel)"
         echo ""
         echo "Configuration file:"
-        echo "  - Collector: ${CONFIG_DIR}/collector.toml"
+        echo "  - Collector: ${CONFIG_DIR}/collector.yaml"
         echo ""
         echo "Next steps:"
         echo ""
         echo "1. Configure the collector with your panel endpoint and API key:"
-        echo "   sudo nano ${CONFIG_DIR}/collector.toml"
+        echo "   sudo nano ${CONFIG_DIR}/collector.yaml"
         echo ""
-        echo "   Set panel_endpoint to your panel's WebSocket URL, e.g.:"
-        echo "   panel_endpoint = \"ws://panel.example.com/ingest/ws/ingest\""
-        echo "   api_key = \"YOUR_KEY\""
+        echo "   Set transport.panel_host and transport.api_key, e.g.:"
+        echo "   panel_host: panel.example.com:8080"
+        echo "   api_key: YOUR_KEY"
         echo ""
         echo "2. Add your applications to monitor (see examples in config)"
         echo ""
@@ -374,18 +365,18 @@ print_instructions() {
         echo "Mode: Full installation (panel + collector)"
         echo ""
         echo "Configuration files:"
-        echo "  - Collector: ${CONFIG_DIR}/collector.toml"
-        echo "  - Panel:     ${CONFIG_DIR}/panel.toml"
+        echo "  - Collector: ${CONFIG_DIR}/collector.yaml"
+        echo "  - Panel:     ${CONFIG_DIR}/panel.yaml"
         echo ""
         echo "Data directory: ${DATA_DIR}"
         echo ""
         echo "Next steps:"
         echo ""
         echo "1. Configure the collector to watch your log files:"
-        echo "   sudo nano ${CONFIG_DIR}/collector.toml"
+        echo "   sudo nano ${CONFIG_DIR}/collector.yaml"
         echo ""
         echo "2. (Optional) Configure Telegram alerts in panel config:"
-        echo "   sudo nano ${CONFIG_DIR}/panel.toml"
+        echo "   sudo nano ${CONFIG_DIR}/panel.yaml"
         echo ""
         echo "3. Start the services:"
         echo "   sudo systemctl enable --now tracer-panel"
