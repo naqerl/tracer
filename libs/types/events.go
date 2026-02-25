@@ -9,15 +9,16 @@ import (
 type EventType string
 
 const (
-	EventTypeRegister EventType = "register"
-	EventTypeLog      EventType = "log"
-	EventTypeStats    EventType = "stats"
-	EventTypeError    EventType = "error"
+	EventTypeRegister  EventType = "register"
+	EventTypeLog       EventType = "log"
+	EventTypeLifecycle EventType = "lifecycle"
+	EventTypeStats     EventType = "stats"
+	EventTypeError     EventType = "error"
 )
 
 func (t EventType) Validate() error {
 	switch t {
-	case EventTypeRegister, EventTypeLog, EventTypeStats, EventTypeError:
+	case EventTypeRegister, EventTypeLog, EventTypeLifecycle, EventTypeStats, EventTypeError:
 		return nil
 	}
 	return fmt.Errorf("invalid event type: %q", t)
@@ -38,6 +39,32 @@ type LogEvent struct {
 
 func (e LogEvent) EventType() EventType { return EventTypeLog }
 func (e LogEvent) Timestamp() time.Time { return e.Time }
+
+type LifecycleKind string
+
+const (
+	LifecycleStart   LifecycleKind = "start"
+	LifecycleRestart LifecycleKind = "restart"
+	LifecycleExit    LifecycleKind = "exit"
+)
+
+func (k LifecycleKind) Validate() error {
+	switch k {
+	case LifecycleStart, LifecycleRestart, LifecycleExit:
+		return nil
+	}
+	return fmt.Errorf("invalid lifecycle kind: %q", k)
+}
+
+type LifecycleEvent struct {
+	Time    time.Time     `json:"timestamp"`
+	App     string        `json:"app"`
+	Kind    LifecycleKind `json:"kind"`
+	RawLine string        `json:"raw_line"`
+}
+
+func (e LifecycleEvent) EventType() EventType { return EventTypeLifecycle }
+func (e LifecycleEvent) Timestamp() time.Time { return e.Time }
 
 // StatsEvent represents system statistics snapshot.
 // No App field - system-wide event.
