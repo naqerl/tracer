@@ -98,9 +98,3 @@ type ErrorEvent struct {
 func (e ErrorEvent) EventType() string    { return "error" }
 func (e ErrorEvent) AppName() string      { return e.App }
 func (e ErrorEvent) Timestamp() time.Time { return e.Time }
-
-// RawLine is the input from source listeners (before parsing).
-type RawLine struct {
-	App  string
-	Line string
-}
