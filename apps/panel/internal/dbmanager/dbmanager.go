@@ -15,8 +15,8 @@ import (
 	"github.com/pressly/goose/v3"
 	_ "modernc.org/sqlite"
 
-	appmigrations "github.com/ai-shift/tracer/apps/panel/sql/app"
-	collectormigrations "github.com/ai-shift/tracer/apps/panel/sql/collector"
+	appmigrations "tracer/apps/panel/sql/app"
+	collectormigrations "tracer/apps/panel/sql/collector"
 )
 
 // ErrDBNotFound is returned when a database does not exist.

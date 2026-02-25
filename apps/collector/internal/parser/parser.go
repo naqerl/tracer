@@ -5,8 +5,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/ai-shift/tracer/apps/collector/internal/parser/format"
-	"github.com/ai-shift/tracer/libs/types"
+	"tracer/apps/collector/internal/parser/format"
+	"tracer/libs/types"
 )
 
 // Parser parses log lines into structured LogEntry

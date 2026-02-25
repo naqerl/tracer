@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ai-shift/tracer/apps/panel/web/middleware"
+	"tracer/apps/panel/web/middleware"
 )
 
 //go:embed shared/*.html

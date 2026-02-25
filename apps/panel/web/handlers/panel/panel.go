@@ -8,9 +8,9 @@ import (
 	"strconv"
 	"time"
 
-	panelsvc "github.com/ai-shift/tracer/apps/panel/internal/services/panel"
-	"github.com/ai-shift/tracer/apps/panel/web/middleware/auth"
-	"github.com/ai-shift/tracer/apps/panel/web/templates"
+	panelsvc "tracer/apps/panel/internal/services/panel"
+	"tracer/apps/panel/web/middleware/auth"
+	"tracer/apps/panel/web/templates"
 )
 
 //go:embed views/*.html

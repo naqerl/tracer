@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"regexp"
 
-	"github.com/ai-shift/tracer/libs/types"
+	"tracer/libs/types"
 )
 
 type Regex struct {

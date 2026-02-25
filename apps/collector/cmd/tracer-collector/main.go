@@ -10,14 +10,14 @@ import (
 	"sync"
 	"syscall"
 
-	"github.com/ai-shift/tracer/apps/collector/internal/app"
-	"github.com/ai-shift/tracer/apps/collector/internal/config"
-	"github.com/ai-shift/tracer/apps/collector/internal/parser"
-	"github.com/ai-shift/tracer/apps/collector/internal/source"
-	"github.com/ai-shift/tracer/apps/collector/internal/stats"
-	"github.com/ai-shift/tracer/apps/collector/internal/transport"
-	"github.com/ai-shift/tracer/libs/logx"
-	"github.com/ai-shift/tracer/libs/types"
+	"tracer/apps/collector/internal/app"
+	"tracer/apps/collector/internal/config"
+	"tracer/apps/collector/internal/parser"
+	"tracer/apps/collector/internal/source"
+	"tracer/apps/collector/internal/stats"
+	"tracer/apps/collector/internal/transport"
+	"tracer/libs/logx"
+	"tracer/libs/types"
 )
 
 func main() {

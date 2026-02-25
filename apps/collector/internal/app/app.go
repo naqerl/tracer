@@ -4,9 +4,9 @@ import (
 	"context"
 	"time"
 
-	"github.com/ai-shift/tracer/apps/collector/internal/parser"
-	"github.com/ai-shift/tracer/apps/collector/internal/source"
-	"github.com/ai-shift/tracer/libs/types"
+	"tracer/apps/collector/internal/parser"
+	"tracer/apps/collector/internal/source"
+	"tracer/libs/types"
 )
 
 type App struct {

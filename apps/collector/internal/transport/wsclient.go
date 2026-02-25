@@ -9,7 +9,7 @@ import (
 
 	"github.com/gorilla/websocket"
 
-	"github.com/ai-shift/tracer/libs/types"
+	"tracer/libs/types"
 )
 
 const (

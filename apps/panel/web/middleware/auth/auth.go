@@ -5,11 +5,11 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/ai-shift/tracer/apps/panel/db"
-	authsvc "github.com/ai-shift/tracer/apps/panel/internal/services/auth"
-	usersvc "github.com/ai-shift/tracer/apps/panel/internal/services/user"
-	"github.com/ai-shift/tracer/apps/panel/web/middleware"
-	sharedtypes "github.com/ai-shift/tracer/libs/types"
+	"tracer/apps/panel/db"
+	authsvc "tracer/apps/panel/internal/services/auth"
+	usersvc "tracer/apps/panel/internal/services/user"
+	"tracer/apps/panel/web/middleware"
+	sharedtypes "tracer/libs/types"
 )
 
 type contextKey string

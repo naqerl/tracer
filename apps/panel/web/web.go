@@ -4,17 +4,17 @@ import (
 	"net/http"
 	"time"
 
-	panelsvc "github.com/ai-shift/tracer/apps/panel/internal/services/panel"
-	"github.com/ai-shift/tracer/apps/panel/internal/services/permissions"
+	panelsvc "tracer/apps/panel/internal/services/panel"
+	"tracer/apps/panel/internal/services/permissions"
 
-	authres "github.com/ai-shift/tracer/apps/panel/web/handlers/auth"
-	"github.com/ai-shift/tracer/apps/panel/web/handlers/ingest"
-	"github.com/ai-shift/tracer/apps/panel/web/handlers/landing"
-	"github.com/ai-shift/tracer/apps/panel/web/handlers/llm"
-	"github.com/ai-shift/tracer/apps/panel/web/handlers/panel"
-	"github.com/ai-shift/tracer/apps/panel/web/handlers/settings"
-	"github.com/ai-shift/tracer/apps/panel/web/middleware"
-	authmw "github.com/ai-shift/tracer/apps/panel/web/middleware/auth"
+	authres "tracer/apps/panel/web/handlers/auth"
+	"tracer/apps/panel/web/handlers/ingest"
+	"tracer/apps/panel/web/handlers/landing"
+	"tracer/apps/panel/web/handlers/llm"
+	"tracer/apps/panel/web/handlers/panel"
+	"tracer/apps/panel/web/handlers/settings"
+	"tracer/apps/panel/web/middleware"
+	authmw "tracer/apps/panel/web/middleware/auth"
 )
 
 func Run(deps Dependencies, port string, sampleRate float64, panelURL string) *http.Server {

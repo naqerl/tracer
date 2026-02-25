@@ -11,9 +11,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 
-	"github.com/ai-shift/tracer/apps/panel/internal/services/auth"
-	"github.com/ai-shift/tracer/apps/panel/internal/services/ingest"
-	"github.com/ai-shift/tracer/libs/types"
+	"tracer/apps/panel/internal/services/auth"
+	"tracer/apps/panel/internal/services/ingest"
+	"tracer/libs/types"
 )
 
 var upgrader = websocket.Upgrader{

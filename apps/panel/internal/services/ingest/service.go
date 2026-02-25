@@ -10,10 +10,10 @@ import (
 	"math/rand"
 	"time"
 
-	"github.com/ai-shift/tracer/apps/panel/db"
-	"github.com/ai-shift/tracer/apps/panel/internal/dbmanager"
-	"github.com/ai-shift/tracer/apps/panel/internal/services/notify"
-	"github.com/ai-shift/tracer/libs/types"
+	"tracer/apps/panel/db"
+	"tracer/apps/panel/internal/dbmanager"
+	"tracer/apps/panel/internal/services/notify"
+	"tracer/libs/types"
 )
 
 var (

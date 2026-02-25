@@ -16,16 +16,16 @@ import (
 	"github.com/pressly/goose/v3"
 	_ "modernc.org/sqlite"
 
-	panelconfig "github.com/ai-shift/tracer/apps/panel/internal/config"
-	"github.com/ai-shift/tracer/apps/panel/internal/dbmanager"
-	"github.com/ai-shift/tracer/apps/panel/internal/retention"
-	"github.com/ai-shift/tracer/apps/panel/internal/services/auth"
-	"github.com/ai-shift/tracer/apps/panel/internal/services/ingest"
-	"github.com/ai-shift/tracer/apps/panel/internal/services/notify"
-	"github.com/ai-shift/tracer/apps/panel/internal/services/user"
-	panelmigrations "github.com/ai-shift/tracer/apps/panel/sql/panel"
-	"github.com/ai-shift/tracer/apps/panel/web"
-	"github.com/ai-shift/tracer/libs/logx"
+	panelconfig "tracer/apps/panel/internal/config"
+	"tracer/apps/panel/internal/dbmanager"
+	"tracer/apps/panel/internal/retention"
+	"tracer/apps/panel/internal/services/auth"
+	"tracer/apps/panel/internal/services/ingest"
+	"tracer/apps/panel/internal/services/notify"
+	"tracer/apps/panel/internal/services/user"
+	panelmigrations "tracer/apps/panel/sql/panel"
+	"tracer/apps/panel/web"
+	"tracer/libs/logx"
 )
 
 func main() {

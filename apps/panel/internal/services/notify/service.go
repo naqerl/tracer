@@ -9,9 +9,9 @@ import (
 	"log/slog"
 	"sync"
 
-	"github.com/ai-shift/tracer/apps/panel/db"
-	"github.com/ai-shift/tracer/apps/panel/internal/services/user"
-	sharedtypes "github.com/ai-shift/tracer/libs/types"
+	"tracer/apps/panel/db"
+	"tracer/apps/panel/internal/services/user"
+	sharedtypes "tracer/libs/types"
 )
 
 const (

@@ -6,7 +6,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/ai-shift/tracer/apps/panel/db"
+	"tracer/apps/panel/db"
 )
 
 var (

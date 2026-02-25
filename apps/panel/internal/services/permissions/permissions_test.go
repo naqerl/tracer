@@ -3,7 +3,7 @@ package permissions
 import (
 	"testing"
 
-	sharedtypes "github.com/ai-shift/tracer/libs/types"
+	sharedtypes "tracer/libs/types"
 )
 
 func TestIsAdmin(t *testing.T) {

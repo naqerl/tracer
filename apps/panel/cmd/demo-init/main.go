@@ -11,9 +11,9 @@ import (
 	"github.com/pressly/goose/v3"
 	_ "modernc.org/sqlite"
 
-	"github.com/ai-shift/tracer/apps/panel/internal/services/auth"
-	"github.com/ai-shift/tracer/apps/panel/internal/services/user"
-	panelmigrations "github.com/ai-shift/tracer/apps/panel/sql/panel"
+	"tracer/apps/panel/internal/services/auth"
+	"tracer/apps/panel/internal/services/user"
+	panelmigrations "tracer/apps/panel/sql/panel"
 )
 
 func main() {

@@ -9,16 +9,16 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/ai-shift/tracer/apps/panel/db"
-	"github.com/ai-shift/tracer/apps/panel/internal/dbmanager"
-	"github.com/ai-shift/tracer/apps/panel/internal/services/auth"
-	"github.com/ai-shift/tracer/apps/panel/internal/services/ingest"
-	"github.com/ai-shift/tracer/apps/panel/internal/services/notify"
-	"github.com/ai-shift/tracer/apps/panel/internal/services/permissions"
-	"github.com/ai-shift/tracer/apps/panel/internal/services/user"
-	authmw "github.com/ai-shift/tracer/apps/panel/web/middleware/auth"
-	"github.com/ai-shift/tracer/apps/panel/web/templates"
-	sharedtypes "github.com/ai-shift/tracer/libs/types"
+	"tracer/apps/panel/db"
+	"tracer/apps/panel/internal/dbmanager"
+	"tracer/apps/panel/internal/services/auth"
+	"tracer/apps/panel/internal/services/ingest"
+	"tracer/apps/panel/internal/services/notify"
+	"tracer/apps/panel/internal/services/permissions"
+	"tracer/apps/panel/internal/services/user"
+	authmw "tracer/apps/panel/web/middleware/auth"
+	"tracer/apps/panel/web/templates"
+	sharedtypes "tracer/libs/types"
 )
 
 //go:embed views/*.html

@@ -14,8 +14,8 @@ import (
 
 	"golang.org/x/crypto/bcrypt"
 
-	"github.com/ai-shift/tracer/apps/panel/db"
-	userpkg "github.com/ai-shift/tracer/apps/panel/internal/services/user"
+	"tracer/apps/panel/db"
+	userpkg "tracer/apps/panel/internal/services/user"
 )
 
 const (

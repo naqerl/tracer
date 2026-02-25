@@ -8,11 +8,11 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/ai-shift/tracer/apps/panel/db"
-	"github.com/ai-shift/tracer/apps/panel/internal/dbmanager"
-	"github.com/ai-shift/tracer/apps/panel/internal/services/ingest"
-	"github.com/ai-shift/tracer/apps/panel/internal/services/permissions"
-	sharedtypes "github.com/ai-shift/tracer/libs/types"
+	"tracer/apps/panel/db"
+	"tracer/apps/panel/internal/dbmanager"
+	"tracer/apps/panel/internal/services/ingest"
+	"tracer/apps/panel/internal/services/permissions"
+	sharedtypes "tracer/libs/types"
 )
 
 var (

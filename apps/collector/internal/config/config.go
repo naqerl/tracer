@@ -6,10 +6,10 @@ import (
 
 	"github.com/BurntSushi/toml"
 
-	"github.com/ai-shift/tracer/apps/collector/internal/parser"
-	"github.com/ai-shift/tracer/apps/collector/internal/source"
-	"github.com/ai-shift/tracer/apps/collector/internal/stats"
-	"github.com/ai-shift/tracer/apps/collector/internal/transport"
+	"tracer/apps/collector/internal/parser"
+	"tracer/apps/collector/internal/source"
+	"tracer/apps/collector/internal/stats"
+	"tracer/apps/collector/internal/transport"
 )
 
 const (

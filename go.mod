@@ -1,4 +1,4 @@
-module github.com/ai-shift/tracer
+module tracer
 
 go 1.25.5
 

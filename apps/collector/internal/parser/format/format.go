@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ai-shift/tracer/libs/types"
+	"tracer/libs/types"
 )
 
 type Schema struct {

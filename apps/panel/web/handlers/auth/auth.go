@@ -7,10 +7,10 @@ import (
 	"net/http"
 	"time"
 
-	authsvc "github.com/ai-shift/tracer/apps/panel/internal/services/auth"
-	"github.com/ai-shift/tracer/apps/panel/internal/services/user"
-	authmw "github.com/ai-shift/tracer/apps/panel/web/middleware/auth"
-	"github.com/ai-shift/tracer/apps/panel/web/templates"
+	authsvc "tracer/apps/panel/internal/services/auth"
+	"tracer/apps/panel/internal/services/user"
+	authmw "tracer/apps/panel/web/middleware/auth"
+	"tracer/apps/panel/web/templates"
 )
 
 //go:embed views/*.html

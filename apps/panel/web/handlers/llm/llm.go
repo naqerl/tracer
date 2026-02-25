@@ -4,9 +4,9 @@ import (
 	"embed"
 	"net/http"
 
-	"github.com/ai-shift/tracer/apps/panel/web/middleware"
-	authmw "github.com/ai-shift/tracer/apps/panel/web/middleware/auth"
-	"github.com/ai-shift/tracer/apps/panel/web/templates"
+	"tracer/apps/panel/web/middleware"
+	authmw "tracer/apps/panel/web/middleware/auth"
+	"tracer/apps/panel/web/templates"
 )
 
 //go:embed views/*.html

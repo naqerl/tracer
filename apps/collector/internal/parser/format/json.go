@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/ai-shift/tracer/libs/types"
+	"tracer/libs/types"
 )
 
 // JSON parses JSON formatted log lines.
