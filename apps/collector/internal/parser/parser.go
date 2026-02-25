@@ -10,7 +10,11 @@ type Parser interface {
 }
 
 type Spec struct {
-        ID string `toml:"id"`
-        Type string `toml:"type"`
-        Params map[string]string `toml:"params"`
+	ID     string            `toml:"id"`
+	Type   string            `toml:"type"`
+	Params map[string]string `toml:"params"`
+}
+
+func New(spec Spec) Parser {
+	panic("not implemented")
 }
