@@ -10,44 +10,73 @@ import (
 )
 
 var (
-	levels   = []string{"debug", "info", "info", "info", "warn", "error"}
-	messages = []string{
-		"User logged in successfully",
-		"Processing request",
-		"Database query completed",
-		"Cache hit for key",
-		"API response sent",
+	infoMessages = []string{
+		"User login successful",
+		"HTTP GET request completed",
+		"HTTP POST request completed",
+		"Database query executed",
+		"Cache hit for user session",
+		"Cache miss for config data",
 		"Background job started",
-		"File uploaded",
-		"Email sent to user",
-		"Connection established",
-		"Request validation passed",
-		"Session created",
+		"Background job completed",
+		"File uploaded to S3",
+		"File downloaded from CDN",
+		"Email sent to customer",
+		"Push notification delivered",
 		"Payment processed",
-		"Order confirmed",
-		"Notification dispatched",
-		"Data synchronized",
+		"Order created",
+		"Order fulfilled",
+		"Webhook delivered",
+		"API key generated",
+		"Session refreshed",
+		"Config reloaded",
+		"Health check passed",
+		"Worker picked up job",
+		"Queue item processed",
+		"Index updated",
+		"Migration completed",
+		"Backup finished",
+		"Search query executed",
+		"Report generated",
+		"Export completed",
+		"Import finished",
+		"Sync successful",
 	}
+
+	warnMessages = []string{
+		"Slow query detected",
+		"High memory usage",
+		"High CPU usage",
+		"Connection pool near limit",
+		"Cache eviction rate high",
+		"Retry attempt for failed request",
+		"Deprecated API endpoint called",
+		"Rate limit approaching",
+		"Disk space low",
+		"Queue backlog growing",
+		"Response time degraded",
+		"Database replication lag",
+		"Token expires soon",
+		"SSL certificate expires in 7 days",
+		"Service health check slow",
+	}
+
 	errorMessages = []string{
 		"Database connection failed",
-		"Authentication error: invalid token",
-		"Request timeout exceeded",
-		"File not found",
-		"Permission denied",
-		"Invalid input data",
+		"Authentication failed",
+		"Authorization denied",
+		"Request timeout",
+		"Internal server error",
 		"Service unavailable",
 		"Rate limit exceeded",
-		"Memory allocation failed",
+		"Invalid request payload",
+		"Resource not found",
+		"Constraint violation",
+		"Deadlock detected",
+		"Out of memory",
 		"Network unreachable",
-	}
-	warnMessages = []string{
-		"High memory usage detected",
-		"Slow query detected",
-		"Deprecated API called",
-		"Connection pool near limit",
-		"Retry attempt",
-		"Cache miss",
-		"Queue backlog growing",
+		"DNS resolution failed",
+		"SSL handshake failed",
 	}
 )
 
@@ -63,64 +92,71 @@ type LogEntry struct {
 
 func main() {
 	logFile := flag.String("output", "/tmp/tracer-mock.log", "output log file path")
-	interval := flag.Duration("interval", 500*time.Millisecond, "interval between log entries")
+	entriesPerMessage := flag.Int("per-message", 100, "number of entries per message")
 	flag.Parse()
 
-	file, err := os.OpenFile(*logFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	file, err := os.OpenFile(*logFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to open log file: %v\n", err)
 		os.Exit(1)
 	}
 	defer file.Close()
 
-	fmt.Printf("Mock logger started, writing to %s every %v\n", *logFile, *interval)
-
 	// Generate some trace IDs to reuse (simulates request flows)
-	traceIDs := make([]string, 10)
+	traceIDs := make([]string, 20)
 	for i := range traceIDs {
 		traceIDs[i] = fmt.Sprintf("trace-%s", randomString(16))
 	}
 
-	ticker := time.NewTicker(*interval)
-	defer ticker.Stop()
+	var entries []LogEntry
 
-	for range ticker.C {
-		entry := generateLogEntry(traceIDs)
+	// Generate entries for each message
+	for _, msg := range infoMessages {
+		for i := 0; i < *entriesPerMessage; i++ {
+			entries = append(entries, generateEntry("info", msg, traceIDs))
+		}
+	}
+	for _, msg := range warnMessages {
+		for i := 0; i < *entriesPerMessage; i++ {
+			entries = append(entries, generateEntry("warn", msg, traceIDs))
+		}
+	}
+	for _, msg := range errorMessages {
+		for i := 0; i < *entriesPerMessage; i++ {
+			entries = append(entries, generateEntry("error", msg, traceIDs))
+		}
+	}
+
+	// Shuffle entries to interleave levels and messages
+	rand.Shuffle(len(entries), func(i, j int) {
+		entries[i], entries[j] = entries[j], entries[i]
+	})
+
+	// Write all entries
+	for _, entry := range entries {
 		data, _ := json.Marshal(entry)
 		fmt.Fprintln(file, string(data))
-		file.Sync()
-
-		// Print to stdout for visibility
-		fmt.Printf("[%s] %s: %s\n", entry.Level, entry.Timestamp.Format("15:04:05"), entry.Message)
 	}
+	file.Sync()
+
+	fmt.Printf("Generated %d log entries (%d per message)\n", len(entries), *entriesPerMessage)
+	fmt.Printf("Output written to %s\n", *logFile)
 }
 
-func generateLogEntry(traceIDs []string) LogEntry {
-	level := levels[rand.Intn(len(levels))]
-
-	var message string
-	switch level {
-	case "error":
-		message = errorMessages[rand.Intn(len(errorMessages))]
-	case "warn":
-		message = warnMessages[rand.Intn(len(warnMessages))]
-	default:
-		message = messages[rand.Intn(len(messages))]
-	}
-
+func generateEntry(level, message string, traceIDs []string) LogEntry {
 	entry := LogEntry{
-		Timestamp: time.Now(),
+		Timestamp: time.Now().Add(-time.Duration(rand.Intn(3600)) * time.Second),
 		Level:     level,
 		Message:   message,
 	}
 
-	// Add trace ID sometimes (70% chance)
-	if rand.Float64() < 0.7 {
+	// Add trace ID sometimes (60% chance)
+	if rand.Float64() < 0.6 {
 		entry.TraceID = traceIDs[rand.Intn(len(traceIDs))]
 	}
 
 	// Add user ID sometimes
-	if rand.Float64() < 0.5 {
+	if rand.Float64() < 0.4 {
 		entry.UserID = fmt.Sprintf("user-%d", rand.Intn(1000))
 	}
 
@@ -130,7 +166,7 @@ func generateLogEntry(traceIDs []string) LogEntry {
 	}
 
 	// Add duration for some logs
-	if rand.Float64() < 0.4 {
+	if rand.Float64() < 0.5 {
 		entry.Duration = rand.Intn(2000)
 	}
 

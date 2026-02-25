@@ -104,26 +104,31 @@ up-live-reload: down
 start-loggers:
 	@podman pod exists $(DEMO_POD) || (echo "Demo pod '$(DEMO_POD)' is not running. Start it first with 'make -C demo up'."; exit 1)
 	@$(MAKE) stop-loggers >/dev/null
+	@# Build and copy mock-logger to shared volume
+	@podman run --rm \
+		-v $(ROOT_DIR):/workspace \
+		-v $(DEMO_VOL_SHARED):/shared \
+		-v $(DEMO_VOL_GOMOD):/go/pkg/mod \
+		-v $(DEMO_VOL_GOCACHE):/root/.cache/go-build \
+		$(DEMO_DEV_IMAGE) bash -lc 'export PATH="/usr/local/go/bin:$$PATH"; mkdir -p /shared/bin; go build -o /shared/bin/mock-logger /workspace/demo/mock-logger/main.go' 2>/dev/null
 	@podman run -d --name $(DEMO_POD)-alpha-json --pod $(DEMO_POD) \
-		--init \
-		--stop-timeout 1 \
+		--init --stop-timeout 1 \
 		-v $(DEMO_VOL_ALPHA):/logs \
-		docker.io/library/alpine:3.20 sh -c 'i=0; touch /logs/alpha-json.log; while true; do if [ $$((i%25)) -eq 0 ]; then printf "{\"timestamp\":\"%s\",\"level\":\"info\",\"trace_id\":\"alpha-checkout\",\"message\":\"SERVICE_LIFECYCLE start\",\"user_id\":\"svc-alpha\",\"request_id\":\"life-alpha-start-%05d\"}\n" "$$(date -Iseconds)" "$$i" >> /logs/alpha-json.log; elif [ $$((i%25)) -eq 10 ]; then printf "{\"timestamp\":\"%s\",\"level\":\"warn\",\"trace_id\":\"alpha-checkout\",\"message\":\"SERVICE_LIFECYCLE restart\",\"user_id\":\"svc-alpha\",\"request_id\":\"life-alpha-restart-%05d\"}\n" "$$(date -Iseconds)" "$$i" >> /logs/alpha-json.log; elif [ $$((i%25)) -eq 20 ]; then printf "{\"timestamp\":\"%s\",\"level\":\"error\",\"trace_id\":\"alpha-checkout\",\"message\":\"SERVICE_LIFECYCLE exit\",\"user_id\":\"svc-alpha\",\"request_id\":\"life-alpha-exit-%05d\"}\n" "$$(date -Iseconds)" "$$i" >> /logs/alpha-json.log; else printf "{\"timestamp\":\"%s\",\"level\":\"error\",\"trace_id\":\"alpha-checkout\",\"message\":\"checkout request failed\",\"user_id\":\"user-%03d\",\"request_id\":\"req-alpha-%05d\",\"region\":\"us-east\",\"latency_ms\":%d}\n" "$$(date -Iseconds)" "$$((i%50))" "$$i" "$$((100 + (i%900)))" >> /logs/alpha-json.log; fi; i=$$((i+1)); sleep 1; done' >/dev/null
+		-v $(DEMO_VOL_SHARED):/shared \
+		docker.io/library/alpine:3.20 sh -c '/shared/bin/mock-logger -output /logs/alpha-json.log -per-message 100; while true; do sleep 3600; done' >/dev/null
 	@podman run -d --name $(DEMO_POD)-alpha-regex --pod $(DEMO_POD) \
-		--init \
-		--stop-timeout 1 \
+		--init --stop-timeout 1 \
 		-v $(DEMO_VOL_ALPHA):/logs \
-		docker.io/library/alpine:3.20 sh -c 'i=0; touch /logs/alpha-regex.log; while true; do if [ $$((i%18)) -eq 0 ]; then printf "%s [INFO] trace=alpha-payment msg=\"SERVICE_LIFECYCLE start\" user=svc-alpha request=life-start-%05d amount=0.00\n" "$$(date "+%Y-%m-%d %H:%M:%S")" "$$i" >> /logs/alpha-regex.log; elif [ $$((i%18)) -eq 7 ]; then printf "%s [WARN] trace=alpha-payment msg=\"SERVICE_LIFECYCLE restart\" user=svc-alpha request=life-restart-%05d amount=0.00\n" "$$(date "+%Y-%m-%d %H:%M:%S")" "$$i" >> /logs/alpha-regex.log; elif [ $$((i%18)) -eq 14 ]; then printf "%s [ERROR] trace=alpha-payment msg=\"SERVICE_LIFECYCLE exit\" user=svc-alpha request=life-exit-%05d amount=0.00\n" "$$(date "+%Y-%m-%d %H:%M:%S")" "$$i" >> /logs/alpha-regex.log; else printf "%s [WARN] trace=alpha-payment msg=\"payment authorization failed\" user=user-%03d request=req-pay-%05d amount=%.2f\n" "$$(date "+%Y-%m-%d %H:%M:%S")" "$$((i%40))" "$$i" "$$(awk "BEGIN { printf \"%.2f\", 10 + ($$i % 90) + 0.25 }")" >> /logs/alpha-regex.log; fi; i=$$((i+1)); sleep 2; done' >/dev/null
+		docker.io/library/alpine:3.20 sh -c 'i=0; touch /logs/alpha-regex.log; while true; do if [ $$((i%100)) -lt 70 ]; then lvl="INFO"; elif [ $$((i%100)) -lt 90 ]; then lvl="WARN"; else lvl="ERROR"; fi; printf "%s [%s] trace=alpha-service msg=\"log entry %d\" user=user-%03d request=req-%05d\n" "$$(date "+%Y-%m-%d %H:%M:%S")" "$$lvl" "$$i" "$$((i%100))" "$$i" >> /logs/alpha-regex.log; i=$$((i+1)); sleep 2; done' >/dev/null
 	@podman run -d --name $(DEMO_POD)-beta-json --pod $(DEMO_POD) \
-		--init \
-		--stop-timeout 1 \
+		--init --stop-timeout 1 \
 		-v $(DEMO_VOL_BETA):/logs \
-		docker.io/library/alpine:3.20 sh -c 'i=0; touch /logs/beta-json.log; while true; do if [ $$((i%15)) -eq 0 ]; then printf "{\"time\":\"%s\",\"severity\":\"info\",\"trace\":\"beta-inventory\",\"msg\":\"SERVICE_LIFECYCLE start\",\"warehouse\":\"wh-00\",\"batch_id\":\"life-start-%05d\",\"attempt\":0}\n" "$$(date -Iseconds)" "$$i" >> /logs/beta-json.log; elif [ $$((i%15)) -eq 6 ]; then printf "{\"time\":\"%s\",\"severity\":\"warn\",\"trace\":\"beta-inventory\",\"msg\":\"SERVICE_LIFECYCLE restart\",\"warehouse\":\"wh-00\",\"batch_id\":\"life-restart-%05d\",\"attempt\":0}\n" "$$(date -Iseconds)" "$$i" >> /logs/beta-json.log; elif [ $$((i%15)) -eq 12 ]; then printf "{\"time\":\"%s\",\"severity\":\"error\",\"trace\":\"beta-inventory\",\"msg\":\"SERVICE_LIFECYCLE exit\",\"warehouse\":\"wh-00\",\"batch_id\":\"life-exit-%05d\",\"attempt\":0}\n" "$$(date -Iseconds)" "$$i" >> /logs/beta-json.log; else printf "{\"time\":\"%s\",\"severity\":\"error\",\"trace\":\"beta-inventory\",\"msg\":\"inventory sync timeout\",\"warehouse\":\"wh-%02d\",\"batch_id\":\"batch-%05d\",\"attempt\":%d}\n" "$$(date -Iseconds)" "$$((i%7))" "$$i" "$$((1 + (i%3)))" >> /logs/beta-json.log; fi; i=$$((i+1)); sleep 3; done' >/dev/null
+		-v $(DEMO_VOL_SHARED):/shared \
+		docker.io/library/alpine:3.20 sh -c '/shared/bin/mock-logger -output /logs/beta-json.log -per-message 100; while true; do sleep 3600; done' >/dev/null
 	@podman run -d --name $(DEMO_POD)-beta-regex --pod $(DEMO_POD) \
-		--init \
-		--stop-timeout 1 \
+		--init --stop-timeout 1 \
 		-v $(DEMO_VOL_BETA):/logs \
-		docker.io/library/alpine:3.20 sh -c 'i=0; touch /logs/beta-regex.log; while true; do if [ $$((i%20)) -eq 0 ]; then printf "%s|INFO|trace=beta-notify|msg=SERVICE_LIFECYCLE start|channel=telegram|target=svc-beta|attempt=0\n" "$$(date -Iseconds)" >> /logs/beta-regex.log; elif [ $$((i%20)) -eq 8 ]; then printf "%s|WARN|trace=beta-notify|msg=SERVICE_LIFECYCLE restart|channel=telegram|target=svc-beta|attempt=0\n" "$$(date -Iseconds)" >> /logs/beta-regex.log; elif [ $$((i%20)) -eq 16 ]; then printf "%s|ERROR|trace=beta-notify|msg=SERVICE_LIFECYCLE exit|channel=telegram|target=svc-beta|attempt=0\n" "$$(date -Iseconds)" >> /logs/beta-regex.log; else printf "%s|INFO|trace=beta-notify|msg=notification delivery failed|channel=telegram|target=user-%03d|attempt=%d\n" "$$(date -Iseconds)" "$$((i%30))" "$$((1 + (i%4)))" >> /logs/beta-regex.log; fi; i=$$((i+1)); sleep 2; done' >/dev/null
+		docker.io/library/alpine:3.20 sh -c 'i=0; touch /logs/beta-regex.log; while true; do if [ $$((i%100)) -lt 70 ]; then lvl="INFO"; elif [ $$((i%100)) -lt 90 ]; then lvl="WARN"; else lvl="ERROR"; fi; printf "%s|%s|trace=beta-service|msg=log entry %d|user=user-%03d|request=req-%05d\n" "$$(date -Iseconds)" "$$lvl" "$$i" "$$((i%100))" "$$i" >> /logs/beta-regex.log; i=$$((i+1)); sleep 2; done' >/dev/null
 	@echo "Demo loggers started"
 
 stop-loggers:
