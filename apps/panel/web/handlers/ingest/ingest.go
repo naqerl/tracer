@@ -40,7 +40,7 @@ func InitMux(authService *auth.Service, ingestService *ingest.Service, sampleRat
 		tracker:       tracker,
 	}
 
-	m.HandleFunc("GET /ws/ingest", h.handleWebSocket)
+	m.HandleFunc("GET /ws", h.handleWebSocket)
 	m.HandleFunc("GET /collectors", h.listCollectors)
 
 	return m
