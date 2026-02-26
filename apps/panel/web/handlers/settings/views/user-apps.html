@@ -6,18 +6,20 @@
     <title>{{.Title}}</title>
 </head>
 <body>
-    <div class="max-w-2xl mx-auto p-6">
+    {{template "navbar" .}}
+    <div class="max-w-5xl mx-auto p-6">
         {{template "user-apps-content" .}}
     </div>
+    {{template "markdown-checkbox-script" .}}
 </body>
 </html>
 {{end}}
 
 {{define "user-apps-content"}}
-<a href="/settings/" class="text-accent hover:underline text-sm mb-4 inline-block">&larr; Back to Settings</a>
-<p class="text-fg-secondary mb-6">User: <strong class="text-fg">{{.User.Username}}</strong></p>
-
-<div class="bg-bg-secondary p-5">
+<div class="mb-10">
+    <h2 class="text-xl font-medium mb-6">Edit User Apps</h2>
+    <p class="text-fg-secondary mb-6">User: <strong class="text-fg">{{.User.Username}}</strong></p>
+    
     {{if .HasNoApps}}
     <div class="text-center text-fg-secondary py-8">
         <p>No applications available yet.</p>
@@ -25,20 +27,148 @@
     </div>
     {{else}}
     <form hx-put="/settings/users/{{.User.ID}}/apps" hx-target="body" hx-swap="outerHTML">
-        <p class="text-fg-secondary text-sm mb-4">Select the applications this user can access:</p>
-        <div class="space-y-2 mb-6">
-            {{range .AllApps}}
-            <label class="flex items-center gap-3 p-3 bg-bg cursor-pointer hover:bg-bg/80 transition-colors">
-                <input type="checkbox" name="apps" value="{{.}}" {{if index $.UserApps .}}checked{{end}} class="w-5 h-5">
-                <span>{{.}}</span>
-            </label>
+        <p class="text-base text-fg-secondary mb-6">Select which applications this user can access:</p>
+
+        {{if .CollectorApps}}
+        <!-- Apps grouped by collector -->
+        <div id="apps-container" class="space-y-2 mb-6">
+            {{range $collector, $apps := .CollectorApps}}
+            {{if $apps}}
+            <div class="py-2">
+                <div style="padding-left: 0px">
+                    <input type="hidden" name="" id="collector_{{$collector}}_value" value="">
+                    <button type="button" id="collector_{{$collector}}_toggle" 
+                            class="text-base text-fg-secondary hover:text-fg transition-colors font-mono collector-toggle"
+                            data-collector="{{$collector}}" data-label="{{$collector}}">
+                        [ ] {{$collector}}
+                    </button>
+                </div>
+                <div class="space-y-1 mt-2">
+                    {{range $apps}}
+                    {{$appKey := printf "%s:%s" $collector .}}
+                    {{$isChecked := index $.UserApps .}}
+                    {{template "markdown-checkbox" dict "ID" (printf "app_%s" $appKey) "Name" "apps" "Label" . "Value" $appKey "Checked" $isChecked "Indent" 1}}
+                    {{end}}
+                </div>
+            </div>
+            {{end}}
             {{end}}
         </div>
-        <div class="flex gap-3">
-            <button type="submit" class="px-5 py-2.5 bg-accent hover:bg-accent/80 text-fg transition-colors">Save Changes</button>
-            <a href="/settings/" class="px-5 py-2.5 bg-bg hover:bg-bg/80 text-fg-secondary hover:text-fg transition-colors">Cancel</a>
+        {{else}}
+        <div class="text-center text-fg-secondary py-8">
+            <p>No applications available yet.</p>
+            <p class="text-sm mt-2">Start a collector to begin receiving logs and create applications.</p>
+        </div>
+        {{end}}
+
+        <div class="flex gap-3 mt-6">
+            <button type="submit" class="text-sm text-fg border border-fg px-4 py-2 hover:bg-fg hover:text-bg transition-colors">Save Changes</button>
+            <a href="/settings/" class="text-sm text-fg-secondary border border-fg-secondary px-4 py-2 hover:bg-fg-secondary hover:text-bg transition-colors">Cancel</a>
         </div>
     </form>
     {{end}}
 </div>
+
+<script>
+// Collector toggle - handles both the collector checkbox and all its apps
+document.querySelectorAll('.collector-toggle').forEach(toggle => {
+    toggle.addEventListener('click', function() {
+        const collector = toggle.dataset.collector;
+        const valueInput = document.getElementById('collector_' + collector + '_value');
+        const isChecked = valueInput.value === 'all';
+        const labelText = toggle.dataset.label;
+        
+        // Toggle collector state
+        const newChecked = !isChecked;
+        if (newChecked) {
+            valueInput.value = 'all';
+            toggle.textContent = '[x] ' + labelText;
+            toggle.classList.remove('text-fg-secondary');
+            toggle.classList.add('text-fg');
+        } else {
+            valueInput.value = '';
+            toggle.textContent = '[ ] ' + labelText;
+            toggle.classList.remove('text-fg');
+            toggle.classList.add('text-fg-secondary');
+        }
+        
+        // Apply to all app checkboxes in this collector
+        const container = toggle.closest('div.py-2');
+        const appButtons = container.querySelectorAll('button[id^="app_"]');
+        
+        appButtons.forEach(appBtn => {
+            const appValueInput = document.getElementById(appBtn.id.replace('_toggle', '_value'));
+            const appCheckedValue = appValueInput.dataset.checkedValue;
+            const appLabel = appBtn.dataset.label;
+            
+            if (newChecked) {
+                appValueInput.value = appCheckedValue;
+                appBtn.textContent = '[x] ' + appLabel;
+                appBtn.classList.remove('text-fg-secondary');
+                appBtn.classList.add('text-fg');
+            } else {
+                appValueInput.value = '';
+                appBtn.textContent = '[ ] ' + appLabel;
+                appBtn.classList.remove('text-fg');
+                appBtn.classList.add('text-fg-secondary');
+            }
+        });
+    });
+});
+
+// Update collector checkbox state when individual app checkboxes change
+document.querySelectorAll('button[id^="app_"]').forEach(appBtn => {
+    appBtn.addEventListener('click', function() {
+        // Let the markdown-checkbox function run first
+        setTimeout(() => {
+            const container = appBtn.closest('div.py-2');
+            const collectorToggle = container.querySelector('.collector-toggle');
+            if (!collectorToggle) return;
+            
+            const appButtons = container.querySelectorAll('button[id^="app_"]');
+            const allChecked = Array.from(appButtons).every(btn => {
+                const input = document.getElementById(btn.id.replace('_toggle', '_value'));
+                return input.value === input.dataset.checkedValue;
+            });
+            
+            const valueInput = document.getElementById(collectorToggle.id.replace('_toggle', '_value'));
+            const labelText = collectorToggle.dataset.label;
+            
+            if (allChecked) {
+                valueInput.value = 'all';
+                collectorToggle.textContent = '[x] ' + labelText;
+                collectorToggle.classList.remove('text-fg-secondary');
+                collectorToggle.classList.add('text-fg');
+            } else {
+                valueInput.value = '';
+                collectorToggle.textContent = '[ ] ' + labelText;
+                collectorToggle.classList.remove('text-fg');
+                collectorToggle.classList.add('text-fg-secondary');
+            }
+        }, 0);
+    });
+});
+
+// Initialize collector checkbox states on page load
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.collector-toggle').forEach(toggle => {
+        const container = toggle.closest('div.py-2');
+        const appButtons = container.querySelectorAll('button[id^="app_"]');
+        
+        const allChecked = Array.from(appButtons).every(btn => {
+            const input = document.getElementById(btn.id.replace('_toggle', '_value'));
+            return input.value === input.dataset.checkedValue;
+        });
+        
+        if (allChecked) {
+            const valueInput = document.getElementById(toggle.id.replace('_toggle', '_value'));
+            const labelText = toggle.dataset.label;
+            valueInput.value = 'all';
+            toggle.textContent = '[x] ' + labelText;
+            toggle.classList.remove('text-fg-secondary');
+            toggle.classList.add('text-fg');
+        }
+    });
+});
+</script>
 {{end}}

@@ -227,26 +227,56 @@ func (h *handler) buildUserAppsData(w http.ResponseWriter, r *http.Request) (map
 		return nil, false
 	}
 
-	allApps, err := h.listAllApps(r.Context())
-	if err != nil {
-		h.t.RenderError(w, r, "Error", "Failed to list apps", http.StatusInternalServerError)
-		return nil, false
-	}
-
+	// Build user apps map
 	userAppMap := make(map[string]bool)
 	for _, app := range userApps {
 		userAppMap[app] = true
 	}
 
+	// Get apps grouped by collector
+	collectorApps, err := h.listAppsByCollector(r.Context())
+	if err != nil {
+		h.t.RenderError(w, r, "Error", "Failed to list apps", http.StatusInternalServerError)
+		return nil, false
+	}
+
+	// Check if there are any apps at all
+	hasNoApps := true
+	for _, apps := range collectorApps {
+		if len(apps) > 0 {
+			hasNoApps = false
+			break
+		}
+	}
+
 	data := map[string]any{
-		"Title":     "Edit User Apps - Tracer",
-		"User":      user,
-		"UserApps":  userAppMap,
-		"AllApps":   allApps,
-		"HasNoApps": len(allApps) == 0,
+		"Title":         "Edit User Apps - Tracer",
+		"User":          user,
+		"UserApps":      userAppMap,
+		"CollectorApps": collectorApps,
+		"HasNoApps":     hasNoApps,
 	}
 
 	return data, true
+}
+
+// listAppsByCollector returns all apps grouped by collector name
+func (h *handler) listAppsByCollector(ctx context.Context) (map[string][]string, error) {
+	collectors, err := h.ingestService.ListCollectors()
+	if err != nil {
+		return nil, err
+	}
+
+	collectorApps := make(map[string][]string)
+	for _, collector := range collectors {
+		apps, err := h.ingestService.ListApps(collector)
+		if err != nil {
+			return nil, err
+		}
+		collectorApps[collector.String()] = apps
+	}
+
+	return collectorApps, nil
 }
 
 func (h *handler) updateUserApps(w http.ResponseWriter, r *http.Request) {
@@ -266,11 +296,21 @@ func (h *handler) updateUserApps(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	selectedApps := r.Form["apps"]
+	// Parse form values: "collector:app" format
+	selectedPairs := r.Form["apps"]
 	currentApps, err := h.userService.GetApps(r.Context(), id)
 	if err != nil {
 		http.Error(w, "Failed to get user apps", http.StatusInternalServerError)
 		return
+	}
+
+	// Extract app names from "collector:app" pairs
+	selectedApps := make([]string, 0, len(selectedPairs))
+	for _, pair := range selectedPairs {
+		parts := strings.Split(pair, ":")
+		if len(parts) == 2 {
+			selectedApps = append(selectedApps, parts[1]) // app name is the second part
+		}
 	}
 
 	selectedMap := make(map[string]bool)
