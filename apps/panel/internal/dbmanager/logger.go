@@ -20,7 +20,7 @@ func newLoggingDB(db db.DBTX, name string) *loggingDB {
 	return &loggingDB{db: db, name: name}
 }
 
-func (l *loggingDB) logQuery(operation, query string, start time.Time, err error) {
+func (l *loggingDB) logQuery(ctx context.Context, operation, query string, start time.Time, err error) {
 	duration := time.Since(start)
 	level := slog.LevelDebug
 	if duration > 50*time.Millisecond {
@@ -40,14 +40,14 @@ func (l *loggingDB) logQuery(operation, query string, start time.Time, err error
 		attrs = append(attrs, "error", err)
 	}
 
-	slog.Log(context.Background(), level, "SQL query", attrs...)
+	slog.Log(ctx, level, "SQL query", attrs...)
 }
 
 // ExecContext executes a query and logs the timing
 func (l *loggingDB) ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
 	start := time.Now()
 	result, err := l.db.ExecContext(ctx, query, args...)
-	l.logQuery("Exec", query, start, err)
+	l.logQuery(ctx, "Exec", query, start, err)
 	return result, err
 }
 
@@ -55,7 +55,7 @@ func (l *loggingDB) ExecContext(ctx context.Context, query string, args ...inter
 func (l *loggingDB) PrepareContext(ctx context.Context, query string) (*sql.Stmt, error) {
 	start := time.Now()
 	stmt, err := l.db.PrepareContext(ctx, query)
-	l.logQuery("Prepare", query, start, err)
+	l.logQuery(ctx, "Prepare", query, start, err)
 	return stmt, err
 }
 
@@ -63,7 +63,7 @@ func (l *loggingDB) PrepareContext(ctx context.Context, query string) (*sql.Stmt
 func (l *loggingDB) QueryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {
 	start := time.Now()
 	rows, err := l.db.QueryContext(ctx, query, args...)
-	l.logQuery("Query", query, start, err)
+	l.logQuery(ctx, "Query", query, start, err)
 	return rows, err
 }
 
@@ -71,7 +71,7 @@ func (l *loggingDB) QueryContext(ctx context.Context, query string, args ...inte
 func (l *loggingDB) QueryRowContext(ctx context.Context, query string, args ...interface{}) *sql.Row {
 	start := time.Now()
 	row := l.db.QueryRowContext(ctx, query, args...)
-	l.logQuery("QueryRow", query, start, nil)
+	l.logQuery(ctx, "QueryRow", query, start, nil)
 	return row
 }
 
