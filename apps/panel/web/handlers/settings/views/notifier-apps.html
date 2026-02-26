@@ -18,7 +18,7 @@
 <p class="text-fg-secondary mb-6">Notifier: <strong class="text-fg">{{.Notifier.Name}}</strong> <span class="text-fg-secondary">({{.Notifier.Type}})</span></p>
 
 <div class="bg-bg-secondary p-5">
-    <form action="/settings/notifiers/{{.NotifierID}}/apps" method="POST">
+    <form hx-put="/settings/notifiers/{{.NotifierID}}/apps" hx-target="body" hx-swap="outerHTML">
         <p class="text-fg-secondary text-sm mb-4">Select which applications this notifier should receive alerts from:</p>
 
         {{if .IsAdmin}}

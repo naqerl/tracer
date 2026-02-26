@@ -69,9 +69,7 @@
                 <td class="py-3 text-sm text-fg-secondary">{{formatDateTime .CreatedAt}}</td>
                 <td class="py-3 text-sm text-fg-secondary">{{if .LastUsedAt.Valid}}{{formatDateTime .LastUsedAt.Time}}{{else}}Never{{end}}</td>
                 <td class="py-3 text-right">
-                    <form action="/settings/api-keys/{{.ID}}/delete" method="POST" onsubmit="return confirm('Delete API key {{.Name}}?');" class="inline">
-                        <button type="submit" class="text-sm text-fg-secondary hover:text-fg transition-colors">Delete</button>
-                    </form>
+                    <button hx-delete="/settings/api-keys/{{.ID}}" hx-confirm="Delete API key {{.Name}}?" hx-target="body" hx-swap="outerHTML" class="text-sm text-fg-secondary hover:text-fg transition-colors">Delete</button>
                 </td>
             </tr>
             {{end}}
@@ -89,9 +87,7 @@
     <div class="mb-4">
         <code class="text-base font-mono block mb-3">{{.APIKey}}</code>
         <p class="text-base text-fg-secondary mb-4">Use this key in your collector configuration to authenticate with the panel.</p>
-        <form action="/settings/api-key/regenerate" method="POST" onsubmit="return confirm('Regenerate API key? This will invalidate the current key.');">
-            {{template "danger-action" dict "Title" "Regenerate Key"}}
-        </form>
+        <button hx-put="/settings/api-key" hx-confirm="Regenerate API key? This will invalidate the current key." hx-target="body" hx-swap="outerHTML" class="text-sm text-fg-secondary hover:text-red-500 underline transition-colors">Regenerate Key</button>
     </div>
 </div>
 
@@ -153,9 +149,7 @@
                         <a href="/settings/users/{{.ID}}/apps" class="text-sm text-fg-secondary hover:text-fg transition-colors">Apps</a>
                         {{end}}
                         {{if ne .ID $.CurrentUser.ID}}
-                        <form action="/settings/users/{{.ID}}/delete" method="POST" onsubmit="return confirm('Delete user {{.Username}}?');" class="inline">
-                            <button type="submit" class="text-sm text-fg-secondary hover:text-fg transition-colors">Delete</button>
-                        </form>
+                        <button hx-delete="/settings/users/{{.ID}}" hx-confirm="Delete user {{.Username}}?" hx-target="body" hx-swap="outerHTML" class="text-sm text-fg-secondary hover:text-fg transition-colors">Delete</button>
                         {{end}}
                     </div>
                 </td>
@@ -217,12 +211,8 @@
                 <td class="py-3 text-right">
                     <div class="flex gap-4 justify-end">
                         <a href="/settings/notifiers/{{.ID}}/apps" class="text-sm text-fg-secondary hover:text-fg transition-colors">Apps</a>
-                        <form action="/settings/notifiers/{{.ID}}/toggle" method="POST" class="inline">
-                            <button type="submit" class="text-sm text-fg-secondary hover:text-fg transition-colors">{{if eq .Enabled 1}}Disable{{else}}Enable{{end}}</button>
-                        </form>
-                        <form action="/settings/notifiers/{{.ID}}/delete" method="POST" onsubmit="return confirm('Delete notifier {{.Name}}?');" class="inline">
-                            <button type="submit" class="text-sm text-fg-secondary hover:text-fg transition-colors">Delete</button>
-                        </form>
+                        <button hx-patch="/settings/notifiers/{{.ID}}" hx-target="body" hx-swap="outerHTML" class="text-sm text-fg-secondary hover:text-fg transition-colors">{{if eq .Enabled 1}}Disable{{else}}Enable{{end}}</button>
+                        <button hx-delete="/settings/notifiers/{{.ID}}" hx-confirm="Delete notifier {{.Name}}?" hx-target="body" hx-swap="outerHTML" class="text-sm text-fg-secondary hover:text-fg transition-colors">Delete</button>
                     </div>
                 </td>
             </tr>

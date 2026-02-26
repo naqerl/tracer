@@ -24,7 +24,7 @@
         <p class="text-sm mt-2">Start a collector to begin receiving logs and create applications.</p>
     </div>
     {{else}}
-    <form action="/settings/users/{{.User.ID}}/apps" method="POST">
+    <form hx-put="/settings/users/{{.User.ID}}/apps" hx-target="body" hx-swap="outerHTML">
         <p class="text-fg-secondary text-sm mb-4">Select the applications this user can access:</p>
         <div class="space-y-2 mb-6">
             {{range .AllApps}}
