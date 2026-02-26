@@ -2,35 +2,32 @@ package notify
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"log/slog"
+
+	"tracer/apps/panel/db"
 )
 
-const (
-	maxWorkers  = 5
-	channelSize = 100
-)
+const maxWorkers = 5
 
 // Dispatcher manages the notification worker pool and dispatches
 // notifications to registered notifiers.
 type Dispatcher struct {
 	ch        chan Notification
 	semaphore chan struct{}
-	registry  *Registry
+	queries   *db.Queries
+	factories map[string]FromRawJSON
 }
 
 // NewDispatcher creates a new notification dispatcher.
-func NewDispatcher(registry *Registry) *Dispatcher {
+func NewDispatcher(sqlDB *sql.DB, factories map[string]FromRawJSON, ch chan Notification) *Dispatcher {
 	return &Dispatcher{
-		ch:        make(chan Notification, channelSize),
+		ch:        ch,
 		semaphore: make(chan struct{}, maxWorkers),
-		registry:  registry,
+		queries:   db.New(sqlDB),
+		factories: factories,
 	}
-}
-
-// Sink returns a send-only channel for submitting notifications.
-func (d *Dispatcher) Sink() chan<- Notification {
-	return d.ch
 }
 
 // Start begins processing notifications. Blocks until context is cancelled.
@@ -43,7 +40,11 @@ func (d *Dispatcher) Start(ctx context.Context) {
 			slog.Info("Notification dispatcher stopping")
 			return
 		case notification := <-d.ch:
-			notifiers := d.registry.GetNotifiers(notification.CollectorName, notification.AppName)
+			notifiers, err := d.getNotifiers(ctx, notification.CollectorName, notification.AppName)
+			if err != nil {
+				slog.Error("Failed to get notifiers for notification", "error", err)
+				continue
+			}
 			if len(notifiers) == 0 {
 				continue
 			}
@@ -55,6 +56,34 @@ func (d *Dispatcher) Start(ctx context.Context) {
 			}(notification, notifiers)
 		}
 	}
+}
+
+// getNotifiers queries the database for matching notifiers and creates instances.
+func (d *Dispatcher) getNotifiers(ctx context.Context, collectorName, appName string) ([]Notifier, error) {
+	rows, err := d.queries.GetMatchingNotifiers(ctx, db.GetMatchingNotifiersParams{
+		CollectorName: collectorName,
+		AppName:       appName,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("query matching notifiers: %w", err)
+	}
+
+	var notifiers []Notifier
+	for _, row := range rows {
+		factory, ok := d.factories[row.Type]
+		if !ok {
+			slog.Error("Unknown notifier type", "type", row.Type, "name", row.Name)
+			continue
+		}
+		instance, err := factory(row.Name, row.Config)
+		if err != nil {
+			slog.Error("Failed to create notifier instance", "name", row.Name, "type", row.Type, "error", err)
+			continue
+		}
+		notifiers = append(notifiers, instance)
+	}
+
+	return notifiers, nil
 }
 
 // dispatch formats and sends a notification to all provided notifiers.

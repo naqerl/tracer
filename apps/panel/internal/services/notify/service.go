@@ -44,31 +44,22 @@ type AddNotifierRequest struct {
 	Config string // JSON config, type-specific
 }
 
-// Service manages notifications, coordinates between components, and handles database operations.
+// Service manages notifications and handles database operations.
 type Service struct {
-	db         *sql.DB
-	queries    *db.Queries
-	userSvc    *user.Service
-	registry   *Registry
-	dispatcher *Dispatcher
-	factories  map[string]FromRawJSON
+	db        *sql.DB
+	queries   *db.Queries
+	userSvc   *user.Service
+	factories map[string]FromRawJSON
 }
 
 // New creates a new notification service.
-func New(sqlDB *sql.DB, userSvc *user.Service, registry *Registry, dispatcher *Dispatcher, factories map[string]FromRawJSON) *Service {
+func New(sqlDB *sql.DB, userSvc *user.Service, factories map[string]FromRawJSON) *Service {
 	return &Service{
-		db:         sqlDB,
-		queries:    db.New(sqlDB),
-		userSvc:    userSvc,
-		registry:   registry,
-		dispatcher: dispatcher,
-		factories:  factories,
+		db:        sqlDB,
+		queries:   db.New(sqlDB),
+		userSvc:   userSvc,
+		factories: factories,
 	}
-}
-
-// Chan returns a send-only channel for submitting notifications.
-func (s *Service) Chan() chan<- Notification {
-	return s.dispatcher.Sink()
 }
 
 // Add creates a notifier, tests it by sending welcome notification, then saves to DB.
@@ -186,162 +177,30 @@ func (s *Service) Toggle(ctx context.Context, user sharedtypes.User, notifierID 
 	return s.queries.DisableNotifier(ctx, notifierID)
 }
 
-// UpdateApps updates apps for a notifier with access check, sends subscription notifications.
+// SetApps sets app subscriptions for a notifier with access check.
+// Simply writes to the database without any registration/caching logic.
 // Returns ErrNotifierNotFound if the notifier doesn't exist.
 // Returns ErrAccessDenied if the user doesn't have access to the notifier.
-func (s *Service) UpdateApps(ctx context.Context, user sharedtypes.User, notifierID int64, subscriptions []NotifierAppSubscription) error {
-	// 1. Get current setup with access check
-	setup, err := s.GetSetup(ctx, user, notifierID)
+func (s *Service) SetApps(ctx context.Context, user sharedtypes.User, notifierID int64, subscriptions []NotifierAppSubscription) error {
+	// 1. Verify notifier exists and user has access
+	notifier, err := s.queries.GetNotifier(ctx, notifierID)
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrNotifierNotFound
+		}
 		return err
 	}
 
-	// 2. Build map for comparison (key: "collector:app")
-	currentSubMap := make(map[string]bool)
-	for _, sub := range setup.Subscriptions {
-		key := sub.CollectorName + ":" + sub.AppName
-		currentSubMap[key] = true
+	if !s.canAccess(user, notifier.UserID) {
+		return ErrAccessDenied
 	}
 
-	// 3. Identify newly added subscriptions
-	var newlyAdded []NotifierAppSubscription
-	for _, sub := range subscriptions {
-		key := sub.CollectorName + ":" + sub.AppName
-		if !currentSubMap[key] {
-			newlyAdded = append(newlyAdded, sub)
-		}
-	}
-
-	// 4. Update database
+	// 2. Simply update database - no registration/caching logic
 	if err := s.setApps(ctx, notifierID, subscriptions); err != nil {
 		return fmt.Errorf("update notifier subscriptions: %w", err)
 	}
 
-	if setup.Enabled != 1 {
-		// Notifier disabled, skip notifications and registration
-		return nil
-	}
-
-	factory, ok := s.factories[setup.Type]
-	if !ok {
-		return fmt.Errorf("unknown notifier type: %s", setup.Type)
-	}
-	instance, err := factory(setup.Name, setup.Config)
-	if err != nil {
-		return fmt.Errorf("create notifier instance: %w", err)
-	}
-
-	// 5. Send subscription notifications for newly added subscriptions
-	for _, sub := range newlyAdded {
-		var message string
-
-		if sub.CollectorName == "*" && sub.AppName == "*" {
-			message = "Subscribed to notifications from **all applications** on **all collectors**"
-		} else if sub.AppName == "*" {
-			message = fmt.Sprintf("Subscribed to notifications from **all applications** on collector **%s**", sub.CollectorName)
-		} else if sub.CollectorName == "*" {
-			message = fmt.Sprintf("Subscribed to notifications from **%s** on **any collector**", sub.AppName)
-		} else {
-			message = fmt.Sprintf("Subscribed to notifications from **%s** on collector **%s**", sub.AppName, sub.CollectorName)
-		}
-
-		subscriptionNotif := Notification{
-			Type:          TypeSubscription,
-			CollectorName: sub.CollectorName,
-			AppName:       sub.AppName,
-			Message:       message,
-		}
-
-		if err := instance.Notify(subscriptionNotif); err != nil {
-			slog.Error("Failed to send subscription notification", "collector", sub.CollectorName, "app", sub.AppName, "error", err)
-		} else {
-			slog.Info("Sent subscription notification", "notifier", setup.Name, "collector", sub.CollectorName, "app", sub.AppName)
-		}
-	}
-
-	// 6. Clear old registrations
-	s.registry.ClearByName(setup.Name)
-
-	// 7. Re-register for new subscriptions
-	for _, sub := range subscriptions {
-		s.registry.Register(sub.CollectorName, sub.AppName, instance)
-	}
-
-	return nil
-}
-
-// LoadEnabled loads and registers enabled notifiers from the database.
-func (s *Service) LoadEnabled(ctx context.Context) error {
-	notifiers, err := s.queries.ListAllNotifiers(ctx)
-	if err != nil {
-		return err
-	}
-
-	for _, notifier := range notifiers {
-		if notifier.Enabled != 1 {
-			continue
-		}
-
-		subscriptions, err := s.getApps(ctx, notifier.ID)
-		if err != nil {
-			slog.Error("Failed to get notifier subscriptions", "notifier_id", notifier.ID, "error", err)
-			continue
-		}
-
-		if len(subscriptions) == 0 {
-			continue
-		}
-
-		owner, err := s.userSvc.GetByID(ctx, notifier.UserID)
-		if err != nil {
-			slog.Error("Failed to get notifier owner", "notifier_id", notifier.ID, "error", err)
-			continue
-		}
-
-		if owner.IsAdmin != 1 {
-			userApps, err := s.userSvc.GetApps(ctx, owner.ID)
-			if err != nil {
-				slog.Error("Failed to get user apps", "user_id", owner.ID, "error", err)
-				continue
-			}
-			userAppMap := make(map[string]bool)
-			for _, app := range userApps {
-				userAppMap[app] = true
-			}
-			var filtered []NotifierAppSubscription
-			for _, sub := range subscriptions {
-				if sub.AppName == "*" {
-					continue
-				}
-				if userAppMap[sub.AppName] {
-					filtered = append(filtered, sub)
-				}
-			}
-			subscriptions = filtered
-		}
-
-		if len(subscriptions) == 0 {
-			continue
-		}
-
-		factory, ok := s.factories[notifier.Type]
-		if !ok {
-			slog.Error("Unknown notifier type", "notifier_id", notifier.ID, "type", notifier.Type)
-			continue
-		}
-		instance, err := factory(notifier.Name, notifier.Config)
-		if err != nil {
-			slog.Error("Failed to create notifier", "notifier_id", notifier.ID, "error", err)
-			continue
-		}
-
-		for _, sub := range subscriptions {
-			s.registry.Register(sub.CollectorName, sub.AppName, instance)
-		}
-
-		slog.Info("Loaded notifier", "name", notifier.Name, "type", notifier.Type, "subscriptions", len(subscriptions), "owner", owner.Username)
-	}
-
+	slog.Info("Notifier subscriptions updated", "notifier_id", notifierID, "subscriptions", len(subscriptions))
 	return nil
 }
 
