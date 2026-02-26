@@ -1,6 +1,6 @@
 package notify
 
-// NotificationType represents the type/severity of notification
+// NotificationType represents the type/severity of notification.
 type NotificationType string
 
 const (
@@ -10,7 +10,7 @@ const (
 	TypeSubscription NotificationType = "subscription" // Subscription confirmation
 )
 
-// Notification represents a notification to be sent
+// Notification represents a notification to be sent.
 type Notification struct {
 	Type          NotificationType
 	CollectorName string
@@ -18,10 +18,7 @@ type Notification struct {
 	Message       string
 }
 
-// Sink is a channel for sending notifications
-type Sink chan<- Notification
-
-// Notifier is the interface that all notification providers must implement
+// Notifier is the interface that all notification providers must implement.
 type Notifier interface {
 	// Type returns the notifier type (e.g., "telegram", "slack", "email")
 	Type() string

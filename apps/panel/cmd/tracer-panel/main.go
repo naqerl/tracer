@@ -95,9 +95,13 @@ func main() {
 		slog.Info("API key ready", "key", apiKey)
 	}
 
-	// Initialize notification service first (needed by ingest)
-	notifyService := notify.New(panelDB, userService)
-	go notifyService.Start(ctx)
+	// Initialize notification components
+	notifyRegistry := notify.NewRegistry()
+	notifyDispatcher := notify.NewDispatcher(notifyRegistry)
+	notifyService := notify.New(panelDB, userService, notifyRegistry, notifyDispatcher)
+
+	// Start notification dispatcher
+	go notifyDispatcher.Start(ctx)
 
 	// Load and register enabled notifiers from database
 	if err := notifyService.LoadEnabled(ctx); err != nil {

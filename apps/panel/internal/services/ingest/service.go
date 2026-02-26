@@ -36,12 +36,12 @@ type DBManager interface {
 // Service manages ingest operations using dbmanager for all DB access.
 type Service struct {
 	dbManager      DBManager
-	notifyChan     notify.Sink
+	notifyChan     chan<- notify.Notification
 	alertFormatter func(collectorName, appName string, logID int64) string
 }
 
 // New creates a new ingest service.
-func New(dbManager DBManager, notifyChan notify.Sink, alertFormatter func(collectorName, appName string, logID int64) string) *Service {
+func New(dbManager DBManager, notifyChan chan<- notify.Notification, alertFormatter func(collectorName, appName string, logID int64) string) *Service {
 	return &Service{
 		dbManager:      dbManager,
 		notifyChan:     notifyChan,
