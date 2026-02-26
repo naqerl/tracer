@@ -406,36 +406,6 @@ func (h *handler) getLogByID(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func parseTimeRange(rangeParam string) time.Time {
-	if rangeParam == "" {
-		return time.Now().Add(-24 * time.Hour)
-	}
-
-	var value int
-	var unit byte
-	if len(rangeParam) < 2 {
-		return time.Now().Add(-24 * time.Hour)
-	}
-
-	for i := 0; i < len(rangeParam); i++ {
-		if rangeParam[i] >= '0' && rangeParam[i] <= '9' {
-			value = value*10 + int(rangeParam[i]-'0')
-		} else {
-			unit = rangeParam[i]
-			break
-		}
-	}
-
-	switch unit {
-	case 'h':
-		return time.Now().Add(-time.Duration(value) * time.Hour)
-	case 'd':
-		return time.Now().Add(-time.Duration(value) * 24 * time.Hour)
-	default:
-		return time.Now().Add(-24 * time.Hour)
-	}
-}
-
 func parseOffset(offsetParam string) int64 {
 	if offsetParam == "" {
 		return 0
