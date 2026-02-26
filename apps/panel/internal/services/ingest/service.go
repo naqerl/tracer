@@ -23,39 +23,136 @@ var (
 	ErrInvalidStats     = errors.New("invalid stats data")
 )
 
-// CollectorName is a type alias for collector names to make APIs clearer.
-type CollectorName string
-
-func (c CollectorName) String() string {
-	return string(c)
-}
-
 // DBManager is the interface for dbmanager operations needed by Service.
 type DBManager interface {
 	ListCollectors() ([]string, error)
 	ListApps(collector string) ([]string, error)
 	GetCollectorDB(collectorName string) (db.DBTX, error)
 	CreateCollectorDB(collectorName string) (db.DBTX, error)
+	GetAppDB(collectorName, appName string) (db.DBTX, error)
 	CreateAppDB(collectorName, appName string) (db.DBTX, error)
 }
 
 // Service manages ingest operations using dbmanager for all DB access.
 type Service struct {
-	dbManager  DBManager
-	notifyChan notify.NotificationChan
-	panelURL   string
+	dbManager      DBManager
+	notifyChan     notify.Sink
+	alertFormatter func(collectorName, appName string, logID int64) string
 }
 
 // New creates a new ingest service.
-func New(dbManager DBManager, notifyChan notify.NotificationChan, panelURL string) *Service {
+func New(dbManager DBManager, notifyChan notify.Sink, alertFormatter func(collectorName, appName string, logID int64) string) *Service {
 	return &Service{
-		dbManager:  dbManager,
-		notifyChan: notifyChan,
-		panelURL:   panelURL,
+		dbManager:      dbManager,
+		notifyChan:     notifyChan,
+		alertFormatter: alertFormatter,
 	}
 }
 
-// Request structs for service methods
+// ListCollectors returns all collector names.
+func (s *Service) ListCollectors() ([]string, error) {
+	return s.dbManager.ListCollectors()
+}
+
+// ListApps returns all app names for a specific collector.
+func (s *Service) ListApps(collector string) ([]string, error) {
+	return s.dbManager.ListApps(collector)
+}
+
+// --- Stats Operations (using sqlc) ---
+
+// SystemStats contains system statistics for a collector.
+type SystemStats struct {
+	CollectorName   string
+	CpuUsagePercent float64
+	MemTotalMb      int64
+	MemUsedMb       int64
+	MemAvailableMb  int64
+	DiskTotalGb     int64
+	DiskUsedGb      int64
+	DiskAvailGb     int64
+	CreatedAt       time.Time
+}
+
+type InsertStatsRequest struct {
+	CollectorName string
+	Stats         SystemStats
+}
+
+func (r InsertStatsRequest) Validate() error {
+	if r.CollectorName == "" {
+		return fmt.Errorf("collector name is required")
+	}
+	return nil
+}
+
+// InsertSystemStats inserts system statistics for a collector.
+// Creates the collector DB if it doesn't exist.
+func (s *Service) InsertSystemStats(ctx context.Context, req InsertStatsRequest) error {
+	dbtx, err := s.dbManager.GetCollectorDB(req.CollectorName)
+	if err != nil {
+		return err
+	}
+	queries := db.New(dbtx)
+	return queries.InsertSystemStats(ctx, db.InsertSystemStatsParams{
+		CollectorName:   req.Stats.CollectorName,
+		CpuUsagePercent: req.Stats.CpuUsagePercent,
+		MemTotalMb:      req.Stats.MemTotalMb,
+		MemUsedMb:       req.Stats.MemUsedMb,
+		MemAvailableMb:  req.Stats.MemAvailableMb,
+		DiskTotalGb:     req.Stats.DiskTotalGb,
+		DiskUsedGb:      req.Stats.DiskUsedGb,
+		DiskAvailGb:     req.Stats.DiskAvailGb,
+		CreatedAt:       req.Stats.CreatedAt,
+	})
+}
+
+// GetLatestStats returns the latest system stats for a collector.
+// Returns error if collector DB doesn't exist.
+func (s *Service) GetLatestStats(ctx context.Context, collector string) (db.SystemStat, error) {
+	dbtx, err := s.dbManager.GetCollectorDB(collector)
+	if err != nil {
+		return db.SystemStat{}, err
+	}
+	queries := db.New(dbtx)
+	return queries.GetLatestStats(ctx)
+}
+
+// GetStatsHistory returns system stats history for a collector since a given time.
+// Returns error if collector DB doesn't exist.
+func (s *Service) GetStatsHistory(ctx context.Context, collector string, since time.Time) ([]db.SystemStat, error) {
+	dbtx, err := s.dbManager.GetCollectorDB(collector)
+	if err != nil {
+		return nil, err
+	}
+	queries := db.New(dbtx)
+	return queries.GetStatsHistory(ctx, since)
+}
+
+// DeleteOldStats removes stats older than the given time for all collectors.
+// Skips collectors that don't have a DB yet.
+func (s *Service) DeleteOldStats(ctx context.Context, before time.Time) error {
+	collectors, err := s.ListCollectors()
+	if err != nil {
+		return err
+	}
+
+	for _, collector := range collectors {
+		dbtx, err := s.dbManager.GetCollectorDB(collector)
+		if err != nil {
+			if errors.Is(err, dbmanager.ErrDBNotFound) {
+				// Skip collectors without stats DB
+				continue
+			}
+			return err
+		}
+		queries := db.New(dbtx)
+		if err := queries.DeleteOldStats(ctx, before); err != nil {
+			return err
+		}
+	}
+	return nil
+}
 
 type RegisterCollectorRequest struct {
 	CollectorName string
@@ -72,15 +169,24 @@ func (r RegisterCollectorRequest) Validate() error {
 	return nil
 }
 
-type InsertStatsRequest struct {
-	CollectorName string
-	Stats         SystemStats
-}
-
-func (r InsertStatsRequest) Validate() error {
-	if r.CollectorName == "" {
-		return fmt.Errorf("collector name is required")
+// RegisterCollector creates all necessary databases for a collector and its apps.
+// This should be called when a collector first connects/register.
+func (s *Service) RegisterCollector(ctx context.Context, req RegisterCollectorRequest) error {
+	// Create collector DB for stats
+	if _, err := s.dbManager.CreateCollectorDB(req.CollectorName); err != nil {
+		return err
 	}
+
+	// Create app databases for each app
+	for _, appName := range req.Apps {
+		if appName == "" {
+			continue
+		}
+		if _, err := s.dbManager.CreateAppDB(req.CollectorName, appName); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
@@ -101,176 +207,11 @@ func (r StoreLogRequest) Validate() error {
 	return nil
 }
 
-type StoreLifecycleRequest struct {
-	CollectorName string
-	AppName       string
-	Kind          types.LifecycleKind
-	RawLine       string
-	Timestamp     time.Time
-}
-
-func (r StoreLifecycleRequest) Validate() error {
-	if r.CollectorName == "" {
-		return fmt.Errorf("collector name is required")
-	}
-	if r.AppName == "" {
-		return fmt.Errorf("app name is required")
-	}
-	if err := r.Kind.Validate(); err != nil {
-		return err
-	}
-	if r.RawLine == "" {
-		return fmt.Errorf("raw line is required")
-	}
-	return nil
-}
-
-// ListCollectors returns all collector names.
-func (s *Service) ListCollectors() ([]CollectorName, error) {
-	names, err := s.dbManager.ListCollectors()
-	if err != nil {
-		return nil, err
-	}
-
-	collectors := make([]CollectorName, len(names))
-	for i, name := range names {
-		collectors[i] = CollectorName(name)
-	}
-	return collectors, nil
-}
-
-// ListApps returns all app names for a specific collector.
-func (s *Service) ListApps(collector CollectorName) ([]string, error) {
-	return s.dbManager.ListApps(collector.String())
-}
-
-// --- Stats Operations (using sqlc) ---
-
-// SystemStats contains system statistics for a collector.
-type SystemStats struct {
-	CollectorName   string
-	CpuUsagePercent float64
-	MemTotalMb      int64
-	MemUsedMb       int64
-	MemAvailableMb  int64
-	DiskTotalGb     int64
-	DiskUsedGb      int64
-	DiskAvailGb     int64
-	CreatedAt       time.Time
-}
-
-// InsertSystemStats inserts system statistics for a collector.
-// Creates the collector DB if it doesn't exist.
-func (s *Service) InsertSystemStats(ctx context.Context, req InsertStatsRequest) error {
-	if err := req.Validate(); err != nil {
-		return err
-	}
-
-	dbtx, err := s.dbManager.CreateCollectorDB(req.CollectorName)
-	if err != nil {
-		return err
-	}
-	queries := db.New(dbtx)
-	return queries.InsertSystemStats(ctx, db.InsertSystemStatsParams{
-		CollectorName:   req.Stats.CollectorName,
-		CpuUsagePercent: req.Stats.CpuUsagePercent,
-		MemTotalMb:      req.Stats.MemTotalMb,
-		MemUsedMb:       req.Stats.MemUsedMb,
-		MemAvailableMb:  req.Stats.MemAvailableMb,
-		DiskTotalGb:     req.Stats.DiskTotalGb,
-		DiskUsedGb:      req.Stats.DiskUsedGb,
-		DiskAvailGb:     req.Stats.DiskAvailGb,
-		CreatedAt:       req.Stats.CreatedAt,
-	})
-}
-
-// GetLatestStats returns the latest system stats for a collector.
-// Returns error if collector DB doesn't exist.
-func (s *Service) GetLatestStats(ctx context.Context, collector CollectorName) (db.SystemStat, error) {
-	dbtx, err := s.dbManager.GetCollectorDB(collector.String())
-	if err != nil {
-		return db.SystemStat{}, err
-	}
-	queries := db.New(dbtx)
-	return queries.GetLatestStats(ctx)
-}
-
-// GetStatsHistory returns system stats history for a collector since a given time.
-// Returns error if collector DB doesn't exist.
-func (s *Service) GetStatsHistory(ctx context.Context, collector CollectorName, since time.Time) ([]db.SystemStat, error) {
-	dbtx, err := s.dbManager.GetCollectorDB(collector.String())
-	if err != nil {
-		return nil, err
-	}
-	queries := db.New(dbtx)
-	return queries.GetStatsHistory(ctx, since)
-}
-
-// DeleteOldStats removes stats older than the given time for all collectors.
-// Skips collectors that don't have a DB yet.
-func (s *Service) DeleteOldStats(ctx context.Context, before time.Time) error {
-	collectors, err := s.ListCollectors()
-	if err != nil {
-		return err
-	}
-
-	for _, collector := range collectors {
-		dbtx, err := s.dbManager.GetCollectorDB(collector.String())
-		if err != nil {
-			if errors.Is(err, dbmanager.ErrDBNotFound) {
-				// Skip collectors without stats DB
-				continue
-			}
-			return err
-		}
-		queries := db.New(dbtx)
-		if err := queries.DeleteOldStats(ctx, before); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// RegisterCollector creates all necessary databases for a collector and its apps.
-// This should be called when a collector first connects/register.
-func (s *Service) RegisterCollector(ctx context.Context, req RegisterCollectorRequest) error {
-	if err := req.Validate(); err != nil {
-		return err
-	}
-
-	// Create collector DB for stats
-	if _, err := s.dbManager.CreateCollectorDB(req.CollectorName); err != nil {
-		return err
-	}
-
-	// Create app databases for each app
-	for _, appName := range req.Apps {
-		if appName == "" {
-			continue
-		}
-		if _, err := s.dbManager.CreateAppDB(req.CollectorName, appName); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-// GetAppDB returns the database connection for the given collector/app.
-// Assumes the database already exists (created during registration).
-func (s *Service) GetAppDB(collectorName, appName string) (db.DBTX, error) {
-	return s.dbManager.CreateAppDB(collectorName, appName)
-}
-
 // StoreLog stores a log entry for a specific app.
 // It handles log group creation and insertion of the log entry.
 // Returns the log ID for potential notifications.
 // Includes sampling logic and notification sending for errors.
 func (s *Service) StoreLog(ctx context.Context, req StoreLogRequest) (int64, error) {
-	if err := req.Validate(); err != nil {
-		return 0, err
-	}
-
 	// Check if this is an error level log
 	isError := req.Entry.Level == types.LevelError
 
@@ -279,7 +220,7 @@ func (s *Service) StoreLog(ctx context.Context, req StoreLogRequest) (int64, err
 		return 0, nil // Skipped by sampling
 	}
 
-	dbtx, err := s.dbManager.CreateAppDB(req.CollectorName, req.AppName)
+	dbtx, err := s.dbManager.GetAppDB(req.CollectorName, req.AppName)
 	if err != nil {
 		return 0, err
 	}
@@ -327,13 +268,33 @@ func (s *Service) StoreLog(ctx context.Context, req StoreLogRequest) (int64, err
 	return logID, nil
 }
 
-// StoreLifecycle stores lifecycle events in a dedicated app-level table.
-func (s *Service) StoreLifecycle(ctx context.Context, req StoreLifecycleRequest) error {
-	if err := req.Validate(); err != nil {
+type StoreLifecycleRequest struct {
+	CollectorName string
+	AppName       string
+	Kind          types.LifecycleKind
+	RawLine       string
+	Timestamp     time.Time
+}
+
+func (r StoreLifecycleRequest) Validate() error {
+	if r.CollectorName == "" {
+		return fmt.Errorf("collector name is required")
+	}
+	if r.AppName == "" {
+		return fmt.Errorf("app name is required")
+	}
+	if err := r.Kind.Validate(); err != nil {
 		return err
 	}
+	if r.RawLine == "" {
+		return fmt.Errorf("raw line is required")
+	}
+	return nil
+}
 
-	dbtx, err := s.dbManager.CreateAppDB(req.CollectorName, req.AppName)
+// StoreLifecycle stores lifecycle events in a dedicated app-level table.
+func (s *Service) StoreLifecycle(ctx context.Context, req StoreLifecycleRequest) error {
+	dbtx, err := s.dbManager.GetAppDB(req.CollectorName, req.AppName)
 	if err != nil {
 		return err
 	}
@@ -368,14 +329,12 @@ func (s *Service) StoreLifecycle(ctx context.Context, req StoreLifecycleRequest)
 func (s *Service) sendErrorNotification(req StoreLogRequest, logID, groupID int64) {
 	// Build the alert message with markdown link
 	alertMessage := fmt.Sprintf("```%s```", req.Entry.Message)
-	if s.panelURL != "" {
+	if s.alertFormatter != nil {
 		// Include log ID and group ID in URL
-		logsURL := fmt.Sprintf("%s/panel/collectors/%s/apps/%s/logs/%d",
-			s.panelURL,
-			req.CollectorName,
-			req.AppName,
-			logID)
-		alertMessage += fmt.Sprintf("\n\n[view log](%s)", logsURL)
+		logsURL := s.alertFormatter(req.CollectorName, req.AppName, logID)
+		if logsURL != "" {
+			alertMessage += fmt.Sprintf("\n\n[view log](%s)", logsURL)
+		}
 	}
 
 	select {

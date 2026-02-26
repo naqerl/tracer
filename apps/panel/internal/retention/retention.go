@@ -64,7 +64,7 @@ func (s *Service) runCleanup(ctx context.Context) {
 		}
 
 		for _, appName := range apps {
-			sqlDB, err := s.dbManager.GetAppDB(collector.String(), appName)
+			sqlDB, err := s.dbManager.GetAppDB(collector, appName)
 			if err != nil {
 				if err == dbmanager.ErrDBNotFound {
 					// Skip if DB doesn't exist

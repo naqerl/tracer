@@ -415,7 +415,7 @@ func (s *Service) GetCollectorsView(ctx context.Context, user sharedtypes.User) 
 		view.Apps = filteredApps
 
 		// Get latest stats
-		stats, err := s.ingestSvc.GetLatestStats(ctx, ingest.CollectorName(c.Name))
+		stats, err := s.ingestSvc.GetLatestStats(ctx, c.Name)
 		if err == nil {
 			view.Stats = stats
 			view.StatsDisplay = formatStatsForDisplay(stats)
@@ -459,7 +459,7 @@ func (s *Service) GetCollectorDetail(ctx context.Context, req GetCollectorDetail
 	view.Apps = filteredApps
 
 	// Get latest stats
-	stats, err := s.ingestSvc.GetLatestStats(ctx, ingest.CollectorName(collector.Name))
+	stats, err := s.ingestSvc.GetLatestStats(ctx, collector.Name)
 	if err == nil {
 		view.Stats = stats
 		view.StatsDisplay = formatStatsForDisplay(stats)
@@ -488,7 +488,7 @@ func (s *Service) GetStatsHistory(ctx context.Context, req GetStatsHistoryReques
 	if !hasAccess {
 		return nil, ErrAccessDenied
 	}
-	return s.ingestSvc.GetStatsHistory(ctx, ingest.CollectorName(req.CollectorName), req.Since)
+	return s.ingestSvc.GetStatsHistory(ctx, req.CollectorName, req.Since)
 }
 
 // formatStatsForDisplay formats system stats for UI display.
