@@ -1,7 +1,7 @@
-package panel
+package config
 
 import (
-	"fmt"
+	"log"
 	"os"
 
 	"gopkg.in/yaml.v3"
@@ -20,7 +20,8 @@ const (
 	defaultPanelConfigPath = "/etc/tracer/panel.yaml"
 )
 
-func Load(path string) (*Panel, error) {
+// Load reads and parses configuration file
+func Load(path string) Panel {
 	if path == "" {
 		path = os.Getenv(panelConfigPathEnv)
 	}
@@ -30,12 +31,12 @@ func Load(path string) (*Panel, error) {
 
 	raw, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read config: %w", err)
+		log.Fatalf("failed to read config: %s", err)
 	}
 
 	var cfg Panel
 	if err := yaml.Unmarshal(raw, &cfg); err != nil {
-		return nil, fmt.Errorf("failed to decode config: %w", err)
+		log.Fatalf("failed to decode config: %s", err)
 	}
 
 	if cfg.Port == "" {
@@ -51,5 +52,5 @@ func Load(path string) (*Panel, error) {
 		cfg.RetentionDays = 90
 	}
 
-	return &cfg, nil
+	return cfg
 }

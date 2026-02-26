@@ -5,18 +5,20 @@ import (
 	"database/sql"
 	"flag"
 	"fmt"
+	"log"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sync"
 	"syscall"
 	"time"
 
 	"github.com/pressly/goose/v3"
 	_ "modernc.org/sqlite"
 
-	panelconfig "tracer/apps/panel/internal/config"
+	"tracer/apps/panel/internal/config"
 	"tracer/apps/panel/internal/dbmanager"
 	"tracer/apps/panel/internal/retention"
 	"tracer/apps/panel/internal/services/auth"
@@ -33,40 +35,40 @@ func main() {
 	configPath := flag.String("config", "", "path to config file")
 	flag.Parse()
 
-	// Setup structured logging
 	logx.SetDefault()
 
-	// Load configuration
-	cfg, err := panelconfig.Load(*configPath)
-	if err != nil {
-		slog.Error("Failed to load config", "error", err)
-		os.Exit(1)
-	}
+	cfg := config.Load(*configPath)
 
 	slog.Info("Starting panel",
 		"port", cfg.Port,
-		"data_dir", cfg.DataDir,
-		"sample_rate", cfg.SampleRate,
-		"retention_days", cfg.RetentionDays,
+		"dataDir", cfg.DataDir,
+		"sampleRate", cfg.SampleRate,
+		"retentionDays", cfg.RetentionDays,
 	)
 
-	// Setup context with cancellation
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	// Setup context with cancellation on shutdown signals
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	if err := serve(ctx, cfg); err != nil {
+		log.Fatalf("failed to serve: %s", err)
+	}
+}
+
+func serve(ctx context.Context, cfg config.Panel) error {
+	var wg sync.WaitGroup
 
 	// Initialize database manager
 	dbManager, err := dbmanager.New(cfg.DataDir)
 	if err != nil {
-		slog.Error("Failed to create database manager", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("create database manager: %w", err)
 	}
 	defer dbManager.Close()
 
 	// Initialize panel database and run migrations
 	panelDB, err := initPanelDB(cfg.DataDir)
 	if err != nil {
-		slog.Error("Failed to initialize panel database", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("initialize panel database: %w", err)
 	}
 	defer panelDB.Close()
 
@@ -79,8 +81,7 @@ func main() {
 	// Check if first run (no users exist)
 	hasUsers, err := userService.HasAny(ctx)
 	if err != nil {
-		slog.Error("Failed to check users", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("check users: %w", err)
 	}
 
 	if !hasUsers {
@@ -90,8 +91,7 @@ func main() {
 		// Ensure API key exists (only log if users exist, otherwise setup page will show it)
 		apiKey, err := authService.EnsureAPIKey(ctx)
 		if err != nil {
-			slog.Error("Failed to ensure API key", "error", err)
-			os.Exit(1)
+			return fmt.Errorf("ensure API key: %w", err)
 		}
 		slog.Info("API key ready", "key", apiKey)
 	}
@@ -108,10 +108,7 @@ func main() {
 	notifyDispatcher := notify.NewDispatcher(panelDB, notifierFactories, notifyChan)
 	notifyService := notify.New(panelDB, userService, notifierFactories)
 
-	// Start notification dispatcher
-	go notifyDispatcher.Start(ctx)
-
-	// Initialize ingest service (after notify service)
+	// Initialize ingest service
 	alertFormatter := func(collectorName, appName string, logID int64) string {
 		if cfg.PanelURL == "" {
 			return ""
@@ -122,13 +119,14 @@ func main() {
 
 	// Initialize retention service
 	retentionService := retention.New(dbManager, ingestService, cfg.RetentionDays)
-	go retentionService.Start(ctx)
 
 	// Initialize collector tracker
 	tracker := ingest.NewTracker()
 
-	// Start ingest cleanup goroutine (remove stale disconnected ingests after 1 hour)
-	go func() {
+	// Run services
+	wg.Go(func() { notifyDispatcher.Start(ctx) })
+	wg.Go(func() { retentionService.Start(ctx) })
+	wg.Go(func() {
 		ticker := time.NewTicker(10 * time.Minute)
 		defer ticker.Stop()
 		for {
@@ -137,27 +135,12 @@ func main() {
 				return
 			case <-ticker.C:
 				tracker.Cleanup(1 * time.Hour)
-			}
-		}
-	}()
-
-	// Start session cleanup goroutine
-	go func() {
-		ticker := time.NewTicker(1 * time.Hour)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				if err := authService.CleanupExpiredSessions(ctx); err != nil {
+                                if err := authService.CleanupExpiredSessions(ctx); err != nil {
 					slog.Error("Failed to cleanup sessions", "error", err)
-				}
+				}                                
 			}
 		}
-	}()
-
-	// Note: System stats cleanup is handled by retention service
+	})
 
 	// Initialize HTTP server
 	deps := web.Dependencies{
@@ -170,14 +153,10 @@ func main() {
 	}
 	server := web.Run(deps, cfg.Port, cfg.SampleRate)
 
-	// Handle shutdown signals
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-
-	go func() {
-		sig := <-sigChan
-		slog.Info("Received signal, shutting down", "signal", sig)
-		cancel()
+	// Handle server shutdown
+	wg.Go(func() {
+		<-ctx.Done()
+		slog.Info("Shutting down server")
 
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer shutdownCancel()
@@ -185,16 +164,18 @@ func main() {
 		if err := server.Shutdown(shutdownCtx); err != nil {
 			slog.Error("Server shutdown error", "error", err)
 		}
-	}()
+	})
 
 	// Start server
 	slog.Info("Server starting", "addr", ":"+cfg.Port)
 	if err := server.ListenAndServe(); err != http.ErrServerClosed {
-		slog.Error("Server error", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("server error: %w", err)
 	}
 
+	wg.Wait()
 	slog.Info("Server stopped")
+
+	return nil
 }
 
 func initPanelDB(dataDir string) (*sql.DB, error) {
