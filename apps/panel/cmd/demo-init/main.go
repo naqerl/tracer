@@ -36,8 +36,6 @@ func main() {
 	defer panelDB.Close()
 
 	authSvc := auth.New(panelDB)
-	defer authSvc.Close()
-
 	userSvc := user.New(panelDB)
 
 	hasUsers, err := userSvc.HasAny(ctx)

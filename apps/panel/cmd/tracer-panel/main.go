@@ -74,8 +74,6 @@ func serve(ctx context.Context, cfg config.Panel) error {
 
 	// Initialize services
 	authService := auth.New(panelDB)
-	defer authService.Close()
-
 	userService := user.New(panelDB)
 
 	// Check if first run (no users exist)

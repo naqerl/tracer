@@ -31,31 +31,19 @@ var (
 )
 
 type Service struct {
-	db      *sql.DB
-	queries *db.Queries
+	db db.DBTX
 }
 
 func New(sqlDB *sql.DB) *Service {
 	sqlDB.SetMaxOpenConns(1)
 	sqlDB.SetMaxIdleConns(1)
 
-	return &Service{
-		db:      sqlDB,
-		queries: db.New(sqlDB),
-	}
-}
-
-func (s *Service) Close() error {
-	return s.db.Close()
-}
-
-func (s *Service) DB() *sql.DB {
-	return s.db
+	return &Service{db: sqlDB}
 }
 
 // Password hashing
 
-func HashPassword(password string) (string, error) {
+func hashPassword(password string) (string, error) {
 	bytes, err := bcrypt.GenerateFromPassword([]byte(password), bcryptCost)
 	if err != nil {
 		return "", err
@@ -63,7 +51,7 @@ func HashPassword(password string) (string, error) {
 	return string(bytes), nil
 }
 
-func CheckPassword(password, hash string) error {
+func checkPassword(password, hash string) error {
 	err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(password))
 	if err != nil {
 		if errors.Is(err, bcrypt.ErrMismatchedHashAndPassword) {
@@ -76,7 +64,7 @@ func CheckPassword(password, hash string) error {
 
 // Token generation
 
-func GenerateToken(size int) (string, error) {
+func generateToken(size int) (string, error) {
 	bytes := make([]byte, size)
 	if _, err := rand.Read(bytes); err != nil {
 		return "", err
@@ -85,12 +73,12 @@ func GenerateToken(size int) (string, error) {
 }
 
 func GenerateAPIKey() (string, error) {
-	return GenerateToken(apiKeySize)
+	return generateToken(apiKeySize)
 }
 
 // Register creates a new user with hashed password
 func (s *Service) Register(ctx context.Context, username, password string, isAdmin bool) (*db.User, error) {
-	hash, err := HashPassword(password)
+	hash, err := hashPassword(password)
 	if err != nil {
 		return nil, fmt.Errorf("hash password: %w", err)
 	}
@@ -100,7 +88,7 @@ func (s *Service) Register(ctx context.Context, username, password string, isAdm
 		adminInt = 1
 	}
 
-	user, err := s.queries.CreateUser(ctx, db.CreateUserParams{
+	user, err := db.New(s.db).CreateUser(ctx, db.CreateUserParams{
 		Username:     username,
 		PasswordHash: hash,
 		IsAdmin:      adminInt,
@@ -116,13 +104,13 @@ func (s *Service) Register(ctx context.Context, username, password string, isAdm
 // Session management
 
 func (s *Service) CreateSession(ctx context.Context, userID int64) (string, error) {
-	token, err := GenerateToken(sessionTokenSize)
+	token, err := generateToken(sessionTokenSize)
 	if err != nil {
 		return "", fmt.Errorf("generate session token: %w", err)
 	}
 
 	expiresAt := time.Now().Add(SessionDuration)
-	err = s.queries.CreateSession(ctx, db.CreateSessionParams{
+	err = db.New(s.db).CreateSession(ctx, db.CreateSessionParams{
 		ID:        token,
 		UserID:    userID,
 		ExpiresAt: expiresAt,
@@ -135,7 +123,7 @@ func (s *Service) CreateSession(ctx context.Context, userID int64) (string, erro
 }
 
 func (s *Service) ValidateSession(ctx context.Context, token string) (*db.User, error) {
-	session, err := s.queries.GetSession(ctx, token)
+	session, err := db.New(s.db).GetSession(ctx, token)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrSessionExpired
@@ -144,11 +132,11 @@ func (s *Service) ValidateSession(ctx context.Context, token string) (*db.User, 
 	}
 
 	if time.Now().After(session.ExpiresAt) {
-		s.queries.DeleteSession(ctx, token)
+		db.New(s.db).DeleteSession(ctx, token)
 		return nil, ErrSessionExpired
 	}
 
-	user, err := s.queries.GetUserByID(ctx, session.UserID)
+	user, err := db.New(s.db).GetUserByID(ctx, session.UserID)
 	if err != nil {
 		return nil, fmt.Errorf("get user for session: %w", err)
 	}
@@ -157,11 +145,11 @@ func (s *Service) ValidateSession(ctx context.Context, token string) (*db.User, 
 }
 
 func (s *Service) DeleteSession(ctx context.Context, token string) error {
-	return s.queries.DeleteSession(ctx, token)
+	return db.New(s.db).DeleteSession(ctx, token)
 }
 
 func (s *Service) CleanupExpiredSessions(ctx context.Context) error {
-	return s.queries.DeleteExpiredSessions(ctx, time.Now())
+	return db.New(s.db).DeleteExpiredSessions(ctx, time.Now())
 }
 
 // Login
@@ -175,7 +163,7 @@ func (s *Service) Login(ctx context.Context, username, password string, userServ
 		return nil, "", err
 	}
 
-	if err := CheckPassword(password, user.PasswordHash); err != nil {
+	if err := checkPassword(password, user.PasswordHash); err != nil {
 		return nil, "", err
 	}
 
@@ -203,10 +191,10 @@ func hashAPIKey(key string) string {
 
 func (s *Service) GetAPIKey(ctx context.Context) (string, error) {
 	// Backward compatibility: plaintext key in legacy config.
-	value, err := s.queries.GetConfig(ctx, apiKeyConfigKey)
+	value, err := db.New(s.db).GetConfig(ctx, apiKeyConfigKey)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			preview, previewErr := s.queries.GetConfig(ctx, apiKeyPreviewConfigKey)
+			preview, previewErr := db.New(s.db).GetConfig(ctx, apiKeyPreviewConfigKey)
 			if previewErr != nil {
 				if errors.Is(previewErr, sql.ErrNoRows) {
 					return "", nil
@@ -218,7 +206,7 @@ func (s *Service) GetAPIKey(ctx context.Context) (string, error) {
 		return "", err
 	}
 	if value == "" {
-		preview, previewErr := s.queries.GetConfig(ctx, apiKeyPreviewConfigKey)
+		preview, previewErr := db.New(s.db).GetConfig(ctx, apiKeyPreviewConfigKey)
 		if previewErr != nil {
 			if errors.Is(previewErr, sql.ErrNoRows) {
 				return "", nil
@@ -232,7 +220,7 @@ func (s *Service) GetAPIKey(ctx context.Context) (string, error) {
 
 func (s *Service) SetAPIKey(ctx context.Context, key string) error {
 	hash := hashAPIKey(key)
-	if err := s.queries.SetConfig(ctx, db.SetConfigParams{
+	if err := db.New(s.db).SetConfig(ctx, db.SetConfigParams{
 		Key:   apiKeyHashConfigKey,
 		Value: hash,
 	}); err != nil {
@@ -243,7 +231,7 @@ func (s *Service) SetAPIKey(ctx context.Context, key string) error {
 	if len(preview) > 6 {
 		preview = preview[len(preview)-6:]
 	}
-	if err := s.queries.SetConfig(ctx, db.SetConfigParams{
+	if err := db.New(s.db).SetConfig(ctx, db.SetConfigParams{
 		Key:   apiKeyPreviewConfigKey,
 		Value: preview,
 	}); err != nil {
@@ -251,16 +239,16 @@ func (s *Service) SetAPIKey(ctx context.Context, key string) error {
 	}
 
 	// Clear legacy plaintext value if it exists.
-	return s.queries.SetConfig(ctx, db.SetConfigParams{
+	return db.New(s.db).SetConfig(ctx, db.SetConfigParams{
 		Key:   apiKeyConfigKey,
 		Value: "",
 	})
 }
 
 func (s *Service) EnsureAPIKey(ctx context.Context) (string, error) {
-	hash, err := s.queries.GetConfig(ctx, apiKeyHashConfigKey)
+	hash, err := db.New(s.db).GetConfig(ctx, apiKeyHashConfigKey)
 	if err == nil && hash != "" {
-		preview, previewErr := s.queries.GetConfig(ctx, apiKeyPreviewConfigKey)
+		preview, previewErr := db.New(s.db).GetConfig(ctx, apiKeyPreviewConfigKey)
 		if previewErr == nil && preview != "" {
 			return "****" + preview, nil
 		}
@@ -301,7 +289,7 @@ func (s *Service) EnsureAPIKey(ctx context.Context) (string, error) {
 }
 
 func (s *Service) ValidateAPIKey(ctx context.Context, key string) (bool, error) {
-	storedHash, err := s.queries.GetConfig(ctx, apiKeyHashConfigKey)
+	storedHash, err := db.New(s.db).GetConfig(ctx, apiKeyHashConfigKey)
 	if err == nil && storedHash != "" {
 		inputHash := hashAPIKey(key)
 		return subtle.ConstantTimeCompare([]byte(storedHash), []byte(inputHash)) == 1, nil
@@ -311,7 +299,7 @@ func (s *Service) ValidateAPIKey(ctx context.Context, key string) (bool, error) 
 	}
 
 	// Legacy plaintext fallback.
-	storedKey, err := s.queries.GetConfig(ctx, apiKeyConfigKey)
+	storedKey, err := db.New(s.db).GetConfig(ctx, apiKeyConfigKey)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return false, nil
@@ -327,12 +315,12 @@ func (s *Service) ValidateAPIKey(ctx context.Context, key string) (bool, error) 
 // User API Key management (LLM compatibility)
 
 func (s *Service) GenerateUserAPIKey(ctx context.Context, userID int64, name string) (*db.UserApiKey, error) {
-	key, err := GenerateToken(apiKeySize)
+	key, err := generateToken(apiKeySize)
 	if err != nil {
 		return nil, fmt.Errorf("generate user API key: %w", err)
 	}
 
-	userKey, err := s.queries.CreateUserAPIKey(ctx, db.CreateUserAPIKeyParams{
+	userKey, err := db.New(s.db).CreateUserAPIKey(ctx, db.CreateUserAPIKeyParams{
 		UserID: userID,
 		ApiKey: key,
 		Name:   name,
@@ -346,7 +334,7 @@ func (s *Service) GenerateUserAPIKey(ctx context.Context, userID int64, name str
 }
 
 func (s *Service) ValidateUserAPIKey(ctx context.Context, key string, userService *userpkg.Service) (*db.User, error) {
-	userKey, err := s.queries.GetUserAPIKey(ctx, key)
+	userKey, err := db.New(s.db).GetUserAPIKey(ctx, key)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrInvalidCredentials
@@ -356,7 +344,7 @@ func (s *Service) ValidateUserAPIKey(ctx context.Context, key string, userServic
 
 	// Update last used timestamp (fire and forget)
 	go func() {
-		_ = s.queries.UpdateUserAPIKeyLastUsed(context.Background(), db.UpdateUserAPIKeyLastUsedParams{
+		_ = db.New(s.db).UpdateUserAPIKeyLastUsed(context.Background(), db.UpdateUserAPIKeyLastUsedParams{
 			LastUsedAt: sql.NullTime{Time: time.Now(), Valid: true},
 			ApiKey:     key,
 		})
@@ -371,9 +359,9 @@ func (s *Service) ValidateUserAPIKey(ctx context.Context, key string, userServic
 }
 
 func (s *Service) ListUserAPIKeys(ctx context.Context, userID int64) ([]db.UserApiKey, error) {
-	return s.queries.GetUserAPIKeysByUser(ctx, userID)
+	return db.New(s.db).GetUserAPIKeysByUser(ctx, userID)
 }
 
 func (s *Service) DeleteUserAPIKey(ctx context.Context, id int64) error {
-	return s.queries.DeleteUserAPIKey(ctx, id)
+	return db.New(s.db).DeleteUserAPIKey(ctx, id)
 }
