@@ -48,7 +48,7 @@ type Notifier struct {
 	CreatedAt sql.NullTime
 }
 
-type NotifierApp struct {
+type NotifierSubscription struct {
 	NotifierID    int64
 	AppName       string
 	CollectorName string

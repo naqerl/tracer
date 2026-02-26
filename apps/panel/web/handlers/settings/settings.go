@@ -701,11 +701,11 @@ func (h *handler) updateNotifierApps(w http.ResponseWriter, r *http.Request) {
 	selectedPairs := r.Form["apps"]
 	allApps := r.FormValue("all_apps") == "on"
 
-	var subscriptions []notify.NotifierAppSubscription
+	var subscriptions []notify.NotifierSubscription
 
 	if allApps && user.IsAdmin {
 		// Global wildcard subscription (all apps from all collectors)
-		subscriptions = append(subscriptions, notify.NotifierAppSubscription{
+		subscriptions = append(subscriptions, notify.NotifierSubscription{
 			AppName:       "*",
 			CollectorName: "*",
 		})
@@ -716,7 +716,7 @@ func (h *handler) updateNotifierApps(w http.ResponseWriter, r *http.Request) {
 			if len(parts) != 2 {
 				continue // Skip invalid format
 			}
-			subscriptions = append(subscriptions, notify.NotifierAppSubscription{
+			subscriptions = append(subscriptions, notify.NotifierSubscription{
 				CollectorName: parts[0],
 				AppName:       parts[1],
 			})
@@ -734,7 +734,7 @@ func (h *handler) updateNotifierApps(w http.ResponseWriter, r *http.Request) {
 				userAppSet[app] = true
 			}
 
-			var filtered []notify.NotifierAppSubscription
+			var filtered []notify.NotifierSubscription
 			for _, sub := range subscriptions {
 				// Allow wildcards or check app access
 				if sub.AppName == "*" || userAppSet[sub.AppName] {

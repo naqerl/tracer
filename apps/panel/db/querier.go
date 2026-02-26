@@ -11,7 +11,6 @@ import (
 )
 
 type Querier interface {
-	AddNotifierApp(ctx context.Context, arg AddNotifierAppParams) error
 	AddNotifierSubscription(ctx context.Context, arg AddNotifierSubscriptionParams) error
 	AddUserApp(ctx context.Context, arg AddUserAppParams) error
 	CountByLevel(ctx context.Context, createdAt time.Time) ([]CountByLevelRow, error)
@@ -60,10 +59,9 @@ type Querier interface {
 	// 4. All apps from any collector (app = "*", collector = "*")
 	GetMatchingNotifiers(ctx context.Context, arg GetMatchingNotifiersParams) ([]Notifier, error)
 	GetNotifier(ctx context.Context, id int64) (Notifier, error)
-	// Notifier app mapping queries
-	GetNotifierApps(ctx context.Context, notifierID int64) ([]string, error)
 	GetNotifierByName(ctx context.Context, name string) (Notifier, error)
-	// Returns all app subscriptions (with collector) for a notifier
+	// Notifier subscription mapping queries
+	// Returns all subscriptions (with collector) for a notifier
 	GetNotifierSubscriptions(ctx context.Context, notifierID int64) ([]GetNotifierSubscriptionsRow, error)
 	GetNotifiersForApp(ctx context.Context, appName string) ([]Notifier, error)
 	// Get existing log group by message and level, or create if doesn't exist
@@ -89,9 +87,9 @@ type Querier interface {
 	ListRecentLifecycleEvents(ctx context.Context, limit int64) ([]LifecycleEvent, error)
 	ListRecentLogs(ctx context.Context, limit int64) ([]Log, error)
 	ListUsers(ctx context.Context) ([]User, error)
-	RemoveAllNotifierApps(ctx context.Context, notifierID int64) error
+	RemoveAllNotifierSubscriptions(ctx context.Context, notifierID int64) error
 	RemoveAllUserApps(ctx context.Context, userID int64) error
-	RemoveNotifierApp(ctx context.Context, arg RemoveNotifierAppParams) error
+	RemoveNotifierSubscription(ctx context.Context, arg RemoveNotifierSubscriptionParams) error
 	RemoveUserApp(ctx context.Context, arg RemoveUserAppParams) error
 	SearchLogs(ctx context.Context, arg SearchLogsParams) ([]Log, error)
 	SetConfig(ctx context.Context, arg SetConfigParams) error

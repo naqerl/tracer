@@ -9,23 +9,8 @@ import (
 	"context"
 )
 
-const addNotifierApp = `-- name: AddNotifierApp :exec
-INSERT OR IGNORE INTO notifier_app (notifier_id, app_name, collector_name)
-VALUES (?, ?, '*')
-`
-
-type AddNotifierAppParams struct {
-	NotifierID int64
-	AppName    string
-}
-
-func (q *Queries) AddNotifierApp(ctx context.Context, arg AddNotifierAppParams) error {
-	_, err := q.db.ExecContext(ctx, addNotifierApp, arg.NotifierID, arg.AppName)
-	return err
-}
-
 const addNotifierSubscription = `-- name: AddNotifierSubscription :exec
-INSERT INTO notifier_app (notifier_id, app_name, collector_name)
+INSERT INTO notifier_subscription (notifier_id, app_name, collector_name)
 VALUES (?, ?, ?)
 `
 
@@ -107,8 +92,8 @@ func (q *Queries) EnableNotifier(ctx context.Context, id int64) error {
 
 const getGlobalNotifiers = `-- name: GetGlobalNotifiers :many
 SELECT n.id, n.user_id, n.name, n.type, n.config, n.enabled, n.created_at FROM notifier n
-JOIN notifier_app na ON n.id = na.notifier_id
-WHERE na.app_name = '*' AND n.enabled = 1
+JOIN notifier_subscription ns ON n.id = ns.notifier_id
+WHERE ns.app_name = '*' AND n.enabled = 1
 `
 
 func (q *Queries) GetGlobalNotifiers(ctx context.Context) ([]Notifier, error) {
@@ -144,12 +129,12 @@ func (q *Queries) GetGlobalNotifiers(ctx context.Context) ([]Notifier, error) {
 
 const getMatchingNotifiers = `-- name: GetMatchingNotifiers :many
 SELECT DISTINCT n.id, n.user_id, n.name, n.type, n.config, n.enabled, n.created_at FROM notifier n
-JOIN notifier_app na ON n.id = na.notifier_id
+JOIN notifier_subscription ns ON n.id = ns.notifier_id
 WHERE n.enabled = 1 AND (
-    (na.collector_name = ?1 AND na.app_name = ?2) OR
-    (na.collector_name = '*' AND na.app_name = ?2) OR
-    (na.collector_name = ?1 AND na.app_name = '*') OR
-    (na.collector_name = '*' AND na.app_name = '*')
+    (ns.collector_name = ?1 AND ns.app_name = ?2) OR
+    (ns.collector_name = '*' AND ns.app_name = ?2) OR
+    (ns.collector_name = ?1 AND ns.app_name = '*') OR
+    (ns.collector_name = '*' AND ns.app_name = '*')
 )
 `
 
@@ -215,37 +200,6 @@ func (q *Queries) GetNotifier(ctx context.Context, id int64) (Notifier, error) {
 	return i, err
 }
 
-const getNotifierApps = `-- name: GetNotifierApps :many
-
-SELECT DISTINCT app_name FROM notifier_app
-WHERE notifier_id = ?
-ORDER BY app_name
-`
-
-// Notifier app mapping queries
-func (q *Queries) GetNotifierApps(ctx context.Context, notifierID int64) ([]string, error) {
-	rows, err := q.db.QueryContext(ctx, getNotifierApps, notifierID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []string
-	for rows.Next() {
-		var app_name string
-		if err := rows.Scan(&app_name); err != nil {
-			return nil, err
-		}
-		items = append(items, app_name)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const getNotifierByName = `-- name: GetNotifierByName :one
 SELECT id, user_id, name, type, config, enabled, created_at FROM notifier
 WHERE name = ?
@@ -267,7 +221,8 @@ func (q *Queries) GetNotifierByName(ctx context.Context, name string) (Notifier,
 }
 
 const getNotifierSubscriptions = `-- name: GetNotifierSubscriptions :many
-SELECT app_name, collector_name FROM notifier_app
+
+SELECT app_name, collector_name FROM notifier_subscription
 WHERE notifier_id = ?
 `
 
@@ -276,7 +231,8 @@ type GetNotifierSubscriptionsRow struct {
 	CollectorName string
 }
 
-// Returns all app subscriptions (with collector) for a notifier
+// Notifier subscription mapping queries
+// Returns all subscriptions (with collector) for a notifier
 func (q *Queries) GetNotifierSubscriptions(ctx context.Context, notifierID int64) ([]GetNotifierSubscriptionsRow, error) {
 	rows, err := q.db.QueryContext(ctx, getNotifierSubscriptions, notifierID)
 	if err != nil {
@@ -302,8 +258,8 @@ func (q *Queries) GetNotifierSubscriptions(ctx context.Context, notifierID int64
 
 const getNotifiersForApp = `-- name: GetNotifiersForApp :many
 SELECT n.id, n.user_id, n.name, n.type, n.config, n.enabled, n.created_at FROM notifier n
-JOIN notifier_app na ON n.id = na.notifier_id
-WHERE na.app_name = ? AND n.enabled = 1
+JOIN notifier_subscription ns ON n.id = ns.notifier_id
+WHERE ns.app_name = ? AND n.enabled = 1
 `
 
 func (q *Queries) GetNotifiersForApp(ctx context.Context, appName string) ([]Notifier, error) {
@@ -447,28 +403,29 @@ func (q *Queries) ListNotifiersByUser(ctx context.Context, userID int64) ([]Noti
 	return items, nil
 }
 
-const removeAllNotifierApps = `-- name: RemoveAllNotifierApps :exec
-DELETE FROM notifier_app
+const removeAllNotifierSubscriptions = `-- name: RemoveAllNotifierSubscriptions :exec
+DELETE FROM notifier_subscription
 WHERE notifier_id = ?
 `
 
-func (q *Queries) RemoveAllNotifierApps(ctx context.Context, notifierID int64) error {
-	_, err := q.db.ExecContext(ctx, removeAllNotifierApps, notifierID)
+func (q *Queries) RemoveAllNotifierSubscriptions(ctx context.Context, notifierID int64) error {
+	_, err := q.db.ExecContext(ctx, removeAllNotifierSubscriptions, notifierID)
 	return err
 }
 
-const removeNotifierApp = `-- name: RemoveNotifierApp :exec
-DELETE FROM notifier_app
-WHERE notifier_id = ? AND app_name = ?
+const removeNotifierSubscription = `-- name: RemoveNotifierSubscription :exec
+DELETE FROM notifier_subscription
+WHERE notifier_id = ? AND app_name = ? AND collector_name = ?
 `
 
-type RemoveNotifierAppParams struct {
-	NotifierID int64
-	AppName    string
+type RemoveNotifierSubscriptionParams struct {
+	NotifierID    int64
+	AppName       string
+	CollectorName string
 }
 
-func (q *Queries) RemoveNotifierApp(ctx context.Context, arg RemoveNotifierAppParams) error {
-	_, err := q.db.ExecContext(ctx, removeNotifierApp, arg.NotifierID, arg.AppName)
+func (q *Queries) RemoveNotifierSubscription(ctx context.Context, arg RemoveNotifierSubscriptionParams) error {
+	_, err := q.db.ExecContext(ctx, removeNotifierSubscription, arg.NotifierID, arg.AppName, arg.CollectorName)
 	return err
 }
 

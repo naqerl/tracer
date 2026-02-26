@@ -25,8 +25,8 @@ var (
 	ErrInvalidNotifier  = errors.New("invalid notifier ID")
 )
 
-// NotifierAppSubscription represents a subscription to a specific collector-app pair.
-type NotifierAppSubscription struct {
+// NotifierSubscription represents a subscription to a specific collector-app pair.
+type NotifierSubscription struct {
 	AppName       string
 	CollectorName string
 }
@@ -39,7 +39,7 @@ type NotifierSetup struct {
 	Type          string
 	Config        string
 	Enabled       int64
-	Subscriptions []NotifierAppSubscription
+	Subscriptions []NotifierSubscription
 }
 
 // AddNotifierRequest contains data for creating a new notifier.
@@ -130,9 +130,9 @@ func (s *Service) GetSetup(ctx context.Context, user sharedtypes.User, notifierI
 		return nil, fmt.Errorf("get notifier apps: %w", err)
 	}
 
-	var subscriptions []NotifierAppSubscription
+	var subscriptions []NotifierSubscription
 	for _, row := range rows {
-		subscriptions = append(subscriptions, NotifierAppSubscription{
+		subscriptions = append(subscriptions, NotifierSubscription{
 			AppName:       row.AppName,
 			CollectorName: row.CollectorName,
 		})
@@ -198,7 +198,7 @@ func (s *Service) Toggle(ctx context.Context, user sharedtypes.User, notifierID 
 // Simply writes to the database without any registration/caching logic.
 // Returns ErrNotifierNotFound if the notifier doesn't exist.
 // Returns ErrAccessDenied if the user doesn't have access to the notifier.
-func (s *Service) SetApps(ctx context.Context, user sharedtypes.User, notifierID int64, subscriptions []NotifierAppSubscription) error {
+func (s *Service) SetApps(ctx context.Context, user sharedtypes.User, notifierID int64, subscriptions []NotifierSubscription) error {
 	// 1. Verify notifier exists and user has access
 	queries := db.New(s.db)
 	notifier, err := queries.GetNotifier(ctx, notifierID)
@@ -235,7 +235,7 @@ func (s *Service) List(ctx context.Context, user sharedtypes.User) ([]db.Notifie
 // Private methods
 
 // setApps sets all app subscriptions for a notifier (replaces existing).
-func (s *Service) setApps(ctx context.Context, notifierID int64, subscriptions []NotifierAppSubscription) error {
+func (s *Service) setApps(ctx context.Context, notifierID int64, subscriptions []NotifierSubscription) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
@@ -244,7 +244,7 @@ func (s *Service) setApps(ctx context.Context, notifierID int64, subscriptions [
 
 	queries := db.New(tx)
 
-	if err := queries.RemoveAllNotifierApps(ctx, notifierID); err != nil {
+	if err := queries.RemoveAllNotifierSubscriptions(ctx, notifierID); err != nil {
 		return fmt.Errorf("delete old apps: %w", err)
 	}
 

@@ -42,43 +42,34 @@ UPDATE notifier SET enabled = 1 WHERE id = ?;
 -- name: DisableNotifier :exec
 UPDATE notifier SET enabled = 0 WHERE id = ?;
 
--- Notifier app mapping queries
-
--- name: GetNotifierApps :many
-SELECT DISTINCT app_name FROM notifier_app
-WHERE notifier_id = ?
-ORDER BY app_name;
+-- Notifier subscription mapping queries
 
 -- name: GetNotifierSubscriptions :many
--- Returns all app subscriptions (with collector) for a notifier
-SELECT app_name, collector_name FROM notifier_app
+-- Returns all subscriptions (with collector) for a notifier
+SELECT app_name, collector_name FROM notifier_subscription
 WHERE notifier_id = ?;
 
--- name: AddNotifierApp :exec
-INSERT OR IGNORE INTO notifier_app (notifier_id, app_name, collector_name)
-VALUES (?, ?, '*');
-
 -- name: AddNotifierSubscription :exec
-INSERT INTO notifier_app (notifier_id, app_name, collector_name)
+INSERT INTO notifier_subscription (notifier_id, app_name, collector_name)
 VALUES (?, ?, ?);
 
--- name: RemoveNotifierApp :exec
-DELETE FROM notifier_app
-WHERE notifier_id = ? AND app_name = ?;
+-- name: RemoveNotifierSubscription :exec
+DELETE FROM notifier_subscription
+WHERE notifier_id = ? AND app_name = ? AND collector_name = ?;
 
--- name: RemoveAllNotifierApps :exec
-DELETE FROM notifier_app
+-- name: RemoveAllNotifierSubscriptions :exec
+DELETE FROM notifier_subscription
 WHERE notifier_id = ?;
 
 -- name: GetNotifiersForApp :many
 SELECT n.* FROM notifier n
-JOIN notifier_app na ON n.id = na.notifier_id
-WHERE na.app_name = ? AND n.enabled = 1;
+JOIN notifier_subscription ns ON n.id = ns.notifier_id
+WHERE ns.app_name = ? AND n.enabled = 1;
 
 -- name: GetGlobalNotifiers :many
 SELECT n.* FROM notifier n
-JOIN notifier_app na ON n.id = na.notifier_id
-WHERE na.app_name = '*' AND n.enabled = 1;
+JOIN notifier_subscription ns ON n.id = ns.notifier_id
+WHERE ns.app_name = '*' AND n.enabled = 1;
 
 -- name: GetMatchingNotifiers :many
 -- Returns all enabled notifiers that match the given collector and app.
@@ -88,10 +79,10 @@ WHERE na.app_name = '*' AND n.enabled = 1;
 -- 3. All apps from this specific collector (app = "*", collector = specific)
 -- 4. All apps from any collector (app = "*", collector = "*")
 SELECT DISTINCT n.* FROM notifier n
-JOIN notifier_app na ON n.id = na.notifier_id
+JOIN notifier_subscription ns ON n.id = ns.notifier_id
 WHERE n.enabled = 1 AND (
-    (na.collector_name = sqlc.arg(collector_name) AND na.app_name = sqlc.arg(app_name)) OR
-    (na.collector_name = '*' AND na.app_name = sqlc.arg(app_name)) OR
-    (na.collector_name = sqlc.arg(collector_name) AND na.app_name = '*') OR
-    (na.collector_name = '*' AND na.app_name = '*')
+    (ns.collector_name = sqlc.arg(collector_name) AND ns.app_name = sqlc.arg(app_name)) OR
+    (ns.collector_name = '*' AND ns.app_name = sqlc.arg(app_name)) OR
+    (ns.collector_name = sqlc.arg(collector_name) AND ns.app_name = '*') OR
+    (ns.collector_name = '*' AND ns.app_name = '*')
 );
