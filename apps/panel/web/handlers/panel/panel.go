@@ -142,15 +142,15 @@ func (h *handler) getCollectorResources(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	rangeParam := r.URL.Query().Get("range")
-	if rangeParam == "" {
-		rangeParam = "24h"
+	since := r.URL.Query().Get("since")
+	if since == "" {
+		since = "24h"
 	}
 
 	req := panelsvc.GetStatsHistoryRequest{
 		User:          user,
 		CollectorName: r.PathValue("collector"),
-		Since:         parseTimeRange(rangeParam),
+		Since:         parseSince(since),
 	}
 	if err := req.Validate(); err != nil {
 		h.t.RenderError(w, r, "Error", err.Error(), http.StatusBadRequest)
@@ -171,7 +171,7 @@ func (h *handler) getCollectorResources(w http.ResponseWriter, r *http.Request) 
 	h.t.RenderHTTP(w, r, "collector-stats", map[string]any{
 		"Title":         req.CollectorName + " Resources",
 		"CollectorName": req.CollectorName,
-		"RangeParam":    rangeParam,
+		"Since":         since,
 		"Stats":         stats,
 		"User":          user,
 		"IsAdmin":       user.IsAdmin,

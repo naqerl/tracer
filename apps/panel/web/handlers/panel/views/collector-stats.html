@@ -9,30 +9,17 @@
     <style>
         .uplot { margin: 1.5rem 0; touch-action: pan-y pinch-zoom; }
         .stats-table { width: 100%; border-collapse: collapse; margin-top: 2rem; overflow-x: auto; display: block; -webkit-overflow-scrolling: touch; }
-        .stats-table th, .stats-table td { padding: 0.5rem; text-align: left; border-bottom: 1px solid #1E1E1E; white-space: nowrap; }
-        .stats-table th { font-weight: 600; color: #808080; }
-        .stats-table tr:hover { background-color: #1E1E1E; }
-        .range-tabs { display: flex; gap: 0.5rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
-        .range-tab { 
-            padding: 0.5rem 1rem; 
-            background: #1E1E1E; 
-            color: #EEEEEE; 
-            cursor: pointer;
-            transition: all 0.2s;
-            text-decoration: none;
-            display: inline-block;
-            font-size: 0.875rem;
-        }
-        .range-tab:hover { background: #2A2A2A; }
-        .range-tab.active { background: #5C9CF5; color: #0A0A0A; font-weight: 600; }
+        .stats-table th, .stats-table td { padding: 0.5rem; text-align: left; border-bottom: 1px solid var(--bg-secondary, #1E1E1E); white-space: nowrap; }
+        .stats-table th { font-weight: 500; color: var(--fg-secondary, #808080); font-size: 0.875rem; }
+        .stats-table tr:hover { background-color: var(--bg-secondary, #1E1E1E); }
         @media (max-width: 640px) {
-            .range-tab { padding: 0.4rem 0.75rem; font-size: 0.8rem; }
+            .uplot { margin: 1rem 0; }
         }
     </style>
 </head>
 <body>
     {{template "navbar" .}}
-    <div class="max-w-7xl mx-auto p-6 sm:p-6 px-4">
+    <div class="max-w-5xl mx-auto p-6">
         {{template "collector-stats-content" .}}
     </div>
 </body>
@@ -41,22 +28,8 @@
 
 {{define "collector-stats-content"}}
 <div class="mb-6">
-    <h1 class="text-2xl font-semibold mb-2">{{.CollectorName}}</h1>
-    <p class="text-fg-secondary">Resource usage over time</p>
-</div>
-
-<!-- Time Range Tabs -->
-<div class="range-tabs">
-    <a href="/panel/collectors/{{.CollectorName}}/resources?range=1h" 
-       class="range-tab {{if eq .RangeParam "1h"}}active{{end}}">1 Hour</a>
-    <a href="/panel/collectors/{{.CollectorName}}/resources?range=6h"
-       class="range-tab {{if eq .RangeParam "6h"}}active{{end}}">6 Hours</a>
-    <a href="/panel/collectors/{{.CollectorName}}/resources?range=24h"
-       class="range-tab {{if eq .RangeParam "24h"}}active{{end}}">24 Hours</a>
-    <a href="/panel/collectors/{{.CollectorName}}/resources?range=7d"
-       class="range-tab {{if eq .RangeParam "7d"}}active{{end}}">7 Days</a>
-    <a href="/panel/collectors/{{.CollectorName}}/resources?range=30d"
-       class="range-tab {{if eq .RangeParam "30d"}}active{{end}}">30 Days</a>
+    <h2 class="text-xl font-medium">{{.CollectorName}}</h2>
+    <p class="text-base text-fg-secondary mt-1">Resource usage</p>
 </div>
 
 {{template "collector-stats-data" .}}
@@ -73,8 +46,8 @@
 </div>
 
 <!-- Data Table (Progressive Enhancement Fallback) -->
-<details>
-    <summary class="cursor-pointer text-fg-secondary hover:text-fg mb-2">Show raw data ({{len .Stats}} data points)</summary>
+<details class="mt-6">
+    <summary class="cursor-pointer text-sm text-fg-secondary hover:text-fg transition-colors mb-2">Show raw data ({{len .Stats}} data points)</summary>
     <table id="stats-data" class="stats-table text-sm">
         <thead>
             <tr>
@@ -142,14 +115,14 @@
         },
         axes: [
             { 
-                stroke: "#808080",
-                grid: { stroke: "#1E1E1E", width: 1 },
+                stroke: "var(--fg-secondary, #808080)",
+                grid: { stroke: "var(--bg-secondary, #1E1E1E)", width: 1 },
                 size: isMobile ? 40 : 50
             },
             { 
-                stroke: "#808080",
+                stroke: "var(--fg-secondary, #808080)",
                 size: isMobile ? 50 : 60,
-                grid: { stroke: "#1E1E1E", width: 1 }
+                grid: { stroke: "var(--bg-secondary, #1E1E1E)", width: 1 }
             }
         ],
         legend: { show: false },
@@ -171,8 +144,8 @@
             { },
             { 
                 label: "CPU %", 
-                stroke: "#5C9CF5", 
-                fill: "rgba(92, 156, 245, 0.1)",
+                stroke: "var(--fg, #EEEEEE)", 
+                fill: "rgba(128, 128, 128, 0.1)",
                 width: 2
             }
         ],
@@ -193,8 +166,8 @@
             { },
             { 
                 label: "RAM %", 
-                stroke: "#F5A742", 
-                fill: "rgba(245, 167, 66, 0.1)",
+                stroke: "var(--fg, #EEEEEE)", 
+                fill: "rgba(128, 128, 128, 0.1)",
                 width: 2
             }
         ],
@@ -215,8 +188,8 @@
             { },
             { 
                 label: "Free GB", 
-                stroke: "#22C55E", 
-                fill: "rgba(34, 197, 94, 0.1)",
+                stroke: "var(--fg, #EEEEEE)", 
+                fill: "rgba(128, 128, 128, 0.1)",
                 width: 2
             }
         ],
@@ -254,9 +227,9 @@
 </script>
 
 {{else}}
-<div class="text-center text-fg-secondary py-12">
+<div class="text-center text-sm text-fg-secondary/60 py-12">
     <p>No stats available for the selected time range.</p>
-    <p class="text-sm mt-2">Stats are collected every 30 seconds when the collector is running.</p>
+    <p class="mt-2">Stats are collected every 30 seconds when the collector is running.</p>
 </div>
 {{end}}
 {{end}}
