@@ -11,9 +11,18 @@ ON CONFLICT(message, level) DO UPDATE SET message = message
 RETURNING *;
 
 -- name: GetLogGroupByID :one
--- Lookup log group by ID
-SELECT * FROM log_groups
-WHERE id = ?;
+-- Lookup log group by ID with count and latest timestamp
+SELECT
+    lg.id,
+    lg.message,
+    lg.level,
+    COUNT(l.id) as count,
+    (SELECT created_at FROM logs WHERE group_id = lg.id ORDER BY created_at DESC LIMIT 1) as latest_at,
+    lg.created_at as created_at
+FROM log_groups lg
+INNER JOIN logs l ON l.group_id = lg.id
+WHERE lg.id = ?
+GROUP BY lg.id, lg.message, lg.level, lg.created_at;
 
 -- name: CountLogGroups :one
 -- Count total log groups

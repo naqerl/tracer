@@ -51,7 +51,7 @@ type AppStats struct {
 }
 
 type LogDetailResult struct {
-	Group      db.LogGroup
+	Group      LogGroup
 	Logs       []db.GetLogsByGroupIDRow
 	TotalCount int64
 }
@@ -290,7 +290,14 @@ func (s *Service) GetLogDetail(ctx context.Context, req GetLogDetailRequest) (*L
 	}
 
 	return &LogDetailResult{
-		Group:      group,
+		Group: LogGroup{
+			ID:        group.ID,
+			Message:   group.Message,
+			Level:     group.Level,
+			Count:     group.Count,
+			LatestAt:  group.LatestAt,
+			CreatedAt: group.CreatedAt,
+		},
 		Logs:       logs,
 		TotalCount: totalCount,
 	}, nil

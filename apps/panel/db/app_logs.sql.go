@@ -155,18 +155,38 @@ func (q *Queries) GetLogByID(ctx context.Context, id int64) (Log, error) {
 }
 
 const getLogGroupByID = `-- name: GetLogGroupByID :one
-SELECT id, message, level, created_at FROM log_groups
-WHERE id = ?
+SELECT
+    lg.id,
+    lg.message,
+    lg.level,
+    COUNT(l.id) as count,
+    (SELECT created_at FROM logs WHERE group_id = lg.id ORDER BY created_at DESC LIMIT 1) as latest_at,
+    lg.created_at as created_at
+FROM log_groups lg
+INNER JOIN logs l ON l.group_id = lg.id
+WHERE lg.id = ?
+GROUP BY lg.id, lg.message, lg.level, lg.created_at
 `
 
-// Lookup log group by ID
-func (q *Queries) GetLogGroupByID(ctx context.Context, id int64) (LogGroup, error) {
+type GetLogGroupByIDRow struct {
+	ID        int64
+	Message   string
+	Level     string
+	Count     int64
+	LatestAt  time.Time
+	CreatedAt time.Time
+}
+
+// Lookup log group by ID with count and latest timestamp
+func (q *Queries) GetLogGroupByID(ctx context.Context, id int64) (GetLogGroupByIDRow, error) {
 	row := q.db.QueryRowContext(ctx, getLogGroupByID, id)
-	var i LogGroup
+	var i GetLogGroupByIDRow
 	err := row.Scan(
 		&i.ID,
 		&i.Message,
 		&i.Level,
+		&i.Count,
+		&i.LatestAt,
 		&i.CreatedAt,
 	)
 	return i, err

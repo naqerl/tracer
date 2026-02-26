@@ -393,7 +393,7 @@ func (h *handler) getLogByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.t.RenderHTTP(w, r, "app-log-page", map[string]any{
+	h.t.RenderHTTP(w, r, "log", map[string]any{
 		"Title":         fmt.Sprintf("Log #%d", logEntry.ID),
 		"CollectorName": req.CollectorName,
 		"AppName":       req.AppName,
