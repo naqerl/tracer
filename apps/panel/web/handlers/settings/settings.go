@@ -14,8 +14,8 @@ import (
 	"tracer/apps/panel/internal/services/notify"
 	"tracer/apps/panel/internal/services/permissions"
 	"tracer/apps/panel/internal/services/user"
-	authmw "tracer/apps/panel/web/middleware/auth"
 	"tracer/apps/panel/web/htmx"
+	authmw "tracer/apps/panel/web/middleware/auth"
 	"tracer/apps/panel/web/templates"
 	sharedtypes "tracer/libs/types"
 )
@@ -273,7 +273,7 @@ func (h *handler) listAppsByCollector(ctx context.Context) (map[string][]string,
 		if err != nil {
 			return nil, err
 		}
-		collectorApps[collector.String()] = apps
+		collectorApps[collector] = apps
 	}
 
 	return collectorApps, nil
@@ -639,7 +639,7 @@ func (h *handler) buildNotifierAppsData(w http.ResponseWriter, r *http.Request) 
 			h.t.RenderError(w, r, "Error", "Failed to list apps", http.StatusInternalServerError)
 			return nil, false
 		}
-		collectorApps[collector.String()] = apps
+		collectorApps[collector] = apps
 	}
 
 	// Filter by user access for non-admins
@@ -769,29 +769,3 @@ func (h *handler) updateNotifierApps(w http.ResponseWriter, r *http.Request) {
 
 	htmx.Redirect(w, r, "/settings/")
 }
-
-// listAllApps returns all unique app names across all collectors
-func (h *handler) listAllApps(ctx context.Context) ([]string, error) {
-	collectors, err := h.ingestService.ListCollectors()
-	if err != nil {
-		return nil, err
-	}
-
-	appSet := make(map[string]struct{})
-	for _, collector := range collectors {
-		apps, err := h.ingestService.ListApps(collector)
-		if err != nil {
-			return nil, err
-		}
-		for _, app := range apps {
-			appSet[app] = struct{}{}
-		}
-	}
-
-	result := make([]string, 0, len(appSet))
-	for app := range appSet {
-		result = append(result, app)
-	}
-	return result, nil
-}
-
