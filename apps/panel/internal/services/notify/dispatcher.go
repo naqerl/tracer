@@ -2,7 +2,6 @@ package notify
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"log/slog"
 
@@ -16,16 +15,16 @@ const maxWorkers = 5
 type Dispatcher struct {
 	ch        chan Notification
 	semaphore chan struct{}
-	queries   *db.Queries
+	db        db.DBTX
 	factories map[string]FromRawJSON
 }
 
 // NewDispatcher creates a new notification dispatcher.
-func NewDispatcher(sqlDB *sql.DB, factories map[string]FromRawJSON, ch chan Notification) *Dispatcher {
+func NewDispatcher(db db.DBTX, factories map[string]FromRawJSON, ch chan Notification) *Dispatcher {
 	return &Dispatcher{
 		ch:        ch,
 		semaphore: make(chan struct{}, maxWorkers),
-		queries:   db.New(sqlDB),
+		db:        db,
 		factories: factories,
 	}
 }
@@ -60,7 +59,8 @@ func (d *Dispatcher) Start(ctx context.Context) {
 
 // getNotifiers queries the database for matching notifiers and creates instances.
 func (d *Dispatcher) getNotifiers(ctx context.Context, collectorName, appName string) ([]Notifier, error) {
-	rows, err := d.queries.GetMatchingNotifiers(ctx, db.GetMatchingNotifiersParams{
+	queries := db.New(d.db)
+	rows, err := queries.GetMatchingNotifiers(ctx, db.GetMatchingNotifiersParams{
 		CollectorName: collectorName,
 		AppName:       appName,
 	})
