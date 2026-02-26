@@ -51,6 +51,13 @@ type Querier interface {
 	GetLogVolumeTimeSeries(ctx context.Context, arg GetLogVolumeTimeSeriesParams) ([]GetLogVolumeTimeSeriesRow, error)
 	// Get all individual logs for a specific group
 	GetLogsByGroupID(ctx context.Context, arg GetLogsByGroupIDParams) ([]GetLogsByGroupIDRow, error)
+	// Returns all enabled notifiers that match the given collector and app.
+	// Handles four levels of matching:
+	// 1. Exact match: collector + app
+	// 2. Any collector for this app (collector = "*")
+	// 3. All apps from this specific collector (app = "*", collector = specific)
+	// 4. All apps from any collector (app = "*", collector = "*")
+	GetMatchingNotifiers(ctx context.Context, arg GetMatchingNotifiersParams) ([]Notifier, error)
 	GetNotifier(ctx context.Context, id int64) (Notifier, error)
 	// Notifier app mapping queries
 	GetNotifierApps(ctx context.Context, notifierID int64) ([]string, error)
@@ -70,11 +77,11 @@ type Querier interface {
 	InsertLifecycleEvent(ctx context.Context, arg InsertLifecycleEventParams) (LifecycleEvent, error)
 	InsertLog(ctx context.Context, arg InsertLogParams) (Log, error)
 	InsertSystemStats(ctx context.Context, arg InsertSystemStatsParams) error
+	ListAllNotifiers(ctx context.Context) ([]Notifier, error)
 	ListEnabledNotifiers(ctx context.Context) ([]Notifier, error)
 	// List all log groups with their counts and latest timestamp
 	ListLogGroups(ctx context.Context, arg ListLogGroupsParams) ([]ListLogGroupsRow, error)
 	ListLogsByLevel(ctx context.Context, arg ListLogsByLevelParams) ([]Log, error)
-	ListAllNotifiers(ctx context.Context) ([]Notifier, error)
 	ListNotifiersByUser(ctx context.Context, userID int64) ([]Notifier, error)
 	ListRecentLifecycleEvents(ctx context.Context, limit int64) ([]LifecycleEvent, error)
 	ListRecentLogs(ctx context.Context, limit int64) ([]Log, error)

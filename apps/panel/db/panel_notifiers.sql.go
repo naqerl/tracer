@@ -126,6 +126,59 @@ func (q *Queries) GetGlobalNotifiers(ctx context.Context) ([]Notifier, error) {
 	return items, nil
 }
 
+const getMatchingNotifiers = `-- name: GetMatchingNotifiers :many
+SELECT DISTINCT n.id, n.user_id, n.name, n.type, n.config, n.enabled, n.created_at FROM notifier n
+JOIN notifier_app na ON n.id = na.notifier_id
+WHERE n.enabled = 1 AND (
+    (na.collector_name = ?1 AND na.app_name = ?2) OR
+    (na.collector_name = '*' AND na.app_name = ?2) OR
+    (na.collector_name = ?1 AND na.app_name = '*') OR
+    (na.collector_name = '*' AND na.app_name = '*')
+)
+`
+
+type GetMatchingNotifiersParams struct {
+	CollectorName string
+	AppName       string
+}
+
+// Returns all enabled notifiers that match the given collector and app.
+// Handles four levels of matching:
+// 1. Exact match: collector + app
+// 2. Any collector for this app (collector = "*")
+// 3. All apps from this specific collector (app = "*", collector = specific)
+// 4. All apps from any collector (app = "*", collector = "*")
+func (q *Queries) GetMatchingNotifiers(ctx context.Context, arg GetMatchingNotifiersParams) ([]Notifier, error) {
+	rows, err := q.db.QueryContext(ctx, getMatchingNotifiers, arg.CollectorName, arg.AppName)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Notifier
+	for rows.Next() {
+		var i Notifier
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.Name,
+			&i.Type,
+			&i.Config,
+			&i.Enabled,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getNotifier = `-- name: GetNotifier :one
 SELECT id, user_id, name, type, config, enabled, created_at FROM notifier
 WHERE id = ?
@@ -234,14 +287,13 @@ func (q *Queries) GetNotifiersForApp(ctx context.Context, appName string) ([]Not
 	return items, nil
 }
 
-const listEnabledNotifiers = `-- name: ListEnabledNotifiers :many
+const listAllNotifiers = `-- name: ListAllNotifiers :many
 SELECT id, user_id, name, type, config, enabled, created_at FROM notifier
-WHERE enabled = 1
 ORDER BY created_at
 `
 
-func (q *Queries) ListEnabledNotifiers(ctx context.Context) ([]Notifier, error) {
-	rows, err := q.db.QueryContext(ctx, listEnabledNotifiers)
+func (q *Queries) ListAllNotifiers(ctx context.Context) ([]Notifier, error) {
+	rows, err := q.db.QueryContext(ctx, listAllNotifiers)
 	if err != nil {
 		return nil, err
 	}
@@ -271,13 +323,14 @@ func (q *Queries) ListEnabledNotifiers(ctx context.Context) ([]Notifier, error) 
 	return items, nil
 }
 
-const listAllNotifiers = `-- name: ListAllNotifiers :many
+const listEnabledNotifiers = `-- name: ListEnabledNotifiers :many
 SELECT id, user_id, name, type, config, enabled, created_at FROM notifier
+WHERE enabled = 1
 ORDER BY created_at
 `
 
-func (q *Queries) ListAllNotifiers(ctx context.Context) ([]Notifier, error) {
-	rows, err := q.db.QueryContext(ctx, listAllNotifiers)
+func (q *Queries) ListEnabledNotifiers(ctx context.Context) ([]Notifier, error) {
+	rows, err := q.db.QueryContext(ctx, listEnabledNotifiers)
 	if err != nil {
 		return nil, err
 	}

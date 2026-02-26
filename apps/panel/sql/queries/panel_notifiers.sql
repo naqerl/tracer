@@ -70,3 +70,19 @@ WHERE na.app_name = ? AND n.enabled = 1;
 SELECT n.* FROM notifier n
 JOIN notifier_app na ON n.id = na.notifier_id
 WHERE na.app_name = '*' AND n.enabled = 1;
+
+-- name: GetMatchingNotifiers :many
+-- Returns all enabled notifiers that match the given collector and app.
+-- Handles four levels of matching:
+-- 1. Exact match: collector + app
+-- 2. Any collector for this app (collector = "*")
+-- 3. All apps from this specific collector (app = "*", collector = specific)
+-- 4. All apps from any collector (app = "*", collector = "*")
+SELECT DISTINCT n.* FROM notifier n
+JOIN notifier_app na ON n.id = na.notifier_id
+WHERE n.enabled = 1 AND (
+    (na.collector_name = sqlc.arg(collector_name) AND na.app_name = sqlc.arg(app_name)) OR
+    (na.collector_name = '*' AND na.app_name = sqlc.arg(app_name)) OR
+    (na.collector_name = sqlc.arg(collector_name) AND na.app_name = '*') OR
+    (na.collector_name = '*' AND na.app_name = '*')
+);
