@@ -37,6 +37,8 @@ func New(fsys fs.FS) Templates {
 		"divFloat":       divFloat,
 		"mulFloat":       mulFloat,
 		"sub":            func(a, b int) int { return a - b },
+		"mul":            func(a, b int) int { return a * b },
+		"default":        func(def, val any) any { if val == nil || val == "" { return def }; return val },
 		"dict":           dict,
 	}
 

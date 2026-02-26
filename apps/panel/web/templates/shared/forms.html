@@ -1,0 +1,42 @@
+{{define "markdown-checkbox"}}
+{{$id := .ID}}
+{{$name := .Name}}
+{{$label := .Label}}
+{{$value := .Value | default "on"}}
+{{$checked := .Checked}}
+{{$indent := .Indent | default 0}}
+{{$padding := mul $indent 24}}
+<div style="padding-left: {{$padding}}px">
+    <input type="hidden" name="{{$name}}" id="{{$id}}_value" value="{{if $checked}}{{$value}}{{end}}" data-checked-value="{{$value}}">
+    <button type="button" id="{{$id}}_toggle" class="text-base transition-colors font-mono {{if $checked}}text-fg{{else}}text-fg-secondary hover:text-fg{{end}}"
+            onclick="toggleMarkdownCheckbox('{{$id}}')" data-label="{{$label}}">
+        {{if $checked}}[x]{{else}}[ ]{{end}} {{$label}}
+    </button>
+</div>
+{{end}}
+
+{{define "markdown-checkbox-script"}}
+<script>
+function toggleMarkdownCheckbox(id) {
+    const valueInput = document.getElementById(id + '_value');
+    const toggleBtn = document.getElementById(id + '_toggle');
+    const checkedValue = valueInput.dataset.checkedValue || 'on';
+    const isChecked = valueInput.value === checkedValue;
+    
+    // Get the label text - get from data attribute to avoid parsing issues
+    const labelText = toggleBtn.dataset.label;
+    
+    if (isChecked) {
+        valueInput.value = '';
+        toggleBtn.textContent = '[ ] ' + labelText;
+        toggleBtn.classList.remove('text-fg');
+        toggleBtn.classList.add('text-fg-secondary');
+    } else {
+        valueInput.value = checkedValue;
+        toggleBtn.textContent = '[x] ' + labelText;
+        toggleBtn.classList.remove('text-fg-secondary');
+        toggleBtn.classList.add('text-fg');
+    }
+}
+</script>
+{{end}}
