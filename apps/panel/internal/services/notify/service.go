@@ -84,7 +84,7 @@ func New(sqlDB *sql.DB, userService *user.Service) *Service {
 }
 
 // Chan returns a send-only channel for submitting notifications
-func (s *Service) Chan() NotificationChan {
+func (s *Service) Chan() Sink {
 	return s.ch
 }
 

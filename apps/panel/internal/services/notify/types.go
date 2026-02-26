@@ -18,8 +18,8 @@ type Notification struct {
 	Message       string
 }
 
-// NotificationChan is a channel for sending notifications
-type NotificationChan chan<- Notification
+// Sink is a channel for sending notifications
+type Sink chan<- Notification
 
 // Notifier is the interface that all notification providers must implement
 type Notifier interface {
