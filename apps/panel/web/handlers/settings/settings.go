@@ -52,19 +52,19 @@ func InitMux(authService *auth.Service, userService *user.Service, ingestService
 	m.HandleFunc("PUT /users/{id}/apps", h.updateUserApps)
 
 	// API key
-	m.HandleFunc("GET /api-key", h.getAPIKey)
-	m.HandleFunc("PUT /api-key", h.regenerateAPIKey)
+	m.HandleFunc("GET /admin/api-key", h.getAdminAPIKey)
+	m.HandleFunc("PUT /admin/api-key", h.regenerateAdminAPIKey)
 
 	// User API keys (LLM compatibility)
-	m.HandleFunc("POST /api-keys", h.createUserAPIKey)
-	m.HandleFunc("DELETE /api-keys/{id}", h.deleteUserAPIKey)
+	m.HandleFunc("POST /api-keys", h.createAPIKey)
+	m.HandleFunc("DELETE /api-keys/{id}", h.deleteAPIKey)
 
 	// Notifiers management
 	m.HandleFunc("POST /notifiers", h.createNotifier)
 	m.HandleFunc("DELETE /notifiers/{id}", h.deleteNotifier)
-	m.HandleFunc("PATCH /notifiers/{id}", h.toggleNotifier)
-	m.HandleFunc("GET /notifiers/{id}/apps", h.getNotifierApps)
-	m.HandleFunc("PUT /notifiers/{id}/apps", h.updateNotifierApps)
+	m.HandleFunc("PUT /notifiers/{id}/toggle", h.toggleNotifier)
+	m.HandleFunc("GET /notifiers/{id}/subscriptions", h.getNotifierSubscriptions)
+	m.HandleFunc("PUT /notifiers/{id}/subscriptions", h.updateNotifierSubscriptions)
 
 	return m
 }
@@ -335,7 +335,7 @@ func (h *handler) updateUserApps(w http.ResponseWriter, r *http.Request) {
 
 // API key handlers
 
-func (h *handler) getAPIKey(w http.ResponseWriter, r *http.Request) {
+func (h *handler) getAdminAPIKey(w http.ResponseWriter, r *http.Request) {
 	if _, err := authmw.RequireAdmin(w, r); err != nil {
 		return
 	}
@@ -353,7 +353,7 @@ func (h *handler) getAPIKey(w http.ResponseWriter, r *http.Request) {
 	h.t.RenderHTTP(w, r, "api-key-partial", data)
 }
 
-func (h *handler) regenerateAPIKey(w http.ResponseWriter, r *http.Request) {
+func (h *handler) regenerateAdminAPIKey(w http.ResponseWriter, r *http.Request) {
 	if _, err := authmw.RequireAdmin(w, r); err != nil {
 		return
 	}
@@ -375,7 +375,7 @@ func (h *handler) regenerateAPIKey(w http.ResponseWriter, r *http.Request) {
 
 // User API key handlers (LLM compatibility)
 
-func (h *handler) createUserAPIKey(w http.ResponseWriter, r *http.Request) {
+func (h *handler) createAPIKey(w http.ResponseWriter, r *http.Request) {
 	user, err := h.requireAuthenticatedUser(w, r)
 	if err != nil {
 		return
@@ -397,7 +397,7 @@ func (h *handler) createUserAPIKey(w http.ResponseWriter, r *http.Request) {
 	htmx.Redirect(w, r, "/settings/")
 }
 
-func (h *handler) deleteUserAPIKey(w http.ResponseWriter, r *http.Request) {
+func (h *handler) deleteAPIKey(w http.ResponseWriter, r *http.Request) {
 	user, err := h.requireAuthenticatedUser(w, r)
 	if err != nil {
 		return
@@ -578,15 +578,15 @@ func (h *handler) toggleNotifier(w http.ResponseWriter, r *http.Request) {
 	htmx.Redirect(w, r, "/settings/")
 }
 
-func (h *handler) getNotifierApps(w http.ResponseWriter, r *http.Request) {
-	data, ok := h.buildNotifierAppsData(w, r)
+func (h *handler) getNotifierSubscriptions(w http.ResponseWriter, r *http.Request) {
+	data, ok := h.buildNotifierSubscriptionsData(w, r)
 	if !ok {
 		return
 	}
-	h.t.RenderHTTP(w, r, "notifier-apps", data)
+	h.t.RenderHTTP(w, r, "notifier-subscriptions", data)
 }
 
-func (h *handler) buildNotifierAppsData(w http.ResponseWriter, r *http.Request) (map[string]any, bool) {
+func (h *handler) buildNotifierSubscriptionsData(w http.ResponseWriter, r *http.Request) (map[string]any, bool) {
 	user, err := h.requireAuthenticatedUser(w, r)
 	if err != nil {
 		return nil, false
@@ -612,9 +612,15 @@ func (h *handler) buildNotifierAppsData(w http.ResponseWriter, r *http.Request) 
 		return nil, false
 	}
 
+	subscriptions, err := h.notifyService.GetSubscriptions(r.Context(), user, id)
+	if err != nil {
+		h.t.RenderError(w, r, "Error", "Failed to get notifier subscriptions", http.StatusInternalServerError)
+		return nil, false
+	}
+
 	// Build subscription map with "collector:app" keys
 	subscriptionMap := make(map[string]bool)
-	for _, sub := range setup.Subscriptions {
+	for _, sub := range subscriptions {
 		key := sub.CollectorName + ":" + sub.AppName
 		subscriptionMap[key] = true
 	}
@@ -679,7 +685,7 @@ func (h *handler) buildNotifierAppsData(w http.ResponseWriter, r *http.Request) 
 	return data, true
 }
 
-func (h *handler) updateNotifierApps(w http.ResponseWriter, r *http.Request) {
+func (h *handler) updateNotifierSubscriptions(w http.ResponseWriter, r *http.Request) {
 	user, err := h.requireAuthenticatedUser(w, r)
 	if err != nil {
 		return
@@ -701,11 +707,11 @@ func (h *handler) updateNotifierApps(w http.ResponseWriter, r *http.Request) {
 	selectedPairs := r.Form["apps"]
 	allApps := r.FormValue("all_apps") == "on"
 
-	var subscriptions []notify.NotifierSubscription
+	var subscriptions []notify.Subscription
 
 	if allApps && user.IsAdmin {
 		// Global wildcard subscription (all apps from all collectors)
-		subscriptions = append(subscriptions, notify.NotifierSubscription{
+		subscriptions = append(subscriptions, notify.Subscription{
 			AppName:       "*",
 			CollectorName: "*",
 		})
@@ -716,7 +722,7 @@ func (h *handler) updateNotifierApps(w http.ResponseWriter, r *http.Request) {
 			if len(parts) != 2 {
 				continue // Skip invalid format
 			}
-			subscriptions = append(subscriptions, notify.NotifierSubscription{
+			subscriptions = append(subscriptions, notify.Subscription{
 				CollectorName: parts[0],
 				AppName:       parts[1],
 			})
@@ -734,7 +740,7 @@ func (h *handler) updateNotifierApps(w http.ResponseWriter, r *http.Request) {
 				userAppSet[app] = true
 			}
 
-			var filtered []notify.NotifierSubscription
+			var filtered []notify.Subscription
 			for _, sub := range subscriptions {
 				// Allow wildcards or check app access
 				if sub.AppName == "*" || userAppSet[sub.AppName] {
@@ -746,7 +752,7 @@ func (h *handler) updateNotifierApps(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Update subscriptions through service (simply writes to DB)
-	if err := h.notifyService.SetApps(r.Context(), user, id, subscriptions); err != nil {
+	if err := h.notifyService.SetSubscriptions(r.Context(), user, id, subscriptions); err != nil {
 		switch {
 		case errors.Is(err, notify.ErrNotifierNotFound):
 			http.Error(w, "Notifier not found", http.StatusNotFound)

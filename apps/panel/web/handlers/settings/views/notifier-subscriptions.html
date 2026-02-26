@@ -1,4 +1,4 @@
-{{define "notifier-apps"}}
+{{define "notifier-subscriptions"}}
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -7,18 +7,18 @@
 </head>
 <body>
     <div class="max-w-2xl mx-auto p-6">
-        {{template "notifier-apps-content" .}}
+        {{template "notifier-subscriptions-content" .}}
     </div>
 </body>
 </html>
 {{end}}
 
-{{define "notifier-apps-content"}}
+{{define "notifier-subscriptions-content"}}
 <a href="/settings/" class="text-accent hover:underline text-sm mb-4 inline-block">&larr; Back to Settings</a>
 <p class="text-fg-secondary mb-6">Notifier: <strong class="text-fg">{{.Notifier.Name}}</strong> <span class="text-fg-secondary">({{.Notifier.Type}})</span></p>
 
 <div class="bg-bg-secondary p-5">
-    <form hx-put="/settings/notifiers/{{.NotifierID}}/apps" hx-target="body" hx-swap="outerHTML">
+    <form hx-put="/settings/notifiers/{{.NotifierID}}/subscriptions" hx-target="body" hx-swap="outerHTML">
         <p class="text-fg-secondary text-sm mb-4">Select which applications this notifier should receive alerts from:</p>
 
         {{if .IsAdmin}}

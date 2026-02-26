@@ -88,7 +88,7 @@
     <div class="mb-4">
         <code class="text-base font-mono block mb-3">{{.APIKey}}</code>
         <p class="text-base text-fg-secondary mb-4">Use this key in your collector configuration to authenticate with the panel.</p>
-        <button hx-put="/settings/api-key" hx-confirm="Regenerate API key? This will invalidate the current key." hx-target="body" hx-swap="outerHTML" class="text-sm text-fg-secondary hover:text-red-500 underline transition-colors">Regenerate Key</button>
+        <button hx-put="/settings/admin/api-key" hx-confirm="Regenerate API key? This will invalidate the current key." hx-target="body" hx-swap="outerHTML" class="text-sm text-fg-secondary hover:text-red-500 underline transition-colors">Regenerate Key</button>
     </div>
 </div>
 
@@ -194,8 +194,8 @@
                 <td class="py-3 text-sm text-fg-secondary">{{formatDateTime .CreatedAt}}</td>
                 <td class="py-3 text-right">
                     <div class="flex gap-4 justify-end">
-                        <a href="/settings/notifiers/{{.ID}}/apps" class="text-sm text-fg-secondary hover:text-fg transition-colors">Apps</a>
-                        <button hx-patch="/settings/notifiers/{{.ID}}" hx-target="body" hx-swap="outerHTML" class="text-sm text-fg-secondary hover:text-fg transition-colors">{{if eq .Enabled 1}}Disable{{else}}Enable{{end}}</button>
+                        <a href="/settings/notifiers/{{.ID}}/subscriptions" class="text-sm text-fg-secondary hover:text-fg transition-colors">Subscriptions</a>
+                        <button hx-put="/settings/notifiers/{{.ID}}/toggle" hx-target="body" hx-swap="outerHTML" class="text-sm text-fg-secondary hover:text-fg transition-colors">{{if eq .Enabled 1}}Disable{{else}}Enable{{end}}</button>
                         <button hx-delete="/settings/notifiers/{{.ID}}" hx-confirm="Delete notifier {{.Name}}?" hx-target="body" hx-swap="outerHTML" class="text-sm text-fg-secondary hover:text-fg transition-colors">Delete</button>
                     </div>
                 </td>
