@@ -25,21 +25,20 @@ var (
 	ErrInvalidNotifier  = errors.New("invalid notifier ID")
 )
 
-// NotifierSubscription represents a subscription to a specific collector-app pair.
-type NotifierSubscription struct {
+// Subscription represents a subscription to a specific collector-app pair.
+type Subscription struct {
 	AppName       string
 	CollectorName string
 }
 
-// NotifierSetup contains notifier configuration with its app subscriptions.
-type NotifierSetup struct {
-	ID            int64
-	UserID        int64
-	Name          string
-	Type          string
-	Config        string
-	Enabled       int64
-	Subscriptions []NotifierSubscription
+// Setup contains notifier configuration without subscriptions.
+type Setup struct {
+	ID      int64
+	UserID  int64
+	Name    string
+	Type    string
+	Config  string
+	Enabled int64
 }
 
 // AddNotifierRequest contains data for creating a new notifier.
@@ -83,7 +82,6 @@ func (s *Service) Add(ctx context.Context, req AddNotifierRequest) error {
 	// 2. Send welcome notification - must succeed before saving to DB
 	welcomeNotif := Notification{
 		Type:    TypeWelcome,
-		AppName: "tracer",
 		Message: "Cheers, love! The cavalry's here!",
 	}
 	if err := instance.Notify(welcomeNotif); err != nil {
@@ -108,10 +106,66 @@ func (s *Service) Add(ctx context.Context, req AddNotifierRequest) error {
 	return nil
 }
 
-// GetSetup retrieves a notifier by ID along with its app subscriptions.
+// SetSubscriptions sets app subscriptions for a notifier with access check.
+// Simply writes to the database without any registration/caching logic.
 // Returns ErrNotifierNotFound if the notifier doesn't exist.
 // Returns ErrAccessDenied if the user doesn't have access to the notifier.
-func (s *Service) GetSetup(ctx context.Context, user sharedtypes.User, notifierID int64) (*NotifierSetup, error) {
+func (s *Service) SetSubscriptions(ctx context.Context, user sharedtypes.User, notifierID int64, subscriptions []Subscription) error {
+	// 1. Verify notifier exists and user has access
+	queries := db.New(s.db)
+	notifier, err := queries.GetNotifier(ctx, notifierID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrNotifierNotFound
+		}
+		return err
+	}
+
+	if !s.canAccess(user, notifier.UserID) {
+		return ErrAccessDenied
+	}
+
+	// 2. Simply update database - no registration/caching logic
+	if err := s.setSubscriptions(ctx, notifierID, subscriptions); err != nil {
+		return fmt.Errorf("update notifier subscriptions: %w", err)
+	}
+
+	slog.Info("Notifier subscriptions updated", "notifier_id", notifierID, "subscriptions", len(subscriptions))
+	return nil
+}
+
+// GetSetup retrieves a notifier setup by ID (without subscriptions).
+// Returns ErrNotifierNotFound if the notifier doesn't exist.
+// Returns ErrAccessDenied if the user doesn't have access to the notifier.
+func (s *Service) GetSetup(ctx context.Context, user sharedtypes.User, notifierID int64) (Setup, error) {
+	var setup Setup
+	queries := db.New(s.db)
+	notifier, err := queries.GetNotifier(ctx, notifierID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return setup, ErrNotifierNotFound
+		}
+		return setup, err
+	}
+
+	if !s.canAccess(user, notifier.UserID) {
+		return setup, ErrAccessDenied
+	}
+
+	return Setup{
+		ID:      notifier.ID,
+		UserID:  notifier.UserID,
+		Name:    notifier.Name,
+		Type:    notifier.Type,
+		Config:  notifier.Config,
+		Enabled: notifier.Enabled,
+	}, nil
+}
+
+// GetSubscriptions retrieves subscriptions for a notifier by ID.
+// Returns ErrNotifierNotFound if the notifier doesn't exist.
+// Returns ErrAccessDenied if the user doesn't have access to the notifier.
+func (s *Service) GetSubscriptions(ctx context.Context, user sharedtypes.User, notifierID int64) ([]Subscription, error) {
 	queries := db.New(s.db)
 	notifier, err := queries.GetNotifier(ctx, notifierID)
 	if err != nil {
@@ -127,26 +181,18 @@ func (s *Service) GetSetup(ctx context.Context, user sharedtypes.User, notifierI
 
 	rows, err := queries.GetNotifierSubscriptions(ctx, notifierID)
 	if err != nil {
-		return nil, fmt.Errorf("get notifier apps: %w", err)
+		return nil, fmt.Errorf("get notifier subscriptions: %w", err)
 	}
 
-	var subscriptions []NotifierSubscription
+	var subscriptions []Subscription
 	for _, row := range rows {
-		subscriptions = append(subscriptions, NotifierSubscription{
+		subscriptions = append(subscriptions, Subscription{
 			AppName:       row.AppName,
 			CollectorName: row.CollectorName,
 		})
 	}
 
-	return &NotifierSetup{
-		ID:            notifier.ID,
-		UserID:        notifier.UserID,
-		Name:          notifier.Name,
-		Type:          notifier.Type,
-		Config:        notifier.Config,
-		Enabled:       notifier.Enabled,
-		Subscriptions: subscriptions,
-	}, nil
+	return subscriptions, nil
 }
 
 // Delete removes a notifier with access check.
@@ -194,33 +240,6 @@ func (s *Service) Toggle(ctx context.Context, user sharedtypes.User, notifierID 
 	return queries.DisableNotifier(ctx, notifierID)
 }
 
-// SetApps sets app subscriptions for a notifier with access check.
-// Simply writes to the database without any registration/caching logic.
-// Returns ErrNotifierNotFound if the notifier doesn't exist.
-// Returns ErrAccessDenied if the user doesn't have access to the notifier.
-func (s *Service) SetApps(ctx context.Context, user sharedtypes.User, notifierID int64, subscriptions []NotifierSubscription) error {
-	// 1. Verify notifier exists and user has access
-	queries := db.New(s.db)
-	notifier, err := queries.GetNotifier(ctx, notifierID)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return ErrNotifierNotFound
-		}
-		return err
-	}
-
-	if !s.canAccess(user, notifier.UserID) {
-		return ErrAccessDenied
-	}
-
-	// 2. Simply update database - no registration/caching logic
-	if err := s.setApps(ctx, notifierID, subscriptions); err != nil {
-		return fmt.Errorf("update notifier subscriptions: %w", err)
-	}
-
-	slog.Info("Notifier subscriptions updated", "notifier_id", notifierID, "subscriptions", len(subscriptions))
-	return nil
-}
 
 // List returns notifiers for the given user.
 // Admins see all notifiers, non-admins see only their own.
@@ -234,8 +253,8 @@ func (s *Service) List(ctx context.Context, user sharedtypes.User) ([]db.Notifie
 
 // Private methods
 
-// setApps sets all app subscriptions for a notifier (replaces existing).
-func (s *Service) setApps(ctx context.Context, notifierID int64, subscriptions []NotifierSubscription) error {
+// setSubscriptions sets all subscriptions for a notifier (replaces existing).
+func (s *Service) setSubscriptions(ctx context.Context, notifierID int64, subscriptions []Subscription) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
