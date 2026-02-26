@@ -17,7 +17,7 @@ import (
 	authmw "tracer/apps/panel/web/middleware/auth"
 )
 
-func Run(deps Dependencies, port string, sampleRate float64, panelURL string) *http.Server {
+func Run(deps Dependencies, port string, sampleRate float64) *http.Server {
 	mux := http.NewServeMux()
 	permissionService := permissions.New(deps.User, deps.Tracker)
 	panelService := panelsvc.New(deps.DBManagerx, permissionService, deps.Ingest, deps.Tracker)

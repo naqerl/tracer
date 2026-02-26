@@ -106,7 +106,13 @@ func main() {
 	}
 
 	// Initialize ingest service (after notify service)
-	ingestService := ingest.New(dbManager, notifyService.Chan(), cfg.PanelURL)
+	alertFormatter := func(collectorName, appName string, logID int64) string {
+		if cfg.PanelURL == "" {
+			return ""
+		}
+		return fmt.Sprintf("%s/panel/collectors/%s/apps/%s/logs/%d", cfg.PanelURL, collectorName, appName, logID)
+	}
+	ingestService := ingest.New(dbManager, notifyService.Chan(), alertFormatter)
 
 	// Initialize retention service
 	retentionService := retention.New(dbManager, ingestService, cfg.RetentionDays)
@@ -156,7 +162,7 @@ func main() {
 		User:       userService,
 		Tracker:    tracker,
 	}
-	server := web.Run(deps, cfg.Port, cfg.SampleRate, cfg.PanelURL)
+	server := web.Run(deps, cfg.Port, cfg.SampleRate)
 
 	// Handle shutdown signals
 	sigChan := make(chan os.Signal, 1)
