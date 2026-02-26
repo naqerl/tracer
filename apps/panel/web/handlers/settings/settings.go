@@ -3,13 +3,11 @@ package settings
 import (
 	"context"
 	"embed"
-	"encoding/json"
 	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
 
-	"tracer/apps/panel/db"
 	"tracer/apps/panel/internal/dbmanager"
 	"tracer/apps/panel/internal/services/auth"
 	"tracer/apps/panel/internal/services/ingest"
@@ -17,6 +15,7 @@ import (
 	"tracer/apps/panel/internal/services/permissions"
 	"tracer/apps/panel/internal/services/user"
 	authmw "tracer/apps/panel/web/middleware/auth"
+	"tracer/apps/panel/web/htmx"
 	"tracer/apps/panel/web/templates"
 	sharedtypes "tracer/libs/types"
 )
@@ -48,33 +47,25 @@ func InitMux(authService *auth.Service, userService *user.Service, ingestService
 
 	// Users management
 	m.HandleFunc("GET /", h.settingsPage)
-	m.HandleFunc("GET /entries", h.settingsEntries)
-	m.HandleFunc("GET /users", h.listUsers)
 	m.HandleFunc("POST /users", h.createUser)
-	m.HandleFunc("POST /users/{id}/delete", h.deleteUser)
+	m.HandleFunc("DELETE /users/{id}", h.deleteUser)
 	m.HandleFunc("GET /users/{id}/apps", h.getUserApps)
-	m.HandleFunc("GET /users/{id}/apps/entries", h.getUserAppsEntries)
-	m.HandleFunc("POST /users/{id}/apps", h.updateUserApps)
+	m.HandleFunc("PUT /users/{id}/apps", h.updateUserApps)
 
 	// API key
 	m.HandleFunc("GET /api-key", h.getAPIKey)
-	m.HandleFunc("POST /api-key/regenerate", h.regenerateAPIKey)
+	m.HandleFunc("PUT /api-key", h.regenerateAPIKey)
 
 	// User API keys (LLM compatibility)
 	m.HandleFunc("POST /api-keys", h.createUserAPIKey)
-	m.HandleFunc("POST /api-keys/{id}/delete", h.deleteUserAPIKey)
+	m.HandleFunc("DELETE /api-keys/{id}", h.deleteUserAPIKey)
 
 	// Notifiers management
-	m.HandleFunc("GET /notifiers", h.listNotifiers)
 	m.HandleFunc("POST /notifiers", h.createNotifier)
-	m.HandleFunc("GET /notifiers/{id}", h.getNotifier)
-	m.HandleFunc("GET /notifiers/{id}/entries", h.getNotifierEntries)
-	m.HandleFunc("POST /notifiers/{id}", h.updateNotifier)
-	m.HandleFunc("POST /notifiers/{id}/delete", h.deleteNotifier)
-	m.HandleFunc("POST /notifiers/{id}/toggle", h.toggleNotifier)
+	m.HandleFunc("DELETE /notifiers/{id}", h.deleteNotifier)
+	m.HandleFunc("PATCH /notifiers/{id}", h.toggleNotifier)
 	m.HandleFunc("GET /notifiers/{id}/apps", h.getNotifierApps)
-	m.HandleFunc("GET /notifiers/{id}/apps/entries", h.getNotifierAppsEntries)
-	m.HandleFunc("POST /notifiers/{id}/apps", h.updateNotifierApps)
+	m.HandleFunc("PUT /notifiers/{id}/apps", h.updateNotifierApps)
 
 	return m
 }
@@ -94,14 +85,6 @@ func (h *handler) settingsPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.t.RenderHTTP(w, r, "settings", data)
-}
-
-func (h *handler) settingsEntries(w http.ResponseWriter, r *http.Request) {
-	data, err := h.buildSettingsPageData(w, r)
-	if err != nil {
-		return
-	}
-	h.t.RenderHTTP(w, r, "settings-content", data)
 }
 
 func (h *handler) buildSettingsPageData(w http.ResponseWriter, r *http.Request) (map[string]any, error) {
@@ -160,26 +143,6 @@ func (h *handler) buildSettingsPageData(w http.ResponseWriter, r *http.Request) 
 
 // User handlers
 
-func (h *handler) listUsers(w http.ResponseWriter, r *http.Request) {
-	user, err := authmw.RequireAdmin(w, r)
-	if err != nil {
-		return
-	}
-
-	users, err := h.userService.List(r.Context())
-	if err != nil {
-		h.t.RenderError(w, r, "Error", "Failed to list users", http.StatusInternalServerError)
-		return
-	}
-
-	data := map[string]any{
-		"Users":       users,
-		"CurrentUser": user,
-	}
-
-	h.t.RenderHTTP(w, r, "users-list", data)
-}
-
 func (h *handler) createUser(w http.ResponseWriter, r *http.Request) {
 	if _, err := authmw.RequireAdmin(w, r); err != nil {
 		return
@@ -201,7 +164,7 @@ func (h *handler) createUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	http.Redirect(w, r, "/settings/", http.StatusSeeOther)
+	htmx.Redirect(w, r, "/settings/")
 }
 
 func (h *handler) deleteUser(w http.ResponseWriter, r *http.Request) {
@@ -228,7 +191,7 @@ func (h *handler) deleteUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	http.Redirect(w, r, "/settings/", http.StatusSeeOther)
+	htmx.Redirect(w, r, "/settings/")
 }
 
 func (h *handler) getUserApps(w http.ResponseWriter, r *http.Request) {
@@ -237,14 +200,6 @@ func (h *handler) getUserApps(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.t.RenderHTTP(w, r, "user-apps", data)
-}
-
-func (h *handler) getUserAppsEntries(w http.ResponseWriter, r *http.Request) {
-	data, ok := h.buildUserAppsData(w, r)
-	if !ok {
-		return
-	}
-	h.t.RenderHTTP(w, r, "user-apps-content", data)
 }
 
 func (h *handler) buildUserAppsData(w http.ResponseWriter, r *http.Request) (map[string]any, bool) {
@@ -344,7 +299,7 @@ func (h *handler) updateUserApps(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	http.Redirect(w, r, "/settings/", http.StatusSeeOther)
+	htmx.Redirect(w, r, "/settings/")
 }
 
 // API key handlers
@@ -384,7 +339,7 @@ func (h *handler) regenerateAPIKey(w http.ResponseWriter, r *http.Request) {
 	}
 
 	slog.Info("API key regenerated")
-	http.Redirect(w, r, "/settings/", http.StatusSeeOther)
+	htmx.Redirect(w, r, "/settings/")
 }
 
 // User API key handlers (LLM compatibility)
@@ -408,7 +363,7 @@ func (h *handler) createUserAPIKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	http.Redirect(w, r, "/settings/", http.StatusSeeOther)
+	htmx.Redirect(w, r, "/settings/")
 }
 
 func (h *handler) deleteUserAPIKey(w http.ResponseWriter, r *http.Request) {
@@ -451,34 +406,10 @@ func (h *handler) deleteUserAPIKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	http.Redirect(w, r, "/settings/", http.StatusSeeOther)
+	htmx.Redirect(w, r, "/settings/")
 }
 
 // Notifier handlers
-
-func (h *handler) listNotifiers(w http.ResponseWriter, r *http.Request) {
-	user, err := h.requireAuthenticatedUser(w, r)
-	if err != nil {
-		return
-	}
-
-	var notifiers []db.Notifier
-	if user.IsAdmin {
-		notifiers, err = h.notifyService.ListNotifiers(r.Context())
-	} else {
-		notifiers, err = h.notifyService.ListNotifiersByUser(r.Context(), user.ID)
-	}
-	if err != nil {
-		h.t.RenderError(w, r, "Error", "Failed to list notifiers", http.StatusInternalServerError)
-		return
-	}
-
-	data := map[string]any{
-		"Notifiers": notifiers,
-	}
-
-	h.t.RenderHTTP(w, r, "notifiers-list", data)
-}
 
 func (h *handler) createNotifier(w http.ResponseWriter, r *http.Request) {
 	user, err := h.requireAuthenticatedUser(w, r)
@@ -527,141 +458,7 @@ func (h *handler) createNotifier(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	http.Redirect(w, r, "/settings/", http.StatusSeeOther)
-}
-
-func (h *handler) getNotifier(w http.ResponseWriter, r *http.Request) {
-	data, ok := h.buildNotifierData(w, r)
-	if !ok {
-		return
-	}
-	h.t.RenderHTTP(w, r, "notifier-edit", data)
-}
-
-func (h *handler) getNotifierEntries(w http.ResponseWriter, r *http.Request) {
-	data, ok := h.buildNotifierData(w, r)
-	if !ok {
-		return
-	}
-	h.t.RenderHTTP(w, r, "notifier-edit-content", data)
-}
-
-func (h *handler) buildNotifierData(w http.ResponseWriter, r *http.Request) (map[string]any, bool) {
-	user, err := h.requireAuthenticatedUser(w, r)
-	if err != nil {
-		return nil, false
-	}
-
-	idStr := r.PathValue("id")
-	id, err := strconv.ParseInt(idStr, 10, 64)
-	if err != nil {
-		http.Error(w, "Invalid notifier ID", http.StatusBadRequest)
-		return nil, false
-	}
-
-	notifier, err := h.notifyService.GetNotifierDB(r.Context(), id)
-	if err != nil {
-		h.t.RenderError(w, r, "Error", "Notifier not found", http.StatusNotFound)
-		return nil, false
-	}
-
-	// Check ownership (admins can access any, others only their own)
-	if !h.permissions.CanManageNotifier(user, notifier.UserID) {
-		h.t.RenderError(w, r, "Forbidden", "You don't have access to this notifier", http.StatusForbidden)
-		return nil, false
-	}
-
-	subscriptions, err := h.notifyService.GetNotifierApps(r.Context(), id)
-	if err != nil {
-		h.t.RenderError(w, r, "Error", "Failed to get notifier subscriptions", http.StatusInternalServerError)
-		return nil, false
-	}
-
-	// Get available apps based on user access
-	allApps, err := h.getAvailableApps(r.Context(), user)
-	if err != nil {
-		h.t.RenderError(w, r, "Error", "Failed to list apps", http.StatusInternalServerError)
-		return nil, false
-	}
-
-	// Build subscription map with "collector:app" keys for display
-	subscriptionMap := make(map[string]bool)
-	for _, sub := range subscriptions {
-		key := sub.CollectorName + ":" + sub.AppName
-		subscriptionMap[key] = true
-	}
-
-	data := map[string]any{
-		"Title":         "Edit Notifier - Tracer",
-		"Notifier":      notifier,
-		"Subscriptions": subscriptionMap,
-		"AllApps":       allApps,
-		"IsAdmin":       user.IsAdmin,
-	}
-
-	return data, true
-}
-
-func (h *handler) updateNotifier(w http.ResponseWriter, r *http.Request) {
-	user, err := h.requireAuthenticatedUser(w, r)
-	if err != nil {
-		return
-	}
-
-	idStr := r.PathValue("id")
-	id, err := strconv.ParseInt(idStr, 10, 64)
-	if err != nil {
-		http.Error(w, "Invalid notifier ID", http.StatusBadRequest)
-		return
-	}
-
-	notifier, err := h.notifyService.GetNotifierDB(r.Context(), id)
-	if err != nil {
-		http.Error(w, "Notifier not found", http.StatusNotFound)
-		return
-	}
-
-	// Check ownership
-	if !h.permissions.CanManageNotifier(user, notifier.UserID) {
-		http.Error(w, "Forbidden", http.StatusForbidden)
-		return
-	}
-
-	name := r.FormValue("name")
-	if name == "" {
-		name = notifier.Name
-	}
-
-	var configJSON string
-	switch notifier.Type {
-	case "telegram":
-		token := r.FormValue("telegram_token")
-		chatIDStr := r.FormValue("telegram_chat_id")
-		chatID, _ := strconv.ParseInt(chatIDStr, 10, 64)
-
-		if token == "" || chatID == 0 {
-			http.Error(w, "Telegram token and chat ID required", http.StatusBadRequest)
-			return
-		}
-
-		cfg := notify.TelegramConfig{Token: token, ChatID: chatID}
-		cfgBytes, _ := json.Marshal(cfg)
-		configJSON = string(cfgBytes)
-	default:
-		configJSON = notifier.Config
-	}
-
-	enabled := notifier.Enabled == 1
-
-	if err := h.notifyService.UpdateNotifier(r.Context(), id, name, notifier.Type, configJSON, enabled); err != nil {
-		slog.Error("Failed to update notifier", "error", err)
-		http.Error(w, "Failed to update notifier", http.StatusInternalServerError)
-		return
-	}
-
-	h.notifyService.RegisterNotifierWithUser(r.Context(), id, user)
-
-	http.Redirect(w, r, "/settings/", http.StatusSeeOther)
+	htmx.Redirect(w, r, "/settings/")
 }
 
 func (h *handler) deleteNotifier(w http.ResponseWriter, r *http.Request) {
@@ -695,7 +492,7 @@ func (h *handler) deleteNotifier(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	http.Redirect(w, r, "/settings/", http.StatusSeeOther)
+	htmx.Redirect(w, r, "/settings/")
 }
 
 func (h *handler) toggleNotifier(w http.ResponseWriter, r *http.Request) {
@@ -735,7 +532,7 @@ func (h *handler) toggleNotifier(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	http.Redirect(w, r, "/settings/", http.StatusSeeOther)
+	htmx.Redirect(w, r, "/settings/")
 }
 
 func (h *handler) getNotifierApps(w http.ResponseWriter, r *http.Request) {
@@ -744,14 +541,6 @@ func (h *handler) getNotifierApps(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.t.RenderHTTP(w, r, "notifier-apps", data)
-}
-
-func (h *handler) getNotifierAppsEntries(w http.ResponseWriter, r *http.Request) {
-	data, ok := h.buildNotifierAppsData(w, r)
-	if !ok {
-		return
-	}
-	h.t.RenderHTTP(w, r, "notifier-apps-content", data)
 }
 
 func (h *handler) buildNotifierAppsData(w http.ResponseWriter, r *http.Request) (map[string]any, bool) {
@@ -938,7 +727,7 @@ func (h *handler) updateNotifierApps(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	http.Redirect(w, r, "/settings/", http.StatusSeeOther)
+	htmx.Redirect(w, r, "/settings/")
 }
 
 // listAllApps returns all unique app names across all collectors
@@ -966,33 +755,3 @@ func (h *handler) listAllApps(ctx context.Context) ([]string, error) {
 	return result, nil
 }
 
-// getAvailableApps returns apps available to a user (all apps for admins, user's apps for others)
-func (h *handler) getAvailableApps(ctx context.Context, user sharedtypes.User) ([]string, error) {
-	allApps, err := h.listAllApps(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	if user.IsAdmin {
-		return allApps, nil
-	}
-
-	// Non-admins only see their allowed apps
-	userApps, err := h.userService.GetApps(ctx, user.ID)
-	if err != nil {
-		return nil, err
-	}
-
-	userAppMap := make(map[string]bool)
-	for _, app := range userApps {
-		userAppMap[app] = true
-	}
-
-	var filtered []string
-	for _, app := range allApps {
-		if userAppMap[app] {
-			filtered = append(filtered, app)
-		}
-	}
-	return filtered, nil
-}
