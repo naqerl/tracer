@@ -10,6 +10,7 @@
     <div class="max-w-5xl mx-auto p-6">
         {{template "settings-content" .}}
     </div>
+    {{template "markdown-checkbox-script" .}}
 </body>
 </html>
 {{end}}
@@ -104,27 +105,10 @@
                 {{template "input-text" dict "Type" "password" "ID" "password" "Name" "password" "Placeholder" "Password" "Required" true}}
             </div>
         </div>
-        <div class="mb-4">
-            <input type="hidden" name="is_admin" id="is_admin_value" value="">
-            <button type="button" id="is_admin_toggle" class="text-base text-fg-secondary hover:text-fg transition-colors font-mono" onclick="toggleAdminCheckbox()">
-                [ ] Admin
-            </button>
+        {{template "markdown-checkbox" dict "ID" "is_admin" "Name" "is_admin" "Label" "Admin" "Checked" false "Indent" 0}}
+        <div class="mt-4">
+            <button type="submit" class="text-sm text-fg border border-fg px-4 py-2 hover:bg-fg hover:text-bg transition-colors">Add User</button>
         </div>
-        <button type="submit" class="text-sm text-fg border border-fg px-4 py-2 hover:bg-fg hover:text-bg transition-colors">Add User</button>
-        <script>
-            function toggleAdminCheckbox() {
-                const valueInput = document.getElementById('is_admin_value');
-                const toggleBtn = document.getElementById('is_admin_toggle');
-                const isChecked = valueInput.value === 'on';
-                if (isChecked) {
-                    valueInput.value = '';
-                    toggleBtn.textContent = '[ ] Admin';
-                } else {
-                    valueInput.value = 'on';
-                    toggleBtn.textContent = '[x] Admin';
-                }
-            }
-        </script>
     </form>
 
     {{if .Users}}
