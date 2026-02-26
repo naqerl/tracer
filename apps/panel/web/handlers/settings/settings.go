@@ -3,6 +3,7 @@ package settings
 import (
 	"context"
 	"embed"
+	"encoding/json"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -465,14 +466,8 @@ func (h *handler) createNotifier(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Build request based on type
-	req := notify.AddNotifierRequest{
-		UserID:      user.ID,
-		Name:        name,
-		Type:        notifierType,
-		InitialApps: []string{}, // No apps initially
-	}
-
+	// Build config JSON based on type
+	var configJSON string
 	switch notifierType {
 	case "telegram":
 		token := r.FormValue("telegram_token")
@@ -484,11 +479,30 @@ func (h *handler) createNotifier(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		req.Token = token
-		req.ChatID = chatID
+		cfg := struct {
+			Token  string `json:"token"`
+			ChatID int64  `json:"chat_id"`
+		}{
+			Token:  token,
+			ChatID: chatID,
+		}
+		cfgBytes, err := json.Marshal(cfg)
+		if err != nil {
+			slog.Error("Failed to marshal telegram config", "error", err)
+			http.Error(w, "Failed to process config", http.StatusInternalServerError)
+			return
+		}
+		configJSON = string(cfgBytes)
 	default:
 		http.Error(w, "Unknown notifier type", http.StatusBadRequest)
 		return
+	}
+
+	req := notify.AddNotifierRequest{
+		UserID: user.ID,
+		Name:   name,
+		Type:   notifierType,
+		Config: configJSON,
 	}
 
 	// Create notifier through service (handles DB, welcome notification, registration)
