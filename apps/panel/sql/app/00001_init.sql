@@ -21,6 +21,7 @@ CREATE INDEX IF NOT EXISTS idx_logs_trace_id ON logs(trace_id) WHERE trace_id !=
 CREATE INDEX IF NOT EXISTS idx_logs_level ON logs(level);
 CREATE INDEX IF NOT EXISTS idx_logs_created_at ON logs(created_at);
 CREATE INDEX IF NOT EXISTS idx_logs_group_id ON logs(group_id);
+CREATE INDEX IF NOT EXISTS idx_logs_group_id_created_at ON logs(group_id, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS lifecycle_events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
