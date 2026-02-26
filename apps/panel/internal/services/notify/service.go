@@ -125,9 +125,17 @@ func (s *Service) GetSetup(ctx context.Context, user sharedtypes.User, notifierI
 		return nil, ErrAccessDenied
 	}
 
-	subscriptions, err := s.getApps(ctx, notifierID)
+	rows, err := queries.GetNotifierSubscriptions(ctx, notifierID)
 	if err != nil {
 		return nil, fmt.Errorf("get notifier apps: %w", err)
+	}
+
+	var subscriptions []NotifierAppSubscription
+	for _, row := range rows {
+		subscriptions = append(subscriptions, NotifierAppSubscription{
+			AppName:       row.AppName,
+			CollectorName: row.CollectorName,
+		})
 	}
 
 	return &NotifierSetup{
@@ -226,28 +234,6 @@ func (s *Service) List(ctx context.Context, user sharedtypes.User) ([]db.Notifie
 
 // Private methods
 
-// getApps returns app subscriptions for a notifier.
-func (s *Service) getApps(ctx context.Context, notifierID int64) ([]NotifierAppSubscription, error) {
-	rows, err := s.db.QueryContext(ctx,
-		"SELECT app_name, collector_name FROM notifier_app WHERE notifier_id = ?",
-		notifierID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var subscriptions []NotifierAppSubscription
-	for rows.Next() {
-		var sub NotifierAppSubscription
-		if err := rows.Scan(&sub.AppName, &sub.CollectorName); err != nil {
-			return nil, err
-		}
-		subscriptions = append(subscriptions, sub)
-	}
-
-	return subscriptions, rows.Err()
-}
-
 // setApps sets all app subscriptions for a notifier (replaces existing).
 func (s *Service) setApps(ctx context.Context, notifierID int64, subscriptions []NotifierAppSubscription) error {
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -256,8 +242,9 @@ func (s *Service) setApps(ctx context.Context, notifierID int64, subscriptions [
 	}
 	defer tx.Rollback()
 
-	_, err = tx.ExecContext(ctx, "DELETE FROM notifier_app WHERE notifier_id = ?", notifierID)
-	if err != nil {
+	queries := db.New(tx)
+
+	if err := queries.RemoveAllNotifierApps(ctx, notifierID); err != nil {
 		return fmt.Errorf("delete old apps: %w", err)
 	}
 
@@ -269,10 +256,11 @@ func (s *Service) setApps(ctx context.Context, notifierID int64, subscriptions [
 			return fmt.Errorf("collector_name cannot be empty (use '*' for wildcard)")
 		}
 
-		_, err = tx.ExecContext(ctx,
-			"INSERT INTO notifier_app (notifier_id, app_name, collector_name) VALUES (?, ?, ?)",
-			notifierID, sub.AppName, sub.CollectorName)
-		if err != nil {
+		if err := queries.AddNotifierSubscription(ctx, db.AddNotifierSubscriptionParams{
+			NotifierID:    notifierID,
+			AppName:       sub.AppName,
+			CollectorName: sub.CollectorName,
+		}); err != nil {
 			return fmt.Errorf("insert app: %w", err)
 		}
 	}

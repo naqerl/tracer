@@ -24,6 +24,22 @@ func (q *Queries) AddNotifierApp(ctx context.Context, arg AddNotifierAppParams) 
 	return err
 }
 
+const addNotifierSubscription = `-- name: AddNotifierSubscription :exec
+INSERT INTO notifier_app (notifier_id, app_name, collector_name)
+VALUES (?, ?, ?)
+`
+
+type AddNotifierSubscriptionParams struct {
+	NotifierID    int64
+	AppName       string
+	CollectorName string
+}
+
+func (q *Queries) AddNotifierSubscription(ctx context.Context, arg AddNotifierSubscriptionParams) error {
+	_, err := q.db.ExecContext(ctx, addNotifierSubscription, arg.NotifierID, arg.AppName, arg.CollectorName)
+	return err
+}
+
 const createNotifier = `-- name: CreateNotifier :one
 
 INSERT INTO notifier (user_id, name, type, config, enabled)
@@ -248,6 +264,40 @@ func (q *Queries) GetNotifierByName(ctx context.Context, name string) (Notifier,
 		&i.CreatedAt,
 	)
 	return i, err
+}
+
+const getNotifierSubscriptions = `-- name: GetNotifierSubscriptions :many
+SELECT app_name, collector_name FROM notifier_app
+WHERE notifier_id = ?
+`
+
+type GetNotifierSubscriptionsRow struct {
+	AppName       string
+	CollectorName string
+}
+
+// Returns all app subscriptions (with collector) for a notifier
+func (q *Queries) GetNotifierSubscriptions(ctx context.Context, notifierID int64) ([]GetNotifierSubscriptionsRow, error) {
+	rows, err := q.db.QueryContext(ctx, getNotifierSubscriptions, notifierID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetNotifierSubscriptionsRow
+	for rows.Next() {
+		var i GetNotifierSubscriptionsRow
+		if err := rows.Scan(&i.AppName, &i.CollectorName); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const getNotifiersForApp = `-- name: GetNotifiersForApp :many

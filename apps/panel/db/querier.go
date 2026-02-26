@@ -12,6 +12,7 @@ import (
 
 type Querier interface {
 	AddNotifierApp(ctx context.Context, arg AddNotifierAppParams) error
+	AddNotifierSubscription(ctx context.Context, arg AddNotifierSubscriptionParams) error
 	AddUserApp(ctx context.Context, arg AddUserAppParams) error
 	CountByLevel(ctx context.Context, createdAt time.Time) ([]CountByLevelRow, error)
 	// Count total log groups
@@ -62,6 +63,8 @@ type Querier interface {
 	// Notifier app mapping queries
 	GetNotifierApps(ctx context.Context, notifierID int64) ([]string, error)
 	GetNotifierByName(ctx context.Context, name string) (Notifier, error)
+	// Returns all app subscriptions (with collector) for a notifier
+	GetNotifierSubscriptions(ctx context.Context, notifierID int64) ([]GetNotifierSubscriptionsRow, error)
 	GetNotifiersForApp(ctx context.Context, appName string) ([]Notifier, error)
 	// Get existing log group by message and level, or create if doesn't exist
 	GetOrCreateLogGroup(ctx context.Context, arg GetOrCreateLogGroupParams) (LogGroup, error)

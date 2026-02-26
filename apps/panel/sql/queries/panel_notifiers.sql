@@ -49,9 +49,18 @@ SELECT DISTINCT app_name FROM notifier_app
 WHERE notifier_id = ?
 ORDER BY app_name;
 
+-- name: GetNotifierSubscriptions :many
+-- Returns all app subscriptions (with collector) for a notifier
+SELECT app_name, collector_name FROM notifier_app
+WHERE notifier_id = ?;
+
 -- name: AddNotifierApp :exec
 INSERT OR IGNORE INTO notifier_app (notifier_id, app_name, collector_name)
 VALUES (?, ?, '*');
+
+-- name: AddNotifierSubscription :exec
+INSERT INTO notifier_app (notifier_id, app_name, collector_name)
+VALUES (?, ?, ?);
 
 -- name: RemoveNotifierApp :exec
 DELETE FROM notifier_app
