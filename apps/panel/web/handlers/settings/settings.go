@@ -4,6 +4,7 @@ import (
 	"context"
 	"embed"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -13,7 +14,6 @@ import (
 	"tracer/apps/panel/internal/services/auth"
 	"tracer/apps/panel/internal/services/ingest"
 	"tracer/apps/panel/internal/services/notify"
-	"tracer/apps/panel/internal/services/permissions"
 	"tracer/apps/panel/internal/services/user"
 	"tracer/apps/panel/web/htmx"
 	authmw "tracer/apps/panel/web/middleware/auth"
@@ -31,10 +31,9 @@ type handler struct {
 	ingestService *ingest.Service
 	dbManager     *dbmanager.Manager
 	notifyService *notify.Service
-	permissions   *permissions.Service
 }
 
-func InitMux(authService *auth.Service, userService *user.Service, ingestService *ingest.Service, dbManager *dbmanager.Manager, notifyService *notify.Service, permissions *permissions.Service) *http.ServeMux {
+func InitMux(authService *auth.Service, userService *user.Service, ingestService *ingest.Service, dbManager *dbmanager.Manager, notifyService *notify.Service) *http.ServeMux {
 	m := http.NewServeMux()
 	h := handler{
 		t:             templates.New(views),
@@ -43,7 +42,6 @@ func InitMux(authService *auth.Service, userService *user.Service, ingestService
 		ingestService: ingestService,
 		dbManager:     dbManager,
 		notifyService: notifyService,
-		permissions:   permissions,
 	}
 
 	// Users management
@@ -528,21 +526,16 @@ func (h *handler) deleteNotifier(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	notifier, err := h.notifyService.GetNotifierDB(r.Context(), id)
-	if err != nil {
-		http.Error(w, "Notifier not found", http.StatusNotFound)
-		return
-	}
-
-	// Check ownership
-	if !h.permissions.CanManageNotifier(user, notifier.UserID) {
-		http.Error(w, "Forbidden", http.StatusForbidden)
-		return
-	}
-
-	if err := h.notifyService.DeleteNotifier(r.Context(), id); err != nil {
-		slog.Error("Failed to delete notifier", "error", err)
-		http.Error(w, "Failed to delete notifier", http.StatusInternalServerError)
+	if err := h.notifyService.DeleteNotifier(r.Context(), user, id); err != nil {
+		switch {
+		case errors.Is(err, notify.ErrNotifierNotFound):
+			http.Error(w, "Notifier not found", http.StatusNotFound)
+		case errors.Is(err, notify.ErrAccessDenied):
+			http.Error(w, "Forbidden", http.StatusForbidden)
+		default:
+			slog.Error("Failed to delete notifier", "error", err)
+			http.Error(w, "Failed to delete notifier", http.StatusInternalServerError)
+		}
 		return
 	}
 
@@ -562,27 +555,31 @@ func (h *handler) toggleNotifier(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	notifier, err := h.notifyService.GetNotifierDB(r.Context(), id)
+	// Get current state to determine enable/disable
+	setup, err := h.notifyService.GetSetup(r.Context(), user, id)
 	if err != nil {
-		http.Error(w, "Notifier not found", http.StatusNotFound)
+		switch {
+		case errors.Is(err, notify.ErrNotifierNotFound):
+			http.Error(w, "Notifier not found", http.StatusNotFound)
+		case errors.Is(err, notify.ErrAccessDenied):
+			http.Error(w, "Forbidden", http.StatusForbidden)
+		default:
+			slog.Error("Failed to get notifier", "error", err)
+			http.Error(w, "Failed to toggle notifier", http.StatusInternalServerError)
+		}
 		return
 	}
 
-	// Check ownership
-	if !h.permissions.CanManageNotifier(user, notifier.UserID) {
-		http.Error(w, "Forbidden", http.StatusForbidden)
-		return
-	}
-
-	if notifier.Enabled == 1 {
-		err = h.notifyService.DisableNotifier(r.Context(), id)
-	} else {
-		err = h.notifyService.EnableNotifier(r.Context(), id)
-	}
-
-	if err != nil {
-		slog.Error("Failed to toggle notifier", "error", err)
-		http.Error(w, "Failed to toggle notifier", http.StatusInternalServerError)
+	if err := h.notifyService.ToggleNotifier(r.Context(), user, id, setup.Enabled != 1); err != nil {
+		switch {
+		case errors.Is(err, notify.ErrNotifierNotFound):
+			http.Error(w, "Notifier not found", http.StatusNotFound)
+		case errors.Is(err, notify.ErrAccessDenied):
+			http.Error(w, "Forbidden", http.StatusForbidden)
+		default:
+			slog.Error("Failed to toggle notifier", "error", err)
+			http.Error(w, "Failed to toggle notifier", http.StatusInternalServerError)
+		}
 		return
 	}
 
@@ -610,28 +607,22 @@ func (h *handler) buildNotifierAppsData(w http.ResponseWriter, r *http.Request) 
 		return nil, false
 	}
 
-	notifier, err := h.notifyService.GetNotifierDB(r.Context(), id)
+	setup, err := h.notifyService.GetSetup(r.Context(), user, id)
 	if err != nil {
-		h.t.RenderError(w, r, "Error", "Notifier not found", http.StatusNotFound)
-		return nil, false
-	}
-
-	// Check ownership
-	if !h.permissions.CanManageNotifier(user, notifier.UserID) {
-		h.t.RenderError(w, r, "Forbidden", "You don't have access to this notifier", http.StatusForbidden)
-		return nil, false
-	}
-
-	// Get subscriptions with collector info
-	subscriptions, err := h.notifyService.GetNotifierApps(r.Context(), id)
-	if err != nil {
-		h.t.RenderError(w, r, "Error", "Failed to get notifier subscriptions", http.StatusInternalServerError)
+		switch {
+		case errors.Is(err, notify.ErrNotifierNotFound):
+			h.t.RenderError(w, r, "Error", "Notifier not found", http.StatusNotFound)
+		case errors.Is(err, notify.ErrAccessDenied):
+			h.t.RenderError(w, r, "Forbidden", "You don't have access to this notifier", http.StatusForbidden)
+		default:
+			h.t.RenderError(w, r, "Error", "Failed to get notifier", http.StatusInternalServerError)
+		}
 		return nil, false
 	}
 
 	// Build subscription map with "collector:app" keys
 	subscriptionMap := make(map[string]bool)
-	for _, sub := range subscriptions {
+	for _, sub := range setup.Subscriptions {
 		key := sub.CollectorName + ":" + sub.AppName
 		subscriptionMap[key] = true
 	}
@@ -686,7 +677,7 @@ func (h *handler) buildNotifierAppsData(w http.ResponseWriter, r *http.Request) 
 
 	data := map[string]any{
 		"Title":         "Edit Notifier Apps - Tracer",
-		"Notifier":      notifier,
+		"Notifier":      setup,
 		"NotifierID":    id,
 		"Subscriptions": subscriptionMap, // map[string]bool (key: "collector:app")
 		"CollectorApps": collectorApps,   // map[string][]string
@@ -706,18 +697,6 @@ func (h *handler) updateNotifierApps(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
 		http.Error(w, "Invalid notifier ID", http.StatusBadRequest)
-		return
-	}
-
-	notifier, err := h.notifyService.GetNotifierDB(r.Context(), id)
-	if err != nil {
-		http.Error(w, "Notifier not found", http.StatusNotFound)
-		return
-	}
-
-	// Check ownership
-	if !h.permissions.CanManageNotifier(user, notifier.UserID) {
-		http.Error(w, "Forbidden", http.StatusForbidden)
 		return
 	}
 
@@ -775,9 +754,16 @@ func (h *handler) updateNotifierApps(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Update subscriptions through service (handles DB, subscription notifications, re-registration)
-	if err := h.notifyService.UpdateNotifierApps(r.Context(), id, user.ID, subscriptions); err != nil {
-		slog.Error("Failed to update notifier subscriptions", "error", err)
-		http.Error(w, "Failed to update notifier subscriptions", http.StatusInternalServerError)
+	if err := h.notifyService.UpdateNotifierApps(r.Context(), user, id, subscriptions); err != nil {
+		switch {
+		case errors.Is(err, notify.ErrNotifierNotFound):
+			http.Error(w, "Notifier not found", http.StatusNotFound)
+		case errors.Is(err, notify.ErrAccessDenied):
+			http.Error(w, "Forbidden", http.StatusForbidden)
+		default:
+			slog.Error("Failed to update notifier subscriptions", "error", err)
+			http.Error(w, "Failed to update notifier subscriptions", http.StatusInternalServerError)
+		}
 		return
 	}
 

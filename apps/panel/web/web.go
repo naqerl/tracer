@@ -28,7 +28,7 @@ func Run(deps Dependencies, port string, sampleRate float64) *http.Server {
 	mux.Handle("/panel/", http.StripPrefix("/panel", panelMux))
 	mux.Handle("/auth/", http.StripPrefix("/auth", authMux))
 	mux.Handle("/llm", llm.InitMux())
-	mux.Handle("/settings/", http.StripPrefix("/settings", settings.InitMux(deps.Auth, deps.User, deps.Ingest, deps.DBManagerx, deps.Notify, permissionService)))
+	mux.Handle("/settings/", http.StripPrefix("/settings", settings.InitMux(deps.Auth, deps.User, deps.Ingest, deps.DBManagerx, deps.Notify)))
 	mux.HandleFunc("GET /login", func(w http.ResponseWriter, r *http.Request) { authMux.ServeHTTP(w, r) })
 	mux.HandleFunc("POST /login", func(w http.ResponseWriter, r *http.Request) { authMux.ServeHTTP(w, r) })
 	mux.HandleFunc("POST /logout", func(w http.ResponseWriter, r *http.Request) { authMux.ServeHTTP(w, r) })
