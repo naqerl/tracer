@@ -38,8 +38,13 @@ func New(fsys fs.FS) Templates {
 		"mulFloat":       mulFloat,
 		"sub":            func(a, b int) int { return a - b },
 		"mul":            func(a, b int) int { return a * b },
-		"default":        func(def, val any) any { if val == nil || val == "" { return def }; return val },
-		"dict":           dict,
+		"default": func(def, val any) any {
+			if val == nil || val == "" {
+				return def
+			}
+			return val
+		},
+		"dict": dict,
 	}
 
 	// Parse shared templates first
