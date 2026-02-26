@@ -1,0 +1,24 @@
+{{define "architecture-diagram"}}
+<script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+<script>mermaid.initialize({startOnLoad:true, theme: 'neutral'});</script>
+<div class="flex justify-center">
+    <div class="mermaid text-black p-4 rounded">
+        %%{init: {"flowchart": {"curve": "linear", "width": 800}}}%%
+        {{template "mermaid-chart"}}
+    </div>
+</div>
+{{end}}
+{{define "mermaid-chart"}}
+graph TD
+  subgraph Collectors
+    CA[Collector A<br/>Log parsing<br/>System stats]
+    CB[Collector B<br/>Log parsing<br/>System stats]
+    CC[Collector C<br/>Log parsing<br/>System stats]
+  end
+  CA -->|WebSocket| Panel
+  CB -->|WebSocket| Panel
+  CC -->|WebSocket| Panel
+  Panel[Panel<br/>Trace grouping<br/>Sampling<br/>Deduplication] --> SQLite[SQLite DBs<br/>Logs & System Stats]
+  Panel --> Notifications[Notifications<br/>Telegram Alerts<br/>Errors, Startups, Resources]
+  Panel --> WebUI[Web UI<br/>Analytics Dashboard<br/>Log Viewer]
+{{end}}

@@ -1,0 +1,92 @@
+{{define "landing-markdown"}}# Tracer
+
+Self-hosted logs and traces without the overhead.
+
+## Get Started
+
+[Get started](#deployment-options)
+
+[GitHub](https://github.com/ai-shift/tracer)
+
+## Why we built Tracer
+
+- We needed per-request context without running a data platform
+- Existing stacks were too heavy for our use cases
+- We wanted instant alerts and predictable storage
+- We wanted full control over our data
+- Tracer is the tool we wanted to run in production ourselves.
+
+## What it does
+
+### Collector
+
+- Ingests JSON, regex-based logs, and journald
+- Extracts Trace ID for request-level context
+- Collects system stats (CPU, RAM, disk)
+- Supports configurable sampling (errors always stored)
+
+### Panel
+
+- Groups logs by Trace ID
+- Stores data per app in SQLite
+- Persists all errors, samples the rest
+- Sends alerts via Telegram
+- Provides a real-time overview of apps and resources
+
+## Architecture
+
+Multiple site collectors ingest log files and journalctl output, funneling structured records into the panel before persisting to SQLite, mirroring raw archives, and alerting Telegram.
+
+```mermaid
+graph TD
+  CollectorA[Collector A] --> Panel[Panel<br/>Trace grouping<br/>deduplication]
+  CollectorB[Collector B] --> Panel
+  CollectorC[Collector C] --> Panel
+  Panel --> SQLite[SQLite DBs]
+  Panel --> RawArchive[Raw Archive<br/>Log files & journalctl]
+  Panel --> Telegram[Telegram Alerts]
+```
+
+### Collectors
+
+Multiple collectors per host ingest JSON, regex, log files, and journalctl tracks over WebSocket.
+
+### Panel
+
+Panel handles trace grouping, deduplication, and mirrored alert delivery.
+
+### Persistence
+
+Data lands in SQLite while raw archives and Telegram alerts stay in sync.
+
+## Deployment Options
+
+### Self-Hosted
+
+- One-line install via curl script
+- Full data ownership
+- No recurring costs
+- Systemd service management
+- Configurable retention and sampling
+- Collector-only mode for distributed setups
+
+### Managed Hosting
+
+Coming Soon
+
+Hosted infrastructure for teams who want the benefits of Tracer without managing their own servers.
+
+## Quick Start
+
+Install Tracer on your server:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/ai-shift/tracer/main/install.sh | sudo bash
+```
+
+## Links
+
+[GitHub](https://github.com/ai-shift/tracer)
+
+Built for developers who value simplicity
+{{end}}
