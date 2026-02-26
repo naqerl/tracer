@@ -133,9 +133,9 @@ func serve(ctx context.Context, cfg config.Panel) error {
 				return
 			case <-ticker.C:
 				tracker.Cleanup(1 * time.Hour)
-                                if err := authService.CleanupExpiredSessions(ctx); err != nil {
+				if err := authService.CleanupExpiredSessions(ctx); err != nil {
 					slog.Error("Failed to cleanup sessions", "error", err)
-				}                                
+				}
 			}
 		}
 	})

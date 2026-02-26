@@ -240,7 +240,6 @@ func (s *Service) Toggle(ctx context.Context, user sharedtypes.User, notifierID 
 	return queries.DisableNotifier(ctx, notifierID)
 }
 
-
 // List returns notifiers for the given user.
 // Admins see all notifiers, non-admins see only their own.
 func (s *Service) List(ctx context.Context, user sharedtypes.User) ([]db.Notifier, error) {
