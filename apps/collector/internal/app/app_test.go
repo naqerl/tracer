@@ -50,7 +50,7 @@ func TestProduce_EmitsLogAndSourceReadError(t *testing.T) {
 	}
 	a := New(src, stubParser{}, lifecycle.Detector{}, "demo-app")
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancel()
 
 	stream := a.Produce(ctx)
@@ -96,7 +96,7 @@ func TestProduce_EmitsLifecycleEventBeforeParsing(t *testing.T) {
 	}
 	a := New(src, failParser{}, detector, "demo-app")
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancel()
 
 	stream := a.Produce(ctx)

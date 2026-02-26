@@ -1,7 +1,6 @@
 package auth
 
 import (
-	"context"
 	"database/sql"
 	"testing"
 
@@ -30,7 +29,7 @@ CREATE TABLE config (
 }
 
 func TestSetAndValidateAPIKey_HashedStorage(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	db := newTestDB(t)
 	t.Cleanup(func() { _ = db.Close() })
 
@@ -60,7 +59,7 @@ func TestSetAndValidateAPIKey_HashedStorage(t *testing.T) {
 }
 
 func TestGetAPIKey_ReturnsMaskedPreviewForHashedKey(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	db := newTestDB(t)
 	t.Cleanup(func() { _ = db.Close() })
 
