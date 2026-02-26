@@ -4,8 +4,7 @@
 <head>
     {{template "head"}}
     <title>{{.Title}}</title>
-    <script src="https://cdn.jsdelivr.net/npm/uplot@1.6.30/dist/uPlot.iife.min.js"></script>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/uplot@1.6.30/dist/uPlot.min.css">
+    
     <style>
         .uplot { margin: 1.5rem 0; touch-action: pan-y pinch-zoom; }
         .stats-table { width: 100%; border-collapse: collapse; margin-top: 2rem; overflow-x: auto; display: block; -webkit-overflow-scrolling: touch; }
@@ -81,6 +80,15 @@
 <!-- Chart Rendering Script -->
 <script>
 (function() {
+    function initCharts() {
+        if (typeof uPlot === 'undefined') {
+            setTimeout(initCharts, 50);
+            return;
+        }
+        renderCharts();
+    }
+    
+    function renderCharts() {
     // Extract data from table
     const rows = document.querySelectorAll('#stats-data tbody tr');
     if (rows.length === 0) return;
@@ -115,14 +123,14 @@
         },
         axes: [
             { 
-                stroke: "var(--fg-secondary, #808080)",
-                grid: { stroke: "var(--bg-secondary, #1E1E1E)", width: 1 },
+                stroke: "#808080",
+                grid: { stroke: "#1E1E1E", width: 1 },
                 size: isMobile ? 40 : 50
             },
             { 
-                stroke: "var(--fg-secondary, #808080)",
+                stroke: "#808080",
                 size: isMobile ? 50 : 60,
-                grid: { stroke: "var(--bg-secondary, #1E1E1E)", width: 1 }
+                grid: { stroke: "#1E1E1E", width: 1 }
             }
         ],
         legend: { show: false },
@@ -144,8 +152,8 @@
             { },
             { 
                 label: "CPU %", 
-                stroke: "var(--fg, #EEEEEE)", 
-                fill: "rgba(128, 128, 128, 0.1)",
+                stroke: "#5C9CF5", 
+                fill: "rgba(92, 156, 245, 0.1)",
                 width: 2
             }
         ],
@@ -166,8 +174,8 @@
             { },
             { 
                 label: "RAM %", 
-                stroke: "var(--fg, #EEEEEE)", 
-                fill: "rgba(128, 128, 128, 0.1)",
+                stroke: "#F5A742", 
+                fill: "rgba(245, 167, 66, 0.1)",
                 width: 2
             }
         ],
@@ -188,8 +196,8 @@
             { },
             { 
                 label: "Free GB", 
-                stroke: "var(--fg, #EEEEEE)", 
-                fill: "rgba(128, 128, 128, 0.1)",
+                stroke: "#22C55E", 
+                fill: "rgba(34, 197, 94, 0.1)",
                 width: 2
             }
         ],
@@ -223,6 +231,9 @@
             });
         }, 150);
     });
+    }
+    
+    initCharts();
 })();
 </script>
 

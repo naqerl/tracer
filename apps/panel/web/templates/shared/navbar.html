@@ -26,10 +26,19 @@
   </form>
   <script>
     (function() {
+      // Priority: URL param > localStorage > default
       const params = new URLSearchParams(window.location.search);
-      const since = params.get('since') || '24h';
+      const urlSince = params.get('since');
+      const storedSince = localStorage.getItem('since');
+      const since = urlSince || storedSince || '24h';
+      
       document.getElementById('since').value = since;
       document.getElementById('since-label').textContent = since;
+      
+      // Save to localStorage if from URL
+      if (urlSince) {
+        localStorage.setItem('since', urlSince);
+      }
       
       // Highlight active nav link
       const path = window.location.pathname;
@@ -44,6 +53,7 @@
     })();
     
     function navbarSelectSince(val) {
+      localStorage.setItem('since', val);
       document.getElementById('since').value = val;
       document.getElementById('since-label').textContent = val;
       window.location.href = window.location.pathname + '?since=' + encodeURIComponent(val);

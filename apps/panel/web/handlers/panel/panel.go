@@ -22,26 +22,11 @@ type handler struct {
 	svc *panelsvc.Service
 }
 
-// TimeRange represents a time range option for the filter
-type TimeRange struct {
-	Val     string
-	Label   string
-	Default bool
-}
-
 // LevelFilter represents a log level filter option
 type LevelFilter struct {
 	Val   string
 	Label string
 	Color string
-}
-
-var timeRanges = []TimeRange{
-	{Val: "1h", Label: "1h"},
-	{Val: "6h", Label: "6h"},
-	{Val: "24h", Label: "24h", Default: true},
-	{Val: "7d", Label: "7d"},
-	{Val: "30d", Label: "30d"},
 }
 
 var levelFilters = []LevelFilter{
@@ -313,7 +298,6 @@ func (h *handler) getLogGroups(w http.ResponseWriter, r *http.Request) {
 		"Since":        r.URL.Query().Get("since"),
 		"Collector":    req.CollectorName,
 		"App":          req.AppName,
-		"TimeRanges":   timeRanges,
 		"LevelFilters": levelFilters,
 	})
 }

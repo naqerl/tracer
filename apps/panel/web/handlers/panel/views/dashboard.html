@@ -54,8 +54,11 @@
     <span class="text-fg-secondary text-xs ml-1">]</span>
     {{end}}
     <span class="text-xs text-fg-secondary mx-1">[</span>
-    <a href="/panel/collectors/{{.Name}}/resources?range=24h" 
-       class="text-xs text-accent hover:underline"
+    <a hx-get="/panel/collectors/{{.Name}}/resources"
+       hx-include="[name='since']"
+       hx-target="body"
+       hx-push-url="true"
+       class="text-xs text-accent hover:underline cursor-pointer"
        title="View resource usage history">
       resources
     </a>
