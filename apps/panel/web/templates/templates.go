@@ -37,6 +37,7 @@ func New(fsys fs.FS) Templates {
 		"divFloat":       divFloat,
 		"mulFloat":       mulFloat,
 		"sub":            func(a, b int) int { return a - b },
+		"dict":           dict,
 	}
 
 	// Parse shared templates first
@@ -184,6 +185,21 @@ func divFloat(a, b float64) float64 {
 
 func mulFloat(a, b float64) float64 {
 	return a * b
+}
+
+func dict(values ...any) map[string]any {
+	if len(values)%2 != 0 {
+		return nil
+	}
+	d := make(map[string]any, len(values)/2)
+	for i := 0; i < len(values); i += 2 {
+		key, ok := values[i].(string)
+		if !ok {
+			return nil
+		}
+		d[key] = values[i+1]
+	}
+	return d
 }
 
 func parseContext(v any) map[string]string {

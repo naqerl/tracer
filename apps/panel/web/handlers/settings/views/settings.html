@@ -6,6 +6,7 @@
     <title>{{.Title}}</title>
 </head>
 <body>
+    {{template "navbar" .}}
     <div class="max-w-5xl mx-auto p-6">
         {{template "settings-content" .}}
     </div>
@@ -13,19 +14,22 @@
 </html>
 {{end}}
 
+{{define "input-text"}}
+<input type="{{.Type}}" id="{{.ID}}" name="{{.Name}}" placeholder="{{.Placeholder}}" {{if .Required}}required{{end}} 
+       class="w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-fg placeholder:text-fg-secondary/50">
+{{end}}
+
 {{define "settings-content"}}
 <!-- Account Section -->
-<div class="bg-bg-secondary p-5 mb-6">
-    <h2 class="text-fg-secondary text-sm font-medium mb-4">Account</h2>
+<div class="mb-8">
+    <h2 class="text-lg font-medium mb-4">Account</h2>
     <div class="flex items-center justify-between">
         <div>
-            <p class="text-fg mb-1">{{.CurrentUser.Username}}</p>
-            <p class="text-fg-secondary text-sm">
-                {{if .IsAdmin}}Administrator{{else}}User{{end}}
-            </p>
+            <p class="text-fg">{{.CurrentUser.Username}}</p>
+            <p class="text-fg-secondary text-sm">{{if .IsAdmin}}Administrator{{else}}User{{end}}</p>
         </div>
         <form action="/logout" method="POST">
-            <button type="submit" class="px-4 py-2 bg-red-600 hover:bg-red-700 text-fg text-sm transition-colors flex items-center gap-2">
+            <button type="submit" class="text-fg-secondary hover:text-fg transition-colors flex items-center gap-2 text-sm">
                 {{template "icon-logout"}}
                 Logout
             </button>
@@ -34,217 +38,184 @@
 </div>
 
 <!-- LLM API Keys Section -->
-<div class="bg-bg-secondary p-5 mb-6">
-    <h2 class="text-fg-secondary text-sm font-medium mb-2">LLM API Keys</h2>
-    <p class="text-fg-secondary text-sm mb-4">
-        Generate API keys to access logs via LLM tools. Keys inherit your app access permissions.
-    </p>
+<div class="mb-8">
+    <h2 class="text-lg font-medium mb-4">LLM API Keys</h2>
+    <p class="text-fg-secondary text-sm mb-4">Generate API keys to access logs via LLM tools.</p>
 
     <form action="/settings/api-keys" method="POST" class="mb-6">
-        <div class="flex gap-3 items-end">
-            <div>
-                <label for="key_name" class="block text-fg-secondary text-sm mb-1">Key Name</label>
-                <input type="text" id="key_name" name="name" placeholder="Claude Desktop" required class="px-3 py-2 bg-bg border border-bg focus:border-accent focus:outline-none text-fg">
-            </div>
-            <button type="submit" class="px-4 py-2 bg-accent hover:bg-accent/80 text-fg text-sm transition-colors">Generate Key</button>
+        <div class="mb-3 max-w-md">
+            {{template "input-text" dict "Type" "text" "ID" "key_name" "Name" "name" "Placeholder" "Key name" "Required" true}}
         </div>
+        <button type="submit" class="text-fg border border-fg px-4 py-2 hover:bg-fg hover:text-bg transition-colors text-sm">Generate Key</button>
     </form>
 
     {{if .UserAPIKeys}}
-    <div class="overflow-x-auto">
-        <table class="w-full">
-            <thead>
-                <tr class="border-b border-bg">
-                    <th class="px-3 py-2 text-left text-fg-secondary text-sm font-medium">Name</th>
-                    <th class="px-3 py-2 text-left text-fg-secondary text-sm font-medium">Key</th>
-                    <th class="px-3 py-2 text-left text-fg-secondary text-sm font-medium">Created</th>
-                    <th class="px-3 py-2 text-left text-fg-secondary text-sm font-medium">Last Used</th>
-                    <th class="px-3 py-2 text-left text-fg-secondary text-sm font-medium">Actions</th>
-                </tr>
-            </thead>
-            <tbody>
-                {{range .UserAPIKeys}}
-                <tr class="border-b border-bg">
-                    <td class="px-3 py-2">{{.Name}}</td>
-                    <td class="px-3 py-2">
-                        <code class="text-xs font-mono text-green-400 break-all">{{.ApiKey}}</code>
-                    </td>
-                    <td class="px-3 py-2 text-fg-secondary text-sm">{{formatDateTime .CreatedAt}}</td>
-                    <td class="px-3 py-2 text-fg-secondary text-sm">
-                        {{if .LastUsedAt.Valid}}{{formatDateTime .LastUsedAt.Time}}{{else}}Never{{end}}
-                    </td>
-                    <td class="px-3 py-2">
-                        <form action="/settings/api-keys/{{.ID}}/delete" method="POST" onsubmit="return confirm('Delete API key {{.Name}}?');">
-                            <button type="submit" class="px-2 py-1 bg-red-600 hover:bg-red-700 text-fg text-xs transition-colors">Delete</button>
-                        </form>
-                    </td>
-                </tr>
-                {{end}}
-            </tbody>
-        </table>
-    </div>
+    <table class="w-full">
+        <thead class="border-b border-bg-secondary">
+            <tr class="text-left text-fg-secondary text-sm">
+                <th class="pb-2 font-medium">Name</th>
+                <th class="pb-2 font-medium">Key</th>
+                <th class="pb-2 font-medium">Created</th>
+                <th class="pb-2 font-medium">Last Used</th>
+                <th class="pb-2 font-medium"></th>
+            </tr>
+        </thead>
+        <tbody>
+            {{range .UserAPIKeys}}
+            <tr class="group opacity-60 hover:opacity-100 transition-opacity duration-700 hover:duration-150 border-b border-bg-secondary/50">
+                <td class="py-3">{{.Name}}</td>
+                <td class="py-3"><code class="text-xs font-mono">{{.ApiKey}}</code></td>
+                <td class="py-3 text-fg-secondary text-sm">{{formatDateTime .CreatedAt}}</td>
+                <td class="py-3 text-fg-secondary text-sm">{{if .LastUsedAt.Valid}}{{formatDateTime .LastUsedAt.Time}}{{else}}Never{{end}}</td>
+                <td class="py-3 text-right">
+                    <form action="/settings/api-keys/{{.ID}}/delete" method="POST" onsubmit="return confirm('Delete API key {{.Name}}?');" class="inline">
+                        <button type="submit" class="text-fg-secondary hover:text-fg transition-colors text-sm">Delete</button>
+                    </form>
+                </td>
+            </tr>
+            {{end}}
+        </tbody>
+    </table>
     {{else}}
-    <p class="text-center text-fg-secondary py-6">No API keys generated yet.</p>
+    <p class="text-fg-secondary py-6">No API keys generated yet.</p>
     {{end}}
 </div>
 
 {{if .IsAdmin}}
 <!-- API Key Section -->
-<div class="bg-bg-secondary p-5 mb-6">
-    <h2 class="text-fg-secondary text-sm font-medium mb-3">Collector API Key</h2>
-    <div class="bg-bg border border-bg-secondary p-3">
-        <div class="font-mono text-green-400 break-all mb-2">{{.APIKey}}</div>
+<div class="mb-8">
+    <h2 class="text-lg font-medium mb-4">Collector API Key</h2>
+    <div class="mb-3">
+        <code class="text-sm font-mono block mb-2">{{.APIKey}}</code>
         <p class="text-xs text-fg-secondary mb-3">Use this key in your collector configuration to authenticate with the panel.</p>
-        <form action="/settings/api-key/regenerate" method="POST" onsubmit="return confirm('Are you sure? This will invalidate the current API key.');">
-            <button type="submit" class="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-fg text-sm transition-colors">Regenerate Key</button>
+        <form action="/settings/api-key/regenerate" method="POST" onsubmit="return confirm('Regenerate API key? This will invalidate the current key.');">
+            <button type="submit" class="text-fg-secondary hover:text-fg transition-colors text-sm">Regenerate Key</button>
         </form>
     </div>
 </div>
 
 <!-- Users Section -->
-<div class="bg-bg-secondary p-5 mb-6">
-    <h2 class="text-fg-secondary text-sm font-medium mb-4">Users</h2>
+<div class="mb-8">
+    <h2 class="text-lg font-medium mb-4">Users</h2>
     
     <form action="/settings/users" method="POST" class="mb-6">
-        <div class="flex flex-wrap gap-3 items-end">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4 max-w-2xl">
             <div>
-                <label for="username" class="block text-fg-secondary text-sm mb-1">Username</label>
-                <input type="text" id="username" name="username" required class="px-3 py-2 bg-bg border border-bg focus:border-accent focus:outline-none text-fg">
+                {{template "input-text" dict "Type" "text" "ID" "username" "Name" "username" "Placeholder" "Username" "Required" true}}
             </div>
             <div>
-                <label for="password" class="block text-fg-secondary text-sm mb-1">Password</label>
-                <input type="password" id="password" name="password" required class="px-3 py-2 bg-bg border border-bg focus:border-accent focus:outline-none text-fg">
+                {{template "input-text" dict "Type" "password" "ID" "password" "Name" "password" "Placeholder" "Password" "Required" true}}
             </div>
-            <label class="flex items-center gap-2 text-fg-secondary text-sm cursor-pointer">
-                <input type="checkbox" name="is_admin" class="w-4 h-4">
-                Admin
-            </label>
-            <button type="submit" class="px-4 py-2 bg-accent hover:bg-accent/80 text-fg text-sm transition-colors">Add User</button>
         </div>
+        <div class="flex items-center gap-4 mb-4">
+            <label class="flex items-center gap-2 text-fg-secondary text-sm cursor-pointer">
+                <input type="checkbox" name="is_admin" class="w-4 h-4 accent-fg">
+                Administrator
+            </label>
+        </div>
+        <button type="submit" class="text-fg border border-fg px-4 py-2 hover:bg-fg hover:text-bg transition-colors text-sm">Add User</button>
     </form>
 
     {{if .Users}}
-    <div class="overflow-x-auto">
-        <table class="w-full">
-            <thead>
-                <tr class="border-b border-bg">
-                    <th class="px-3 py-2 text-left text-fg-secondary text-sm font-medium">Username</th>
-                    <th class="px-3 py-2 text-left text-fg-secondary text-sm font-medium">Role</th>
-                    <th class="px-3 py-2 text-left text-fg-secondary text-sm font-medium">Created</th>
-                    <th class="px-3 py-2 text-left text-fg-secondary text-sm font-medium">Actions</th>
-                </tr>
-            </thead>
-            <tbody>
-                {{range .Users}}
-                <tr class="border-b border-bg">
-                    <td class="px-3 py-2">{{.Username}}</td>
-                    <td class="px-3 py-2">
-                        {{if eq .IsAdmin 1}}
-                        <span class="px-2 py-0.5 text-xs bg-purple-600 text-white">Admin</span>
-                        {{else}}
-                        <span class="px-2 py-0.5 text-xs bg-bg text-fg-secondary">User</span>
+    <table class="w-full">
+        <thead class="border-b border-bg-secondary">
+            <tr class="text-left text-fg-secondary text-sm">
+                <th class="pb-2 font-medium">Username</th>
+                <th class="pb-2 font-medium">Role</th>
+                <th class="pb-2 font-medium">Created</th>
+                <th class="pb-2 font-medium"></th>
+            </tr>
+        </thead>
+        <tbody>
+            {{range .Users}}
+            <tr class="group opacity-60 hover:opacity-100 transition-opacity duration-700 hover:duration-150 border-b border-bg-secondary/50">
+                <td class="py-3">{{.Username}}</td>
+                <td class="py-3 text-fg-secondary text-sm">{{if eq .IsAdmin 1}}Admin{{else}}User{{end}}</td>
+                <td class="py-3 text-fg-secondary text-sm">{{formatDateTime .CreatedAt}}</td>
+                <td class="py-3 text-right">
+                    <div class="flex gap-4 justify-end">
+                        {{if ne .IsAdmin 1}}
+                        <a href="/settings/users/{{.ID}}/apps" class="text-fg-secondary hover:text-fg transition-colors text-sm">Apps</a>
                         {{end}}
-                    </td>
-                    <td class="px-3 py-2 text-fg-secondary text-sm">{{formatDateTime .CreatedAt}}</td>
-                    <td class="px-3 py-2">
-                        <div class="flex gap-2">
-                            {{if ne .IsAdmin 1}}
-                            <a href="/settings/users/{{.ID}}/apps" class="px-2 py-1 bg-bg hover:bg-bg/80 text-fg-secondary hover:text-fg text-xs transition-colors">Apps</a>
-                            {{end}}
-                            {{if ne .ID $.CurrentUser.ID}}
-                            <form action="/settings/users/{{.ID}}/delete" method="POST" onsubmit="return confirm('Delete user {{.Username}}?');">
-                                <button type="submit" class="px-2 py-1 bg-red-600 hover:bg-red-700 text-fg text-xs transition-colors">Delete</button>
-                            </form>
-                            {{end}}
-                        </div>
-                    </td>
-                </tr>
-                {{end}}
-            </tbody>
-        </table>
-    </div>
+                        {{if ne .ID $.CurrentUser.ID}}
+                        <form action="/settings/users/{{.ID}}/delete" method="POST" onsubmit="return confirm('Delete user {{.Username}}?');" class="inline">
+                            <button type="submit" class="text-fg-secondary hover:text-fg transition-colors text-sm">Delete</button>
+                        </form>
+                        {{end}}
+                    </div>
+                </td>
+            </tr>
+            {{end}}
+        </tbody>
+    </table>
     {{else}}
-    <p class="text-center text-fg-secondary py-6">No users yet.</p>
+    <p class="text-fg-secondary py-6">No users yet.</p>
     {{end}}
 </div>
 {{end}}
 
 <!-- Notifiers Section -->
-<div class="bg-bg-secondary p-5">
-    <h2 class="text-fg-secondary text-sm font-medium mb-2">Notifications</h2>
-    <p class="text-fg-secondary text-sm mb-4">
-        {{if .IsAdmin}}Configure Telegram bots to receive error alerts for any app.{{else}}Configure Telegram bots to receive error alerts for your assigned apps.{{end}}
-    </p>
+<div class="mb-8">
+    <h2 class="text-lg font-medium mb-4">Notifications</h2>
+    <p class="text-fg-secondary text-sm mb-4">{{if .IsAdmin}}Configure Telegram bots for error alerts.{{else}}Configure Telegram bots for your assigned apps.{{end}}</p>
     
     <form action="/settings/notifiers" method="POST" class="mb-6">
-        <div class="flex flex-wrap gap-3 items-end">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4 max-w-3xl">
             <div>
-                <label for="notifier_name" class="block text-fg-secondary text-sm mb-1">Name</label>
-                <input type="text" id="notifier_name" name="name" placeholder="My Telegram" required class="px-3 py-2 bg-bg border border-bg focus:border-accent focus:outline-none text-fg">
+                {{template "input-text" dict "Type" "text" "ID" "notifier_name" "Name" "name" "Placeholder" "Name" "Required" true}}
             </div>
             <div>
-                <label for="notifier_type" class="block text-fg-secondary text-sm mb-1">Type</label>
-                <select id="notifier_type" name="type" required class="px-3 py-2 bg-bg border border-bg focus:border-accent focus:outline-none text-fg">
+                <select id="notifier_type" name="type" required 
+                        class="w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-fg cursor-pointer">
+                    <option value="">Type</option>
                     <option value="telegram">Telegram</option>
                 </select>
             </div>
             <div>
-                <label for="telegram_token" class="block text-fg-secondary text-sm mb-1">Bot Token</label>
-                <input type="text" id="telegram_token" name="telegram_token" placeholder="123456:ABC-DEF..." required class="px-3 py-2 bg-bg border border-bg focus:border-accent focus:outline-none text-fg">
+                {{template "input-text" dict "Type" "text" "ID" "telegram_token" "Name" "telegram_token" "Placeholder" "Bot token" "Required" true}}
             </div>
             <div>
-                <label for="telegram_chat_id" class="block text-fg-secondary text-sm mb-1">Chat ID</label>
-                <input type="number" id="telegram_chat_id" name="telegram_chat_id" placeholder="-100123456789" required class="px-3 py-2 bg-bg border border-bg focus:border-accent focus:outline-none text-fg">
+                {{template "input-text" dict "Type" "number" "ID" "telegram_chat_id" "Name" "telegram_chat_id" "Placeholder" "Chat ID" "Required" true}}
             </div>
-            <button type="submit" class="px-4 py-2 bg-accent hover:bg-accent/80 text-fg text-sm transition-colors">Add Notifier</button>
         </div>
+        <button type="submit" class="text-fg border border-fg px-4 py-2 hover:bg-fg hover:text-bg transition-colors text-sm">Add Notifier</button>
     </form>
 
     {{if .Notifiers}}
-    <div class="overflow-x-auto">
-        <table class="w-full">
-            <thead>
-                <tr class="border-b border-bg">
-                    <th class="px-3 py-2 text-left text-fg-secondary text-sm font-medium">Name</th>
-                    <th class="px-3 py-2 text-left text-fg-secondary text-sm font-medium">Type</th>
-                    <th class="px-3 py-2 text-left text-fg-secondary text-sm font-medium">Status</th>
-                    <th class="px-3 py-2 text-left text-fg-secondary text-sm font-medium">Created</th>
-                    <th class="px-3 py-2 text-left text-fg-secondary text-sm font-medium">Actions</th>
-                </tr>
-            </thead>
-            <tbody>
-                {{range .Notifiers}}
-                <tr class="border-b border-bg">
-                    <td class="px-3 py-2">{{.Name}}</td>
-                    <td class="px-3 py-2"><span class="px-2 py-0.5 text-xs bg-[#0088cc] text-white">{{.Type}}</span></td>
-                    <td class="px-3 py-2">
-                        {{if eq .Enabled 1}}
-                        <span class="px-2 py-0.5 text-xs bg-green-600 text-white">Enabled</span>
-                        {{else}}
-                        <span class="px-2 py-0.5 text-xs bg-fg-secondary text-white">Disabled</span>
-                        {{end}}
-                    </td>
-                    <td class="px-3 py-2 text-fg-secondary text-sm">{{formatDateTime .CreatedAt}}</td>
-                    <td class="px-3 py-2">
-                        <div class="flex gap-2">
-                            <a href="/settings/notifiers/{{.ID}}/apps" class="px-2 py-1 bg-bg hover:bg-bg/80 text-fg-secondary hover:text-fg text-xs transition-colors">Apps</a>
-                            <form action="/settings/notifiers/{{.ID}}/toggle" method="POST" class="inline">
-                                <button type="submit" class="px-2 py-1 bg-bg hover:bg-bg/80 text-fg-secondary hover:text-fg text-xs transition-colors">
-                                    {{if eq .Enabled 1}}Disable{{else}}Enable{{end}}
-                                </button>
-                            </form>
-                            <form action="/settings/notifiers/{{.ID}}/delete" method="POST" onsubmit="return confirm('Delete notifier {{.Name}}?');" class="inline">
-                                <button type="submit" class="px-2 py-1 bg-red-600 hover:bg-red-700 text-fg text-xs transition-colors">Delete</button>
-                            </form>
-                        </div>
-                    </td>
-                </tr>
-                {{end}}
-            </tbody>
-        </table>
-    </div>
+    <table class="w-full">
+        <thead class="border-b border-bg-secondary">
+            <tr class="text-left text-fg-secondary text-sm">
+                <th class="pb-2 font-medium">Name</th>
+                <th class="pb-2 font-medium">Type</th>
+                <th class="pb-2 font-medium">Status</th>
+                <th class="pb-2 font-medium">Created</th>
+                <th class="pb-2 font-medium"></th>
+            </tr>
+        </thead>
+        <tbody>
+            {{range .Notifiers}}
+            <tr class="group opacity-60 hover:opacity-100 transition-opacity duration-700 hover:duration-150 border-b border-bg-secondary/50">
+                <td class="py-3">{{.Name}}</td>
+                <td class="py-3 text-fg-secondary text-sm">{{.Type}}</td>
+                <td class="py-3 text-fg-secondary text-sm">{{if eq .Enabled 1}}Enabled{{else}}Disabled{{end}}</td>
+                <td class="py-3 text-fg-secondary text-sm">{{formatDateTime .CreatedAt}}</td>
+                <td class="py-3 text-right">
+                    <div class="flex gap-4 justify-end">
+                        <a href="/settings/notifiers/{{.ID}}/apps" class="text-fg-secondary hover:text-fg transition-colors text-sm">Apps</a>
+                        <form action="/settings/notifiers/{{.ID}}/toggle" method="POST" class="inline">
+                            <button type="submit" class="text-fg-secondary hover:text-fg transition-colors text-sm">{{if eq .Enabled 1}}Disable{{else}}Enable{{end}}</button>
+                        </form>
+                        <form action="/settings/notifiers/{{.ID}}/delete" method="POST" onsubmit="return confirm('Delete notifier {{.Name}}?');" class="inline">
+                            <button type="submit" class="text-fg-secondary hover:text-fg transition-colors text-sm">Delete</button>
+                        </form>
+                    </div>
+                </td>
+            </tr>
+            {{end}}
+        </tbody>
+    </table>
     {{else}}
-    <p class="text-center text-fg-secondary py-6">No notifiers configured. Add a Telegram bot to receive error alerts.</p>
+    <p class="text-fg-secondary py-6">No notifiers configured.</p>
     {{end}}
 </div>
 {{end}}
@@ -258,9 +229,9 @@
 </head>
 <body class="min-h-screen flex items-center justify-center">
     <div class="text-center">
-        <h1 class="text-6xl font-bold text-red-400 mb-4">{{.Status}}</h1>
+        <h1 class="text-6xl font-bold text-fg-secondary mb-4">{{.Status}}</h1>
         <p class="text-fg-secondary mb-4">{{.Message}}</p>
-        <a href="/settings/" class="text-accent hover:underline">Back to Settings</a>
+        <a href="/settings/" class="text-fg hover:opacity-70 transition-opacity">Back to Settings</a>
     </div>
 </body>
 </html>
