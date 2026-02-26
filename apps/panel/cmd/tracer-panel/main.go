@@ -96,25 +96,20 @@ func main() {
 		slog.Info("API key ready", "key", apiKey)
 	}
 
-	// Initialize notification components
-	notifyRegistry := notify.NewRegistry()
-	notifyDispatcher := notify.NewDispatcher(notifyRegistry)
-
 	// Setup notifier factories
 	notifierFactories := map[string]notify.FromRawJSON{
 		"telegram": telegram.FromRawJSON,
 	}
 
-	notifyService := notify.New(panelDB, userService, notifyRegistry, notifyDispatcher, notifierFactories)
+	// Create notification channel (shared between dispatcher and ingest service)
+	notifyChan := make(chan notify.Notification, 100)
+
+	// Initialize notification components
+	notifyDispatcher := notify.NewDispatcher(panelDB, notifierFactories, notifyChan)
+	notifyService := notify.New(panelDB, userService, notifierFactories)
 
 	// Start notification dispatcher
 	go notifyDispatcher.Start(ctx)
-
-	// Load and register enabled notifiers from database
-	if err := notifyService.LoadEnabled(ctx); err != nil {
-		slog.Error("Failed to load notifiers", "error", err)
-		// Continue anyway - notifiers can be added via UI
-	}
 
 	// Initialize ingest service (after notify service)
 	alertFormatter := func(collectorName, appName string, logID int64) string {
@@ -123,7 +118,7 @@ func main() {
 		}
 		return fmt.Sprintf("%s/panel/collectors/%s/apps/%s/logs/%d", cfg.PanelURL, collectorName, appName, logID)
 	}
-	ingestService := ingest.New(dbManager, notifyService.Chan(), alertFormatter)
+	ingestService := ingest.New(dbManager, notifyChan, alertFormatter)
 
 	// Initialize retention service
 	retentionService := retention.New(dbManager, ingestService, cfg.RetentionDays)

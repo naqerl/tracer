@@ -745,8 +745,8 @@ func (h *handler) updateNotifierApps(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Update subscriptions through service (handles DB, subscription notifications, re-registration)
-	if err := h.notifyService.UpdateApps(r.Context(), user, id, subscriptions); err != nil {
+	// Update subscriptions through service (simply writes to DB)
+	if err := h.notifyService.SetApps(r.Context(), user, id, subscriptions); err != nil {
 		switch {
 		case errors.Is(err, notify.ErrNotifierNotFound):
 			http.Error(w, "Notifier not found", http.StatusNotFound)
