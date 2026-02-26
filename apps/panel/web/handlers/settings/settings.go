@@ -114,7 +114,7 @@ func (h *handler) buildSettingsPageData(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// Load notifiers (admins see all, non-admins see only their own)
-	notifiers, err := h.notifyService.ListNotifiers(r.Context(), user)
+	notifiers, err := h.notifyService.List(r.Context(), user)
 	if err != nil {
 		h.t.RenderError(w, r, "Error", "Failed to list notifiers", http.StatusInternalServerError)
 		return nil, err
@@ -496,7 +496,7 @@ func (h *handler) createNotifier(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create notifier through service (handles DB, welcome notification, registration)
-	if err := h.notifyService.AddNotifier(r.Context(), req); err != nil {
+	if err := h.notifyService.Add(r.Context(), req); err != nil {
 		slog.Error("Failed to add notifier", "error", err)
 		http.Error(w, "Failed to create notifier", http.StatusInternalServerError)
 		return
@@ -518,7 +518,7 @@ func (h *handler) deleteNotifier(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.notifyService.DeleteNotifier(r.Context(), user, id); err != nil {
+	if err := h.notifyService.Delete(r.Context(), user, id); err != nil {
 		switch {
 		case errors.Is(err, notify.ErrNotifierNotFound):
 			http.Error(w, "Notifier not found", http.StatusNotFound)
@@ -562,7 +562,7 @@ func (h *handler) toggleNotifier(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.notifyService.ToggleNotifier(r.Context(), user, id, setup.Enabled != 1); err != nil {
+	if err := h.notifyService.Toggle(r.Context(), user, id, setup.Enabled != 1); err != nil {
 		switch {
 		case errors.Is(err, notify.ErrNotifierNotFound):
 			http.Error(w, "Notifier not found", http.StatusNotFound)
@@ -746,7 +746,7 @@ func (h *handler) updateNotifierApps(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Update subscriptions through service (handles DB, subscription notifications, re-registration)
-	if err := h.notifyService.UpdateNotifierApps(r.Context(), user, id, subscriptions); err != nil {
+	if err := h.notifyService.UpdateApps(r.Context(), user, id, subscriptions); err != nil {
 		switch {
 		case errors.Is(err, notify.ErrNotifierNotFound):
 			http.Error(w, "Notifier not found", http.StatusNotFound)
