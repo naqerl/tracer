@@ -23,7 +23,7 @@
   {{$isActive := or (and (eq .Val "") (not $.Level)) (eq $.Level .Val)}}
   {{$query := ""}}
   {{if ne .Val ""}}{{$query = printf "&level=%s" .Val}}{{end}}
-  <a hx-get="/panel/collectors/{{$.Collector}}/apps/{{$.App}}/logs?since={{$.Since}}{{$query}}"
+  <a hx-get="/panel/collectors/{{$.Collector}}/apps/{{$.App}}/logs/groups/?since={{$.Since}}{{$query}}"
      hx-push-url="false"
      hx-target="#log-groups"
      class="flex flex-col items-center gap-1 cursor-pointer {{if $isActive}}text-fg{{else}}text-fg-secondary{{end}} {{if and (not $isActive) (eq .Val `error`)}}hover:text-red-500{{else if and (not $isActive) (eq .Val `warn`)}}hover:text-yellow-500{{else if and (not $isActive) (eq .Val `info`)}}hover:text-blue-500{{else if not $isActive}}hover:text-fg{{end}}">
@@ -54,7 +54,7 @@
     <tr class="group opacity-60 hover:opacity-100 transition-opacity duration-700 hover:duration-150">
       <td class="hidden">{{.ID}}</td>
       <td class="w-full align-middle">
-        <a href="/panel/collectors/{{$.Collector}}/apps/{{$.App}}/logs?group={{.ID}}" class="block py-2 sm:py-1 capitalize">{{.Message}}</a>
+        <a href="/panel/collectors/{{$.Collector}}/apps/{{$.App}}/logs/groups/{{.ID}}" class="block py-2 sm:py-1 capitalize">{{.Message}}</a>
       </td>
       <td class="w-[1%] whitespace-nowrap align-middle pr-2">
         {{if not $.Level}}

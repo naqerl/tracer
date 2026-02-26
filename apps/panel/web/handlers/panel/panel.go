@@ -54,7 +54,7 @@ func InitMux(svc *panelsvc.Service) *http.ServeMux {
 
 	// App logs
 	m.HandleFunc("GET /collectors/{collector}/apps/{app}", h.getApp)
-	m.HandleFunc("GET /collectors/{collector}/apps/{app}/logs", h.getLogGroups)
+	m.HandleFunc("GET /collectors/{collector}/apps/{app}/logs/groups", h.getLogGroups)
 	m.HandleFunc("GET /collectors/{collector}/apps/{app}/logs/groups/{groupID}", h.getLogGroupByID)
 	m.HandleFunc("GET /collectors/{collector}/apps/{app}/logs/{id}", h.getLogByID)
 
@@ -314,8 +314,6 @@ func (h *handler) getLogGroupByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	highlightLogID := parseOffset(r.URL.Query().Get("logID"))
-
 	req := panelsvc.GetLogDetailRequest{
 		User:          user,
 		CollectorName: r.PathValue("collector"),
@@ -342,19 +340,18 @@ func (h *handler) getLogGroupByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.t.RenderHTTP(w, r, "app-logs-detail-page", map[string]any{
-		"Title":          req.AppName + " Log Details",
-		"AppName":        req.AppName,
-		"CollectorName":  req.CollectorName,
-		"LogGroup":       detail.Group,
-		"Logs":           detail.Logs,
-		"Offset":         req.Offset,
-		"Limit":          req.Limit,
-		"HasMore":        req.Offset+int64(len(detail.Logs)) < detail.TotalCount,
-		"NextOffset":     req.Offset + req.Limit,
-		"HighlightLogID": highlightLogID,
-		"User":           user,
-		"IsAdmin":        user.IsAdmin,
+	h.t.RenderHTTP(w, r, "log-group", map[string]any{
+		"Title":         req.AppName + " Log Details",
+		"AppName":       req.AppName,
+		"CollectorName": req.CollectorName,
+		"LogGroup":      detail.Group,
+		"Logs":          detail.Logs,
+		"Offset":        req.Offset,
+		"Limit":         req.Limit,
+		"HasMore":       req.Offset+int64(len(detail.Logs)) < detail.TotalCount,
+		"NextOffset":    req.Offset + req.Limit,
+		"User":          user,
+		"IsAdmin":       user.IsAdmin,
 	})
 }
 
