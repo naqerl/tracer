@@ -334,21 +334,17 @@ func (s *Service) GenerateUserAPIKey(ctx context.Context, userID int64, name str
 }
 
 func (s *Service) ValidateUserAPIKey(ctx context.Context, key string, userService *userpkg.Service) (*db.User, error) {
-	userKey, err := db.New(s.db).GetUserAPIKey(ctx, key)
+	// Validate key and update last_used_at in one query
+	userKey, err := db.New(s.db).ValidateAndUpdateUserAPIKey(ctx, db.ValidateAndUpdateUserAPIKeyParams{
+		LastUsedAt: sql.NullTime{Time: time.Now(), Valid: true},
+		ApiKey:     key,
+	})
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrInvalidCredentials
 		}
 		return nil, err
 	}
-
-	// Update last used timestamp (fire and forget)
-	go func() {
-		_ = db.New(s.db).UpdateUserAPIKeyLastUsed(context.Background(), db.UpdateUserAPIKeyLastUsedParams{
-			LastUsedAt: sql.NullTime{Time: time.Now(), Valid: true},
-			ApiKey:     key,
-		})
-	}()
 
 	user, err := userService.GetByID(ctx, userKey.UserID)
 	if err != nil {

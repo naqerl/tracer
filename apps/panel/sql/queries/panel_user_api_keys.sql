@@ -22,3 +22,9 @@ WHERE id = ?;
 UPDATE user_api_key
 SET last_used_at = ?
 WHERE api_key = ?;
+
+-- name: ValidateAndUpdateUserAPIKey :one
+UPDATE user_api_key
+SET last_used_at = ?
+WHERE api_key = ?
+RETURNING *;

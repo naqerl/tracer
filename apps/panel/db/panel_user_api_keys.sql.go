@@ -118,3 +118,29 @@ func (q *Queries) UpdateUserAPIKeyLastUsed(ctx context.Context, arg UpdateUserAP
 	_, err := q.db.ExecContext(ctx, updateUserAPIKeyLastUsed, arg.LastUsedAt, arg.ApiKey)
 	return err
 }
+
+const validateAndUpdateUserAPIKey = `-- name: ValidateAndUpdateUserAPIKey :one
+UPDATE user_api_key
+SET last_used_at = ?
+WHERE api_key = ?
+RETURNING id, user_id, api_key, name, created_at, last_used_at
+`
+
+type ValidateAndUpdateUserAPIKeyParams struct {
+	LastUsedAt sql.NullTime
+	ApiKey     string
+}
+
+func (q *Queries) ValidateAndUpdateUserAPIKey(ctx context.Context, arg ValidateAndUpdateUserAPIKeyParams) (UserApiKey, error) {
+	row := q.db.QueryRowContext(ctx, validateAndUpdateUserAPIKey, arg.LastUsedAt, arg.ApiKey)
+	var i UserApiKey
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.ApiKey,
+		&i.Name,
+		&i.CreatedAt,
+		&i.LastUsedAt,
+	)
+	return i, err
+}

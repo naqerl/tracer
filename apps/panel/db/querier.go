@@ -95,6 +95,7 @@ type Querier interface {
 	SetConfig(ctx context.Context, arg SetConfigParams) error
 	UpdateNotifier(ctx context.Context, arg UpdateNotifierParams) error
 	UpdateUserAPIKeyLastUsed(ctx context.Context, arg UpdateUserAPIKeyLastUsedParams) error
+	ValidateAndUpdateUserAPIKey(ctx context.Context, arg ValidateAndUpdateUserAPIKeyParams) (UserApiKey, error)
 }
 
 var _ Querier = (*Queries)(nil)
