@@ -109,20 +109,3 @@
   {{end}}
 </div>
 {{end}}
-
-{{define "error"}}
-<!DOCTYPE html>
-<html lang="en">
-  <head>
-    {{template "head"}}
-    <title>{{.Title}}</title>
-  </head>
-  <body class="min-h-screen flex items-center justify-center">
-    <div class="text-center">
-      <h1 class="text-6xl font-bold text-red-400 mb-4">{{.Status}}</h1>
-      <p class="text-fg-secondary mb-4">{{.Message}}</p>
-      <a href="/" class="text-accent hover:underline">Back to Dashboard</a>
-    </div>
-  </body>
-</html>
-{{end}}

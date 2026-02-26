@@ -208,20 +208,3 @@
     {{end}}
 </div>
 {{end}}
-
-{{define "error"}}
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    {{template "head"}}
-    <title>{{.Title}}</title>
-</head>
-<body class="min-h-screen flex items-center justify-center">
-    <div class="text-center">
-        <h1 class="text-6xl font-bold text-fg-secondary mb-4">{{.Status}}</h1>
-        <p class="text-base text-fg-secondary mb-4">{{.Message}}</p>
-        <a href="/settings/" class="text-base text-fg hover:opacity-70 transition-opacity">Back to Settings</a>
-    </div>
-</body>
-</html>
-{{end}}
