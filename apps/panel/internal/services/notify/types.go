@@ -27,3 +27,7 @@ type Notifier interface {
 	// Notify sends a notification
 	Notify(n Notification) error
 }
+
+// FromRawJSON is a function that creates a Notifier from name and config string.
+// The config string is typically JSON specific to the notifier type.
+type FromRawJSON func(name, config string) (Notifier, error)

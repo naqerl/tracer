@@ -22,6 +22,7 @@ import (
 	"tracer/apps/panel/internal/services/auth"
 	"tracer/apps/panel/internal/services/ingest"
 	"tracer/apps/panel/internal/services/notify"
+	"tracer/apps/panel/internal/services/notify/telegram"
 	"tracer/apps/panel/internal/services/user"
 	panelmigrations "tracer/apps/panel/sql/panel"
 	"tracer/apps/panel/web"
@@ -98,7 +99,13 @@ func main() {
 	// Initialize notification components
 	notifyRegistry := notify.NewRegistry()
 	notifyDispatcher := notify.NewDispatcher(notifyRegistry)
-	notifyService := notify.New(panelDB, userService, notifyRegistry, notifyDispatcher)
+
+	// Setup notifier factories
+	notifierFactories := map[string]notify.FromRawJSON{
+		"telegram": telegram.FromRawJSON,
+	}
+
+	notifyService := notify.New(panelDB, userService, notifyRegistry, notifyDispatcher, notifierFactories)
 
 	// Start notification dispatcher
 	go notifyDispatcher.Start(ctx)

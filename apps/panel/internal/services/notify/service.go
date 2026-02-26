@@ -3,7 +3,6 @@ package notify
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -12,12 +11,6 @@ import (
 	"tracer/apps/panel/internal/services/user"
 	sharedtypes "tracer/libs/types"
 )
-
-// TelegramConfig represents Telegram notifier configuration.
-type TelegramConfig struct {
-	Token  string `json:"token"`
-	ChatID int64  `json:"chat_id"`
-}
 
 // NotifierAppSubscription represents a subscription to a specific collector-app pair.
 type NotifierAppSubscription struct {
@@ -41,16 +34,18 @@ type Service struct {
 	userSvc    *user.Service
 	registry   *Registry
 	dispatcher *Dispatcher
+	factories  map[string]FromRawJSON
 }
 
 // New creates a new notification service.
-func New(sqlDB *sql.DB, userSvc *user.Service, registry *Registry, dispatcher *Dispatcher) *Service {
+func New(sqlDB *sql.DB, userSvc *user.Service, registry *Registry, dispatcher *Dispatcher, factories map[string]FromRawJSON) *Service {
 	return &Service{
 		db:         sqlDB,
 		queries:    db.New(sqlDB),
 		userSvc:    userSvc,
 		registry:   registry,
 		dispatcher: dispatcher,
+		factories:  factories,
 	}
 }
 
@@ -59,27 +54,15 @@ func (s *Service) Chan() chan<- Notification {
 	return s.dispatcher.Sink()
 }
 
-// createNotifier creates a notifier instance from configuration.
-// Supported types:
-//   - "telegram": requires TelegramConfig JSON with "token" and "chat_id"
-func (s *Service) createNotifier(name, ntype, config string) (Notifier, error) {
-	switch ntype {
-	case "telegram":
-		var cfg TelegramConfig
-		if err := json.Unmarshal([]byte(config), &cfg); err != nil {
-			return nil, fmt.Errorf("parse telegram config: %w", err)
-		}
-		return NewTelegramNotifier(name, cfg.Token, cfg.ChatID)
-	default:
-		return nil, fmt.Errorf("unknown notifier type: %s", ntype)
-	}
-}
-
 // AddNotifier creates a notifier, tests it by sending welcome notification, then saves to DB.
 // The notifier is only persisted if the welcome notification succeeds.
 func (s *Service) AddNotifier(ctx context.Context, req AddNotifierRequest) error {
 	// 1. Create notifier instance to test it works
-	instance, err := s.createNotifier(req.Name, req.Type, req.Config)
+	factory, ok := s.factories[req.Type]
+	if !ok {
+		return fmt.Errorf("unknown notifier type: %s", req.Type)
+	}
+	instance, err := factory(req.Name, req.Config)
 	if err != nil {
 		return fmt.Errorf("could not create notifier instance: %w", err)
 	}
@@ -151,7 +134,11 @@ func (s *Service) UpdateNotifierApps(ctx context.Context, notifierID int64, user
 		return nil
 	}
 
-	instance, err := s.createNotifier(notifier.Name, notifier.Type, notifier.Config)
+	factory, ok := s.factories[notifier.Type]
+	if !ok {
+		return fmt.Errorf("unknown notifier type: %s", notifier.Type)
+	}
+	instance, err := factory(notifier.Name, notifier.Config)
 	if err != nil {
 		return fmt.Errorf("create notifier instance: %w", err)
 	}
@@ -249,7 +236,12 @@ func (s *Service) LoadEnabled(ctx context.Context) error {
 			continue
 		}
 
-		instance, err := s.createNotifier(notifier.Name, notifier.Type, notifier.Config)
+		factory, ok := s.factories[notifier.Type]
+		if !ok {
+			slog.Error("Unknown notifier type", "notifier_id", notifier.ID, "type", notifier.Type)
+			continue
+		}
+		instance, err := factory(notifier.Name, notifier.Config)
 		if err != nil {
 			slog.Error("Failed to create notifier", "notifier_id", notifier.ID, "error", err)
 			continue
