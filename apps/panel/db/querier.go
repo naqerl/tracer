@@ -74,7 +74,7 @@ type Querier interface {
 	// List all log groups with their counts and latest timestamp
 	ListLogGroups(ctx context.Context, arg ListLogGroupsParams) ([]ListLogGroupsRow, error)
 	ListLogsByLevel(ctx context.Context, arg ListLogsByLevelParams) ([]Log, error)
-	ListNotifiers(ctx context.Context) ([]Notifier, error)
+	ListAllNotifiers(ctx context.Context) ([]Notifier, error)
 	ListNotifiersByUser(ctx context.Context, userID int64) ([]Notifier, error)
 	ListRecentLifecycleEvents(ctx context.Context, limit int64) ([]LifecycleEvent, error)
 	ListRecentLogs(ctx context.Context, limit int64) ([]Log, error)

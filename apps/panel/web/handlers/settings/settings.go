@@ -111,23 +111,15 @@ func (h *handler) buildSettingsPageData(w http.ResponseWriter, r *http.Request) 
 
 		apiKey, _ := h.authService.GetAPIKey(r.Context())
 		data["APIKey"] = apiKey
-
-		// Admins see all notifiers
-		notifiers, err := h.notifyService.ListNotifiers(r.Context())
-		if err != nil {
-			h.t.RenderError(w, r, "Error", "Failed to list notifiers", http.StatusInternalServerError)
-			return nil, err
-		}
-		data["Notifiers"] = notifiers
-	} else {
-		// Non-admins only see their own notifiers
-		notifiers, err := h.notifyService.ListNotifiersByUser(r.Context(), user.ID)
-		if err != nil {
-			h.t.RenderError(w, r, "Error", "Failed to list notifiers", http.StatusInternalServerError)
-			return nil, err
-		}
-		data["Notifiers"] = notifiers
 	}
+
+	// Load notifiers (admins see all, non-admins see only their own)
+	notifiers, err := h.notifyService.ListNotifiers(r.Context(), user)
+	if err != nil {
+		h.t.RenderError(w, r, "Error", "Failed to list notifiers", http.StatusInternalServerError)
+		return nil, err
+	}
+	data["Notifiers"] = notifiers
 
 	// Load user's API keys (all users can have API keys)
 	userAPIKeys, err := h.authService.ListUserAPIKeys(r.Context(), user.ID)

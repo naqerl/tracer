@@ -271,13 +271,13 @@ func (q *Queries) ListEnabledNotifiers(ctx context.Context) ([]Notifier, error) 
 	return items, nil
 }
 
-const listNotifiers = `-- name: ListNotifiers :many
+const listAllNotifiers = `-- name: ListAllNotifiers :many
 SELECT id, user_id, name, type, config, enabled, created_at FROM notifier
 ORDER BY created_at
 `
 
-func (q *Queries) ListNotifiers(ctx context.Context) ([]Notifier, error) {
-	rows, err := q.db.QueryContext(ctx, listNotifiers)
+func (q *Queries) ListAllNotifiers(ctx context.Context) ([]Notifier, error) {
+	rows, err := q.db.QueryContext(ctx, listAllNotifiers)
 	if err != nil {
 		return nil, err
 	}

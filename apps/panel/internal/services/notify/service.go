@@ -272,7 +272,7 @@ func (s *Service) UpdateNotifierApps(ctx context.Context, user sharedtypes.User,
 
 // LoadEnabled loads and registers enabled notifiers from the database.
 func (s *Service) LoadEnabled(ctx context.Context) error {
-	notifiers, err := s.ListNotifiers(ctx)
+	notifiers, err := s.queries.ListAllNotifiers(ctx)
 	if err != nil {
 		return err
 	}
@@ -367,14 +367,13 @@ func (s *Service) getNotifierApps(ctx context.Context, notifierID int64) ([]Noti
 	return subscriptions, rows.Err()
 }
 
-// ListNotifiers returns all notifiers.
-func (s *Service) ListNotifiers(ctx context.Context) ([]db.Notifier, error) {
-	return s.queries.ListNotifiers(ctx)
-}
-
-// ListNotifiersByUser returns notifiers for a specific user.
-func (s *Service) ListNotifiersByUser(ctx context.Context, userID int64) ([]db.Notifier, error) {
-	return s.queries.ListNotifiersByUser(ctx, userID)
+// ListNotifiers returns notifiers for the given user.
+// Admins see all notifiers, non-admins see only their own.
+func (s *Service) ListNotifiers(ctx context.Context, user sharedtypes.User) ([]db.Notifier, error) {
+	if user.IsAdmin {
+		return s.queries.ListAllNotifiers(ctx)
+	}
+	return s.queries.ListNotifiersByUser(ctx, user.ID)
 }
 
 // SetNotifierApps sets all app subscriptions for a notifier (replaces existing).

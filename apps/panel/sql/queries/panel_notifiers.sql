@@ -13,7 +13,7 @@ WHERE id = ?;
 SELECT * FROM notifier
 WHERE name = ?;
 
--- name: ListNotifiers :many
+-- name: ListAllNotifiers :many
 SELECT * FROM notifier
 ORDER BY created_at;
 
