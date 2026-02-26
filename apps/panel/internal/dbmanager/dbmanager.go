@@ -15,6 +15,7 @@ import (
 	"github.com/pressly/goose/v3"
 	_ "modernc.org/sqlite"
 
+	"tracer/apps/panel/db"
 	appmigrations "tracer/apps/panel/sql/app"
 	collectormigrations "tracer/apps/panel/sql/collector"
 )
@@ -87,7 +88,7 @@ func (m *Manager) ListApps(collector string) ([]string, error) {
 
 // GetAppDB returns the database connection for the given collector/app.
 // Returns ErrDBNotFound if the database does not exist.
-func (m *Manager) GetAppDB(collectorName, appName string) (*sql.DB, error) {
+func (m *Manager) GetAppDB(collectorName, appName string) (db.DBTX, error) {
 	if err := validateIdentifier(collectorName); err != nil {
 		return nil, fmt.Errorf("invalid collector name: %w", err)
 	}
@@ -97,9 +98,9 @@ func (m *Manager) GetAppDB(collectorName, appName string) (*sql.DB, error) {
 	key := appDBKey(collectorName, appName)
 
 	m.mu.RLock()
-	if db, ok := m.appDBs[key]; ok {
+	if sqlDB, ok := m.appDBs[key]; ok {
 		m.mu.RUnlock()
-		return db, nil
+		return newLoggingDB(sqlDB, collectorName+"/"+appName), nil
 	}
 	m.mu.RUnlock()
 
@@ -114,7 +115,7 @@ func (m *Manager) GetAppDB(collectorName, appName string) (*sql.DB, error) {
 }
 
 // CreateAppDB creates a new database for the given collector/app.
-func (m *Manager) CreateAppDB(collectorName, appName string) (*sql.DB, error) {
+func (m *Manager) CreateAppDB(collectorName, appName string) (db.DBTX, error) {
 	if err := validateIdentifier(collectorName); err != nil {
 		return nil, fmt.Errorf("invalid collector name: %w", err)
 	}
@@ -128,8 +129,8 @@ func (m *Manager) CreateAppDB(collectorName, appName string) (*sql.DB, error) {
 	defer m.mu.Unlock()
 
 	// Return existing if already created
-	if db, ok := m.appDBs[key]; ok {
-		return db, nil
+	if sqlDB, ok := m.appDBs[key]; ok {
+		return newLoggingDB(sqlDB, collectorName+"/"+appName), nil
 	}
 
 	appsDir := filepath.Join(m.collectorsDir, collectorName, "apps")
@@ -157,18 +158,18 @@ func (m *Manager) CreateAppDB(collectorName, appName string) (*sql.DB, error) {
 	m.appDBs[key] = sqlDB
 	slog.Info("Created database for app", "collector_name", collectorName, "app_name", appName, "path", dbPath)
 
-	return sqlDB, nil
+	return newLoggingDB(sqlDB, collectorName+"/"+appName), nil
 }
 
-func (m *Manager) openAppDB(collectorName, appName string) (*sql.DB, error) {
+func (m *Manager) openAppDB(collectorName, appName string) (db.DBTX, error) {
 	key := appDBKey(collectorName, appName)
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	// Double-check after acquiring lock
-	if db, ok := m.appDBs[key]; ok {
-		return db, nil
+	if sqlDB, ok := m.appDBs[key]; ok {
+		return newLoggingDB(sqlDB, collectorName+"/"+appName), nil
 	}
 
 	dbPath := filepath.Join(m.collectorsDir, collectorName, "apps", fmt.Sprintf("%s.db", appName))
@@ -183,20 +184,20 @@ func (m *Manager) openAppDB(collectorName, appName string) (*sql.DB, error) {
 	sqlDB.SetMaxIdleConns(1)
 
 	m.appDBs[key] = sqlDB
-	return sqlDB, nil
+	return newLoggingDB(sqlDB, collectorName+"/"+appName), nil
 }
 
 // GetCollectorDB returns the stats database for a collector.
 // Returns ErrDBNotFound if the database does not exist.
-func (m *Manager) GetCollectorDB(collectorName string) (*sql.DB, error) {
+func (m *Manager) GetCollectorDB(collectorName string) (db.DBTX, error) {
 	if err := validateIdentifier(collectorName); err != nil {
 		return nil, fmt.Errorf("invalid collector name: %w", err)
 	}
 
 	m.mu.RLock()
-	if db, ok := m.collectorDBs[collectorName]; ok {
+	if sqlDB, ok := m.collectorDBs[collectorName]; ok {
 		m.mu.RUnlock()
-		return db, nil
+		return newLoggingDB(sqlDB, "collector/"+collectorName), nil
 	}
 	m.mu.RUnlock()
 
@@ -211,7 +212,7 @@ func (m *Manager) GetCollectorDB(collectorName string) (*sql.DB, error) {
 }
 
 // CreateCollectorDB creates a new stats database for the collector.
-func (m *Manager) CreateCollectorDB(collectorName string) (*sql.DB, error) {
+func (m *Manager) CreateCollectorDB(collectorName string) (db.DBTX, error) {
 	if err := validateIdentifier(collectorName); err != nil {
 		return nil, fmt.Errorf("invalid collector name: %w", err)
 	}
@@ -220,8 +221,8 @@ func (m *Manager) CreateCollectorDB(collectorName string) (*sql.DB, error) {
 	defer m.mu.Unlock()
 
 	// Return existing if already created
-	if db, ok := m.collectorDBs[collectorName]; ok {
-		return db, nil
+	if sqlDB, ok := m.collectorDBs[collectorName]; ok {
+		return newLoggingDB(sqlDB, "collector/"+collectorName), nil
 	}
 
 	collectorDir := filepath.Join(m.collectorsDir, collectorName)
@@ -249,16 +250,16 @@ func (m *Manager) CreateCollectorDB(collectorName string) (*sql.DB, error) {
 	m.collectorDBs[collectorName] = sqlDB
 	slog.Info("Created collector database", "collector_name", collectorName, "path", dbPath)
 
-	return sqlDB, nil
+	return newLoggingDB(sqlDB, "collector/"+collectorName), nil
 }
 
-func (m *Manager) openCollectorDB(collectorName string) (*sql.DB, error) {
+func (m *Manager) openCollectorDB(collectorName string) (db.DBTX, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	// Double-check after acquiring lock
-	if db, ok := m.collectorDBs[collectorName]; ok {
-		return db, nil
+	if sqlDB, ok := m.collectorDBs[collectorName]; ok {
+		return newLoggingDB(sqlDB, "collector/"+collectorName), nil
 	}
 
 	dbPath := filepath.Join(m.collectorsDir, collectorName, "collector.db")
@@ -273,7 +274,7 @@ func (m *Manager) openCollectorDB(collectorName string) (*sql.DB, error) {
 	sqlDB.SetMaxIdleConns(1)
 
 	m.collectorDBs[collectorName] = sqlDB
-	return sqlDB, nil
+	return newLoggingDB(sqlDB, "collector/"+collectorName), nil
 }
 
 func (m *Manager) runAppMigrations(sqlDB *sql.DB) error {

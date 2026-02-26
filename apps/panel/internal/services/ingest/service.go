@@ -34,9 +34,9 @@ func (c CollectorName) String() string {
 type DBManager interface {
 	ListCollectors() ([]string, error)
 	ListApps(collector string) ([]string, error)
-	GetCollectorDB(collectorName string) (*sql.DB, error)
-	CreateCollectorDB(collectorName string) (*sql.DB, error)
-	CreateAppDB(collectorName, appName string) (*sql.DB, error)
+	GetCollectorDB(collectorName string) (db.DBTX, error)
+	CreateCollectorDB(collectorName string) (db.DBTX, error)
+	CreateAppDB(collectorName, appName string) (db.DBTX, error)
 }
 
 // Service manages ingest operations using dbmanager for all DB access.
@@ -166,11 +166,11 @@ func (s *Service) InsertSystemStats(ctx context.Context, req InsertStatsRequest)
 		return err
 	}
 
-	sqlDB, err := s.dbManager.CreateCollectorDB(req.CollectorName)
+	dbtx, err := s.dbManager.CreateCollectorDB(req.CollectorName)
 	if err != nil {
 		return err
 	}
-	queries := db.New(sqlDB)
+	queries := db.New(dbtx)
 	return queries.InsertSystemStats(ctx, db.InsertSystemStatsParams{
 		CollectorName:   req.Stats.CollectorName,
 		CpuUsagePercent: req.Stats.CpuUsagePercent,
@@ -187,22 +187,22 @@ func (s *Service) InsertSystemStats(ctx context.Context, req InsertStatsRequest)
 // GetLatestStats returns the latest system stats for a collector.
 // Returns error if collector DB doesn't exist.
 func (s *Service) GetLatestStats(ctx context.Context, collector CollectorName) (db.SystemStat, error) {
-	sqlDB, err := s.dbManager.GetCollectorDB(collector.String())
+	dbtx, err := s.dbManager.GetCollectorDB(collector.String())
 	if err != nil {
 		return db.SystemStat{}, err
 	}
-	queries := db.New(sqlDB)
+	queries := db.New(dbtx)
 	return queries.GetLatestStats(ctx)
 }
 
 // GetStatsHistory returns system stats history for a collector since a given time.
 // Returns error if collector DB doesn't exist.
 func (s *Service) GetStatsHistory(ctx context.Context, collector CollectorName, since time.Time) ([]db.SystemStat, error) {
-	sqlDB, err := s.dbManager.GetCollectorDB(collector.String())
+	dbtx, err := s.dbManager.GetCollectorDB(collector.String())
 	if err != nil {
 		return nil, err
 	}
-	queries := db.New(sqlDB)
+	queries := db.New(dbtx)
 	return queries.GetStatsHistory(ctx, since)
 }
 
@@ -215,7 +215,7 @@ func (s *Service) DeleteOldStats(ctx context.Context, before time.Time) error {
 	}
 
 	for _, collector := range collectors {
-		sqlDB, err := s.dbManager.GetCollectorDB(collector.String())
+		dbtx, err := s.dbManager.GetCollectorDB(collector.String())
 		if err != nil {
 			if errors.Is(err, dbmanager.ErrDBNotFound) {
 				// Skip collectors without stats DB
@@ -223,7 +223,7 @@ func (s *Service) DeleteOldStats(ctx context.Context, before time.Time) error {
 			}
 			return err
 		}
-		queries := db.New(sqlDB)
+		queries := db.New(dbtx)
 		if err := queries.DeleteOldStats(ctx, before); err != nil {
 			return err
 		}
@@ -258,7 +258,7 @@ func (s *Service) RegisterCollector(ctx context.Context, req RegisterCollectorRe
 
 // GetAppDB returns the database connection for the given collector/app.
 // Assumes the database already exists (created during registration).
-func (s *Service) GetAppDB(collectorName, appName string) (*sql.DB, error) {
+func (s *Service) GetAppDB(collectorName, appName string) (db.DBTX, error) {
 	return s.dbManager.CreateAppDB(collectorName, appName)
 }
 
@@ -279,11 +279,11 @@ func (s *Service) StoreLog(ctx context.Context, req StoreLogRequest) (int64, err
 		return 0, nil // Skipped by sampling
 	}
 
-	sqlDB, err := s.dbManager.CreateAppDB(req.CollectorName, req.AppName)
+	dbtx, err := s.dbManager.CreateAppDB(req.CollectorName, req.AppName)
 	if err != nil {
 		return 0, err
 	}
-	queries := db.New(sqlDB)
+	queries := db.New(dbtx)
 
 	// Marshal extra context
 	contextJSON := "{}"
@@ -333,11 +333,11 @@ func (s *Service) StoreLifecycle(ctx context.Context, req StoreLifecycleRequest)
 		return err
 	}
 
-	sqlDB, err := s.dbManager.CreateAppDB(req.CollectorName, req.AppName)
+	dbtx, err := s.dbManager.CreateAppDB(req.CollectorName, req.AppName)
 	if err != nil {
 		return err
 	}
-	queries := db.New(sqlDB)
+	queries := db.New(dbtx)
 
 	_, err = queries.InsertLifecycleEvent(ctx, db.InsertLifecycleEventParams{
 		Kind:      string(req.Kind),
