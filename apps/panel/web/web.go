@@ -9,7 +9,6 @@ import (
 
 	authres "tracer/apps/panel/web/handlers/auth"
 	"tracer/apps/panel/web/handlers/ingest"
-	"tracer/apps/panel/web/handlers/landing"
 	"tracer/apps/panel/web/handlers/llm"
 	"tracer/apps/panel/web/handlers/panel"
 	"tracer/apps/panel/web/handlers/settings"
@@ -34,7 +33,6 @@ func Run(deps Dependencies, port string, sampleRate float64) *http.Server {
 	mux.HandleFunc("POST /logout", func(w http.ResponseWriter, r *http.Request) { authMux.ServeHTTP(w, r) })
 	mux.HandleFunc("GET /setup", func(w http.ResponseWriter, r *http.Request) { authMux.ServeHTTP(w, r) })
 	mux.HandleFunc("POST /setup", func(w http.ResponseWriter, r *http.Request) { authMux.ServeHTTP(w, r) })
-	mux.Handle("/", landing.InitHandler())
 
 	markdownMiddleware := middleware.BuildMarkdownMiddleware()
 	loginPathMiddleware := authmw.BuildLoginPathMiddleware("/login")
