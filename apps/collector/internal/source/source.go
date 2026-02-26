@@ -17,8 +17,10 @@ type Spec struct {
 //
 // Position semantics:
 //   - FileSource: Byte offset from file start (standard file position)
-//   - JournalctlSource: Opaque position (always returns 0). Use Seek(0, io.SeekStart)
-//     to read from beginning, Seek(0, io.SeekEnd) to tail from current time.
+//   - JournalctlSource: Opaque position (always returns 0). Supports:
+//     - Seek(0, io.SeekStart): From beginning (all history)
+//     - Seek(0, io.SeekEnd): From now (tail mode)
+//     - Seek(-N, io.SeekEnd): Last N lines, then follow
 type Source interface {
 	Open(ctx context.Context) error
 	Next(ctx context.Context) (line string, err error)

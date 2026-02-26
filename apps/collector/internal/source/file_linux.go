@@ -98,6 +98,50 @@ func (fs *fileSource) Close() error {
 	return closeErr
 }
 
+// Seek implements io.Seeker for fileSource.
+// It allows seeking to a specific byte offset in the file.
+// Note: Seeking resets the internal buffer, discarding any partial line.
+// For io.SeekCurrent with offset=0, returns the logical position without
+// affecting the buffer.
+func (fs *fileSource) Seek(offset int64, whence int) (int64, error) {
+	if fs.file == nil {
+		return 0, fmt.Errorf("file source not open")
+	}
+
+	// For io.SeekCurrent with offset=0, return the logical position we track.
+	// We can't use fs.file.Seek() because bufio.Reader reads ahead into its buffer,
+	// so the actual file position would be ahead of the logical position.
+	if whence == io.SeekCurrent && offset == 0 {
+		return fs.offset, nil
+	}
+
+	var targetOffset int64
+	var err error
+
+	switch whence {
+	case io.SeekStart, io.SeekEnd:
+		// For absolute seeks, use the underlying file directly
+		targetOffset, err = fs.file.Seek(offset, whence)
+	case io.SeekCurrent:
+		// For relative seeks, calculate absolute position based on our logical offset
+		targetOffset = fs.offset + offset
+		targetOffset, err = fs.file.Seek(targetOffset, io.SeekStart)
+	default:
+		return 0, fmt.Errorf("file source seek (%s): invalid whence %d", fs.path, whence)
+	}
+
+	if err != nil {
+		return 0, fmt.Errorf("file source seek (%s): %w", fs.path, err)
+	}
+
+	// Reset the buffered reader and clear partial line buffer
+	fs.reader.Reset(fs.file)
+	fs.partial = ""
+	fs.offset = targetOffset
+
+	return targetOffset, nil
+}
+
 func (fs *fileSource) validateConfig() error {
 	if strings.TrimSpace(fs.path) == "" {
 		return fmt.Errorf("file source: empty path")
