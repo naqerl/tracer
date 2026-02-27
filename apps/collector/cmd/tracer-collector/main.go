@@ -70,7 +70,10 @@ func serve(ctx context.Context, cfg config.Config) error {
 		if !ok {
 			return fmt.Errorf("parser with id=%s not found", spec.ParserID)
 		}
-		s := source.New(spec.Source)
+		s, err := source.New(spec.Source)
+		if err != nil {
+			return fmt.Errorf("invalid source config for app %s: %w", spec.Name, err)
+		}
 
 		lfc, err := lifecycle.New(spec.Lifecycle)
 		if err != nil {

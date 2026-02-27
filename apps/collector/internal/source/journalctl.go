@@ -152,7 +152,7 @@ func (js *journalctlSource) Seek(offset int64, whence int) (int64, error) {
 	switch whence {
 	case io.SeekStart:
 		if offset != 0 {
-			panic(fmt.Sprintf("journalctl source: SeekStart only supports offset=0, got %d", offset))
+			return 0, fmt.Errorf("journalctl source: SeekStart only supports offset=0, got %d", offset)
 		}
 		js.linesFromEnd = -1 // From beginning
 	case io.SeekEnd:
