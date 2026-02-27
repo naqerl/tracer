@@ -39,10 +39,11 @@ func InitMux(authService *auth.Service, ingestService *ingest.Service, tracker *
 	}
 
 	m.HandleFunc("GET /ws", h.handleWebSocket)
-	m.HandleFunc("GET /collectors", h.listCollectors)
 
 	return m
 }
+
+// Handlers
 
 func (h *handler) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	if !h.requireCollectorAPIKey(w, r) {
@@ -92,6 +93,8 @@ func (h *handler) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		h.processMessage(r.Context(), connID, remoteAddr, message)
 	}
 }
+
+// Helpers
 
 func (h *handler) processMessage(ctx context.Context, connID, remoteAddr string, message []byte) {
 	var hdr struct {
@@ -164,6 +167,37 @@ func (h *handler) handleEnvelope(ctx context.Context, env types.Envelope) {
 	}
 }
 
+func (h *handler) handleRegistration(ctx context.Context, connID, remoteAddr string, msg types.RegisterMessage) {
+	// Construct request from message
+	req := ingest.RegisterCollectorRequest{
+		CollectorName: msg.Collector,
+		Apps:          msg.Apps,
+	}
+
+	// Validate request
+	if err := req.Validate(); err != nil {
+		slog.Warn("Invalid registration request", "error", err, "remote", remoteAddr, "conn_id", connID)
+		return
+	}
+
+	slog.Info("Received app registration", "ingest", req.CollectorName, "remote", remoteAddr, "apps", req.Apps, "count", len(req.Apps))
+
+	// Register ingest with tracker
+	h.tracker.Register(connID, req.CollectorName, remoteAddr, req.Apps)
+
+	// Create all databases via ingest service
+	if err := h.ingestService.RegisterCollector(ctx, req); err != nil {
+		slog.Error("Failed to register collector", "collector", req.CollectorName, "error", err)
+		return
+	}
+
+	for _, appName := range req.Apps {
+		if appName != "" {
+			slog.Info("Registered app", "app_name", appName)
+		}
+	}
+}
+
 func (h *handler) handleLifecycle(ctx context.Context, collector string, evt types.LifecycleEvent) {
 	ts := evt.Timestamp().UTC()
 
@@ -201,6 +235,52 @@ func (h *handler) handleLog(ctx context.Context, collector, app string, entry ty
 	}
 }
 
+// handleStats processes system statistics from collectors.
+func (h *handler) handleStats(ctx context.Context, collector string, stats types.Stats) {
+	ts := stats.Timestamp.UTC()
+
+        // TODO: Should use the shared type instead and be flat
+        // TODO: Update DB type to be usual int, not bigint
+        // TODO: Instead of InsertStatsRequest, types.Stats could be used
+	req := ingest.InsertStatsRequest{
+		CollectorName: collector,
+		Stats: ingest.SystemStats{
+			CollectorName:   collector,
+			CpuUsagePercent: stats.CPUUsagePercent,
+			MemTotalMb:      int64(stats.MemTotalMB),
+			MemUsedMb:       int64(stats.MemUsedMB),
+			MemAvailableMb:  int64(stats.MemAvailableMB),
+			DiskTotalGb:     int64(stats.DiskTotalGB),
+			DiskUsedGb:      int64(stats.DiskUsedGB),
+			DiskAvailGb:     int64(stats.DiskAvailGB),
+			CreatedAt:       ts,
+		},
+	}
+	if err := req.Validate(); err != nil {
+		slog.Warn("Invalid stats request", "error", err, "collector", collector)
+		return
+	}
+
+	err := h.ingestService.InsertSystemStats(ctx, req)
+	if err != nil {
+		slog.Error("Failed to store system stats", "error", err, "collector", collector)
+		return
+	}
+
+	slog.Debug("Stored system stats", "collector", collector, "cpu", stats.CPUUsagePercent)
+}
+
+func (h *handler) pingLoop(conn *websocket.Conn) {
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		if err := conn.WriteControl(websocket.PingMessage, nil, time.Now().Add(10*time.Second)); err != nil {
+			return
+		}
+	}
+}
+
 func (h *handler) requireCollectorAPIKey(w http.ResponseWriter, r *http.Request) bool {
 	apiKey := r.Header.Get("X-API-Key")
 	if apiKey == "" {
@@ -231,92 +311,4 @@ func extractIP(remoteAddr string) string {
 		return ip
 	}
 	return remoteAddr
-}
-
-func (h *handler) handleRegistration(ctx context.Context, connID, remoteAddr string, msg types.RegisterMessage) {
-	// Construct request from message
-	req := ingest.RegisterCollectorRequest{
-		CollectorName: msg.Collector,
-		Apps:          msg.Apps,
-	}
-
-	// Validate request
-	if err := req.Validate(); err != nil {
-		slog.Warn("Invalid registration request", "error", err, "remote", remoteAddr, "conn_id", connID)
-		return
-	}
-
-	slog.Info("Received app registration", "ingest", req.CollectorName, "remote", remoteAddr, "apps", req.Apps, "count", len(req.Apps))
-
-	// Register ingest with tracker
-	h.tracker.Register(connID, req.CollectorName, remoteAddr, req.Apps)
-
-	// Create all databases via ingest service
-	if err := h.ingestService.RegisterCollector(ctx, req); err != nil {
-		slog.Error("Failed to register collector", "collector", req.CollectorName, "error", err)
-		return
-	}
-
-	for _, appName := range req.Apps {
-		if appName != "" {
-			slog.Info("Registered app", "app_name", appName)
-		}
-	}
-}
-
-func (h *handler) pingLoop(conn *websocket.Conn) {
-	ticker := time.NewTicker(30 * time.Second)
-	defer ticker.Stop()
-
-	for range ticker.C {
-		if err := conn.WriteControl(websocket.PingMessage, nil, time.Now().Add(10*time.Second)); err != nil {
-			return
-		}
-	}
-}
-
-func (h *handler) listCollectors(w http.ResponseWriter, r *http.Request) {
-	if !h.requireCollectorAPIKey(w, r) {
-		return
-	}
-
-	collectors := h.tracker.List()
-
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(collectors); err != nil {
-		slog.Error("Failed to encode collectors", "error", err)
-		http.Error(w, "Internal error", http.StatusInternalServerError)
-	}
-}
-
-// handleStats processes system statistics from collectors.
-func (h *handler) handleStats(ctx context.Context, collector string, stats types.Stats) {
-	ts := stats.Timestamp.UTC()
-
-	req := ingest.InsertStatsRequest{
-		CollectorName: collector,
-		Stats: ingest.SystemStats{
-			CollectorName:   collector,
-			CpuUsagePercent: stats.CPUUsagePercent,
-			MemTotalMb:      int64(stats.MemTotalMB),
-			MemUsedMb:       int64(stats.MemUsedMB),
-			MemAvailableMb:  int64(stats.MemAvailableMB),
-			DiskTotalGb:     int64(stats.DiskTotalGB),
-			DiskUsedGb:      int64(stats.DiskUsedGB),
-			DiskAvailGb:     int64(stats.DiskAvailGB),
-			CreatedAt:       ts,
-		},
-	}
-	if err := req.Validate(); err != nil {
-		slog.Warn("Invalid stats request", "error", err, "collector", collector)
-		return
-	}
-
-	err := h.ingestService.InsertSystemStats(ctx, req)
-	if err != nil {
-		slog.Error("Failed to store system stats", "error", err, "collector", collector)
-		return
-	}
-
-	slog.Debug("Stored system stats", "collector", collector, "cpu", stats.CPUUsagePercent)
 }
