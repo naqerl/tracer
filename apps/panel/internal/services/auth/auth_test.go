@@ -34,7 +34,6 @@ func TestSetAndValidateAPIKey_HashedStorage(t *testing.T) {
 	t.Cleanup(func() { _ = db.Close() })
 
 	svc := New(db)
-	t.Cleanup(func() { _ = svc.Close() })
 
 	const key = "test-api-key-123"
 	if err := svc.SetAPIKey(ctx, key); err != nil {
@@ -64,7 +63,6 @@ func TestGetAPIKey_ReturnsMaskedPreviewForHashedKey(t *testing.T) {
 	t.Cleanup(func() { _ = db.Close() })
 
 	svc := New(db)
-	t.Cleanup(func() { _ = svc.Close() })
 
 	const key = "abc123-secret"
 	if err := svc.SetAPIKey(ctx, key); err != nil {
