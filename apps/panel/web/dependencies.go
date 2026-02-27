@@ -5,14 +5,16 @@ import (
 	"tracer/apps/panel/internal/services/auth"
 	"tracer/apps/panel/internal/services/ingest"
 	"tracer/apps/panel/internal/services/notify"
+	panelsvc "tracer/apps/panel/internal/services/panel"
 	"tracer/apps/panel/internal/services/user"
 )
 
 type Dependencies struct {
-	DBManagerx *dbmanager.Manager
-	Ingest     *ingest.Service
-	Notify     *notify.Service
-	Auth       *auth.Service
-	User       *user.Service
-	Tracker    *ingest.Tracker
+	DBManagerx   *dbmanager.Manager
+	Ingest       *ingest.Service
+	Notify       *notify.Service
+	Auth         *auth.Service
+	User         *user.Service
+	Tracker      *ingest.Tracker
+	PanelService *panelsvc.Service
 }

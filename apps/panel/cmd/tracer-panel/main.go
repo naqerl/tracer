@@ -25,6 +25,7 @@ import (
 	"tracer/apps/panel/internal/services/ingest"
 	"tracer/apps/panel/internal/services/notify"
 	"tracer/apps/panel/internal/services/notify/telegram"
+	panelsvc "tracer/apps/panel/internal/services/panel"
 	"tracer/apps/panel/internal/services/user"
 	panelmigrations "tracer/apps/panel/sql/panel"
 	"tracer/apps/panel/web"
@@ -118,6 +119,9 @@ func serve(ctx context.Context, cfg config.Panel) error {
 	// Initialize collector tracker
 	tracker := ingest.NewTracker()
 
+	// Initialize panel service
+	panelService := panelsvc.New(dbManager, userService, ingestService, tracker)
+
 	// Run services
 	wg.Go(func() { notifyDispatcher.Start(ctx) })
 	wg.Go(func() { retentionService.Start(ctx) })
@@ -139,14 +143,15 @@ func serve(ctx context.Context, cfg config.Panel) error {
 
 	// Initialize HTTP server
 	deps := web.Dependencies{
-		DBManagerx: dbManager,
-		Ingest:     ingestService,
-		Notify:     notifyService,
-		Auth:       authService,
-		User:       userService,
-		Tracker:    tracker,
+		DBManagerx:   dbManager,
+		Ingest:       ingestService,
+		Notify:       notifyService,
+		Auth:         authService,
+		User:         userService,
+		Tracker:      tracker,
+		PanelService: panelService,
 	}
-	server := web.Run(deps, cfg.Port, cfg.SampleRate)
+	server := web.NewServer(deps, cfg.Port, cfg.SampleRate)
 
 	// Handle server shutdown
 	wg.Go(func() {
