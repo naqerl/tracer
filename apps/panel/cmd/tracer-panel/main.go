@@ -108,11 +108,7 @@ func serve(ctx context.Context, cfg config.Panel) error {
 
 	// Initialize ingest service
 	alertFormatter := func(collectorName, appName string, logID int64) string {
-		// TODO: PanelURL should be named HOST and required
-		if cfg.PanelURL == "" {
-			return ""
-		}
-		return fmt.Sprintf("%s/panel/collectors/%s/apps/%s/logs/%d", cfg.PanelURL, collectorName, appName, logID)
+		return fmt.Sprintf("%s/panel/collectors/%s/apps/%s/logs/%d", cfg.Host, collectorName, appName, logID)
 	}
 	ingestService := ingest.New(dbManager, notifyChan, alertFormatter)
 

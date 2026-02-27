@@ -6,7 +6,7 @@ import (
 
 	panelsvc "tracer/apps/panel/internal/services/panel"
 
-	authres "tracer/apps/panel/web/handlers/auth"
+	"tracer/apps/panel/web/handlers/auth"
 	"tracer/apps/panel/web/handlers/ingest"
 	"tracer/apps/panel/web/handlers/llm"
 	"tracer/apps/panel/web/handlers/panel"
@@ -15,17 +15,19 @@ import (
 	authmw "tracer/apps/panel/web/middleware/auth"
 )
 
+// TODO: Rename to mirror function's responsibility
 func Run(deps Dependencies, port string, sampleRate float64) *http.Server {
 	mux := http.NewServeMux()
+	authMux := auth.InitMux(deps.Auth, deps.User)
 	panelService := panelsvc.New(deps.DBManagerx, deps.User, deps.Ingest, deps.Tracker)
-	authMux := authres.InitMux(deps.Auth, deps.User)
-	panelMux := panel.InitMux(panelService)
 
 	mux.Handle("/ingest/", http.StripPrefix("/ingest", ingest.InitMux(deps.Auth, deps.Ingest, sampleRate, deps.Tracker)))
-	mux.Handle("/panel/", http.StripPrefix("/panel", panelMux))
+	mux.Handle("/panel/", http.StripPrefix("/panel", panel.InitMux(panelService)))
 	mux.Handle("/auth/", http.StripPrefix("/auth", authMux))
 	mux.Handle("/llm", llm.InitMux())
 	mux.Handle("/settings/", http.StripPrefix("/settings", settings.InitMux(deps.Auth, deps.User, deps.Ingest, deps.DBManagerx, deps.Notify)))
+
+        // TODO: Delete and ensure, that all links use proper /auth/* prefix
 	mux.HandleFunc("GET /login", func(w http.ResponseWriter, r *http.Request) { authMux.ServeHTTP(w, r) })
 	mux.HandleFunc("POST /login", func(w http.ResponseWriter, r *http.Request) { authMux.ServeHTTP(w, r) })
 	mux.HandleFunc("POST /logout", func(w http.ResponseWriter, r *http.Request) { authMux.ServeHTTP(w, r) })

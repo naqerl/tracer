@@ -12,7 +12,7 @@ type Panel struct {
 	DataDir       string  `yaml:"data_dir"`
 	SampleRate    float64 `yaml:"sample_rate"`
 	RetentionDays int     `yaml:"retention_days"`
-	PanelURL      string  `yaml:"panel_url"`
+	Host          string  `yaml:"host"`
 }
 
 const (
@@ -50,6 +50,9 @@ func Load(path string) Panel {
 	}
 	if cfg.RetentionDays == 0 {
 		cfg.RetentionDays = 90
+	}
+	if cfg.Host == "" {
+		log.Fatalf("host is required (e.g., https://tracer.example.com)")
 	}
 
 	return cfg
