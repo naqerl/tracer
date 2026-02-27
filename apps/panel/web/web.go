@@ -24,15 +24,8 @@ func NewServer(deps Dependencies, port string, sampleRate float64) *http.Server 
 	mux.Handle("/llm", llm.InitMux())
 	mux.Handle("/settings/", http.StripPrefix("/settings", settings.InitMux(deps.Auth, deps.User, deps.Ingest, deps.DBManagerx, deps.Notify)))
 
-	// Legacy routes for backwards compatibility - TODO: migrate templates to use /auth/* prefix
-	mux.HandleFunc("GET /login", func(w http.ResponseWriter, r *http.Request) { authMux.ServeHTTP(w, r) })
-	mux.HandleFunc("POST /login", func(w http.ResponseWriter, r *http.Request) { authMux.ServeHTTP(w, r) })
-	mux.HandleFunc("POST /logout", func(w http.ResponseWriter, r *http.Request) { authMux.ServeHTTP(w, r) })
-	mux.HandleFunc("GET /setup", func(w http.ResponseWriter, r *http.Request) { authMux.ServeHTTP(w, r) })
-	mux.HandleFunc("POST /setup", func(w http.ResponseWriter, r *http.Request) { authMux.ServeHTTP(w, r) })
-
 	markdownMiddleware := middleware.BuildMarkdownMiddleware()
-	loginPathMiddleware := authmw.BuildLoginPathMiddleware("/login")
+	loginPathMiddleware := authmw.BuildLoginPathMiddleware("/auth/login")
 	authMiddleware := authmw.BuildAuthMiddleware(deps.Auth, deps.User)
 	handler := middleware.LoggingMiddleware(markdownMiddleware(loginPathMiddleware(authMiddleware(mux))))
 

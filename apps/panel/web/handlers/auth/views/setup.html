@@ -22,7 +22,7 @@
 
         <div id="form-error" class="empty:hidden bg-red-900/50 text-red-300 p-3 mb-4 text-sm"></div>
 
-        <form hx-post="/setup" hx-target="#form-error" hx-swap="innerHTML">
+        <form hx-post="/auth/setup" hx-target="#form-error" hx-swap="innerHTML">
             <div class="mb-4">
                 <label for="username" class="block text-fg-secondary text-sm mb-1.5">Admin Username</label>
                 <input type="text" id="username" name="username" required autofocus

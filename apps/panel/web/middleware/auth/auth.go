@@ -18,7 +18,7 @@ const (
 	userContextKey      contextKey = "user"
 	loginPathContextKey contextKey = "login_path"
 	sessionCookie       string     = "tracer_session"
-	defaultLoginPath    string     = "/login"
+	defaultLoginPath    string     = "/auth/login"
 )
 
 var (

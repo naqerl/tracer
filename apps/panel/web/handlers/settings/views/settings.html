@@ -33,7 +33,7 @@
             <p class="text-lg text-fg">{{.CurrentUser.Username}}</p>
             <p class="text-sm text-fg-secondary mt-1">{{if .IsAdmin}}Administrator{{else}}User{{end}}</p>
         </div>
-        <form action="/logout" method="POST">
+        <form action="/auth/logout" method="POST">
             {{template "danger-action" dict "Title" "Logout"}}
         </form>
     </div>

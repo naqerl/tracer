@@ -12,7 +12,7 @@
             <p class="text-fg-secondary text-sm">Sign in to continue</p>
         </div>
         <div id="form-error" class="empty:hidden bg-red-900/50 text-red-300 p-3 mb-4 text-sm"></div>
-        <form hx-post="/login" hx-target="#form-error" hx-swap="innerHTML" hx-on::after-request="if (event.detail.xhr.status >= 400) { document.getElementById('form-error').innerHTML = event.detail.xhr.responseText; }">
+        <form hx-post="/auth/login" hx-target="#form-error" hx-swap="innerHTML" hx-on::after-request="if (event.detail.xhr.status >= 400) { document.getElementById('form-error').innerHTML = event.detail.xhr.responseText; }">
             <div class="mb-4">
                 <label for="username" class="block text-fg-secondary text-sm mb-1.5">Username</label>
                 <input type="text" id="username" name="username" required autofocus
