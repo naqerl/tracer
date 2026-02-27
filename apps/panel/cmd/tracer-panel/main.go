@@ -108,6 +108,7 @@ func serve(ctx context.Context, cfg config.Panel) error {
 
 	// Initialize ingest service
 	alertFormatter := func(collectorName, appName string, logID int64) string {
+		// TODO: PanelURL should be named HOST and required
 		if cfg.PanelURL == "" {
 			return ""
 		}

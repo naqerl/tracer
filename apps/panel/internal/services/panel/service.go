@@ -11,7 +11,7 @@ import (
 	"tracer/apps/panel/db"
 	"tracer/apps/panel/internal/dbmanager"
 	"tracer/apps/panel/internal/services/ingest"
-	"tracer/apps/panel/internal/services/permissions"
+	"tracer/apps/panel/internal/services/user"
 	sharedtypes "tracer/libs/types"
 )
 
@@ -29,15 +29,15 @@ var (
 
 type Service struct {
 	dbManager   *dbmanager.Manager
-	permissions *permissions.Service
+	userService *user.Service
 	ingestSvc   *ingest.Service
 	tracker     *ingest.Tracker
 }
 
-func New(dbManager *dbmanager.Manager, permissions *permissions.Service, ingestSvc *ingest.Service, tracker *ingest.Tracker) *Service {
+func New(dbManager *dbmanager.Manager, userService *user.Service, ingestSvc *ingest.Service, tracker *ingest.Tracker) *Service {
 	return &Service{
 		dbManager:   dbManager,
-		permissions: permissions,
+		userService: userService,
 		ingestSvc:   ingestSvc,
 		tracker:     tracker,
 	}
@@ -210,7 +210,7 @@ func (s *Service) queriesForApp(collectorName, appName string) (*db.Queries, err
 // FIXME: Stop db handjob
 func (s *Service) GetAppAnalytics(ctx context.Context, req GetAppAnalyticsRequest) (AppStats, error) {
 	var stats AppStats
-	hasAccess, err := s.permissions.CanAccessApp(ctx, req.User, req.AppName)
+	hasAccess, err := s.canAccessApp(ctx, req.User, req.AppName)
 	if err != nil {
 		return stats, err
 	}
@@ -253,7 +253,7 @@ func (s *Service) GetAppAnalytics(ctx context.Context, req GetAppAnalyticsReques
 }
 
 func (s *Service) GetLogDetail(ctx context.Context, req GetLogDetailRequest) (*LogDetailResult, error) {
-	hasAccess, err := s.permissions.CanAccessApp(ctx, req.User, req.AppName)
+	hasAccess, err := s.canAccessApp(ctx, req.User, req.AppName)
 	if err != nil {
 		return nil, err
 	}
@@ -315,7 +315,7 @@ type LogGroup struct {
 func (s *Service) GetLogGroups(ctx context.Context, req GetLogGroupsRequest) ([]LogGroup, error) {
 	var groups []LogGroup
 
-	hasAccess, err := s.permissions.CanAccessApp(ctx, req.User, req.AppName)
+	hasAccess, err := s.canAccessApp(ctx, req.User, req.AppName)
 	if err != nil {
 		return groups, err
 	}
@@ -369,7 +369,7 @@ func (s *Service) GetLogVolumeTimeSeries(ctx context.Context, collectorName, app
 }
 
 func (s *Service) GetLogByID(ctx context.Context, req GetLogByIDRequest) (db.Log, error) {
-	hasAccess, err := s.permissions.CanAccessApp(ctx, req.User, req.AppName)
+	hasAccess, err := s.canAccessApp(ctx, req.User, req.AppName)
 	if err != nil {
 		return db.Log{}, err
 	}
@@ -393,12 +393,17 @@ func (s *Service) GetLogByID(ctx context.Context, req GetLogByIDRequest) (db.Log
 }
 
 // GetCollectorsView returns all collectors with their data filtered for the given user.
+// Collectors are listed from the database; connection status is enriched from the tracker if available.
 func (s *Service) GetCollectorsView(ctx context.Context, user sharedtypes.User) ([]CollectorView, error) {
-	collectorList := s.tracker.List()
-	views := make([]CollectorView, 0, len(collectorList))
+	collectorNames, err := s.dbManager.ListCollectors()
+	if err != nil {
+		return nil, fmt.Errorf("list collectors: %w", err)
+	}
 
-	for _, c := range collectorList {
-		hasAccess, err := s.permissions.CanAccessCollector(ctx, user, c.Name)
+	views := make([]CollectorView, 0, len(collectorNames))
+
+	for _, name := range collectorNames {
+		hasAccess, err := s.canAccessCollector(ctx, user, name)
 		if err != nil {
 			return nil, err
 		}
@@ -407,22 +412,39 @@ func (s *Service) GetCollectorsView(ctx context.Context, user sharedtypes.User) 
 		}
 
 		view := CollectorView{
-			Name:        c.Name,
-			RemoteAddr:  c.RemoteAddr,
-			IsConnected: c.IsConnected,
-			ConnectedAt: c.ConnectedAt,
-			LastSeenAt:  c.LastSeenAt,
+			Name: name,
+			// Default status values (disconnected) - will be overridden if tracker has info
+			IsConnected: false,
 		}
 
-		// Filter apps by user access
-		filteredApps, err := s.permissions.FilterAppsByAccess(ctx, user, c.Apps)
-		if err != nil {
-			return nil, err
+		// Enrich with tracker data if collector is currently connected
+		if trackerInfo, exists := s.tracker.Get(name); exists {
+			view.RemoteAddr = trackerInfo.RemoteAddr
+			view.IsConnected = trackerInfo.IsConnected
+			view.ConnectedAt = trackerInfo.ConnectedAt
+			view.LastSeenAt = trackerInfo.LastSeenAt
+			// Use tracker's app list for live data
+			filteredApps, err := s.filterAppsByAccess(ctx, user, trackerInfo.Apps)
+			if err != nil {
+				return nil, err
+			}
+			view.Apps = filteredApps
+		} else {
+			// Fall back to database app list
+			apps, err := s.dbManager.ListApps(name)
+			if err != nil {
+				slog.Warn("Failed to list apps for collector", "collector", name, "error", err)
+				apps = []string{}
+			}
+			filteredApps, err := s.filterAppsByAccess(ctx, user, apps)
+			if err != nil {
+				return nil, err
+			}
+			view.Apps = filteredApps
 		}
-		view.Apps = filteredApps
 
 		// Get latest stats
-		stats, err := s.ingestSvc.GetLatestStats(ctx, c.Name)
+		stats, err := s.ingestSvc.GetLatestStats(ctx, name)
 		if err == nil {
 			view.Stats = stats
 			view.StatsDisplay = formatStatsForDisplay(stats)
@@ -442,7 +464,7 @@ func (s *Service) GetCollectorDetail(ctx context.Context, req GetCollectorDetail
 		return CollectorView{}, ErrAppNotFound
 	}
 
-	hasAccess, err := s.permissions.CanAccessCollector(ctx, req.User, req.CollectorName)
+	hasAccess, err := s.canAccessCollector(ctx, req.User, req.CollectorName)
 	if err != nil {
 		return CollectorView{}, err
 	}
@@ -459,7 +481,7 @@ func (s *Service) GetCollectorDetail(ctx context.Context, req GetCollectorDetail
 	}
 
 	// Filter apps by user access
-	filteredApps, err := s.permissions.FilterAppsByAccess(ctx, req.User, collector.Apps)
+	filteredApps, err := s.filterAppsByAccess(ctx, req.User, collector.Apps)
 	if err != nil {
 		return CollectorView{}, err
 	}
@@ -475,20 +497,90 @@ func (s *Service) GetCollectorDetail(ctx context.Context, req GetCollectorDetail
 	return view, nil
 }
 
+// isAdmin returns true if the user is an admin.
+func (s *Service) isAdmin(user sharedtypes.User) bool {
+	return user.IsAdmin
+}
+
+// canAccessApp checks if the user has access to a specific app.
+func (s *Service) canAccessApp(ctx context.Context, user sharedtypes.User, appName string) (bool, error) {
+	return s.userService.HasAppAccess(ctx, user.ID, appName)
+}
+
+// canAccessCollector checks if the user has access to any app in the collector.
+func (s *Service) canAccessCollector(ctx context.Context, user sharedtypes.User, collectorName string) (bool, error) {
+	if s.isAdmin(user) {
+		return true, nil
+	}
+	if user.ID == 0 {
+		return false, nil
+	}
+
+	// Get apps for this collector from database
+	collectorApps, err := s.dbManager.ListApps(collectorName)
+	if err != nil {
+		return false, err
+	}
+
+	userApps, err := s.userService.GetApps(ctx, user.ID)
+	if err != nil {
+		return false, err
+	}
+	userAppSet := make(map[string]struct{}, len(userApps))
+	for _, app := range userApps {
+		userAppSet[app] = struct{}{}
+	}
+
+	for _, app := range collectorApps {
+		if _, ok := userAppSet[app]; ok {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
+// filterAppsByAccess returns only the apps the user has access to.
+func (s *Service) filterAppsByAccess(ctx context.Context, user sharedtypes.User, apps []string) ([]string, error) {
+	if s.isAdmin(user) {
+		return apps, nil
+	}
+	if user.ID == 0 {
+		return nil, nil
+	}
+
+	userApps, err := s.userService.GetApps(ctx, user.ID)
+	if err != nil {
+		return nil, err
+	}
+	userAppSet := make(map[string]struct{}, len(userApps))
+	for _, app := range userApps {
+		userAppSet[app] = struct{}{}
+	}
+
+	filtered := make([]string, 0, len(apps))
+	for _, app := range apps {
+		if _, ok := userAppSet[app]; ok {
+			filtered = append(filtered, app)
+		}
+	}
+	return filtered, nil
+}
+
 // FilterCollectorApps filters the given apps by user access permissions.
 func (s *Service) FilterCollectorApps(ctx context.Context, user sharedtypes.User, apps []string) ([]string, error) {
-	return s.permissions.FilterAppsByAccess(ctx, user, apps)
+	return s.filterAppsByAccess(ctx, user, apps)
 }
 
 // CanAccessApp checks if the user has access to a specific app.
 func (s *Service) CanAccessApp(ctx context.Context, user sharedtypes.User, appName string) (bool, error) {
-	return s.permissions.CanAccessApp(ctx, user, appName)
+	return s.canAccessApp(ctx, user, appName)
 }
 
 // GetStatsHistory returns stats history for a collector.
 // This is a wrapper around ingest service for now.
 func (s *Service) GetStatsHistory(ctx context.Context, req GetStatsHistoryRequest) ([]db.SystemStat, error) {
-	hasAccess, err := s.permissions.CanAccessCollector(ctx, req.User, req.CollectorName)
+	hasAccess, err := s.canAccessCollector(ctx, req.User, req.CollectorName)
 	if err != nil {
 		return nil, err
 	}

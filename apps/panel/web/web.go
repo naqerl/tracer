@@ -5,7 +5,6 @@ import (
 	"time"
 
 	panelsvc "tracer/apps/panel/internal/services/panel"
-	"tracer/apps/panel/internal/services/permissions"
 
 	authres "tracer/apps/panel/web/handlers/auth"
 	"tracer/apps/panel/web/handlers/ingest"
@@ -18,8 +17,7 @@ import (
 
 func Run(deps Dependencies, port string, sampleRate float64) *http.Server {
 	mux := http.NewServeMux()
-	permissionService := permissions.New(deps.User, deps.Tracker)
-	panelService := panelsvc.New(deps.DBManagerx, permissionService, deps.Ingest, deps.Tracker)
+	panelService := panelsvc.New(deps.DBManagerx, deps.User, deps.Ingest, deps.Tracker)
 	authMux := authres.InitMux(deps.Auth, deps.User)
 	panelMux := panel.InitMux(panelService)
 
