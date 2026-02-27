@@ -237,37 +237,21 @@ func (h *handler) handleLog(ctx context.Context, collector, app string, entry ty
 
 // handleStats processes system statistics from collectors.
 func (h *handler) handleStats(ctx context.Context, collector string, stats types.Stats) {
-	ts := stats.Timestamp.UTC()
-
-        // TODO: Should use the shared type instead and be flat
-        // TODO: Update DB type to be usual int, not bigint
-        // TODO: Instead of InsertStatsRequest, types.Stats could be used
-	req := ingest.InsertStatsRequest{
+	req := ingest.SaveSystemStatsRequest{
 		CollectorName: collector,
-		Stats: ingest.SystemStats{
-			CollectorName:   collector,
-			CpuUsagePercent: stats.CPUUsagePercent,
-			MemTotalMb:      int64(stats.MemTotalMB),
-			MemUsedMb:       int64(stats.MemUsedMB),
-			MemAvailableMb:  int64(stats.MemAvailableMB),
-			DiskTotalGb:     int64(stats.DiskTotalGB),
-			DiskUsedGb:      int64(stats.DiskUsedGB),
-			DiskAvailGb:     int64(stats.DiskAvailGB),
-			CreatedAt:       ts,
-		},
+		Stats:         stats,
 	}
 	if err := req.Validate(); err != nil {
-		slog.Warn("Invalid stats request", "error", err, "collector", collector)
+		slog.Warn("Invalid system stats request", "error", err, "collector", collector)
 		return
 	}
 
-	err := h.ingestService.InsertSystemStats(ctx, req)
-	if err != nil {
-		slog.Error("Failed to store system stats", "error", err, "collector", collector)
+	if err := h.ingestService.SaveSystemStats(ctx, req); err != nil {
+		slog.Error("Failed to save system stats", "error", err, "collector", collector)
 		return
 	}
 
-	slog.Debug("Stored system stats", "collector", collector, "cpu", stats.CPUUsagePercent)
+	slog.Debug("Saved system stats", "collector", collector, "cpu", stats.CPUUsagePercent)
 }
 
 func (h *handler) pingLoop(conn *websocket.Conn) {

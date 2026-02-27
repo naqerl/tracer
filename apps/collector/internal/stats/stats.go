@@ -17,13 +17,13 @@ type Stats struct {
 
 	CPUUsagePercent float64
 
-	MemTotalMB     uint64
-	MemUsedMB      uint64
-	MemAvailableMB uint64
+	MemTotalMB     int64
+	MemUsedMB      int64
+	MemAvailableMB int64
 
-	DiskTotalGB uint64
-	DiskUsedGB  uint64
-	DiskAvailGB uint64
+	DiskTotalGB int64
+	DiskUsedGB  int64
+	DiskAvailGB int64
 }
 
 type ResourceMonitor struct {

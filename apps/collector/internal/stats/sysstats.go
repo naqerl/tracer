@@ -101,7 +101,7 @@ func (c *SystemStats) getCPUUsage() (float64, error) {
 
 // getMemStats reads memory information from /proc/meminfo
 // Returns total, used, available in MB
-func (c *SystemStats) getMemStats() (total, used, available uint64, err error) {
+func (c *SystemStats) getMemStats() (total, used, available int64, err error) {
 	file, err := os.Open("/proc/meminfo")
 	if err != nil {
 		return 0, 0, 0, err
@@ -136,11 +136,11 @@ func (c *SystemStats) getMemStats() (total, used, available uint64, err error) {
 	}
 
 	// Convert from KB to MB
-	total = memTotal / 1024
-	available = memAvailable / 1024
+	total = int64(memTotal / 1024)
+	available = int64(memAvailable / 1024)
 	if available == 0 {
 		// Fallback if MemAvailable not present (older kernels)
-		available = (memFree + buffers + cached) / 1024
+		available = int64((memFree + buffers + cached) / 1024)
 	}
 	used = total - available
 
@@ -149,7 +149,7 @@ func (c *SystemStats) getMemStats() (total, used, available uint64, err error) {
 
 // getDiskStats gets disk usage for the data directory
 // Returns total, used, available in GB
-func (c *SystemStats) getDiskStats() (total, used, available uint64, err error) {
+func (c *SystemStats) getDiskStats() (total, used, available int64, err error) {
 	var stat syscall.Statfs_t
 	if err := syscall.Statfs("/", &stat); err != nil {
 		return 0, 0, 0, err
@@ -163,9 +163,9 @@ func (c *SystemStats) getDiskStats() (total, used, available uint64, err error) 
 
 	// Convert to GB (divide by 1024^3)
 	const gb = 1024 * 1024 * 1024
-	total = totalBytes / gb
-	available = availBytes / gb
-	used = (totalBytes - freeBytes) / gb
+	total = int64(totalBytes / gb)
+	available = int64(availBytes / gb)
+	used = int64((totalBytes - freeBytes) / gb)
 
 	return total, used, available, nil
 }

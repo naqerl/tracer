@@ -63,49 +63,37 @@ func (s *Service) ListApps(collector string) ([]string, error) {
 
 // --- Stats Operations (using sqlc) ---
 
-// SystemStats contains system statistics for a collector.
-type SystemStats struct {
-	CollectorName   string
-	CpuUsagePercent float64
-	MemTotalMb      int64
-	MemUsedMb       int64
-	MemAvailableMb  int64
-	DiskTotalGb     int64
-	DiskUsedGb      int64
-	DiskAvailGb     int64
-	CreatedAt       time.Time
-}
-
-type InsertStatsRequest struct {
+// SaveSystemStatsRequest contains system statistics to save for a collector.
+type SaveSystemStatsRequest struct {
 	CollectorName string
-	Stats         SystemStats
+	Stats         types.Stats
 }
 
-func (r InsertStatsRequest) Validate() error {
+func (r SaveSystemStatsRequest) Validate() error {
 	if r.CollectorName == "" {
 		return fmt.Errorf("collector name is required")
 	}
 	return nil
 }
 
-// InsertSystemStats inserts system statistics for a collector.
+// SaveSystemStats saves system statistics for a collector.
 // Creates the collector DB if it doesn't exist.
-func (s *Service) InsertSystemStats(ctx context.Context, req InsertStatsRequest) error {
+func (s *Service) SaveSystemStats(ctx context.Context, req SaveSystemStatsRequest) error {
 	dbtx, err := s.dbManager.GetCollectorDB(req.CollectorName)
 	if err != nil {
 		return err
 	}
 	queries := db.New(dbtx)
 	return queries.InsertSystemStats(ctx, db.InsertSystemStatsParams{
-		CollectorName:   req.Stats.CollectorName,
-		CpuUsagePercent: req.Stats.CpuUsagePercent,
-		MemTotalMb:      req.Stats.MemTotalMb,
-		MemUsedMb:       req.Stats.MemUsedMb,
-		MemAvailableMb:  req.Stats.MemAvailableMb,
-		DiskTotalGb:     req.Stats.DiskTotalGb,
-		DiskUsedGb:      req.Stats.DiskUsedGb,
-		DiskAvailGb:     req.Stats.DiskAvailGb,
-		CreatedAt:       req.Stats.CreatedAt,
+		CollectorName:   req.CollectorName,
+		CpuUsagePercent: req.Stats.CPUUsagePercent,
+		MemTotalMb:      req.Stats.MemTotalMB,
+		MemUsedMb:       req.Stats.MemUsedMB,
+		MemAvailableMb:  req.Stats.MemAvailableMB,
+		DiskTotalGb:     req.Stats.DiskTotalGB,
+		DiskUsedGb:      req.Stats.DiskUsedGB,
+		DiskAvailGb:     req.Stats.DiskAvailGB,
+		CreatedAt:       req.Stats.Timestamp,
 	})
 }
 
