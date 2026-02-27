@@ -27,16 +27,14 @@ var upgrader = websocket.Upgrader{
 type handler struct {
 	authService   *auth.Service
 	ingestService *ingest.Service
-	sampleRate    float64
 	tracker       *ingest.Tracker
 }
 
-func InitMux(authService *auth.Service, ingestService *ingest.Service, sampleRate float64, tracker *ingest.Tracker) *http.ServeMux {
+func InitMux(authService *auth.Service, ingestService *ingest.Service, tracker *ingest.Tracker) *http.ServeMux {
 	m := http.NewServeMux()
 	h := &handler{
 		authService:   authService,
 		ingestService: ingestService,
-		sampleRate:    sampleRate,
 		tracker:       tracker,
 	}
 
@@ -191,7 +189,6 @@ func (h *handler) handleLog(ctx context.Context, collector, app string, entry ty
 		CollectorName: collector,
 		AppName:       app,
 		Entry:         entry,
-		SampleRate:    h.sampleRate,
 	}
 	if err := req.Validate(); err != nil {
 		slog.Warn("Invalid log request", "error", err, "collector", collector, "app", app)

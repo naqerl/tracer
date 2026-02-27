@@ -38,14 +38,16 @@ type Service struct {
 	dbManager      DBManager
 	notifyChan     chan<- notify.Notification
 	alertFormatter func(collectorName, appName string, logID int64) string
+	sampleRate     float64
 }
 
 // New creates a new ingest service.
-func New(dbManager DBManager, notifyChan chan<- notify.Notification, alertFormatter func(collectorName, appName string, logID int64) string) *Service {
+func New(dbManager DBManager, notifyChan chan<- notify.Notification, alertFormatter func(collectorName, appName string, logID int64) string, sampleRate float64) *Service {
 	return &Service{
 		dbManager:      dbManager,
 		notifyChan:     notifyChan,
 		alertFormatter: alertFormatter,
+		sampleRate:     sampleRate,
 	}
 }
 
@@ -194,7 +196,6 @@ type StoreLogRequest struct {
 	CollectorName string
 	AppName       string
 	Entry         types.LogEntry
-	SampleRate    float64
 }
 
 func (r StoreLogRequest) Validate() error {
@@ -216,7 +217,7 @@ func (s *Service) StoreLog(ctx context.Context, req StoreLogRequest) (int64, err
 	isError := req.Entry.Level == types.LevelError
 
 	// Sampling logic: always persist errors, sample others
-	if !isError && rand.Float64() >= req.SampleRate {
+	if !isError && rand.Float64() >= s.sampleRate {
 		return 0, nil // Skipped by sampling
 	}
 

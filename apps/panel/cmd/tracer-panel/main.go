@@ -111,7 +111,7 @@ func serve(ctx context.Context, cfg config.Panel) error {
 	alertFormatter := func(collectorName, appName string, logID int64) string {
 		return fmt.Sprintf("%s/panel/collectors/%s/apps/%s/logs/%d", cfg.Host, collectorName, appName, logID)
 	}
-	ingestService := ingest.New(dbManager, notifyChan, alertFormatter)
+	ingestService := ingest.New(dbManager, notifyChan, alertFormatter, cfg.SampleRate)
 
 	// Initialize retention service
 	retentionService := retention.New(dbManager, ingestService, cfg.RetentionDays)
@@ -151,7 +151,7 @@ func serve(ctx context.Context, cfg config.Panel) error {
 		Tracker:      tracker,
 		PanelService: panelService,
 	}
-	server := web.NewServer(deps, cfg.Port, cfg.SampleRate)
+	server := web.NewServer(deps, cfg.Port)
 
 	// Handle server shutdown
 	wg.Go(func() {
