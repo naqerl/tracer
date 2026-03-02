@@ -156,54 +156,16 @@ setup_directories() {
     log_info "Directories created"
 }
 
-# Create example configuration files
-create_configs() {
+# Generate configuration files using CLI tools
+generate_configs() {
+    log_info "Generating configuration files..."
+
     # Collector config (only if doesn't exist)
     if [[ ! -f "${CONFIG_DIR}/collector.yaml" ]]; then
         log_info "Creating collector configuration..."
-        cat > "${CONFIG_DIR}/collector.yaml" << 'EOF'
-# Tracer Collector Configuration
-# Documentation: https://github.com/ai-shift/tracer
-
-transport:
-  # Collector name (identifies this collector in the panel)
-  name: my-collector
-  # Panel host and port (no protocol)
-  panel_host: localhost:8080
-  # Collector API key
-  api_key: YOUR_API_KEY
-
-stats:
-  # System stats collection interval
-  stats_interval: 30s
-
-parsers:
-  json-default:
-    type: json
-    params:
-      timestamp_field: timestamp
-      timestamp_format: "2006-01-02T15:04:05Z07:00"
-      level_field: level
-      trace_id_field: trace_id
-      message_field: message
-
-# Each app entry creates a separate application in the panel.
-# Add as many entries as needed.
-apps:
-  # Example: JSON app logs from a file
-  - name: my-app
-    parser_id: json-default
-    lifecycle:
-      start_pattern: "SERVICE_LIFECYCLE start"
-      restart_pattern: "SERVICE_LIFECYCLE restart"
-      exit_pattern: "SERVICE_LIFECYCLE exit"
-    source:
-      type: file
-      params:
-        path: /var/log/my-app/app.log
-        read_from: end
-EOF
+        "${INSTALL_DIR}/tracer-collector" -print-defaults > "${CONFIG_DIR}/collector.yaml"
         chmod 644 "${CONFIG_DIR}/collector.yaml"
+        log_info "Collector config created"
     else
         log_warn "Collector config already exists, skipping"
     fi
@@ -212,29 +174,58 @@ EOF
     if [[ "$COLLECTOR_ONLY" != "1" ]]; then
         if [[ ! -f "${CONFIG_DIR}/panel.yaml" ]]; then
             log_info "Creating panel configuration..."
-            cat > "${CONFIG_DIR}/panel.yaml" << EOF
-# Tracer Panel Configuration
-# Documentation: https://github.com/ai-shift/tracer
-
-port: "8080"
-data_dir: "${DATA_DIR}"
-
-# Panel URL (optional, used in email/notification links)
-# panel_url: "https://tracer.example.com"
-
-# Percentage of non-error logs to persist (0.0 - 1.0)
-# Errors are always persisted at 100%
-sample_rate: 0.1
-
-# Days to keep logs before automatic cleanup
-retention_days: 90
-EOF
+            "${INSTALL_DIR}/tracer-panel" -print-defaults > "${CONFIG_DIR}/panel.yaml"
             chmod 640 "${CONFIG_DIR}/panel.yaml"
             chown root:${TRACER_GROUP} "${CONFIG_DIR}/panel.yaml"
+            log_info "Panel config created"
         else
             log_warn "Panel config already exists, skipping"
         fi
     fi
+}
+
+# Initialize panel: create admin user and API key
+init_panel() {
+    if [[ "$COLLECTOR_ONLY" == "1" ]]; then
+        return
+    fi
+    
+    log_info "Initializing panel..."
+    
+    # Check if panel is already initialized (users exist)
+    local has_users
+    has_users=$("${INSTALL_DIR}/tracer-panel" -get-api-key 2>/dev/null && echo "yes" || echo "no")
+    
+    if [[ "$has_users" == "yes" ]]; then
+        log_warn "Panel already initialized, skipping initialization"
+        return
+    fi
+    
+    # Initialize panel with auto-generated password
+    local init_output
+    if ! init_output=$("${INSTALL_DIR}/tracer-panel" -init 2>&1); then
+        log_error "Failed to initialize panel: $init_output"
+        exit 1
+    fi
+    
+    # Parse initialization output
+    ADMIN_USERNAME=$(echo "$init_output" | grep '^admin_username=' | cut -d= -f2)
+    ADMIN_PASSWORD=$(echo "$init_output" | grep '^admin_password=' | cut -d= -f2)
+    API_KEY=$(echo "$init_output" | grep '^collector_api_key=' | cut -d= -f2)
+    
+    # Update collector config with API key
+    if [[ -n "$API_KEY" ]]; then
+        log_info "Configuring collector with API key..."
+        sed -i "s/api_key:.*/api_key: ${API_KEY}/" "${CONFIG_DIR}/collector.yaml"
+    fi
+    
+    # Store credentials for display
+    echo "$ADMIN_USERNAME" > "${DATA_DIR}/.admin_username"
+    echo "$ADMIN_PASSWORD" > "${DATA_DIR}/.admin_password"
+    chmod 600 "${DATA_DIR}/.admin_username" "${DATA_DIR}/.admin_password"
+    chown "${TRACER_USER}:${TRACER_GROUP}" "${DATA_DIR}/.admin_username" "${DATA_DIR}/.admin_password"
+    
+    log_info "Panel initialized successfully"
 }
 
 # Create systemd service files
@@ -370,13 +361,29 @@ print_instructions() {
         echo ""
         echo "Data directory: ${DATA_DIR}"
         echo ""
+        
+        # Read credentials if they exist
+        if [[ -f "${DATA_DIR}/.admin_username" ]]; then
+            ADMIN_USERNAME=$(cat "${DATA_DIR}/.admin_username")
+            ADMIN_PASSWORD=$(cat "${DATA_DIR}/.admin_password")
+            echo "Admin credentials (auto-generated):"
+            echo "  Username: ${ADMIN_USERNAME}"
+            echo "  Password: ${ADMIN_PASSWORD}"
+            echo ""
+            # Clean up credential files after display
+            rm -f "${DATA_DIR}/.admin_username" "${DATA_DIR}/.admin_password"
+        fi
+        
         echo "Next steps:"
         echo ""
-        echo "1. Configure the collector to watch your log files:"
-        echo "   sudo nano ${CONFIG_DIR}/collector.yaml"
-        echo ""
-        echo "2. (Optional) Configure Telegram alerts in panel config:"
+        echo "1. Configure the panel host (required):"
         echo "   sudo nano ${CONFIG_DIR}/panel.yaml"
+        echo ""
+        echo "   Set the host URL for your panel, e.g.:"
+        echo "   host: https://tracer.example.com"
+        echo ""
+        echo "2. Configure the collector to watch your log files:"
+        echo "   sudo nano ${CONFIG_DIR}/collector.yaml"
         echo ""
         echo "3. Start the services:"
         echo "   sudo systemctl enable --now tracer-panel"
@@ -453,7 +460,8 @@ main() {
     install_binaries "$version"
     create_user
     setup_directories
-    create_configs
+    generate_configs
+    init_panel
     create_systemd_services
     print_instructions
 }
