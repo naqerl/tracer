@@ -1,8 +1,10 @@
 package config
 
 import (
+	"fmt"
 	"log"
 	"os"
+	"time"
 
 	"gopkg.in/yaml.v3"
 
@@ -41,7 +43,49 @@ type LifecycleSpec struct {
 	ExitPattern    string `yaml:"exit_pattern"`
 }
 
-// Load reads and parses configuration file
+// Default returns the default collector configuration
+func Default() Config {
+	hostname, _ := os.Hostname()
+	if hostname == "" {
+		hostname = "my-collector"
+	}
+
+	return Config{
+		Transport: transport.Spec{
+			Name:      hostname,
+			PanelHost: "localhost:8080",
+			APIKey:    "",
+		},
+		Stats: stats.Spec{
+			StatsInterval: 30 * time.Second,
+		},
+		Parsers: map[string]parser.Spec{
+			"json-default": {
+				ID:   "json-default",
+				Type: "json",
+				Params: map[string]string{
+					"timestamp_field":  "timestamp",
+					"timestamp_format": "2006-01-02T15:04:05Z07:00",
+					"level_field":      "level",
+					"trace_id_field":   "trace_id",
+					"message_field":    "message",
+				},
+			},
+		},
+		Apps: []AppSpec{},
+	}
+}
+
+// String returns the YAML representation of the configuration
+func (c Config) String() (string, error) {
+	out, err := yaml.Marshal(c)
+	if err != nil {
+		return "", fmt.Errorf("marshal config: %w", err)
+	}
+	return string(out), nil
+}
+
+// Load reads and parses configuration file, overlaying on top of defaults
 func Load(path string) Config {
 	if path == "" {
 		path = os.Getenv(configPathEnv)
@@ -55,7 +99,10 @@ func Load(path string) Config {
 		log.Fatalf("failed to read config: %s", err)
 	}
 
-	var cfg Config
+	// Start with defaults
+	cfg := Default()
+
+	// Overlay with file contents
 	if err := yaml.Unmarshal(raw, &cfg); err != nil {
 		log.Fatalf("failed to decode config: %s", err)
 	}

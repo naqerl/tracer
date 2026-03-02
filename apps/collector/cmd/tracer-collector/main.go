@@ -22,11 +22,24 @@ import (
 )
 
 func main() {
-	configPath := flag.String("config", "", "path to config file")
+	// Define flags
+	var (
+		configPath    = flag.String("config", "", "path to config file")
+		printDefaults = flag.Bool("print-defaults", false, "print default configuration and exit")
+	)
 	flag.Parse()
 
 	logx.SetDefault()
 
+	// Handle CLI commands that don't require config file
+	if *printDefaults {
+		if err := printDefaultsCmd(); err != nil {
+			log.Fatalf("failed to print defaults: %s", err)
+		}
+		return
+	}
+
+	// Default behavior: run the collector
 	cfg := config.Load(*configPath)
 
 	slog.Info("Starting collector",
@@ -42,6 +55,16 @@ func main() {
 	if err := serve(ctx, cfg); err != nil {
 		log.Fatalf("failed to serve: %s", err)
 	}
+}
+
+func printDefaultsCmd() error {
+	cfg := config.Default()
+	yaml, err := cfg.String()
+	if err != nil {
+		return err
+	}
+	fmt.Print(yaml)
+	return nil
 }
 
 func serve(ctx context.Context, cfg config.Config) error {
