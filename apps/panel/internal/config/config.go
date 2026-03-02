@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"log"
 	"os"
 
@@ -18,9 +19,41 @@ type Panel struct {
 const (
 	panelConfigPathEnv     = "TRACER_PANEL_CONFIG"
 	defaultPanelConfigPath = "/etc/tracer/panel.yaml"
+	defaultDataDir         = "/var/lib/tracer"
+	defaultPort            = "8080"
+	defaultSampleRate      = 0.1
+	defaultRetentionDays   = 90
 )
 
-// Load reads and parses configuration file
+// DataDir returns the data directory, checking env var first
+func DataDir() string {
+	if dir := os.Getenv("TRACER_DATA_DIR"); dir != "" {
+		return dir
+	}
+	return defaultDataDir
+}
+
+// Default returns the default panel configuration
+func Default() Panel {
+	return Panel{
+		Port:          defaultPort,
+		DataDir:       DataDir(),
+		SampleRate:    defaultSampleRate,
+		RetentionDays: defaultRetentionDays,
+		Host:          "",
+	}
+}
+
+// String returns the YAML representation of the configuration
+func (p Panel) String() (string, error) {
+	out, err := yaml.Marshal(p)
+	if err != nil {
+		return "", fmt.Errorf("marshal config: %w", err)
+	}
+	return string(out), nil
+}
+
+// Load reads and parses configuration file, overlaying on top of defaults
 func Load(path string) Panel {
 	if path == "" {
 		path = os.Getenv(panelConfigPathEnv)
@@ -34,23 +67,14 @@ func Load(path string) Panel {
 		log.Fatalf("failed to read config: %s", err)
 	}
 
-	var cfg Panel
+	// Start with defaults
+	cfg := Default()
+
+	// Overlay with file contents
 	if err := yaml.Unmarshal(raw, &cfg); err != nil {
 		log.Fatalf("failed to decode config: %s", err)
 	}
 
-	if cfg.Port == "" {
-		cfg.Port = "8080"
-	}
-	if cfg.DataDir == "" {
-		cfg.DataDir = "/var/lib/tracer"
-	}
-	if cfg.SampleRate == 0 {
-		cfg.SampleRate = 0.1
-	}
-	if cfg.RetentionDays == 0 {
-		cfg.RetentionDays = 90
-	}
 	if cfg.Host == "" {
 		log.Fatalf("host is required (e.g., https://tracer.example.com)")
 	}

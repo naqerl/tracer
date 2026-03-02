@@ -33,11 +33,50 @@ import (
 )
 
 func main() {
-	configPath := flag.String("config", "", "path to config file")
+	// Define flags
+	var (
+		configPath       = flag.String("config", "", "path to config file")
+		printDefaults    = flag.Bool("print-defaults", false, "print default configuration and exit")
+		generateAPIKey   = flag.Bool("generate-api-key", false, "generate and persist new API key, output raw key and exit")
+		getAPIKey        = flag.Bool("get-api-key", false, "output current API key and exit")
+		initPanel        = flag.Bool("init", false, "initialize panel: create admin user, generate API key, output credentials")
+		initUsername     = flag.String("username", "admin", "admin username for -init")
+		initPassword     = flag.String("password", "", "admin password for -init (auto-generated if empty)")
+	)
 	flag.Parse()
 
 	logx.SetDefault()
 
+	// Handle CLI commands that don't require config file
+	if *printDefaults {
+		if err := printDefaultsCmd(); err != nil {
+			log.Fatalf("failed to print defaults: %s", err)
+		}
+		return
+	}
+
+	if *generateAPIKey {
+		if err := generateAPIKeyCmd(); err != nil {
+			log.Fatalf("failed to generate API key: %s", err)
+		}
+		return
+	}
+
+	if *getAPIKey {
+		if err := getAPIKeyCmd(); err != nil {
+			log.Fatalf("failed to get API key: %s", err)
+		}
+		return
+	}
+
+	if *initPanel {
+		if err := initPanelCmd(*initUsername, *initPassword); err != nil {
+			log.Fatalf("failed to initialize panel: %s", err)
+		}
+		return
+	}
+
+	// Default behavior: run the server
 	cfg := config.Load(*configPath)
 
 	slog.Info("Starting panel",
@@ -54,6 +93,125 @@ func main() {
 	if err := serve(ctx, cfg); err != nil {
 		log.Fatalf("failed to serve: %s", err)
 	}
+}
+
+func printDefaultsCmd() error {
+	cfg := config.Default()
+	yaml, err := cfg.String()
+	if err != nil {
+		return err
+	}
+	fmt.Print(yaml)
+	return nil
+}
+
+func generateAPIKeyCmd() error {
+	ctx := context.Background()
+	dataDir := config.DataDir()
+
+	// Initialize database
+	sqlDB, err := initPanelDB(dataDir)
+	if err != nil {
+		return fmt.Errorf("initialize database: %w", err)
+	}
+	defer sqlDB.Close()
+
+	authSvc := auth.New(sqlDB)
+
+	// Generate new API key
+	apiKey, err := auth.GenerateAPIKey()
+	if err != nil {
+		return fmt.Errorf("generate API key: %w", err)
+	}
+
+	// Persist the key
+	if err := authSvc.SetAPIKey(ctx, apiKey); err != nil {
+		return fmt.Errorf("persist API key: %w", err)
+	}
+
+	fmt.Println(apiKey)
+	return nil
+}
+
+func getAPIKeyCmd() error {
+	ctx := context.Background()
+	dataDir := config.DataDir()
+
+	// Initialize database
+	sqlDB, err := initPanelDB(dataDir)
+	if err != nil {
+		return fmt.Errorf("initialize database: %w", err)
+	}
+	defer sqlDB.Close()
+
+	authSvc := auth.New(sqlDB)
+
+	apiKey, err := authSvc.GetAPIKey(ctx)
+	if err != nil {
+		return fmt.Errorf("get API key: %w", err)
+	}
+
+	if apiKey == "" {
+		return fmt.Errorf("no API key configured")
+	}
+
+	fmt.Println(apiKey)
+	return nil
+}
+
+func initPanelCmd(username, password string) error {
+	ctx := context.Background()
+	dataDir := config.DataDir()
+
+	// Initialize database
+	sqlDB, err := initPanelDB(dataDir)
+	if err != nil {
+		return fmt.Errorf("initialize database: %w", err)
+	}
+	defer sqlDB.Close()
+
+	authSvc := auth.New(sqlDB)
+	userSvc := user.New(sqlDB)
+
+	// Check if users already exist
+	hasUsers, err := userSvc.HasAny(ctx)
+	if err != nil {
+		return fmt.Errorf("check users: %w", err)
+	}
+
+	if hasUsers {
+		return fmt.Errorf("panel already initialized (users exist)")
+	}
+
+	// Generate random password if not provided
+	if password == "" {
+		var err error
+		password, err = auth.GenerateAPIKey()
+		if err != nil {
+			return fmt.Errorf("generate password: %w", err)
+		}
+		password = password[:16] // Take first 16 chars for readability
+	}
+
+	// Create admin user
+	if _, err := authSvc.Register(ctx, username, password, true); err != nil {
+		return fmt.Errorf("create admin user: %w", err)
+	}
+
+	// Generate and persist API key
+	apiKey, err := auth.GenerateAPIKey()
+	if err != nil {
+		return fmt.Errorf("generate API key: %w", err)
+	}
+	if err := authSvc.SetAPIKey(ctx, apiKey); err != nil {
+		return fmt.Errorf("persist API key: %w", err)
+	}
+
+	// Output credentials
+	fmt.Printf("admin_username=%s\n", username)
+	fmt.Printf("admin_password=%s\n", password)
+	fmt.Printf("collector_api_key=%s\n", apiKey)
+	return nil
 }
 
 func serve(ctx context.Context, cfg config.Panel) error {
