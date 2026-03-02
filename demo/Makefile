@@ -28,14 +28,19 @@ up: down build
 	@podman volume exists $(DEMO_VOL_ALPHA) || podman volume create $(DEMO_VOL_ALPHA) >/dev/null
 	@podman volume exists $(DEMO_VOL_BETA) || podman volume create $(DEMO_VOL_BETA) >/dev/null
 	@podman pod create --name $(DEMO_POD) -p $(DEMO_PORT):8080 >/dev/null
+	@# Initialize panel first (creates DB, admin user, API key) before starting panel
+	@podman run --rm --name $(DEMO_POD)-init --pod $(DEMO_POD) \
+		-e TRACER_DATA_DIR=/demo/data \
+		-v $(DEMO_VOL_PANEL):/demo/data \
+		-v $(DEMO_VOL_SHARED):/demo/shared \
+		-v $(DEMO_DIR)/config/panel.yaml:/demo/panel.yaml:ro \
+		$(DEMO_IMAGE) bash -lc 'tracer-panel -init -username demo -password demo123 2>/dev/null | grep "^collector_api_key=" | cut -d= -f2 > /demo/shared/api_key'
+	@# Start panel after initialization
 	@podman run -d --name $(DEMO_POD)-panel --pod $(DEMO_POD) \
+		-e TRACER_DATA_DIR=/demo/data \
 		-v $(DEMO_VOL_PANEL):/demo/data \
 		-v $(DEMO_DIR)/config/panel.yaml:/demo/panel.yaml:ro \
 		$(DEMO_IMAGE) tracer-panel -config /demo/panel.yaml >/dev/null
-	@podman run --rm --name $(DEMO_POD)-init --pod $(DEMO_POD) \
-		-v $(DEMO_VOL_PANEL):/demo/data \
-		-v $(DEMO_VOL_SHARED):/demo/shared \
-		$(DEMO_IMAGE) tracer-demo-init --data-dir /demo/data --username demo --password demo123 --key-file /demo/shared/api_key >/dev/null
 	@$(MAKE) start-loggers
 	@podman run -d --name $(DEMO_POD)-collector-alpha --pod $(DEMO_POD) \
 		-v $(DEMO_VOL_PANEL):/demo/data \
@@ -63,19 +68,22 @@ up-live-reload: down
 	@podman volume exists $(DEMO_VOL_GOCACHE) || podman volume create $(DEMO_VOL_GOCACHE) >/dev/null
 	@podman pod create --name $(DEMO_POD) -p $(DEMO_PORT):8080 >/dev/null
 	@podman run --rm --name $(DEMO_POD)-init --pod $(DEMO_POD) \
+		-e TRACER_DATA_DIR=/demo/data \
 		-v $(ROOT_DIR):/workspace \
 		-v $(DEMO_VOL_GOMOD):/go/pkg/mod \
 		-v $(DEMO_VOL_GOCACHE):/root/.cache/go-build \
 		-v $(DEMO_VOL_PANEL):/demo/data \
 		-v $(DEMO_VOL_SHARED):/demo/shared \
-		$(DEMO_DEV_IMAGE) bash -lc 'export PATH="/usr/local/go/bin:$$PATH"; cd /workspace && go run ./apps/panel/cmd/demo-init --data-dir /demo/data --username demo --password demo123 --key-file /demo/shared/api_key' >/dev/null
+		$(DEMO_DEV_IMAGE) bash -lc 'export PATH="/usr/local/go/bin:$$PATH"; cd /workspace && go run ./apps/panel/cmd/tracer-panel/main.go -init -username demo -password demo123 2>/dev/null | grep "^collector_api_key=" | cut -d= -f2 > /demo/shared/api_key' >/dev/null
 	@podman run -d --name $(DEMO_POD)-panel --pod $(DEMO_POD) \
+		-e TRACER_DATA_DIR=/demo/data \
+		-e TRACER_PANEL_CONFIG=/demo/panel.yaml \
 		-v $(ROOT_DIR):/workspace \
 		-v $(DEMO_VOL_GOMOD):/go/pkg/mod \
 		-v $(DEMO_VOL_GOCACHE):/root/.cache/go-build \
 		-v $(DEMO_VOL_PANEL):/demo/data \
 		-v $(DEMO_DIR)/config/panel.yaml:/demo/panel.yaml:ro \
-		$(DEMO_DEV_IMAGE) bash -lc 'export PATH="/usr/local/go/bin:/go/bin:$$PATH"; command -v air >/dev/null 2>&1 || go install github.com/air-verse/air@latest; export TRACER_PANEL_CONFIG=/demo/panel.yaml; cd /workspace; exec air --build.cmd "go build -o /tmp/tracer-panel ./apps/panel/cmd/tracer-panel" --build.bin "/tmp/tracer-panel" --build.include_ext "go,html,tmpl,yaml" --build.exclude_dir ".git,tmp,vendor,node_modules" --build.delay "500" --build.stop_on_error "true" --log.time "true"' >/dev/null
+		$(DEMO_DEV_IMAGE) bash -lc 'export PATH="/usr/local/go/bin:/go/bin:$$PATH"; command -v air >/dev/null 2>&1 || go install github.com/air-verse/air@latest; cd /workspace; exec air --build.cmd "go build -o /tmp/tracer-panel ./apps/panel/cmd/tracer-panel" --build.bin "/tmp/tracer-panel" --build.include_ext "go,html,tmpl,yaml" --build.exclude_dir ".git,tmp,vendor,node_modules" --build.delay "500" --build.stop_on_error "true" --log.time "true"' >/dev/null
 	@$(MAKE) start-loggers
 	@podman run -d --name $(DEMO_POD)-collector-alpha --pod $(DEMO_POD) \
 		-v $(ROOT_DIR):/workspace \

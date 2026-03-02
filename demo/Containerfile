@@ -6,8 +6,7 @@ RUN go mod download
 
 COPY . .
 RUN CGO_ENABLED=0 go build -o /out/tracer-panel ./apps/panel/cmd/tracer-panel && \
-    CGO_ENABLED=0 go build -o /out/tracer-collector ./apps/collector/cmd/tracer-collector && \
-    CGO_ENABLED=0 go build -o /out/tracer-demo-init ./apps/panel/cmd/demo-init
+    CGO_ENABLED=0 go build -o /out/tracer-collector ./apps/collector/cmd/tracer-collector
 
 FROM docker.io/library/debian:bookworm-slim
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -19,4 +18,3 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY --from=build /out/tracer-panel /usr/local/bin/tracer-panel
 COPY --from=build /out/tracer-collector /usr/local/bin/tracer-collector
-COPY --from=build /out/tracer-demo-init /usr/local/bin/tracer-demo-init
