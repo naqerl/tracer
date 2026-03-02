@@ -34,6 +34,8 @@ func New(spec Spec) Parser {
 	switch t {
 	case "json":
 		return format.JSON{Schema: schema}
+	case "slogtext":
+		return format.SlogText{Schema: schema}
 	case "regex":
 		pattern := requiredParam(spec, "pattern")
 		re, err := regexp.Compile(pattern)
