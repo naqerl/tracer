@@ -175,30 +175,6 @@ func (js *journalctlSource) Seek(offset int64, whence int) (int64, error) {
 		return 0, fmt.Errorf("invalid whence: %d", whence)
 	}
 
-	// Restart with new flags
-	if err := js.restart(); err != nil {
-		return 0, err
-	}
-
 	return 0, nil
 }
 
-// restart kills the current process and restarts with current flags.
-func (js *journalctlSource) restart() error {
-	// Close current process
-	if js.stdout != nil {
-		_ = js.stdout.Close()
-		js.stdout = nil
-	}
-	if js.cmd != nil {
-		if js.cmd.Process != nil {
-			_ = js.cmd.Process.Kill()
-		}
-		_ = js.cmd.Wait()
-		js.cmd = nil
-	}
-	js.scanner = nil
-
-	// Re-open with stored context
-	return js.Open(js.ctx)
-}
