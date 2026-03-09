@@ -6,12 +6,14 @@ import (
 	"fmt"
 	"log"
 	"log/slog"
+	"os"
 	"os/signal"
 	"sync"
 	"syscall"
 
 	"tracer/apps/collector/internal/app"
 	"tracer/apps/collector/internal/config"
+	"tracer/apps/collector/internal/formatguesser"
 	"tracer/apps/collector/internal/lifecycle"
 	"tracer/apps/collector/internal/parser"
 	"tracer/apps/collector/internal/source"
@@ -22,8 +24,15 @@ import (
 )
 
 func main() {
+	// Setup context with cancellation on shutdown signals
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
 	// Define flags
 	var (
+		addCmd = flag.NewFlagSet("add", flag.ExitOnError)
+		addSrc = addCmd.String("src", "journalctl", "source of the logs")
+
 		configPath    = flag.String("config", "", "path to config file")
 		printDefaults = flag.Bool("print-defaults", false, "print default configuration and exit")
 	)
@@ -38,7 +47,7 @@ func main() {
 				log.Fatal("Missing unit name")
 			}
 			
-			if err := handleAdd(*addSrc, remaning[0]); err != nil {
+			if err := handleAdd(ctx, *addSrc, remaning[0]); err != nil {
 				log.Fatalf("Failed to add a log source, error: %v", err)
 			}
 			return
@@ -66,9 +75,6 @@ func main() {
 		"apps", len(cfg.Apps),
 	)
 
-	// Setup context with cancellation on shutdown signals
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
 
 	if err := serve(ctx, cfg); err != nil {
 		log.Fatalf("failed to serve: %s", err)
@@ -155,5 +161,18 @@ func serve(ctx context.Context, cfg config.Config) error {
 	}
 	wg.Wait()
 
+	return nil
+}
+
+func handleAdd(ctx context.Context, src, unit string) error {
+	switch src {
+	case "journalctl":
+		s := source.NewJournalctl(source.JournalctlConfig{
+			Unit: unit,
+		})
+		formatguesser.Add(ctx, config.Default(), s)
+	default:
+		return fmt.Errorf("unknown source: %s", src)
+	}
 	return nil
 }
