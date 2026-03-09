@@ -91,6 +91,20 @@ func (p SlogText) Parse(line string) (types.LogEntry, error) {
 	return entry, nil
 }
 
+// TODO: Handle duplicates
+func Unmarshal(line string) (map[string]string, error) {
+	tokens, err := tokenize(line)
+	if err != nil {
+		return nil, err
+	}
+	
+	m := make(map[string]string)
+	for _, t := range tokens {
+		m[t.key] = t.value
+	}
+	return m, nil
+}
+
 // tokenize splits a slog text line into key=value tokens.
 // Handles:
 //   - Unquoted values (until next space): key=value
