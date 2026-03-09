@@ -60,7 +60,16 @@ func (js *journalctlSource) Open(ctx context.Context) error {
 }
 
 func (js *journalctlSource) Next(ctx context.Context) (string, error) {
-	if js.cmd.Process == nil || js.seeked {
+	if js.seeked {
+		if err := js.stopJournalCtl(); err != nil {
+			return "", err
+		}
+		if err := js.startJournalCtl(); err != nil {
+			return "", err
+		}
+	}
+
+	if js.cmd.Process == nil {
 		if err := js.startJournalCtl(); err != nil {
 			return "", err
 		}
@@ -173,6 +182,21 @@ func (js *journalctlSource) startJournalCtl() error {
 	js.cmd = cmd
 	js.stdout = stdout
 	js.scanner = scanner
+
+	return nil
+}
+
+func (js *journalctlSource) stopJournalCtl() error {
+	if err := js.cmd.Process.Kill(); err != nil {
+		return err
+	}
+	if err := js.cmd.Wait(); err != nil {
+		return err
+	}
+
+	js.stdout = nil
+	js.cmd = nil
+	js.scanner = nil
 	js.seeked = false
 
 	return nil
