@@ -41,7 +41,7 @@ func main() {
 	if flag.NArg() > 0 {
 		switch flag.Arg(0){
 		case "add":
-			addCmd.Parse(os.Args[2:])
+			addCmd.Parse(flag.Args()[1:])
 			remaning := addCmd.Args()
 			if (len(remaning) == 0) {
 				log.Fatal("Missing unit name")
