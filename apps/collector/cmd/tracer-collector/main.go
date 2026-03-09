@@ -30,25 +30,19 @@ func main() {
 	// Define flags
 	var (
 		addCmd = flag.NewFlagSet("add", flag.ExitOnError)
-		addSrc = addCmd.String("src", "journalctl", "source of the logs")
 
 		configPath    = flag.String("config", "", "path to config file")
 		printDefaults = flag.Bool("print-defaults", false, "print default configuration and exit")
 	)
 	flag.Parse()
 
+	// Default behavior: run the collector
+	cfg := config.Load(*configPath)
+
 	if flag.NArg() > 0 {
 		switch flag.Arg(0){
 		case "add":
-			addCmd.Parse(flag.Args()[1:])
-			remaning := addCmd.Args()
-			if (len(remaning) == 0) {
-				log.Fatal("Missing unit name")
-			}
-			
-			if err := handleAdd(ctx, *addSrc, remaning[0]); err != nil {
-				log.Fatalf("Failed to add a log source, error: %v", err)
-			}
+			handleAdd(ctx, cfg, addCmd)	
 			return
 		default:
 			log.Fatalf("Unknown command: %s\n", flag.Arg(0))
@@ -64,9 +58,6 @@ func main() {
 		}
 		return
 	}
-
-	// Default behavior: run the collector
-	cfg := config.Load(*configPath)
 
 	slog.Info("Starting collector",
 		"name", cfg.Transport.Name,
@@ -163,15 +154,25 @@ func serve(ctx context.Context, cfg config.Config) error {
 	return nil
 }
 
-func handleAdd(ctx context.Context, src, unit string) error {
+func handleAdd(ctx context.Context, cfg config.Config, addCmd *flag.FlagSet) {
+	addCmd.Parse(flag.Args()[1:])
+	src := *addCmd.String("src", "journalctl", "source of the logs")
+	remaning := addCmd.Args()
+	if (len(remaning) == 0) {
+		log.Fatal("Missing unit name")
+	}
+
+	var ss source.SourceSeeker
 	switch src {
 	case "journalctl":
-		s := source.NewJournalctl(source.JournalctlConfig{
-			Unit: unit,
+		ss = source.NewJournalctl(source.JournalctlConfig{
+			Unit: remaning[0],
 		})
-		formatguesser.Add(ctx, config.Default(), s)
 	default:
-		return fmt.Errorf("unknown source: %s", src)
+		log.Fatalf("unknown source: %s", src)
 	}
-	return nil
+	
+	if err := formatguesser.Add(ctx, cfg, ss); err != nil {
+		log.Fatalf("failed to guess the source format, err: %v", err)
+	}
 }
