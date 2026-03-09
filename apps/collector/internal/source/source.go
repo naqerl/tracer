@@ -4,6 +4,7 @@ package source
 import (
 	"context"
 	"fmt"
+	"io"
 	"strings"
 )
 
@@ -13,18 +14,22 @@ type Spec struct {
 }
 
 // Source provides a stream of log lines from a log source.
-// Implementations may optionally implement io.Seeker for position-based seeking.
-//
+type Source interface {
+	Open(ctx context.Context) error
+	Next(ctx context.Context) (line string, err error)
+	Close() error
+}
+
+// Implements io.Seeker for position-based seeking.
 // Position semantics:
 //   - FileSource: Byte offset from file start (standard file position)
 //   - JournalctlSource: Opaque position (always returns 0). Supports:
 //   - Seek(0, io.SeekStart): From beginning (all history)
 //   - Seek(0, io.SeekEnd): From now (tail mode)
 //   - Seek(-N, io.SeekEnd): Last N lines, then follow
-type Source interface {
-	Open(ctx context.Context) error
-	Next(ctx context.Context) (line string, err error)
-	Close() error
+type SourceSeeker interface {
+	Source
+	io.Seeker
 }
 
 // New creates a new Source from the given spec.
