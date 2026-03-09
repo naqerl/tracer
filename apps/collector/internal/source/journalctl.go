@@ -20,7 +20,6 @@ type JournalctlConfig struct {
 type journalctlSource struct {
 	unit    string
 	cmd     *exec.Cmd
-	stdout  io.ReadCloser
 	scanner *bufio.Scanner
 	ctx     context.Context // stored from Open for use in restart
 	seeked  bool
@@ -34,7 +33,7 @@ type journalctlSource struct {
 
 // NewJournalctl creates a new journalctl source.
 // Enforces creation of the error channel for health monitoring.
-func NewJournalctl(cfg JournalctlConfig) Source {
+func NewJournalctl(cfg JournalctlConfig) *journalctlSource {
 	return &journalctlSource{
 		unit:         cfg.Unit,
 		linesFromEnd: 0, // Default: start from now
@@ -61,15 +60,12 @@ func (js *journalctlSource) Open(ctx context.Context) error {
 
 func (js *journalctlSource) Next(ctx context.Context) (string, error) {
 	if js.seeked {
-		if err := js.stopJournalCtl(); err != nil {
-			return "", err
-		}
-		if err := js.startJournalCtl(); err != nil {
+		if err := js.Close(); err != nil {
 			return "", err
 		}
 	}
 
-	if js.cmd.Process == nil {
+	if js.cmd == nil {
 		if err := js.startJournalCtl(); err != nil {
 			return "", err
 		}
@@ -95,24 +91,18 @@ func (js *journalctlSource) Next(ctx context.Context) (string, error) {
 }
 
 func (js *journalctlSource) Close() error {
-	var closeErr error
-	if js.stdout != nil {
-		if err := js.stdout.Close(); err != nil {
-			closeErr = err
-		}
-		js.stdout = nil
+	if err := js.cmd.Process.Kill(); err != nil {
+		return err
 	}
-	if js.cmd != nil {
-		if js.cmd.Process != nil {
-			_ = js.cmd.Process.Kill()
-		}
-		if err := js.cmd.Wait(); err != nil && closeErr == nil {
-			closeErr = err
-		}
-		js.cmd = nil
+	if err := js.cmd.Wait(); err != nil {
+		return err
 	}
+
+	js.cmd = nil
 	js.scanner = nil
-	return closeErr
+	js.seeked = false
+
+	return nil
 }
 
 // Seek implements io.Seeker for journalctlSource.
@@ -180,24 +170,7 @@ func (js *journalctlSource) startJournalCtl() error {
 	scanner.Buffer(make([]byte, 0, 64*1024), maxLineBytes)
 
 	js.cmd = cmd
-	js.stdout = stdout
 	js.scanner = scanner
-
-	return nil
-}
-
-func (js *journalctlSource) stopJournalCtl() error {
-	if err := js.cmd.Process.Kill(); err != nil {
-		return err
-	}
-	if err := js.cmd.Wait(); err != nil {
-		return err
-	}
-
-	js.stdout = nil
-	js.cmd = nil
-	js.scanner = nil
-	js.seeked = false
 
 	return nil
 }
