@@ -29,6 +29,24 @@ func main() {
 	)
 	flag.Parse()
 
+	if flag.NArg() > 0 {
+		switch flag.Arg(0){
+		case "add":
+			addCmd.Parse(os.Args[2:])
+			remaning := addCmd.Args()
+			if (len(remaning) == 0) {
+				log.Fatal("Missing unit name")
+			}
+			
+			if err := handleAdd(*addSrc, remaning[0]); err != nil {
+				log.Fatalf("Failed to add a log source, error: %v", err)
+			}
+			return
+		default:
+			log.Fatalf("Unknown command: %s\n", flag.Arg(0))
+		}
+	}
+
 	logx.SetDefault()
 
 	// Handle CLI commands that don't require config file
