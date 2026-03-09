@@ -42,7 +42,7 @@ func main() {
 	if flag.NArg() > 0 {
 		switch flag.Arg(0){
 		case "add":
-			handleAdd(ctx, cfg, addCmd)	
+			handleAdd(ctx, *configPath, cfg, addCmd)	
 			return
 		default:
 			log.Fatalf("Unknown command: %s\n", flag.Arg(0))
@@ -154,7 +154,7 @@ func serve(ctx context.Context, cfg config.Config) error {
 	return nil
 }
 
-func handleAdd(ctx context.Context, cfg config.Config, addCmd *flag.FlagSet) {
+func handleAdd(ctx context.Context, path string, cfg config.Config, addCmd *flag.FlagSet) {
 	addCmd.Parse(flag.Args()[1:])
 	src := *addCmd.String("src", "journalctl", "source of the logs")
 	remaning := addCmd.Args()
@@ -169,10 +169,13 @@ func handleAdd(ctx context.Context, cfg config.Config, addCmd *flag.FlagSet) {
 			Unit: remaning[0],
 		})
 	default:
-		log.Fatalf("unknown source: %s", src)
+		log.Fatalf("Unknown source: %s", src)
 	}
 	
-	if err := formatguesser.Add(ctx, cfg, ss); err != nil {
-		log.Fatalf("failed to guess the source format, err: %v", err)
+	if err := formatguesser.Add(ctx, &cfg, ss); err != nil {
+		log.Fatalf("Failed to guess the source format, error: %v", err)
+	}
+	if err := cfg.Persist(path); err != nil {
+		log.Fatalf("Failed to write the file config, error: %v", err)
 	}
 }
