@@ -10,7 +10,7 @@ CREATE INDEX IF NOT EXISTS idx_log_groups_message_level ON log_groups(message, l
 
 CREATE TABLE IF NOT EXISTS logs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    trace_id TEXT NOT NULL DEFAULT '',
+    trace_id TEXT,
     level TEXT NOT NULL,
     message TEXT NOT NULL,
     context TEXT DEFAULT '{}',
