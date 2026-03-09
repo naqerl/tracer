@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log"
 	"log/slog"
-	"os"
 	"os/signal"
 	"sync"
 	"syscall"
