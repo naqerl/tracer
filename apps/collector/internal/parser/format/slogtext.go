@@ -92,7 +92,7 @@ func (p SlogText) Parse(line string) (types.LogEntry, error) {
 }
 
 // TODO: Handle duplicates
-func Unmarshal(line string) (map[string]string, error) {
+func UnmarshalSlogText(line string) (map[string]string, error) {
 	tokens, err := tokenize(line)
 	if err != nil {
 		return nil, err
