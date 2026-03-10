@@ -2,9 +2,11 @@ package formatguesser
 
 import (
 	"context"
-	"io"
+	"errors"
 	"fmt"
+	"io"
 	"tracer/apps/collector/internal/config"
+	"tracer/apps/collector/internal/parser"
 	"tracer/apps/collector/internal/source"
 )
 
@@ -14,25 +16,68 @@ func Add(ctx context.Context, cfg *config.Config, ss source.SourceSeeker) error 
 	}
 	
 	logSize := int64(100)
-	var logs string
-	var err error
+	var logErr error
 	found := false
 	for !found && logSize > 1 {
-		if _, err = ss.Seek(-logSize, io.SeekEnd); err != nil {
-			return fmt.Errorf("failed to seek in the source, error: %v", err)		
+		if _, logErr = ss.Seek(-logSize, io.SeekEnd); logErr != nil {
+			return fmt.Errorf("failed to seek in the source, error: %v", logErr)
 		}
-		if logs, err = ss.Next(ctx); err != nil {
+		if _, logErr = ss.Next(ctx); logErr != nil {
 			logSize = logSize / 2
 			continue
 		}
 		found = true
 	}
+	if !found {
+		return errors.New("failed to find logs in the source")
+	}
 
-	if err = guessFormat(logs, cfg); err != nil {
-		return fmt.Errorf("failed to guess the logs format, error: %v", err)
+	var prev parser.Spec
+	var curr parser.Spec
+	var formatErr error
+	var line string
+	for {
+		line, formatErr  = ss.Next(ctx)
+		if formatErr != nil {
+			if errors.Is(formatErr, io.EOF) {
+				break
+			}
+		}
+		curr, formatErr = guessFormat(line)
+		if formatErr != nil {
+			return fmt.Errorf("failed to guess the logs format, error: %v", formatErr)
+		}
+		prev, formatErr = compareOrUpdate(prev, curr)
+		if formatErr != nil {
+			return fmt.Errorf("failed to check the log consistency, error: %v", formatErr)
+		}
+
 	}
 
 	return nil
 }
 
-func guessFormat(lines string, cfg *config.Config) (error)
+func guessFormat(line string) (parser.Spec ,error)
+
+func compareOrUpdate(prev, curr parser.Spec) (parser.Spec, error ) {
+	if prev.Type == "" {
+		prev.Type = curr.Type
+	} else if prev.Type != curr.Type {
+		return prev, fmt.Errorf("spec types mismatch. Prev: %s, Curr: %s", prev.Type, curr.Type)
+	}
+
+	if prev.Params == nil {
+		prev.Params = make(map[string]string)
+	}
+
+	for k,currV := range curr.Params {
+		prevV, ok := prev.Params[k]
+		if !ok {
+			prev.Params[k] = currV
+		} else if prevV != currV {
+			return prev, fmt.Errorf("spec params mismatch, param: %s. Prev: %s, Curr: %s", k, prevV, currV)
+		}
+	}
+
+	return prev, nil
+}
