@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"slices"
 	"strings"
+	"time"
 	"tracer/apps/collector/internal/config"
 	"tracer/apps/collector/internal/parser"
 	"tracer/apps/collector/internal/parser/format"
@@ -19,7 +20,7 @@ func Add(ctx context.Context, cfg *config.Config, ss source.SourceSeeker) error 
 	if err := ss.Open(ctx); err != nil {
 		return fmt.Errorf("failed to open the source, error: %v", err)
 	}
-	
+
 	logSize := int64(100)
 	var logErr error
 	found := false
@@ -42,7 +43,7 @@ func Add(ctx context.Context, cfg *config.Config, ss source.SourceSeeker) error 
 	var formatErr error
 	var line string
 	for {
-		line, formatErr  = ss.Next(ctx)
+		line, formatErr = ss.Next(ctx)
 		if formatErr != nil {
 			if errors.Is(formatErr, io.EOF) {
 				break
@@ -87,7 +88,7 @@ func guessFormat(line string) (parser.Spec, error) {
 	return ps, errors.New("none of the parsers gave a valid output")
 }
 
-var LogSynonyms = map[string][]string{
+var commonLogSynonyms = map[string][]string{
 	"level_field": {
 		"level", "lvl", "severity", "status", "priority", "log_level", "loglevel",
 		"log.level", "sev", "s", "prio", "syslog_priority", "alert_level",
@@ -111,10 +112,45 @@ var LogSynonyms = map[string][]string{
 	},
 }
 
+var commonTimeFormats = []string{
+	"2006-01-02T15:04:05",
+	"2006-01-02T15:04:05.999999999Z07:00",
+	"2006-01-02T15:04:05.999999999",
+	"2006-01-02T15:04:05.999999Z07:00",
+	"2006-01-02T15:04:05.999999",
+	"2006-01-02T15:04:05.999Z07:00",
+	"2006-01-02T15:04:05.999",
+	time.RFC3339Nano,
+	time.RFC3339,
+	"2006-01-02 15:04:05",
+	"2006-01-02 15:04:05.999999999",
+	"2006-01-02 15:04:05.999999",
+	"2006-01-02 15:04:05.999",
+	time.RFC1123,
+	time.RFC1123Z,
+	time.RFC822,
+	time.RFC822Z,
+	"2006/01/02 15:04:05",
+	"01/02/2006 15:04:05",
+	"02/01/2006 15:04:05",
+	"2006-01-02",
+	time.UnixDate,
+	time.RubyDate,
+}
+
+func detectTimeFormat(timeStr string) string {
+	for _, format := range commonTimeFormats {
+		if _, err := time.Parse(format, timeStr); err == nil {
+			return format
+		}
+	}
+	return ""
+}
+
 func fillSpec(ps parser.Spec, data map[string]any) (parser.Spec, error) {
 	params := make(map[string]string)
-	for dk := range data {
-		for gk, gv := range LogSynonyms {
+	for dk, _ := range data {
+		for gk, gv := range commonLogSynonyms {
 			if _, ok := params[gk]; ok {
 				continue
 			}
@@ -125,7 +161,10 @@ func fillSpec(ps parser.Spec, data map[string]any) (parser.Spec, error) {
 		}
 	}
 	notFound := []string{}
-	for k := range LogSynonyms {
+	for k := range commonLogSynonyms {
+		if k == "trace_id_field" {
+			continue
+		}
 		if _, ok := params[k]; !ok {
 			notFound = append(notFound, k)
 		}
@@ -134,12 +173,17 @@ func fillSpec(ps parser.Spec, data map[string]any) (parser.Spec, error) {
 		return ps, fmt.Errorf("failed to find the following fields: %v", notFound)
 	}
 
+	tsFormat := detectTimeFormat(params["timestamp_field"])
+	if tsFormat == "" {
+		return ps, errors.New("failed to detect the timestamp format")
+	}
+	params["timestamp_format"] = tsFormat
+
 	ps.Params = params
 	return ps, nil
 }
 
-
-func compareOrUpdate(prev, curr parser.Spec) (parser.Spec, error ) {
+func compareOrUpdate(prev, curr parser.Spec) (parser.Spec, error) {
 	if prev.Type == "" {
 		prev.Type = curr.Type
 	} else if prev.Type != curr.Type {
@@ -150,7 +194,7 @@ func compareOrUpdate(prev, curr parser.Spec) (parser.Spec, error ) {
 		prev.Params = make(map[string]string)
 	}
 
-	for k,currV := range curr.Params {
+	for k, currV := range curr.Params {
 		prevV, ok := prev.Params[k]
 		if !ok {
 			prev.Params[k] = currV
