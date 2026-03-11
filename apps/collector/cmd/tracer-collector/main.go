@@ -40,9 +40,9 @@ func main() {
 	cfg := config.Load(*configPath)
 
 	if flag.NArg() > 0 {
-		switch flag.Arg(0){
+		switch flag.Arg(0) {
 		case "add":
-			handleAdd(ctx, *configPath, cfg, addCmd)	
+			handleAdd(ctx, *configPath, cfg, addCmd)
 			return
 		default:
 			log.Fatalf("Unknown command: %s\n", flag.Arg(0))
@@ -64,7 +64,6 @@ func main() {
 		"panelHost", cfg.Transport.PanelHost,
 		"apps", len(cfg.Apps),
 	)
-
 
 	if err := serve(ctx, cfg); err != nil {
 		log.Fatalf("failed to serve: %s", err)
@@ -158,7 +157,7 @@ func handleAdd(ctx context.Context, path string, cfg config.Config, addCmd *flag
 	addCmd.Parse(flag.Args()[1:])
 	src := *addCmd.String("src", "journalctl", "source of the logs")
 	remaning := addCmd.Args()
-	if (len(remaning) == 0) {
+	if len(remaning) == 0 {
 		log.Fatal("Missing unit name")
 	}
 
@@ -171,7 +170,7 @@ func handleAdd(ctx context.Context, path string, cfg config.Config, addCmd *flag
 	default:
 		log.Fatalf("Unknown source: %s", src)
 	}
-	
+
 	if err := formatguesser.Add(ctx, &cfg, ss); err != nil {
 		log.Fatalf("Failed to guess the source format, error: %v", err)
 	}

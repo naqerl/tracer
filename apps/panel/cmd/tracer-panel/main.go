@@ -35,13 +35,13 @@ import (
 func main() {
 	// Define flags
 	var (
-		configPath       = flag.String("config", "", "path to config file")
-		printDefaults    = flag.Bool("print-defaults", false, "print default configuration and exit")
-		generateAPIKey   = flag.Bool("generate-api-key", false, "generate and persist new API key, output raw key and exit")
-		getAPIKey        = flag.Bool("get-api-key", false, "output current API key and exit")
-		initPanel        = flag.Bool("init", false, "initialize panel: create admin user, generate API key, output credentials")
-		initUsername     = flag.String("username", "admin", "admin username for -init")
-		initPassword     = flag.String("password", "", "admin password for -init (auto-generated if empty)")
+		configPath     = flag.String("config", "", "path to config file")
+		printDefaults  = flag.Bool("print-defaults", false, "print default configuration and exit")
+		generateAPIKey = flag.Bool("generate-api-key", false, "generate and persist new API key, output raw key and exit")
+		getAPIKey      = flag.Bool("get-api-key", false, "output current API key and exit")
+		initPanel      = flag.Bool("init", false, "initialize panel: create admin user, generate API key, output credentials")
+		initUsername   = flag.String("username", "admin", "admin username for -init")
+		initPassword   = flag.String("password", "", "admin password for -init (auto-generated if empty)")
 	)
 	flag.Parse()
 
