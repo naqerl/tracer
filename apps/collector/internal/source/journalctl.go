@@ -177,7 +177,7 @@ func (js *journalctlSource) startJournalCtl() error {
 
 // buildFlags constructs journalctl flags based on current mode.
 func buildFlags(unit string, linesFromEnd int64) []string {
-	flags := []string{"-u", unit, "-o", "cat", "-f"}
+	flags := []string{"-u", unit, "-o", "cat", "_TRANSPORT=stdout", "-f"}
 
 	switch linesFromEnd {
 	case -1:
