@@ -126,7 +126,7 @@ var commonLogSynonyms = map[string][]string{
 
 func fillSpec(ps parser.Spec, data map[string]any) (parser.Spec, error) {
 	params := make(map[string]string)
-	for dk, _ := range data {
+	for dk := range data {
 		for gk, gv := range commonLogSynonyms {
 			if _, ok := params[gk]; ok {
 				continue
@@ -161,7 +161,7 @@ func fillSpec(ps parser.Spec, data map[string]any) (parser.Spec, error) {
 	return ps, nil
 }
 
-func prepareKey(s string ) string {
+func prepareKey(s string) string {
 	var b strings.Builder
 	ls := strings.ToLower(s)
 	for _, c := range ls {
