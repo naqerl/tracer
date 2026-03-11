@@ -113,7 +113,7 @@ func (c Config) Persist(path string) error {
 		return err
 	}
 
-	return os.WriteFile(path, []byte(str), 644)
+	return os.WriteFile(path, []byte(str), 0644)
 }
 
 func getPath(path string) string {
