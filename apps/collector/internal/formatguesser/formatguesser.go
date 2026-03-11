@@ -38,12 +38,14 @@ func Add(ctx context.Context, cfg *config.Config, ss source.SourceSeeker) error 
 		return errors.New("failed to find logs in the source")
 	}
 
-	var prev parser.Spec
-	var curr parser.Spec
+	// Build the parser spec, store logs for further test
+	var prev, curr parser.Spec
 	var formatErr error
+	lines := make([]string, 0, logSize)
 	var line string
 	for {
 		line, formatErr = ss.Next(ctx)
+		lines = append(lines, line)
 		if formatErr != nil {
 			if errors.Is(formatErr, io.EOF) {
 				break
@@ -59,6 +61,14 @@ func Add(ctx context.Context, cfg *config.Config, ss source.SourceSeeker) error 
 			return fmt.Errorf("failed to check the log consistency, error: %v", formatErr)
 		}
 
+	}
+
+	// Create the parser from the spec and test it on the logs
+	p := parser.New(prev)
+	for _, l := range lines {
+		if _, err := p.Parse(l); err != nil {
+			return fmt.Errorf("failed to test the created parser spec on logs, error: %v", err)
+		}
 	}
 
 	return nil
