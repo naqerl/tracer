@@ -21,6 +21,7 @@ func Add(ctx context.Context, cfg *config.Config, ss source.SourceSeeker) error 
 		return fmt.Errorf("failed to open the source, error: %v", err)
 	}
 
+	// Prepare the source to read logs
 	logSize := int64(100)
 	var logErr error
 	found := false
@@ -84,6 +85,7 @@ func guessFormat(line string) (parser.Spec, error) {
 		return fillSpec(ps, jsonData)
 	}
 	slog.Debug("failed to unmarshal the line to JSON")
+
 	tempSlogText, err := format.UnmarshalSlogText(line)
 	if err == nil {
 		ps.Type = "slogtext"
@@ -197,6 +199,20 @@ var commonTimeFormats = []string{
 }
 
 func detectTimeFormat(timeStr string) string {
+	if isNumeric(timeStr) {
+		length := len(timeStr)
+		switch {
+		case length <= 10:
+			return "unix"
+		case length <= 13:
+			return "unix_ms"
+		case length <= 16:
+			return "unix_us"
+		default:
+			return "unix_ns"
+		}
+	}
+
 	for _, format := range commonTimeFormats {
 		if _, err := time.Parse(format, timeStr); err == nil {
 			return format
@@ -205,40 +221,16 @@ func detectTimeFormat(timeStr string) string {
 	return ""
 }
 
-func fillSpec(ps parser.Spec, data map[string]any) (parser.Spec, error) {
-	params := make(map[string]string)
-	for dk, _ := range data {
-		for gk, gv := range commonLogSynonyms {
-			if _, ok := params[gk]; ok {
-				continue
-			}
-			if slices.Contains(gv, strings.ToLower(dk)) {
-				params[gk] = dk
-				continue
-			}
+func isNumeric(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, c := range s {
+		if c < '0' || c > '9' {
+			return false
 		}
 	}
-	notFound := []string{}
-	for k := range commonLogSynonyms {
-		if k == "trace_id_field" {
-			continue
-		}
-		if _, ok := params[k]; !ok {
-			notFound = append(notFound, k)
-		}
-	}
-	if len(notFound) > 0 {
-		return ps, fmt.Errorf("failed to find the following fields: %v", notFound)
-	}
-
-	tsFormat := detectTimeFormat(params["timestamp_field"])
-	if tsFormat == "" {
-		return ps, errors.New("failed to detect the timestamp format")
-	}
-	params["timestamp_format"] = tsFormat
-
-	ps.Params = params
-	return ps, nil
+	return true
 }
 
 func compareOrUpdate(prev, curr parser.Spec) (parser.Spec, error) {
