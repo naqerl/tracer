@@ -5,6 +5,7 @@ go 1.25.5
 require (
 	github.com/ai-shift/tgmd v0.1.8
 	github.com/go-telegram-bot-api/telegram-bot-api/v5 v5.5.1
+	github.com/go-test/deep v1.1.1
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3
 	github.com/pressly/goose/v3 v3.26.0
