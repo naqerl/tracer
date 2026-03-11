@@ -100,26 +100,74 @@ func guessFormat(line string) (parser.Spec, error) {
 
 var commonLogSynonyms = map[string][]string{
 	"level_field": {
-		"level", "lvl", "severity", "status", "priority", "log_level", "loglevel",
-		"log.level", "sev", "s", "prio", "syslog_priority", "alert_level",
+		"level", "lvl", "severity", "status", "priority", "loglevel",
+		"sev", "s", "prio", "syslogpriority", "alertlevel",
 	},
 	"trace_id_field": {
-		"trace_id", "traceid", "traceId", "correlation_id", "correlationId",
-		"request_id", "requestId", "req_id", "reqid", "tid", "x-trace-id",
-		"trace.id", "otel.trace_id", "span_id", "spanid", "x-request-id",
-		"x-b3-traceid", "operation_id", "guid", "uid",
+		"traceid", "correlationid",
+		"requestid", "reqid", "tid", "xtraceid",
+		"oteltraceid", "spanid", "xrequestid",
+		"xb3traceid", "operationid", "guid", "uid",
 	},
 	"message_field": {
-		"message", "msg", "body", "text", "content", "log_msg", "description",
-		"summary", "payload", "log", "event_message", "error_message", "err_msg",
+		"message", "msg", "body", "text", "content", "logmsg", "description",
+		"summary", "payload", "log", "eventmessage", "errormessage", "errmsg",
 		"detail", "info", "raw", "data", "statement",
 	},
 	"timestamp_field": {
-		"timestamp", "ts", "time", "@timestamp", "recorded_at", "created_at",
-		"date", "time_stamp", "log_time", "event_time", "published_at",
-		"syslog_timestamp", "start_time", "epoch", "unix_timestamp", "millis",
+		"timestamp", "ts", "time", "recordedat", "createdat",
+		"date", "logtime", "eventtime", "publishedat",
+		"syslogtimestamp", "starttime", "epoch", "unixtimestamp", "millis",
 		"asctime",
 	},
+}
+
+func fillSpec(ps parser.Spec, data map[string]any) (parser.Spec, error) {
+	params := make(map[string]string)
+	for dk, _ := range data {
+		for gk, gv := range commonLogSynonyms {
+			if _, ok := params[gk]; ok {
+				continue
+			}
+			if slices.Contains(gv, prepareKey(dk)) {
+				params[gk] = dk
+			}
+		}
+	}
+	var notFound []string
+
+	for k := range commonLogSynonyms {
+		if k == "trace_id_field" {
+			continue
+		}
+		if _, ok := params[k]; !ok {
+			notFound = append(notFound, k)
+		}
+	}
+	if len(notFound) > 0 {
+		return ps, fmt.Errorf("failed to find the following fields: %v", notFound)
+	}
+
+	dateStr := fmt.Sprint(data[params["timestamp_field"]])
+	tsFormat := detectTimeFormat(dateStr)
+	if tsFormat == "" {
+		return ps, errors.New("failed to detect the timestamp format")
+	}
+	params["timestamp_format"] = tsFormat
+
+	ps.Params = params
+	return ps, nil
+}
+
+func prepareKey(s string ) string {
+	var b strings.Builder
+	ls := strings.ToLower(s)
+	for _, c := range ls {
+		if (c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') {
+			b.WriteRune(c)
+		}
+	}
+	return b.String()
 }
 
 var commonTimeFormats = []string{
