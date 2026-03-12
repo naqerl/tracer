@@ -7,10 +7,13 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
+
 	"tracer/apps/collector/internal/config"
 	"tracer/apps/collector/internal/parser"
 	"tracer/apps/collector/internal/parser/format"
@@ -19,9 +22,14 @@ import (
 
 func Add(ctx context.Context, cfg *config.Config, name string, spec source.Spec, override bool) error {
 	var app config.AppSpec
-	app.Name = name
 
-	// Check if up with such spec already exist
+	appNames := make([]string, 0, len(cfg.Apps))
+	for _, v := range cfg.Apps {
+		appNames = append(appNames, v.Name)
+	}
+	app.Name = generateName(appNames, name)
+
+	// Check if app with such spec already exist
 	for _, a := range cfg.Apps {
 		if reflect.DeepEqual(a.Source, spec) && !override {
 			return fmt.Errorf("app with source: %v already exist. Pass --override to override", spec)
@@ -46,8 +54,8 @@ func Add(ctx context.Context, cfg *config.Config, name string, spec source.Spec,
 	// Prepare the source to read logs
 	logSize := int64(100)
 	var logErr error
-	found := false
-	for !found && logSize > 1 {
+	foundLine := false
+	for !foundLine && logSize > 1 {
 		if _, logErr = ss.Seek(-logSize, io.SeekEnd); logErr != nil {
 			return fmt.Errorf("failed to seek in the source, error: %v", logErr)
 		}
@@ -55,9 +63,9 @@ func Add(ctx context.Context, cfg *config.Config, name string, spec source.Spec,
 			logSize = logSize / 2
 			continue
 		}
-		found = true
+		foundLine = true
 	}
-	if !found {
+	if !foundLine {
 		return errors.New("failed to find logs in the source")
 	}
 
@@ -93,6 +101,20 @@ func Add(ctx context.Context, cfg *config.Config, name string, spec source.Spec,
 			return fmt.Errorf("failed to test the created parser spec on logs, error: %v", err)
 		}
 	}
+
+	parserId := generateName(slices.Collect(maps.Keys(cfg.Parsers)), prev.Type, name)
+
+	// Check if parser spec already exist
+	for id, s := range cfg.Parsers {
+		if s.Type == prev.Type && reflect.DeepEqual(s.Params, prev.Params) {
+			parserId = id
+			break
+		}
+	}
+	cfg.Parsers[parserId] = prev
+	app.ParserID = parserId
+
+	cfg.Apps = append(cfg.Apps, app)
 
 	return nil
 }
@@ -276,4 +298,29 @@ func compareOrUpdate(prev, curr parser.Spec) (parser.Spec, error) {
 	}
 
 	return prev, nil
+}
+
+func generateName(names []string, nameParts ...string) string {
+	var num int
+	name := _generateName(num, nameParts...)
+outer:
+	for {
+		for _, n := range names {
+			if n == name {
+				num += 1
+				name = _generateName(num, nameParts...)
+				continue outer
+			}
+		}
+		break
+	}
+	return name
+}
+
+func _generateName(num int, nameParts ...string) string {
+	id := strings.Join(nameParts, "-")
+	if num > 0 {
+		id = id + "-" + strconv.Itoa(num)
+	}
+	return id
 }
