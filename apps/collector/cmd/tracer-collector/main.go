@@ -155,23 +155,30 @@ func serve(ctx context.Context, cfg config.Config) error {
 
 func handleAdd(ctx context.Context, path string, cfg config.Config, addCmd *flag.FlagSet) {
 	addCmd.Parse(flag.Args()[1:])
-	src := *addCmd.String("src", "journalctl", "source of the logs")
+	src := addCmd.String("src", "journalctl", "source of the logs")
+	override := addCmd.Bool("override", false, "override the app unit in the config")
 	remaning := addCmd.Args()
-	if len(remaning) == 0 {
-		log.Fatal("Missing unit name")
-	}
 
-	var ss source.SourceSeeker
-	switch src {
+	var name string
+	var spec source.Spec
+	switch *src {
 	case "journalctl":
-		ss = source.NewJournalctl(source.JournalctlConfig{
-			Unit: remaning[0],
-		})
+		if len(remaning) == 0 {
+			log.Fatal("Missing unit name")
+		}
+		unit := remaning[0]
+		name = unit
+		spec = source.Spec{
+			Type: "journalctl",
+			Params: map[string]string{
+				"unit": unit,
+			},
+		}
 	default:
-		log.Fatalf("Unknown source: %s", src)
+		log.Fatalf("Unknown source: %s", *src)
 	}
 
-	if err := formatguesser.Add(ctx, &cfg, ss); err != nil {
+	if err := formatguesser.Add(ctx, &cfg, name, spec, *override); err != nil {
 		log.Fatalf("Failed to guess the source format, error: %v", err)
 	}
 	if err := cfg.Persist(path); err != nil {

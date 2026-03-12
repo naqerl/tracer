@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"reflect"
 	"slices"
 	"strings"
 	"time"
@@ -16,7 +17,28 @@ import (
 	"tracer/apps/collector/internal/source"
 )
 
-func Add(ctx context.Context, cfg *config.Config, ss source.SourceSeeker) error {
+func Add(ctx context.Context, cfg *config.Config, name string, spec source.Spec, override bool) error {
+	var app config.AppSpec
+	app.Name = name
+
+	// Check if up with such spec already exist
+	for _, a := range cfg.Apps {
+		if reflect.DeepEqual(a.Source, spec) && !override {
+			return fmt.Errorf("app with source: %v already exist. Pass --override to override", spec)
+		}
+	}
+	app.Source = spec
+
+	// Prepare a source seeker
+	sourse, err := source.New(spec)
+	if err != nil {
+		return fmt.Errorf("failed to extract a source, error: %v", err)
+	}
+	var ss source.SourceSeeker
+	var ok bool
+	if ss, ok = sourse.(source.SourceSeeker); !ok {
+		return fmt.Errorf("source doesn't support log seeking, source: %s", spec.Type)
+	}
 	if err := ss.Open(ctx); err != nil {
 		return fmt.Errorf("failed to open the source, error: %v", err)
 	}
