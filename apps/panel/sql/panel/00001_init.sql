@@ -18,9 +18,13 @@ CREATE INDEX IF NOT EXISTS idx_session_user ON session(user_id);
 
 CREATE TABLE IF NOT EXISTS user_app (
     user_id INTEGER NOT NULL REFERENCES user(id) ON DELETE CASCADE,
+    collector_name TEXT NOT NULL,
     app_name TEXT NOT NULL,
-    PRIMARY KEY (user_id, app_name)
+    PRIMARY KEY (user_id, collector_name, app_name)
 );
+CREATE INDEX IF NOT EXISTS idx_user_app_user ON user_app(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_app_collector ON user_app(collector_name);
+CREATE INDEX IF NOT EXISTS idx_user_app_app ON user_app(app_name);
 
 CREATE TABLE IF NOT EXISTS config (
     key TEXT PRIMARY KEY,

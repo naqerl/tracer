@@ -32,8 +32,18 @@ CREATE TABLE IF NOT EXISTS lifecycle_events (
 CREATE INDEX IF NOT EXISTS idx_lifecycle_events_created_at ON lifecycle_events(created_at);
 CREATE INDEX IF NOT EXISTS idx_lifecycle_events_kind ON lifecycle_events(kind);
 
+CREATE TABLE IF NOT EXISTS app_health_periods (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    status TEXT NOT NULL,
+    started_at DATETIME NOT NULL,
+    ended_at DATETIME
+);
+CREATE INDEX IF NOT EXISTS idx_app_health_periods_started_at ON app_health_periods(started_at);
+CREATE INDEX IF NOT EXISTS idx_app_health_periods_ended_at ON app_health_periods(ended_at);
+
 
 -- +goose Down
+DROP TABLE IF EXISTS app_health_periods;
 DROP TABLE IF EXISTS logs;
 DROP TABLE IF EXISTS log_groups;
 DROP TABLE IF EXISTS lifecycle_events;
