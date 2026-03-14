@@ -1,7 +1,7 @@
 -include ../.env
 export
 
-.PHONY: build up down logs shell reset
+.PHONY: build up down logs shell reset check
 
 ROOT_DIR := $(abspath $(CURDIR)/..)
 DEMO_DIR := $(ROOT_DIR)/e2e
@@ -39,3 +39,6 @@ shell:
 	podman exec -it $(DEMO_CONTAINER) bash
 
 reset: down
+
+check:
+	./check.sh

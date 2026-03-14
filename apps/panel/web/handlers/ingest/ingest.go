@@ -84,8 +84,12 @@ func (h *handler) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	for {
 		_, message, err := conn.ReadMessage()
 		if err != nil {
-			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
+			if websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
+				slog.Debug("WebSocket closed", "error", err)
+			} else if websocket.IsUnexpectedCloseError(err, websocket.CloseAbnormalClosure) {
 				slog.Error("WebSocket read error", "error", err)
+			} else {
+				slog.Warn("WebSocket read closed", "error", err)
 			}
 			break
 		}
@@ -175,6 +179,11 @@ func (h *handler) handleEnvelope(ctx context.Context, env types.Envelope) {
 }
 
 func (h *handler) handleRegistration(ctx context.Context, connID, remoteAddr string, msg types.RegisterMessage) {
+	if len(msg.Apps) == 0 {
+		slog.Info("Skipping empty collector registration", "collector", msg.Collector, "remote", remoteAddr, "conn_id", connID)
+		return
+	}
+
 	// Construct request from message
 	req := ingest.RegisterCollectorRequest{
 		CollectorName: msg.Collector,

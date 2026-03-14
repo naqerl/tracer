@@ -11,5 +11,9 @@ unit registers them in the collector via the guesser.
 make -C e2e up
 ```
 
+```bash
+make -C e2e check
+```
+
 The panel is exposed on `http://localhost:18081` by default.
 The default login is `demo / demo123`.
