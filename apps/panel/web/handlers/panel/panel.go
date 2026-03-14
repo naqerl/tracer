@@ -1,6 +1,7 @@
 package panel
 
 import (
+	"database/sql"
 	"embed"
 	"errors"
 	"fmt"
@@ -329,6 +330,16 @@ type appHealthView struct {
 	Bars            []uptimeBarView
 }
 
+type logPageView struct {
+	ID             int64
+	Level          string
+	Message        string
+	Context        any
+	CreatedAt      time.Time
+	TraceIDDisplay string
+	GroupID        int64
+}
+
 type appView struct {
 	Name   string
 	Health appHealthView
@@ -590,10 +601,25 @@ func (h *handler) getLogByID(w http.ResponseWriter, r *http.Request) {
 		"Title":         fmt.Sprintf("Log #%d", logEntry.ID),
 		"CollectorName": req.CollectorName,
 		"AppName":       req.AppName,
-		"Log":           logEntry,
-		"User":          user,
-		"IsAdmin":       user.IsAdmin,
+		"Log": logPageView{
+			ID:             logEntry.ID,
+			Level:          logEntry.Level,
+			Message:        logEntry.Message,
+			Context:        logEntry.Context,
+			CreatedAt:      logEntry.CreatedAt,
+			TraceIDDisplay: logTraceIDDisplay(logEntry.TraceID),
+			GroupID:        logEntry.GroupID.Int64,
+		},
+		"User":    user,
+		"IsAdmin": user.IsAdmin,
 	})
+}
+
+func logTraceIDDisplay(traceID sql.NullString) string {
+	if !traceID.Valid {
+		return "Not present"
+	}
+	return traceID.String
 }
 
 func parseOffset(offsetParam string) int64 {

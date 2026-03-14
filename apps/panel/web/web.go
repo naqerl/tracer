@@ -18,6 +18,9 @@ func NewServer(deps Dependencies, port string) *http.Server {
 	mux := http.NewServeMux()
 	authMux := auth.InitMux(deps.Auth, deps.User)
 
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/panel/", http.StatusSeeOther)
+	})
 	mux.Handle("/ingest/", http.StripPrefix("/ingest", ingest.InitMux(deps.Auth, deps.Ingest, deps.Tracker)))
 	mux.Handle("/panel/", http.StripPrefix("/panel", panel.InitMux(deps.PanelService)))
 	mux.Handle("/auth/", http.StripPrefix("/auth", authMux))

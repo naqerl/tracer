@@ -17,7 +17,8 @@
 {{define "log-content"}}
 <!-- Breadcrumb -->
 <div class="mb-6">
-    <a href="/panel/collectors/{{.CollectorName}}/apps/{{.AppName}}" class="text-sm text-fg-secondary hover:text-fg transition-colors">&larr; Back to app</a>
+    <a href="/panel/collectors/{{.CollectorName}}/apps/{{.AppName}}/logs/groups/{{.Log.GroupID}}"
+       class="text-sm text-fg-secondary hover:text-fg transition-colors">&larr; Back to group</a>
 </div>
 
 <!-- Log Header -->
@@ -39,7 +40,7 @@
         <span class="uppercase">{{.Log.Level}}</span>
 
         <span class="text-fg-secondary">Trace ID:</span>
-        <span class="font-mono break-all">{{.Log.TraceID}}</span>
+        <span class="font-mono break-all">{{.Log.TraceIDDisplay}}</span>
     </div>
 </div>
 
