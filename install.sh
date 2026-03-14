@@ -27,6 +27,9 @@ COLLECTOR_GROUP="tracer-collector"
 ADMIN_USERNAME=""
 ADMIN_PASSWORD=""
 API_KEY=""
+TRACER_PANEL_HOST="${TRACER_PANEL_HOST:-}"
+TRACER_AUTOSTART="${TRACER_AUTOSTART:-0}"
+TRACER_SELF_MONITOR="${TRACER_SELF_MONITOR:-0}"
 
 # Installation mode
 COLLECTOR_ONLY="${COLLECTOR_ONLY:-0}"
@@ -236,6 +239,15 @@ generate_configs() {
     fi
 }
 
+configure_panel_host() {
+    if [[ "$COLLECTOR_ONLY" == "1" || -z "${TRACER_PANEL_HOST}" ]]; then
+        return
+    fi
+
+    log_info "Setting panel host to ${TRACER_PANEL_HOST}..."
+    sed -i "s|^host:.*|host: ${TRACER_PANEL_HOST}|" "${CONFIG_DIR}/panel.yaml"
+}
+
 # Initialize panel: create admin user and API key
 init_panel() {
     if [[ "$COLLECTOR_ONLY" == "1" ]]; then
@@ -379,6 +391,88 @@ EOF
     log_info "Systemd services created"
 }
 
+wait_for_unit_active() {
+    local unit=$1
+    local attempts=${2:-20}
+    local delay=${3:-1}
+    local i
+
+    for ((i=0; i<attempts; i++)); do
+        if systemctl is-active --quiet "$unit"; then
+            return 0
+        fi
+        sleep "$delay"
+    done
+
+    return 1
+}
+
+configure_self_monitoring() {
+    local changed=0
+
+    if [[ "$TRACER_SELF_MONITOR" != "1" ]]; then
+        return
+    fi
+
+    if ! systemctl is-active --quiet tracer-collector.service; then
+        log_warn "Skipping self-monitoring bootstrap because tracer-collector is not active"
+        return
+    fi
+
+    if [[ "$COLLECTOR_ONLY" != "1" ]]; then
+        if grep -Fq "unit: tracer-panel.service" "${CONFIG_DIR}/collector.yaml"; then
+            log_info "Self-monitoring for tracer-panel.service already configured"
+        else
+            log_info "Adding self-monitoring for tracer-panel.service..."
+            "${INSTALL_DIR}/tracer-collector" -config "${CONFIG_DIR}/collector.yaml" add --src journalctl --override tracer-panel.service
+            changed=1
+        fi
+    fi
+
+    if grep -Fq "unit: tracer-collector.service" "${CONFIG_DIR}/collector.yaml"; then
+        log_info "Self-monitoring for tracer-collector.service already configured"
+    else
+        log_info "Adding self-monitoring for tracer-collector.service..."
+        "${INSTALL_DIR}/tracer-collector" -config "${CONFIG_DIR}/collector.yaml" add --src journalctl --override tracer-collector.service
+        changed=1
+    fi
+
+    if [[ "$changed" == "1" ]]; then
+        chown root:"${COLLECTOR_GROUP}" "${CONFIG_DIR}/collector.yaml"
+        chmod 640 "${CONFIG_DIR}/collector.yaml"
+        log_info "Restarting tracer-collector to apply self-monitoring changes..."
+        systemctl restart tracer-collector.service
+    fi
+}
+
+start_services() {
+    if [[ "$TRACER_AUTOSTART" != "1" ]]; then
+        return
+    fi
+
+    log_info "Enabling and starting services..."
+
+    if [[ "$COLLECTOR_ONLY" != "1" ]]; then
+        if ! grep -qE '^host:[[:space:]]*[^[:space:]]+' "${CONFIG_DIR}/panel.yaml"; then
+            log_warn "Skipping service startup because panel host is not configured"
+            return
+        fi
+        systemctl enable --now tracer-panel.service
+        if ! wait_for_unit_active tracer-panel.service; then
+            log_warn "tracer-panel did not become active in time"
+        fi
+    fi
+
+    systemctl enable --now tracer-collector.service
+    if ! wait_for_unit_active tracer-collector.service; then
+        log_warn "tracer-collector did not become active in time"
+        return
+    fi
+
+    sleep 2
+    configure_self_monitoring
+}
+
 # Print post-installation instructions
 print_instructions() {
     echo ""
@@ -486,6 +580,9 @@ parse_args() {
                 echo "  TRACER_VERSION      Install specific version (e.g. v1.0.0)"
                 echo "  TRACER_TARBALL      Use local release tarball instead of downloading"
                 echo "  TRACER_BIN_DIR      Use local directory with built binaries"
+                echo "  TRACER_PANEL_HOST   Set panel host before first start"
+                echo "  TRACER_AUTOSTART=1  Enable and start services during install"
+                echo "  TRACER_SELF_MONITOR=1  Add tracer-panel/tracer-collector journal sources"
                 exit 0
                 ;;
             *)
@@ -527,8 +624,10 @@ main() {
     create_users
     setup_directories
     generate_configs
+    configure_panel_host
     init_panel
     create_systemd_services
+    start_services
     print_instructions
 }
 
