@@ -21,6 +21,7 @@ var (
 	ErrInvalidApp       = errors.New("invalid app name")
 	ErrInvalidEntry     = errors.New("invalid log entry")
 	ErrInvalidStats     = errors.New("invalid stats data")
+	ErrInvalidHealth    = errors.New("invalid health data")
 )
 
 // DBManager is the interface for dbmanager operations needed by Service.
@@ -233,7 +234,7 @@ func (s *Service) StoreLog(ctx context.Context, req StoreLogRequest) (int64, err
 	}
 
 	// Store log entry
-	ts := req.Entry.Timestamp.UTC()
+	ts := req.Entry.Timestamp
 
 	log, err := queries.InsertLog(ctx, db.InsertLogParams{
 		TraceID:   req.Entry.TraceID,
@@ -292,7 +293,7 @@ func (s *Service) StoreLifecycle(ctx context.Context, req StoreLifecycleRequest)
 	_, err = queries.InsertLifecycleEvent(ctx, db.InsertLifecycleEventParams{
 		Kind:      string(req.Kind),
 		RawLine:   req.RawLine,
-		CreatedAt: req.Timestamp.UTC(),
+		CreatedAt: req.Timestamp,
 	})
 	if err != nil {
 		return err
@@ -312,6 +313,64 @@ func (s *Service) StoreLifecycle(ctx context.Context, req StoreLifecycleRequest)
 	}
 
 	return nil
+}
+
+type StoreHealthRequest struct {
+	CollectorName string
+	AppName       string
+	Status        types.HealthStatus
+	Time          time.Time
+}
+
+func (r StoreHealthRequest) Validate() error {
+	if r.CollectorName == "" {
+		return fmt.Errorf("collector name is required")
+	}
+	if r.AppName == "" {
+		return fmt.Errorf("app name is required")
+	}
+	switch r.Status {
+	case types.HealthStatusUp, types.HealthStatusDown, types.HealthStatusUnknown:
+	default:
+		return fmt.Errorf("%w: invalid status %q", ErrInvalidHealth, r.Status)
+	}
+	if r.Time.IsZero() {
+		return fmt.Errorf("%w: time is required", ErrInvalidHealth)
+	}
+	return nil
+}
+
+func (s *Service) SaveHealthPeriod(ctx context.Context, req StoreHealthRequest) error {
+	dbtx, err := s.dbManager.GetAppDB(req.CollectorName, req.AppName)
+	if err != nil {
+		return err
+	}
+	queries := db.New(dbtx)
+	now := req.Time
+
+	current, err := queries.GetOpenHealthPeriod(ctx)
+	switch {
+	case err == nil:
+		if current.Status == string(req.Status) {
+			return nil
+		}
+		if err := queries.CloseHealthPeriod(ctx, db.CloseHealthPeriodParams{
+			EndedAt: sql.NullTime{Time: now, Valid: true},
+			ID:      current.ID,
+		}); err != nil {
+			return err
+		}
+	case errors.Is(err, sql.ErrNoRows):
+	default:
+		return err
+	}
+
+	err = queries.SaveHealthPeriod(ctx, db.SaveHealthPeriodParams{
+		Status:    string(req.Status),
+		StartedAt: now,
+		EndedAt:   sql.NullTime{},
+	})
+	return err
 }
 
 // sendErrorNotification sends a notification for error logs

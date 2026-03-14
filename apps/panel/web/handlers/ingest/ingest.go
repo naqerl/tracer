@@ -105,7 +105,7 @@ func (h *handler) processMessage(ctx context.Context, connID, remoteAddr string,
 		return
 	}
 	if err := hdr.Type.Validate(); err != nil {
-		slog.Warn("Invalid websocket message type", "error", err)
+		slog.Error("Invalid websocket message type", "error", err)
 		return
 	}
 
@@ -162,6 +162,13 @@ func (h *handler) handleEnvelope(ctx context.Context, env types.Envelope) {
 			Message:   "SOURCE_ERROR[" + evt.ErrType + "]: " + evt.Message + " (source: " + evt.Source + ")",
 		}
 		h.handleLog(ctx, env.Collector, evt.App, entry)
+	case types.EventTypeHealth:
+		var evt types.HealthEvent
+		if err := json.Unmarshal(env.Data, &evt); err != nil {
+			slog.Warn("Failed to decode health event", "error", err, "collector", env.Collector)
+			return
+		}
+		h.handleHealth(ctx, env.Collector, evt)
 	default:
 		slog.Warn("Unhandled envelope type", "type", env.Type)
 	}
@@ -176,7 +183,7 @@ func (h *handler) handleRegistration(ctx context.Context, connID, remoteAddr str
 
 	// Validate request
 	if err := req.Validate(); err != nil {
-		slog.Warn("Invalid registration request", "error", err, "remote", remoteAddr, "conn_id", connID)
+		slog.Error("Invalid registration request", "error", err, "remote", remoteAddr, "conn_id", connID)
 		return
 	}
 
@@ -199,17 +206,15 @@ func (h *handler) handleRegistration(ctx context.Context, connID, remoteAddr str
 }
 
 func (h *handler) handleLifecycle(ctx context.Context, collector string, evt types.LifecycleEvent) {
-	ts := evt.Timestamp().UTC()
-
 	req := ingest.StoreLifecycleRequest{
 		CollectorName: collector,
 		AppName:       evt.App,
 		Kind:          evt.Kind,
 		RawLine:       evt.RawLine,
-		Timestamp:     ts,
+		Timestamp:     evt.Timestamp(),
 	}
 	if err := req.Validate(); err != nil {
-		slog.Warn("Invalid lifecycle request", "error", err, "collector", collector, "app", evt.App)
+		slog.Error("Invalid lifecycle request", "error", err, "collector", collector, "app", evt.App)
 		return
 	}
 
@@ -225,7 +230,7 @@ func (h *handler) handleLog(ctx context.Context, collector, app string, entry ty
 		Entry:         entry,
 	}
 	if err := req.Validate(); err != nil {
-		slog.Warn("Invalid log request", "error", err, "collector", collector, "app", app)
+		slog.Error("Invalid log request", "error", err, "collector", collector, "app", app)
 		return
 	}
 
@@ -242,7 +247,7 @@ func (h *handler) handleStats(ctx context.Context, collector string, stats types
 		Stats:         stats,
 	}
 	if err := req.Validate(); err != nil {
-		slog.Warn("Invalid system stats request", "error", err, "collector", collector)
+		slog.Error("Invalid system stats request", "error", err, "collector", collector)
 		return
 	}
 
@@ -252,6 +257,23 @@ func (h *handler) handleStats(ctx context.Context, collector string, stats types
 	}
 
 	slog.Debug("Saved system stats", "collector", collector, "cpu", stats.CPUUsagePercent)
+}
+
+func (h *handler) handleHealth(ctx context.Context, collector string, evt types.HealthEvent) {
+	req := ingest.StoreHealthRequest{
+		CollectorName: collector,
+		AppName:       evt.App,
+		Status:        evt.Status,
+		Time:          evt.Time,
+	}
+	if err := req.Validate(); err != nil {
+		slog.Error("Invalid health request", "error", err, "collector", collector, "app", evt.App)
+		return
+	}
+
+	if err := h.ingestService.SaveHealthPeriod(ctx, req); err != nil {
+		slog.Error("Failed to store health event", "error", err, "collector", collector, "app", evt.App)
+	}
 }
 
 func (h *handler) pingLoop(conn *websocket.Conn) {
