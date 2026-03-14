@@ -2,3 +2,4 @@ bin/
 .env
 /.opencode/
 tasks/
+/.agent-shell/
