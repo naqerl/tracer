@@ -2,6 +2,7 @@ package retention
 
 import (
 	"context"
+	"database/sql"
 	"log/slog"
 	"time"
 
@@ -81,7 +82,13 @@ func (s *Service) runCleanup(ctx context.Context) {
 				continue
 			}
 
-			slog.Debug("Cleaned up old logs", "collector", collector, "app", appName, "cutoff", cutoff)
+			err = queries.DeleteOldHealthPeriods(ctx, sql.NullTime{Time: cutoff, Valid: true})
+			if err != nil {
+				slog.Error("Failed to cleanup health periods", "collector", collector, "app", appName, "error", err)
+				continue
+			}
+
+			slog.Debug("Cleaned up old app data", "collector", collector, "app", appName, "cutoff", cutoff)
 		}
 	}
 
