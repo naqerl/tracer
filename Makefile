@@ -1,59 +1,40 @@
 -include .env
 export
 
-.PHONY: build build-collector build-panel build-release build-release-collector build-release-panel clean test vet deps sqlc build-mock test-endpoints check-boundaries
+.PHONY: build build-collector build-panel build-release build-release-collector build-release-panel clean test vet deps sqlc build-mock test-endpoints check-boundaries pre-commit dev-setup install-pre-commit-hook
 
-# Build all binaries
 build: build-collector build-panel
 
-# Build collector
 build-collector:
-	go build -o bin/tracer-collector ./apps/collector/cmd/tracer-collector
-
-# Build panel
-build-panel:
-	go build -o bin/tracer-panel ./apps/panel/cmd/tracer-panel
-
-# Build release binaries (static, stripped)
-build-release: build-release-collector build-release-panel
-
-build-release-collector:
 	CGO_ENABLED=0 go build -ldflags="-s -w" -o bin/tracer-collector ./apps/collector/cmd/tracer-collector
 
-build-release-panel:
+build-panel:
 	CGO_ENABLED=0 go build -ldflags="-s -w" -o bin/tracer-panel ./apps/panel/cmd/tracer-panel
 
-# Clean build artifacts
 clean:
 	rm -rf bin/
 
-# Run tests
-test:
+test: vet
 	go test ./...
-
-# Run vet and staticcheck
-vet: fmt
-	go vet ./...
-	staticcheck ./...
-
-fmt:
-	go fmt ./...
-
-# Install dependencies
-deps:
-	go mod tidy
-
-# Generate SQLC code (panel only)
-sqlc:
-	cd apps/panel && sqlc generate
-
-# Build mock logger (kept in cmd/ for now)
-build-mock:
-	go build -o bin/mock-logger ./demo/mock-logger
 
 test-endpoints:
 	go run apps/panel/cmd/crawler/main.go
 
-# Check import boundaries
-check-boundaries:
-	./scripts/check_boundaries.sh
+pre-commit:
+	go fmt ./...
+	go vet ./...
+	staticcheck ./...
+
+dev-setup: install-pre-commit-hook
+	go install github.com/sqlc-dev/sqlc/cmd/sqlc@v1.30.0
+	go install honnef.co/go/tools/cmd/staticcheck@v0.7.0
+	go mod download
+
+install-pre-commit-hook:
+	@mkdir -p .git/hooks
+	@printf '%s\n' '#!/usr/bin/env bash' 'set -euo pipefail' 'make pre-commit' 'git diff --exit-code' > .git/hooks/pre-commit
+	@chmod +x .git/hooks/pre-commit
+	@echo 'Installed .git/hooks/pre-commit'
+
+sqlc:
+	cd apps/panel && sqlc generate

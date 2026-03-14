@@ -25,7 +25,7 @@ jobs:
         run: make test
 
       - name: Build release binaries
-        run: make build-release
+        run: make build
 
       - name: Get version
         id: version
