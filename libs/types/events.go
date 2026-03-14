@@ -14,11 +14,12 @@ const (
 	EventTypeLifecycle EventType = "lifecycle"
 	EventTypeStats     EventType = "stats"
 	EventTypeError     EventType = "error"
+	EventTypeHealth    EventType = "health"
 )
 
 func (t EventType) Validate() error {
 	switch t {
-	case EventTypeRegister, EventTypeLog, EventTypeLifecycle, EventTypeStats, EventTypeError:
+	case EventTypeRegister, EventTypeLog, EventTypeLifecycle, EventTypeStats, EventTypeError, EventTypeHealth:
 		return nil
 	}
 	return fmt.Errorf("invalid event type: %q", t)
@@ -102,3 +103,12 @@ type ErrorEvent struct {
 
 func (e ErrorEvent) EventType() EventType { return EventTypeError }
 func (e ErrorEvent) Timestamp() time.Time { return e.Time }
+
+type HealthEvent struct {
+	Time   time.Time    `json:"timestamp"`
+	App    string       `json:"app"`
+	Status HealthStatus `json:"status"`
+}
+
+func (e HealthEvent) EventType() EventType { return EventTypeHealth }
+func (e HealthEvent) Timestamp() time.Time { return e.Time }

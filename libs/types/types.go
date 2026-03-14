@@ -2,6 +2,14 @@ package types
 
 import "time"
 
+type HealthStatus string
+
+const (
+	HealthStatusUp      HealthStatus = "up"
+	HealthStatusDown    HealthStatus = "down"
+	HealthStatusUnknown HealthStatus = ""
+)
+
 // LogLevel represents the severity level of a log entry
 type LogLevel string
 
