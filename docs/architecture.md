@@ -14,7 +14,7 @@ This document defines the domain-first project structure, ownership boundaries, 
       /parsing      # Log parsing logic
       /transport    # WebSocket client
       /stats        # System stats collection
-  
+
   /panel            # Web UI and API server
     /cmd/tracer-panel
     /internal
@@ -33,7 +33,7 @@ This document defines the domain-first project structure, ownership boundaries, 
       /queries      # SQL queries
     /sqlc.yaml      # SQLC configuration
     /db             # Generated SQLC code
-  
+
   /landing          # Landing page server
     /cmd/tracer-landing
     /internal/http
@@ -59,7 +59,7 @@ Allowed at root:
 - `Makefile` - Top-level build orchestration
 - `.github/`, `.gitignore` - Git configuration
 - `README.md`, `CHANGELOG.md` - Project documentation
-- `apps/`, `libs/`, `scripts/`, `docs/`, `demo/`, `deploy/` - Domain folders
+- `apps/`, `libs/`, `scripts/`, `docs/`, `e2e/`, `deploy/` - Domain folders
 
 NOT allowed at root:
 - Business logic or domain code

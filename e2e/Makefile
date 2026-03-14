@@ -4,10 +4,10 @@ export
 .PHONY: build up down logs shell reset
 
 ROOT_DIR := $(abspath $(CURDIR)/..)
-DEMO_DIR := $(ROOT_DIR)/newdemo
+DEMO_DIR := $(ROOT_DIR)/e2e
 
-DEMO_IMAGE ?= tracer-newdemo:local
-DEMO_CONTAINER ?= tracer-newdemo
+DEMO_IMAGE ?= tracer-e2e:local
+DEMO_CONTAINER ?= tracer-e2e
 DEMO_PORT ?= 18081
 DEMO_PANEL_URL ?= http://localhost:$(DEMO_PORT)
 
@@ -23,14 +23,14 @@ up: down build
 		--tmpfs /run/lock \
 		--tmpfs /tmp \
 		$(DEMO_IMAGE)
-	@echo "New demo is running:"
+	@echo "E2E demo is running:"
 	@echo "  Panel URL: $(DEMO_PANEL_URL)"
 	@echo "  Container: $(DEMO_CONTAINER)"
-	@echo "  Logs: make -C newdemo logs"
+	@echo "  Logs: make -C e2e logs"
 
 down:
 	@podman container exists $(DEMO_CONTAINER) && podman rm -f -t 10 $(DEMO_CONTAINER) >/dev/null || true
-	@echo "New demo stopped"
+	@echo "E2E demo stopped"
 
 logs:
 	podman logs -f $(DEMO_CONTAINER)

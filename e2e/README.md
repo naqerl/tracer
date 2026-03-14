@@ -1,4 +1,4 @@
-# New Demo
+# E2E Demo
 
 This demo bakes the local `bin/` artifacts into a Debian Bookworm image with systemd
 and runs `install.sh` automatically on boot via a systemd oneshot unit.
@@ -8,7 +8,7 @@ unit registers them in the collector via the guesser.
 ## Usage
 
 ```bash
-make -C newdemo up
+make -C e2e up
 ```
 
 The panel is exposed on `http://localhost:18081` by default.

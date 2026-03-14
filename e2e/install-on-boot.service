@@ -5,7 +5,7 @@ Wants=network.target
 
 [Service]
 Type=oneshot
-ExecStart=/opt/tracer/newdemo/install-on-boot.sh
+ExecStart=/opt/tracer/e2e/install-on-boot.sh
 RemainAfterExit=yes
 
 [Install]
