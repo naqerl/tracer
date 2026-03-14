@@ -23,7 +23,7 @@
   {{$isActive := or (and (eq .Val "") (not $.Level)) (eq $.Level .Val)}}
   {{$query := ""}}
   {{if ne .Val ""}}{{$query = printf "&level=%s" .Val}}{{end}}
-  <a hx-get="/panel/collectors/{{$.Collector}}/apps/{{$.App}}/logs/groups/?since={{$.Since}}{{$query}}"
+  <a hx-get="/panel/collectors/{{$.Collector}}/apps/{{$.App}}/logs/groups?since={{$.Since}}{{$query}}"
      hx-push-url="false"
      hx-target="#log-groups"
      class="flex flex-col items-center gap-1 cursor-pointer {{if $isActive}}text-fg{{else}}text-fg-secondary{{end}} {{if and (not $isActive) (eq .Val `error`)}}hover:text-red-500{{else if and (not $isActive) (eq .Val `warn`)}}hover:text-yellow-500{{else if and (not $isActive) (eq .Val `info`)}}hover:text-blue-500{{else if not $isActive}}hover:text-fg{{end}}">
