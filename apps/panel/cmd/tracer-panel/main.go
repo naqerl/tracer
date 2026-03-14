@@ -277,13 +277,25 @@ func serve(ctx context.Context, cfg config.Panel) error {
 	// Initialize collector tracker
 	tracker := ingest.NewTracker()
 
-	// Initialize panel service
-	panelService := panelsvc.New(dbManager, userService, ingestService, tracker)
+	panelService := panelsvc.New(dbManager, ingestService, tracker, userService)
 
 	// Run services
-	wg.Go(func() { notifyDispatcher.Start(ctx) })
-	wg.Go(func() { retentionService.Start(ctx) })
 	wg.Go(func() {
+		slog.Info("starting notify dispatcher")
+		defer slog.Info("notify dispatcher stopped")
+
+		notifyDispatcher.Start(ctx)
+	})
+	wg.Go(func() {
+		slog.Info("starting retention service")
+		defer slog.Info("retention service stopped")
+
+		retentionService.Start(ctx)
+	})
+	wg.Go(func() {
+		slog.Info("starting maintenance loop")
+		defer slog.Info("maintenance loop stopped")
+
 		ticker := time.NewTicker(10 * time.Minute)
 		defer ticker.Stop()
 		for {
@@ -313,6 +325,9 @@ func serve(ctx context.Context, cfg config.Panel) error {
 
 	// Handle server shutdown
 	wg.Go(func() {
+		slog.Info("starting server shutdown watcher")
+		defer slog.Info("server shutdown watcher stopped")
+
 		<-ctx.Done()
 		slog.Info("Shutting down server")
 
