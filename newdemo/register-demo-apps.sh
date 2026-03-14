@@ -52,7 +52,7 @@ main() {
     sleep 3
 
     for unit in "${units[@]}"; do
-        "$collector_bin" -config "$collector_config" add --src journalctl --override "$unit"
+        "$collector_bin" -config "$collector_config" add --override "$unit"
     done
 
     chown root:"$collector_group" "$collector_config"

@@ -7,6 +7,8 @@ import (
 	"log"
 	"log/slog"
 	"os/signal"
+	"path/filepath"
+	"strings"
 	"sync"
 	"syscall"
 
@@ -192,34 +194,62 @@ func serve(ctx context.Context, cfg config.Config) error {
 }
 
 func handleAdd(ctx context.Context, path string, cfg config.Config, addCmd *flag.FlagSet) {
-	src := addCmd.String("src", "journalctl", "source of the logs")
 	override := addCmd.Bool("override", false, "override the app unit in the config")
+	healthURL := addCmd.String("health", "", "health check URL to attach as an HTTP health probe")
 	addCmd.Parse(flag.Args()[1:])
 	remaining := addCmd.Args()
 
-	var name string
-	var spec source.Spec
-	switch *src {
-	case "journalctl":
-		if len(remaining) == 0 {
-			log.Fatal("Missing unit name")
-		}
-		unit := remaining[0]
-		name = unit
-		spec = source.Spec{
-			Type: "journalctl",
-			Params: map[string]string{
-				"unit": unit,
-			},
-		}
-	default:
-		log.Fatalf("Unknown source: %s", *src)
+	if len(remaining) == 0 {
+		log.Fatal("Missing source path or systemd unit")
 	}
+	name, spec := inferSourceSpec(remaining[0])
 
 	if err := formatguesser.Add(ctx, &cfg, name, spec, *override); err != nil {
 		log.Fatalf("Failed to guess the source format, error: %v", err)
 	}
+	if strings.TrimSpace(*healthURL) != "" {
+		attachHTTPHealth(&cfg, name, spec, strings.TrimSpace(*healthURL))
+	}
 	if err := cfg.Persist(path); err != nil {
 		log.Fatalf("Failed to write the file config, error: %v", err)
 	}
+}
+
+func inferSourceSpec(raw string) (string, source.Spec) {
+	if looksLikePath(raw) {
+		return filepath.Base(raw), source.Spec{
+			Type: "file",
+			Params: map[string]string{
+				"path":      raw,
+				"read_from": "end",
+			},
+		}
+	}
+
+	return raw, source.Spec{
+		Type: "journalctl",
+		Params: map[string]string{
+			"unit": raw,
+		},
+	}
+}
+
+func looksLikePath(raw string) bool {
+	return strings.ContainsRune(raw, '/') || strings.HasPrefix(raw, ".")
+}
+
+func attachHTTPHealth(cfg *config.Config, name string, spec source.Spec, url string) {
+	defaults := health.HTTPConfig{}.Default()
+	defaults.URL = url
+	healthSpec := defaults.Spec()
+
+	for i := range cfg.Apps {
+		app := &cfg.Apps[i]
+		if app.Name == name || (app.Source.Type == spec.Type && app.Source.Params["unit"] == spec.Params["unit"] && app.Source.Params["path"] == spec.Params["path"]) {
+			app.Health = &healthSpec
+			return
+		}
+	}
+
+	log.Fatalf("Failed to attach health config: app %q was not found after add", name)
 }

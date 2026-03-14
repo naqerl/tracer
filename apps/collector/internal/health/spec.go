@@ -19,6 +19,34 @@ type HTTPConfig struct {
 	ExpectedStatus map[int]struct{}
 }
 
+func (HTTPConfig) Default() HTTPConfig {
+	return HTTPConfig{
+		Method:         "GET",
+		Timeout:        5 * time.Second,
+		ExpectedStatus: map[int]struct{}{200: {}},
+	}
+}
+
+func (c HTTPConfig) Spec() Spec {
+	expected := make([]string, 0, len(c.ExpectedStatus))
+	for code := range c.ExpectedStatus {
+		expected = append(expected, strconv.Itoa(code))
+	}
+
+	spec := Spec{
+		Type: "http",
+		Params: map[string]string{
+			"url":     c.URL,
+			"method":  c.Method,
+			"timeout": c.Timeout.String(),
+		},
+	}
+	if len(expected) > 0 {
+		spec.Params["expected_status"] = strings.Join(expected, ",")
+	}
+	return spec
+}
+
 func (s Spec) interval() (time.Duration, error) {
 	raw := strings.TrimSpace(s.Params["interval"])
 	if raw == "" {
@@ -40,12 +68,14 @@ func (s Spec) httpConfig() (HTTPConfig, error) {
 		return HTTPConfig{}, err
 	}
 
+	cfg := HTTPConfig{}.Default()
+
 	method := strings.ToUpper(strings.TrimSpace(s.Params["method"]))
 	if method == "" {
-		method = "GET"
+		method = cfg.Method
 	}
 
-	timeout := 5 * time.Second
+	timeout := cfg.Timeout
 	if raw := strings.TrimSpace(s.Params["timeout"]); raw != "" {
 		d, err := time.ParseDuration(raw)
 		if err != nil {
@@ -57,8 +87,9 @@ func (s Spec) httpConfig() (HTTPConfig, error) {
 		timeout = d
 	}
 
-	expected := map[int]struct{}{}
+	expected := cfg.ExpectedStatus
 	if raw := strings.TrimSpace(s.Params["expected_status"]); raw != "" {
+		expected = map[int]struct{}{}
 		for _, part := range strings.Split(raw, ",") {
 			code, err := strconv.Atoi(strings.TrimSpace(part))
 			if err != nil {

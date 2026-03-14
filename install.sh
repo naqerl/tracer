@@ -28,6 +28,7 @@ ADMIN_USERNAME=""
 ADMIN_PASSWORD=""
 API_KEY=""
 TRACER_PANEL_HOST="${TRACER_PANEL_HOST:-}"
+TRACER_PANEL_PORT="${TRACER_PANEL_PORT:-}"
 TRACER_AUTOSTART="${TRACER_AUTOSTART:-0}"
 TRACER_SELF_MONITOR="${TRACER_SELF_MONITOR:-0}"
 TRACER_ADMIN_USERNAME="${TRACER_ADMIN_USERNAME:-}"
@@ -241,13 +242,37 @@ generate_configs() {
     fi
 }
 
-configure_panel_host() {
-    if [[ "$COLLECTOR_ONLY" == "1" || -z "${TRACER_PANEL_HOST}" ]]; then
+configure_panel() {
+    if [[ "$COLLECTOR_ONLY" == "1" ]]; then
         return
     fi
 
-    log_info "Setting panel host to ${TRACER_PANEL_HOST}..."
-    sed -i "s|^host:.*|host: ${TRACER_PANEL_HOST}|" "${CONFIG_DIR}/panel.yaml"
+    if [[ -n "${TRACER_PANEL_PORT}" ]]; then
+        if [[ ! "${TRACER_PANEL_PORT}" =~ ^[0-9]+$ ]]; then
+            log_error "TRACER_PANEL_PORT must be a numeric port"
+            exit 1
+        fi
+        log_info "Setting panel port to ${TRACER_PANEL_PORT}..."
+        sed -i "s|^port:.*|port: ${TRACER_PANEL_PORT}|" "${CONFIG_DIR}/panel.yaml"
+    fi
+
+    if [[ -n "${TRACER_PANEL_HOST}" ]]; then
+        log_info "Setting panel host to ${TRACER_PANEL_HOST}..."
+        sed -i "s|^host:.*|host: ${TRACER_PANEL_HOST}|" "${CONFIG_DIR}/panel.yaml"
+    fi
+}
+
+panel_bind_port() {
+    if [[ "$COLLECTOR_ONLY" == "1" ]]; then
+        return
+    fi
+
+    if [[ -n "${TRACER_PANEL_PORT}" ]]; then
+        printf '%s\n' "${TRACER_PANEL_PORT}"
+        return
+    fi
+
+    awk -F': *' '/^port:/ {gsub(/"/, "", $2); print $2; exit}' "${CONFIG_DIR}/panel.yaml"
 }
 
 # Initialize panel: create admin user and API key
@@ -419,6 +444,8 @@ wait_for_unit_active() {
 
 configure_self_monitoring() {
     local changed=0
+    local panel_port=""
+    local panel_health_url=""
 
     if [[ "$TRACER_SELF_MONITOR" != "1" ]]; then
         return
@@ -430,11 +457,19 @@ configure_self_monitoring() {
     fi
 
     if [[ "$COLLECTOR_ONLY" != "1" ]]; then
+        panel_port=$(panel_bind_port)
+        if [[ -n "${panel_port}" ]]; then
+            panel_health_url="http://127.0.0.1:${panel_port}/auth/login"
+        fi
         if grep -Fq "unit: tracer-panel.service" "${CONFIG_DIR}/collector.yaml"; then
             log_info "Self-monitoring for tracer-panel.service already configured"
         else
             log_info "Adding self-monitoring for tracer-panel.service..."
-            "${INSTALL_DIR}/tracer-collector" -config "${CONFIG_DIR}/collector.yaml" add --src journalctl --override tracer-panel.service
+            if [[ -n "${panel_health_url}" ]]; then
+                "${INSTALL_DIR}/tracer-collector" -config "${CONFIG_DIR}/collector.yaml" add --override --health "${panel_health_url}" tracer-panel.service
+            else
+                "${INSTALL_DIR}/tracer-collector" -config "${CONFIG_DIR}/collector.yaml" add --override tracer-panel.service
+            fi
             changed=1
         fi
     fi
@@ -443,7 +478,7 @@ configure_self_monitoring() {
         log_info "Self-monitoring for tracer-collector.service already configured"
     else
         log_info "Adding self-monitoring for tracer-collector.service..."
-        "${INSTALL_DIR}/tracer-collector" -config "${CONFIG_DIR}/collector.yaml" add --src journalctl --override tracer-collector.service
+        "${INSTALL_DIR}/tracer-collector" -config "${CONFIG_DIR}/collector.yaml" add --override tracer-collector.service
         changed=1
     fi
 
@@ -591,6 +626,7 @@ parse_args() {
                 echo "  TRACER_TARBALL      Use local release tarball instead of downloading"
                 echo "  TRACER_BIN_DIR      Use local directory with built binaries"
                 echo "  TRACER_PANEL_HOST   Set panel host before first start"
+                echo "  TRACER_PANEL_PORT   Set panel listen port before first start"
                 echo "  TRACER_AUTOSTART=1  Enable and start services during install"
                 echo "  TRACER_SELF_MONITOR=1  Add tracer-panel/tracer-collector journal sources"
                 echo "  TRACER_ADMIN_USERNAME  Admin username to use during panel initialization"
@@ -636,7 +672,7 @@ main() {
     create_users
     setup_directories
     generate_configs
-    configure_panel_host
+    configure_panel
     init_panel
     create_systemd_services
     start_services
