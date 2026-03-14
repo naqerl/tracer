@@ -61,7 +61,8 @@ func Default() Config {
 		Stats: stats.Spec{
 			StatsInterval: 30 * time.Second,
 		},
-		Apps: []AppSpec{},
+		Parsers: map[string]parser.Spec{},
+		Apps:    []AppSpec{},
 	}
 }
 
@@ -76,12 +77,7 @@ func (c Config) String() (string, error) {
 
 // Load reads and parses configuration file, overlaying on top of defaults
 func Load(path string) Config {
-	if path == "" {
-		path = os.Getenv(configPathEnv)
-	}
-	if path == "" {
-		path = defaultConfigPath
-	}
+	path = getPath(path)
 
 	raw, err := os.ReadFile(path)
 	if err != nil {
@@ -96,4 +92,26 @@ func Load(path string) Config {
 		log.Fatalf("failed to decode config: %s", err)
 	}
 	return cfg
+}
+
+func (c Config) Persist(path string) error {
+	path = getPath(path)
+
+	str, err := c.String()
+	if err != nil {
+		return err
+	}
+
+	return os.WriteFile(path, []byte(str), 0644)
+}
+
+func getPath(path string) string {
+	if path == "" {
+		path = os.Getenv(configPathEnv)
+	}
+	if path == "" {
+		path = defaultConfigPath
+	}
+
+	return path
 }

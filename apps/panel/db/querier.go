@@ -41,7 +41,7 @@ type Querier interface {
 	DeleteUserSessions(ctx context.Context, userID int64) error
 	DisableNotifier(ctx context.Context, id int64) error
 	EnableNotifier(ctx context.Context, id int64) error
-	FindLogsByTraceID(ctx context.Context, traceID string) ([]Log, error)
+	FindLogsByTraceID(ctx context.Context, traceID sql.NullString) ([]Log, error)
 	// Settings/config queries
 	GetConfig(ctx context.Context, key string) (string, error)
 	GetGlobalNotifiers(ctx context.Context) ([]Notifier, error)

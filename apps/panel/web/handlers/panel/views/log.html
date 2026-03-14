@@ -17,11 +17,7 @@
 {{define "log-content"}}
 <!-- Breadcrumb -->
 <div class="mb-6">
-    {{if .Log.GroupID.Valid}}
-    <a href="/panel/collectors/{{.CollectorName}}/apps/{{.AppName}}/logs/groups/{{.Log.GroupID.Int64}}" class="text-sm text-fg-secondary hover:text-fg transition-colors">&larr; Back to Log Group</a>
-    {{else}}
-    <a href="/panel/collectors/{{.CollectorName}}/apps/{{.AppName}}/logs/groups" class="text-sm text-fg-secondary hover:text-fg transition-colors">&larr; Back to Log Groups</a>
-    {{end}}
+    <a href="/panel/collectors/{{.CollectorName}}/apps/{{.AppName}}" class="text-sm text-fg-secondary hover:text-fg transition-colors">&larr; Back to app</a>
 </div>
 
 <!-- Log Header -->
@@ -38,10 +34,10 @@
     <div class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm pl-8">
         <span class="text-fg-secondary">Time:</span>
         <span>{{formatDateTime .Log.CreatedAt}}</span>
-        
+
         <span class="text-fg-secondary">Level:</span>
         <span class="uppercase">{{.Log.Level}}</span>
-        
+
         <span class="text-fg-secondary">Trace ID:</span>
         <span class="font-mono break-all">{{.Log.TraceID}}</span>
     </div>

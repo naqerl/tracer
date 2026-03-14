@@ -20,9 +20,9 @@ type JournalctlConfig struct {
 type journalctlSource struct {
 	unit    string
 	cmd     *exec.Cmd
-	stdout  io.ReadCloser
 	scanner *bufio.Scanner
 	ctx     context.Context // stored from Open for use in restart
+	seeked  bool
 
 	// linesFromEnd specifies how many lines to show from the end.
 	// 0 means start from now (tail mode).
@@ -33,7 +33,7 @@ type journalctlSource struct {
 
 // NewJournalctl creates a new journalctl source.
 // Enforces creation of the error channel for health monitoring.
-func NewJournalctl(cfg JournalctlConfig) Source {
+func NewJournalctl(cfg JournalctlConfig) *journalctlSource {
 	return &journalctlSource{
 		unit:         cfg.Unit,
 		linesFromEnd: 0, // Default: start from now
@@ -42,54 +42,26 @@ func NewJournalctl(cfg JournalctlConfig) Source {
 
 func (js *journalctlSource) Open(ctx context.Context) error {
 	if strings.TrimSpace(js.unit) == "" {
-		return fmt.Errorf("journalctl source: empty unit")
+		return errors.New("journalctl source: empty unit")
 	}
-
-	// Build command based on current mode
-	flags := js.buildFlags()
-	cmd := exec.CommandContext(ctx, "journalctl", flags...)
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return fmt.Errorf("journalctl stdout pipe (%s): %w", js.unit, err)
-	}
-
-	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("journalctl start (%s): %w", js.unit, err)
-	}
-
-	scanner := bufio.NewScanner(stdout)
-	const maxLineBytes = 1024 * 1024
-	scanner.Buffer(make([]byte, 0, 64*1024), maxLineBytes)
-
-	js.cmd = cmd
-	js.stdout = stdout
-	js.scanner = scanner
 	js.ctx = ctx
 	return nil
 }
 
-// buildFlags constructs journalctl flags based on current mode.
-func (js *journalctlSource) buildFlags() []string {
-	flags := []string{"-u", js.unit, "-o", "cat", "-f"}
-
-	switch js.linesFromEnd {
-	case -1:
-		// From beginning: -f (no -n flag, shows all)
-		// flags already set above
-	case 0:
-		// From now: -f -n 0
-		flags = append(flags, "-n", "0")
-	default:
-		// Last N lines: -f -n N
-		flags = append(flags, "-n", strconv.FormatInt(js.linesFromEnd, 10))
+func (js *journalctlSource) Next(ctx context.Context) (string, error) {
+	follow := true
+	if js.seeked {
+		follow = false
+		if err := js.Close(); err != nil {
+			return "", err
+		}
+		js.seeked = false
 	}
 
-	return flags
-}
-
-func (js *journalctlSource) Next(ctx context.Context) (string, error) {
-	if js.scanner == nil {
-		return "", fmt.Errorf("journalctl source not open")
+	if js.cmd == nil {
+		if err := js.startJournalCtl(follow); err != nil {
+			return "", err
+		}
 	}
 
 	for {
@@ -112,24 +84,23 @@ func (js *journalctlSource) Next(ctx context.Context) (string, error) {
 }
 
 func (js *journalctlSource) Close() error {
-	var closeErr error
-	if js.stdout != nil {
-		if err := js.stdout.Close(); err != nil {
-			closeErr = err
-		}
-		js.stdout = nil
+	if js.cmd == nil {
+		js.scanner = nil
+		js.seeked = false
+		return nil
 	}
-	if js.cmd != nil {
-		if js.cmd.Process != nil {
-			_ = js.cmd.Process.Kill()
-		}
-		if err := js.cmd.Wait(); err != nil && closeErr == nil {
-			closeErr = err
-		}
-		js.cmd = nil
+	if err := js.cmd.Process.Kill(); err != nil {
+		return err
 	}
+	if err := js.cmd.Wait(); err != nil {
+		return err
+	}
+
+	js.cmd = nil
 	js.scanner = nil
-	return closeErr
+	js.seeked = false
+
+	return nil
 }
 
 // Seek implements io.Seeker for journalctlSource.
@@ -145,7 +116,7 @@ func (js *journalctlSource) Close() error {
 //
 // Returns 0 for all successful seeks (positions are opaque).
 func (js *journalctlSource) Seek(offset int64, whence int) (int64, error) {
-	if js.cmd == nil {
+	if js.ctx == nil {
 		return 0, errors.New("journalctl source not open")
 	}
 
@@ -175,30 +146,51 @@ func (js *journalctlSource) Seek(offset int64, whence int) (int64, error) {
 		return 0, fmt.Errorf("invalid whence: %d", whence)
 	}
 
-	// Restart with new flags
-	if err := js.restart(); err != nil {
-		return 0, err
-	}
-
+	js.seeked = true
 	return 0, nil
 }
 
-// restart kills the current process and restarts with current flags.
-func (js *journalctlSource) restart() error {
-	// Close current process
-	if js.stdout != nil {
-		_ = js.stdout.Close()
-		js.stdout = nil
+func (js *journalctlSource) startJournalCtl(follow bool) error {
+	// Build command based on current mode
+	flags := buildFlags(js.unit, js.linesFromEnd, follow)
+	cmd := exec.CommandContext(js.ctx, "journalctl", flags...)
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return fmt.Errorf("journalctl stdout pipe (%s): %w", js.unit, err)
 	}
-	if js.cmd != nil {
-		if js.cmd.Process != nil {
-			_ = js.cmd.Process.Kill()
-		}
-		_ = js.cmd.Wait()
-		js.cmd = nil
-	}
-	js.scanner = nil
 
-	// Re-open with stored context
-	return js.Open(js.ctx)
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("journalctl start (%s): %w", js.unit, err)
+	}
+
+	scanner := bufio.NewScanner(stdout)
+	const maxLineBytes = 1024 * 1024
+	scanner.Buffer(make([]byte, 0, 64*1024), maxLineBytes)
+
+	js.cmd = cmd
+	js.scanner = scanner
+
+	return nil
+}
+
+// buildFlags constructs journalctl flags based on current mode.
+func buildFlags(unit string, linesFromEnd int64, follow bool) []string {
+	flags := []string{"-u", unit, "-o", "cat", "_TRANSPORT=stdout"}
+	if follow {
+		flags = append(flags, "-f")
+	}
+
+	switch linesFromEnd {
+	case -1:
+		// From beginning: -f (no -n flag, shows all)
+		// flags already set above
+	case 0:
+		// From now: -f -n 0
+		flags = append(flags, "-n", "0")
+	default:
+		// Last N lines: -f -n N
+		flags = append(flags, "-n", strconv.FormatInt(linesFromEnd, 10))
+	}
+
+	return flags
 }

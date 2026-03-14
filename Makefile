@@ -1,7 +1,7 @@
 -include .env
 export
 
-.PHONY: build build-collector build-panel build-release build-release-collector build-release-panel clean test vet deps sqlc build-mock test-endpoints check-boundaries pre-commit dev-setup install-pre-commit-hook
+.PHONY: build build-collector build-panel build-release build-release-collector build-release-panel clean test vet deps sqlc build-mock check-boundaries pre-commit dev-setup install-pre-commit-hook
 
 build: build-collector build-panel
 
@@ -16,9 +16,6 @@ clean:
 
 test: vet
 	go test ./...
-
-test-endpoints:
-	go run apps/panel/cmd/crawler/main.go
 
 pre-commit:
 	go fmt ./...

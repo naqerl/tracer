@@ -14,29 +14,31 @@ import (
 	"golang.org/x/net/html"
 )
 
-// CrawlResult tracks the result of crawling a URL
 type CrawlResult struct {
 	URL        string
 	StatusCode int
 	Error      error
 	Depth      int
+	Duration   time.Duration
 }
 
 var (
-	baseURL  string
-	username string
-	password string
-	maxDepth int
-	visited  = make(map[string]bool)
-	results  []CrawlResult
-	client   *http.Client
+	baseURL   string
+	username  string
+	password  string
+	startPath string
+	maxDepth  int
+	visited   = make(map[string]bool)
+	results   []CrawlResult
+	client    *http.Client
 )
 
 func main() {
 	flag.StringVar(&baseURL, "url", "http://localhost:18081", "Base URL to crawl")
 	flag.StringVar(&username, "username", "demo", "Username for login")
 	flag.StringVar(&password, "password", "demo123", "Password for login")
-	flag.IntVar(&maxDepth, "depth", 5, "Maximum crawl depth")
+	flag.StringVar(&startPath, "start", "/panel/", "Path to start crawling from")
+	flag.IntVar(&maxDepth, "depth", 100, "Maximum crawl depth")
 	flag.Parse()
 
 	jar, err := cookiejar.New(nil)
@@ -49,28 +51,26 @@ func main() {
 		Timeout: 10 * time.Second,
 		Jar:     jar,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			return http.ErrUseLastResponse // Don't auto-follow, track manually
+			return http.ErrUseLastResponse
 		},
 	}
 
 	fmt.Println("=== Web Crawler ===")
 	fmt.Printf("Base URL: %s\n", baseURL)
+	fmt.Printf("Start Path: %s\n", startPath)
 	fmt.Printf("Max Depth: %d\n", maxDepth)
 	fmt.Println()
 
-	// Login first
 	if err := login(); err != nil {
 		fmt.Printf("Login failed: %v\n", err)
 		os.Exit(1)
 	}
-	fmt.Println("✓ Logged in successfully")
+	fmt.Println("OK logged in successfully")
 	fmt.Println()
 
-	// Start DFS crawl from root
 	fmt.Println("=== Crawling ===")
-	dfsCrawl("/", 0)
+	dfsCrawl(startPath, 0)
 
-	// Print results
 	fmt.Println()
 	fmt.Println("=== Results ===")
 
@@ -81,62 +81,49 @@ func main() {
 	for _, result := range results {
 		indent := strings.Repeat("  ", result.Depth)
 
-		if result.Error != nil {
-			fmt.Printf("%s❌ %s - ERROR: %v\n", indent, result.URL, result.Error)
+		switch {
+		case result.Error != nil:
+			fmt.Printf("%sFAIL %s - %s - ERROR: %v\n", indent, result.URL, formatDuration(result.Duration), result.Error)
 			failed++
-		} else if result.StatusCode == 500 {
-			fmt.Printf("%s❌ %s - 500 Internal Server Error\n", indent, result.URL)
+		case result.StatusCode == http.StatusInternalServerError:
+			fmt.Printf("%sFAIL %s - %s - 500 Internal Server Error\n", indent, result.URL, formatDuration(result.Duration))
 			failed++
-		} else if result.StatusCode >= 300 && result.StatusCode < 400 {
-			fmt.Printf("%s↪️  %s - %d\n", indent, result.URL, result.StatusCode)
+		case result.StatusCode >= 300 && result.StatusCode < 400:
+			fmt.Printf("%sREDIRECT %s - %s - %d\n", indent, result.URL, formatDuration(result.Duration), result.StatusCode)
 			redirects++
-		} else if result.StatusCode == 200 {
-			fmt.Printf("%s✓ %s\n", indent, result.URL)
+		case result.StatusCode == http.StatusOK:
+			fmt.Printf("%sOK %s - %s\n", indent, result.URL, formatDuration(result.Duration))
 			passed++
-		} else {
-			fmt.Printf("%s⚠️  %s - %d\n", indent, result.URL, result.StatusCode)
-			passed++ // Count as passed if not 500
+		default:
+			fmt.Printf("%sWARN %s - %s - %d\n", indent, result.URL, formatDuration(result.Duration), result.StatusCode)
+			passed++
 		}
 	}
 
 	fmt.Println()
 	fmt.Println("=== Summary ===")
 	fmt.Printf("Total URLs: %d\n", len(results))
-	fmt.Printf("✓ OK (200): %d\n", passed)
-	fmt.Printf("↪️  Redirects: %d\n", redirects)
-	fmt.Printf("❌ Failed: %d\n", failed)
+	fmt.Printf("OK (200): %d\n", passed)
+	fmt.Printf("Redirects: %d\n", redirects)
+	fmt.Printf("Failed: %d\n", failed)
 
 	if failed > 0 {
 		os.Exit(1)
 	}
 }
 
-// DFS crawl starting from given path
 func dfsCrawl(path string, depth int) {
-	// Check depth limit
-	if depth > maxDepth {
-		return
-	}
-
-	// Skip if already visited
-	if visited[path] {
+	if depth > maxDepth || visited[path] {
 		return
 	}
 	visited[path] = true
 
-	// Skip static files and non-HTML resources
 	if shouldSkip(path) {
 		return
 	}
 
-	// Fetch the page
-	resp, body, err := fetch(path)
-
-	// Record result
-	result := CrawlResult{
-		URL:   path,
-		Depth: depth,
-	}
+	resp, body, duration, err := fetch(path)
+	result := CrawlResult{URL: path, Depth: depth, Duration: duration}
 	if err != nil {
 		result.Error = err
 	} else {
@@ -144,14 +131,11 @@ func dfsCrawl(path string, depth int) {
 	}
 	results = append(results, result)
 
-	// Only extract links from successful HTML responses
-	if err != nil || resp.StatusCode != 200 {
+	if err != nil || resp.StatusCode != http.StatusOK {
 		return
 	}
 
-	// Extract links and crawl them (DFS)
-	links := extractLinksFromHTML(string(body))
-	for _, link := range links {
+	for _, link := range extractLinksFromHTML(string(body)) {
 		cleanLink := normalizeURL(link)
 		if cleanLink != "" && !visited[cleanLink] {
 			dfsCrawl(cleanLink, depth+1)
@@ -159,7 +143,6 @@ func dfsCrawl(path string, depth int) {
 	}
 }
 
-// extractLinksFromHTML parses HTML and extracts all href attributes from anchor tags
 func extractLinksFromHTML(htmlStr string) []string {
 	doc, err := html.Parse(strings.NewReader(htmlStr))
 	if err != nil {
@@ -171,16 +154,16 @@ func extractLinksFromHTML(htmlStr string) []string {
 
 	var traverse func(*html.Node)
 	traverse = func(n *html.Node) {
-		if n.Type == html.ElementNode && n.Data == "a" {
+		if n.Type == html.ElementNode {
 			for _, attr := range n.Attr {
-				if attr.Key == "href" {
-					link := attr.Val
-					if !seen[link] {
-						seen[link] = true
-						links = append(links, link)
-					}
-					break
+				if !isNavigableAttr(attr.Key) || seen[attr.Val] {
+					continue
 				}
+				if attr.Val == "" {
+					continue
+				}
+				seen[attr.Val] = true
+				links = append(links, attr.Val)
 			}
 		}
 		for c := n.FirstChild; c != nil; c = c.NextSibling {
@@ -192,58 +175,61 @@ func extractLinksFromHTML(htmlStr string) []string {
 	return links
 }
 
-// fetch performs HTTP GET and returns response + body
-func fetch(path string) (*http.Response, []byte, error) {
-	req, err := http.NewRequest("GET", baseURL+path, nil)
+func isNavigableAttr(key string) bool {
+	return key == "href" || key == "hx-get"
+}
+
+func formatDuration(d time.Duration) string {
+	if d < time.Millisecond {
+		return fmt.Sprintf("%dus", d.Microseconds())
+	}
+	return fmt.Sprintf("%.2fms", float64(d)/float64(time.Millisecond))
+}
+
+func fetch(path string) (*http.Response, []byte, time.Duration, error) {
+	req, err := http.NewRequest(http.MethodGet, baseURL+path, nil)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, 0, err
 	}
 
+	startedAt := time.Now()
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, time.Since(startedAt), err
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return resp, nil, err
+		return resp, nil, time.Since(startedAt), err
 	}
 
-	return resp, body, nil
+	return resp, body, time.Since(startedAt), nil
 }
 
-// normalizeURL cleans and validates a URL
 func normalizeURL(raw string) string {
-	// Parse the URL
 	u, err := url.Parse(raw)
 	if err != nil {
 		return ""
 	}
 
-	// Skip external URLs (have scheme or host that's not ours)
 	if u.Scheme != "" && !strings.HasPrefix(raw, baseURL) {
 		return ""
 	}
 
-	// Parse base URL to compare hosts
 	base, _ := url.Parse(baseURL)
 	if u.Host != "" && u.Host != base.Host {
 		return ""
 	}
 
-	// Must be absolute path (relative to same host)
 	if !strings.HasPrefix(u.Path, "/") {
 		return ""
 	}
 
-	// Remove query strings and fragments for crawling
 	return u.Path
 }
 
-// shouldSkip returns true for static files and external URLs
 func shouldSkip(path string) bool {
-	// Skip common static file extensions
 	staticExts := []string{
 		".css", ".js", ".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico",
 		".woff", ".woff2", ".ttf", ".eot", ".pdf", ".zip", ".tar.gz",
@@ -255,7 +241,6 @@ func shouldSkip(path string) bool {
 		}
 	}
 
-	// Skip common non-page paths
 	skipPrefixes := []string{
 		"/assets/", "/static/", "/images/", "/fonts/",
 		"mailto:", "tel:", "javascript:", "#",
@@ -269,13 +254,12 @@ func shouldSkip(path string) bool {
 	return false
 }
 
-// login authenticates and stores cookies in the jar
 func login() error {
 	form := url.Values{}
 	form.Set("username", username)
 	form.Set("password", password)
 
-	req, err := http.NewRequest("POST", baseURL+"/login", strings.NewReader(form.Encode()))
+	req, err := http.NewRequest(http.MethodPost, baseURL+"/auth/login", strings.NewReader(form.Encode()))
 	if err != nil {
 		return err
 	}
@@ -288,8 +272,7 @@ func login() error {
 	}
 	defer resp.Body.Close()
 
-	// Accept 200 (HX-Redirect) or 302 (actual redirect)
-	if resp.StatusCode != 200 && resp.StatusCode != 302 {
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusFound {
 		body, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}

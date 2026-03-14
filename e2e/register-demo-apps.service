@@ -1,0 +1,13 @@
+[Unit]
+Description=Register E2E demo apps in Tracer collector
+After=e2e-install.service tracer-demo-api.service tracer-demo-worker.service tracer-demo-cron.service
+Wants=tracer-demo-api.service tracer-demo-worker.service tracer-demo-cron.service
+Requires=e2e-install.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/tracer/e2e/register-demo-apps.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

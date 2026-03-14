@@ -103,7 +103,7 @@ WHERE trace_id = ?
 ORDER BY created_at
 `
 
-func (q *Queries) FindLogsByTraceID(ctx context.Context, traceID string) ([]Log, error) {
+func (q *Queries) FindLogsByTraceID(ctx context.Context, traceID sql.NullString) ([]Log, error) {
 	rows, err := q.db.QueryContext(ctx, findLogsByTraceID, traceID)
 	if err != nil {
 		return nil, err
@@ -358,7 +358,7 @@ RETURNING id, trace_id, level, message, context, group_id, created_at
 `
 
 type InsertLogParams struct {
-	TraceID   string
+	TraceID   sql.NullString
 	Level     string
 	Message   string
 	Context   sql.NullString

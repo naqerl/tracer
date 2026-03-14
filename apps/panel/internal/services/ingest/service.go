@@ -237,7 +237,7 @@ func (s *Service) StoreLog(ctx context.Context, req StoreLogRequest) (int64, err
 	ts := req.Entry.Timestamp
 
 	log, err := queries.InsertLog(ctx, db.InsertLogParams{
-		TraceID:   req.Entry.TraceID,
+		TraceID:   sql.NullString{String: req.Entry.TraceID, Valid: true},
 		Level:     string(req.Entry.Level),
 		Message:   req.Entry.Message,
 		Context:   sql.NullString{String: contextJSON, Valid: true},

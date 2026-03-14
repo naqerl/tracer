@@ -1,0 +1,16 @@
+[Unit]
+Description=New Demo API logger
+After=systemd-journald.service
+Wants=systemd-journald.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/tracer-demo-loggen -service demo-api -component api -format json -trace-mode always -burst-requests 20 -nested-depth 5 -warn-every 3 -error-every 8 -steady-interval 5m
+Restart=always
+RestartSec=5
+DynamicUser=yes
+NoNewPrivileges=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

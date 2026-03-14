@@ -1,0 +1,43 @@
+FROM docker.io/library/golang:1.25-bookworm AS build
+
+WORKDIR /src
+COPY . .
+RUN make build && \
+    CGO_ENABLED=0 go build -ldflags="-s -w" -o /out/tracer-demo-loggen ./e2e/mocklog/main.go
+
+FROM docker.io/library/debian:bookworm
+
+ENV container=podman
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    systemd \
+    systemd-sysv \
+    ca-certificates \
+    curl \
+    tar \
+    passwd \
+    procps \
+    iproute2 \
+    bash && \
+    rm -rf /var/lib/apt/lists/*
+
+COPY --from=build /src/bin /opt/tracer-bin
+COPY --from=build /out/tracer-demo-loggen /usr/local/bin/tracer-demo-loggen
+COPY install.sh /opt/tracer/install.sh
+COPY e2e/install-on-boot.sh /opt/tracer/e2e/install-on-boot.sh
+COPY e2e/register-demo-apps.sh /opt/tracer/e2e/register-demo-apps.sh
+COPY e2e/install-on-boot.service /etc/systemd/system/e2e-install.service
+COPY e2e/register-demo-apps.service /etc/systemd/system/e2e-register-apps.service
+COPY e2e/systemd/ /etc/systemd/system/
+
+RUN chmod 0755 /opt/tracer/install.sh /opt/tracer/e2e/install-on-boot.sh /opt/tracer/e2e/register-demo-apps.sh /usr/local/bin/tracer-demo-loggen && \
+    mkdir -p /etc/systemd/system/multi-user.target.wants && \
+    ln -sf /etc/systemd/system/e2e-install.service /etc/systemd/system/multi-user.target.wants/e2e-install.service && \
+    ln -sf /etc/systemd/system/e2e-register-apps.service /etc/systemd/system/multi-user.target.wants/e2e-register-apps.service && \
+    ln -sf /etc/systemd/system/tracer-demo-api.service /etc/systemd/system/multi-user.target.wants/tracer-demo-api.service && \
+    ln -sf /etc/systemd/system/tracer-demo-worker.service /etc/systemd/system/multi-user.target.wants/tracer-demo-worker.service && \
+    ln -sf /etc/systemd/system/tracer-demo-cron.service /etc/systemd/system/multi-user.target.wants/tracer-demo-cron.service
+
+STOPSIGNAL SIGRTMIN+3
+EXPOSE 8080
+CMD ["/lib/systemd/systemd"]
