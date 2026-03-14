@@ -1,0 +1,15 @@
+request:
+  method: GET
+  path: /health/alpha-regex
+response:
+  statusCode: 500
+  headers:
+    Content-Type:
+      - text/plain
+  body: down
+control:
+  scenario:
+    name: alpha-regex-health
+    requiredState:
+      - up
+    newState: down

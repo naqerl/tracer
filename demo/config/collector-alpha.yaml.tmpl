@@ -29,6 +29,13 @@ parsers:
 apps:
   - name: alpha-json
     parser_id: json-default
+    health:
+      type: http
+      params:
+        url: http://127.0.0.1:8083/health/alpha-json
+        interval: 15s
+        timeout: 3s
+        expected_status: "200"
     lifecycle:
       start_pattern: SERVICE_LIFECYCLE start
       restart_pattern: SERVICE_LIFECYCLE restart
@@ -41,6 +48,13 @@ apps:
 
   - name: alpha-regex
     parser_id: regex-default
+    health:
+      type: http
+      params:
+        url: http://127.0.0.1:8083/health/alpha-regex
+        interval: 15s
+        timeout: 3s
+        expected_status: "200"
     lifecycle:
       start_pattern: SERVICE_LIFECYCLE start
       restart_pattern: SERVICE_LIFECYCLE restart

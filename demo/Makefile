@@ -1,7 +1,7 @@
 -include ../.env
 export
 
-.PHONY: build up up-live-reload down logs volumes-rm clean-volumes reset start-loggers stop-loggers restart-loggers
+.PHONY: build up up-live-reload down logs volumes-rm clean-volumes reset start-loggers stop-loggers restart-loggers start-health stop-health
 
 ROOT_DIR := $(abspath $(CURDIR)/..)
 DEMO_DIR := $(ROOT_DIR)/demo
@@ -17,7 +17,9 @@ DEMO_VOL_BETA ?= tracer_demo_logs_beta
 DEMO_VOL_GOMOD ?= tracer_demo_gomod
 DEMO_VOL_GOCACHE ?= tracer_demo_gocache
 DEMO_DEV_IMAGE ?= docker.io/library/golang:1.25-bookworm
+DEMO_MMOCK_IMAGE ?= docker.io/jordimartin/mmock:v4.3.12
 LOGGER_CONTAINERS := alpha-json alpha-regex beta-json beta-regex
+HEALTH_CONTAINER := health-mock
 
 build:
 	podman build -t $(DEMO_IMAGE) -f $(DEMO_DIR)/Containerfile $(ROOT_DIR)
@@ -41,6 +43,7 @@ up: down build
 		-v $(DEMO_VOL_PANEL):/demo/data \
 		-v $(DEMO_DIR)/config/panel.yaml:/demo/panel.yaml:ro \
 		$(DEMO_IMAGE) tracer-panel -config /demo/panel.yaml >/dev/null
+	@$(MAKE) start-health
 	@$(MAKE) start-loggers
 	@podman run -d --name $(DEMO_POD)-collector-alpha --pod $(DEMO_POD) \
 		-v $(DEMO_VOL_PANEL):/demo/data \
@@ -83,7 +86,8 @@ up-live-reload: down
 		-v $(DEMO_VOL_GOCACHE):/root/.cache/go-build \
 		-v $(DEMO_VOL_PANEL):/demo/data \
 		-v $(DEMO_DIR)/config/panel.yaml:/demo/panel.yaml:ro \
-		$(DEMO_DEV_IMAGE) bash -lc 'export PATH="/usr/local/go/bin:/go/bin:$$PATH"; command -v air >/dev/null 2>&1 || go install github.com/air-verse/air@latest; cd /workspace; exec air --build.cmd "go build -o /tmp/tracer-panel ./apps/panel/cmd/tracer-panel" --build.bin "/tmp/tracer-panel" --build.include_ext "go,html,tmpl,yaml" --build.exclude_dir ".git,tmp,vendor,node_modules" --build.delay "500" --build.stop_on_error "true" --log.time "true"' >/dev/null
+		$(DEMO_DEV_IMAGE) bash -lc 'export PATH="/usr/local/go/bin:/go/bin:$$PATH"; command -v air >/dev/null 2>&1 || go install github.com/air-verse/air@latest; cd /workspace; exec air --build.cmd "go build -o /tmp/tracer-panel ./apps/panel/cmd/tracer-panel" --build.entrypoint "/tmp/tracer-panel" --build.include_ext "go,html,tmpl,yaml" --build.exclude_dir ".git,tmp,vendor,node_modules" --build.delay "500" --build.stop_on_error "true" --log.time "true"' >/dev/null
+	@$(MAKE) start-health
 	@$(MAKE) start-loggers
 	@podman run -d --name $(DEMO_POD)-collector-alpha --pod $(DEMO_POD) \
 		-v $(ROOT_DIR):/workspace \
@@ -93,7 +97,7 @@ up-live-reload: down
 		-v $(DEMO_VOL_SHARED):/demo/shared:ro \
 		-v $(DEMO_VOL_ALPHA):/demo/logs \
 		-v $(DEMO_DIR)/config/collector-alpha.yaml.tmpl:/demo/collector.yaml.tmpl:ro \
-		$(DEMO_DEV_IMAGE) bash -lc 'export PATH="/usr/local/go/bin:/go/bin:$$PATH"; command -v air >/dev/null 2>&1 || go install github.com/air-verse/air@latest; while [ ! -s /demo/shared/api_key ]; do sleep 1; done; key=$$(cat /demo/shared/api_key); sed "s|__API_KEY__|$${key}|g" /demo/collector.yaml.tmpl > /demo/collector.yaml; export TRACER_CONFIG=/demo/collector.yaml; cd /workspace; exec air --build.cmd "go build -o /tmp/tracer-collector ./apps/collector/cmd/tracer-collector" --build.bin "/tmp/tracer-collector" --build.include_ext "go,yaml,tmpl" --build.exclude_dir ".git,tmp,vendor,node_modules" --build.delay "500" --build.stop_on_error "true" --log.time "true"' >/dev/null
+		$(DEMO_DEV_IMAGE) bash -lc 'export PATH="/usr/local/go/bin:/go/bin:$$PATH"; command -v air >/dev/null 2>&1 || go install github.com/air-verse/air@latest; while [ ! -s /demo/shared/api_key ]; do sleep 1; done; key=$$(cat /demo/shared/api_key); sed "s|__API_KEY__|$${key}|g" /demo/collector.yaml.tmpl > /demo/collector.yaml; export TRACER_CONFIG=/demo/collector.yaml; cd /workspace; exec air --build.cmd "go build -o /tmp/tracer-collector ./apps/collector/cmd/tracer-collector" --build.entrypoint "/tmp/tracer-collector" --build.include_ext "go,yaml,tmpl" --build.exclude_dir ".git,tmp,vendor,node_modules" --build.delay "500" --build.stop_on_error "true" --log.time "true"' >/dev/null
 	@podman run -d --name $(DEMO_POD)-collector-beta --pod $(DEMO_POD) \
 		-v $(ROOT_DIR):/workspace \
 		-v $(DEMO_VOL_GOMOD):/go/pkg/mod \
@@ -102,7 +106,7 @@ up-live-reload: down
 		-v $(DEMO_VOL_SHARED):/demo/shared:ro \
 		-v $(DEMO_VOL_BETA):/demo/logs \
 		-v $(DEMO_DIR)/config/collector-beta.yaml.tmpl:/demo/collector.yaml.tmpl:ro \
-		$(DEMO_DEV_IMAGE) bash -lc 'export PATH="/usr/local/go/bin:/go/bin:$$PATH"; command -v air >/dev/null 2>&1 || go install github.com/air-verse/air@latest; while [ ! -s /demo/shared/api_key ]; do sleep 1; done; key=$$(cat /demo/shared/api_key); sed "s|__API_KEY__|$${key}|g" /demo/collector.yaml.tmpl > /demo/collector.yaml; export TRACER_CONFIG=/demo/collector.yaml; cd /workspace; exec air --build.cmd "go build -o /tmp/tracer-collector ./apps/collector/cmd/tracer-collector" --build.bin "/tmp/tracer-collector" --build.include_ext "go,yaml,tmpl" --build.exclude_dir ".git,tmp,vendor,node_modules" --build.delay "500" --build.stop_on_error "true" --log.time "true"' >/dev/null
+		$(DEMO_DEV_IMAGE) bash -lc 'export PATH="/usr/local/go/bin:/go/bin:$$PATH"; command -v air >/dev/null 2>&1 || go install github.com/air-verse/air@latest; while [ ! -s /demo/shared/api_key ]; do sleep 1; done; key=$$(cat /demo/shared/api_key); sed "s|__API_KEY__|$${key}|g" /demo/collector.yaml.tmpl > /demo/collector.yaml; export TRACER_CONFIG=/demo/collector.yaml; cd /workspace; exec air --build.cmd "go build -o /tmp/tracer-collector ./apps/collector/cmd/tracer-collector" --build.entrypoint "/tmp/tracer-collector" --build.include_ext "go,yaml,tmpl" --build.exclude_dir ".git,tmp,vendor,node_modules" --build.delay "500" --build.stop_on_error "true" --log.time "true"' >/dev/null
 	@echo "Demo is running in live-reload mode:"
 	@echo "  Panel URL:  $(DEMO_PANEL_URL)"
 	@echo "  Credentials: demo / demo123"
@@ -138,6 +142,18 @@ start-loggers:
 		-v $(DEMO_VOL_BETA):/logs \
 		docker.io/library/alpine:3.20 sh -c 'i=0; touch /logs/beta-regex.log; while true; do if [ $$((i%100)) -lt 70 ]; then lvl="INFO"; elif [ $$((i%100)) -lt 90 ]; then lvl="WARN"; else lvl="ERROR"; fi; printf "%s|%s|trace=beta-service|msg=log entry %d|user=user-%03d|request=req-%05d\n" "$$(date -Iseconds)" "$$lvl" "$$i" "$$((i%100))" "$$i" >> /logs/beta-regex.log; i=$$((i+1)); sleep 2; done' >/dev/null
 	@echo "Demo loggers started"
+
+start-health:
+	@podman pod exists $(DEMO_POD) || (echo "Demo pod '$(DEMO_POD)' is not running. Start it first with 'make -C demo up'."; exit 1)
+	@$(MAKE) stop-health >/dev/null
+	@podman run -d --name $(DEMO_POD)-$(HEALTH_CONTAINER) --pod $(DEMO_POD) \
+		-v $(DEMO_DIR)/config/mmock:/config:ro \
+		$(DEMO_MMOCK_IMAGE) -server-ip 0.0.0.0 -console-ip 0.0.0.0 -server-statistics=false >/dev/null
+	@echo "Demo health mock started"
+
+stop-health:
+	@podman container exists $(DEMO_POD)-$(HEALTH_CONTAINER) && podman rm -f -t 1 $(DEMO_POD)-$(HEALTH_CONTAINER) >/dev/null || true
+	@echo "Demo health mock stopped"
 
 stop-loggers:
 	@for c in $(LOGGER_CONTAINERS); do \

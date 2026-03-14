@@ -1,0 +1,9 @@
+request:
+  method: GET
+  path: /health/alpha-json
+response:
+  statusCode: 200
+  headers:
+    Content-Type:
+      - text/plain
+  body: ok

@@ -1,0 +1,16 @@
+request:
+  method: GET
+  path: /health/beta-regex
+response:
+  statusCode: 200
+  headers:
+    Content-Type:
+      - text/plain
+  body: ok
+control:
+  scenario:
+    name: beta-regex-health
+    requiredState:
+      - not_started
+      - down
+    newState: up

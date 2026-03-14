@@ -45,4 +45,5 @@ make -C demo reset
 ## Notes
 
 - This demo focuses on file-based sources with multiple formats (JSON + regex) and multiple collectors.
+- Demo uptime uses one `mmock` container inside the pod. `alpha-json` and `beta-json` stay healthy; `alpha-regex` and `beta-regex` alternate between `200` and `500` responses so uptime bars show mixed history.
 - Journalctl sources in a pure Podman-only setup are possible but not reliable with stable `-u <unit>` mapping without additional systemd wiring.
