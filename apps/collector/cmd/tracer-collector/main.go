@@ -12,6 +12,7 @@ import (
 
 	"tracer/apps/collector/internal/app"
 	"tracer/apps/collector/internal/config"
+	"tracer/apps/collector/internal/formatguesser"
 	"tracer/apps/collector/internal/health"
 	"tracer/apps/collector/internal/lifecycle"
 	"tracer/apps/collector/internal/parser"
@@ -23,12 +24,31 @@ import (
 )
 
 func main() {
+	// Setup context with cancellation on shutdown signals
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
 	// Define flags
 	var (
+		addCmd = flag.NewFlagSet("add", flag.ExitOnError)
+
 		configPath    = flag.String("config", "", "path to config file")
 		printDefaults = flag.Bool("print-defaults", false, "print default configuration and exit")
 	)
 	flag.Parse()
+
+	// Default behavior: run the collector
+	cfg := config.Load(*configPath)
+
+	if flag.NArg() > 0 {
+		switch flag.Arg(0) {
+		case "add":
+			handleAdd(ctx, *configPath, cfg, addCmd)
+			return
+		default:
+			log.Fatalf("Unknown command: %s\n", flag.Arg(0))
+		}
+	}
 
 	logx.SetDefault()
 
@@ -40,18 +60,11 @@ func main() {
 		return
 	}
 
-	// Default behavior: run the collector
-	cfg := config.Load(*configPath)
-
 	slog.Info("Starting collector",
 		"name", cfg.Transport.Name,
 		"panelHost", cfg.Transport.PanelHost,
 		"apps", len(cfg.Apps),
 	)
-
-	// Setup context with cancellation on shutdown signals
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
 
 	if err := serve(ctx, cfg); err != nil {
 		log.Fatalf("failed to serve: %s", err)
@@ -176,4 +189,37 @@ func serve(ctx context.Context, cfg config.Config) error {
 	wg.Wait()
 
 	return nil
+}
+
+func handleAdd(ctx context.Context, path string, cfg config.Config, addCmd *flag.FlagSet) {
+	addCmd.Parse(flag.Args()[1:])
+	src := addCmd.String("src", "journalctl", "source of the logs")
+	override := addCmd.Bool("override", false, "override the app unit in the config")
+	remaning := addCmd.Args()
+
+	var name string
+	var spec source.Spec
+	switch *src {
+	case "journalctl":
+		if len(remaning) == 0 {
+			log.Fatal("Missing unit name")
+		}
+		unit := remaning[0]
+		name = unit
+		spec = source.Spec{
+			Type: "journalctl",
+			Params: map[string]string{
+				"unit": unit,
+			},
+		}
+	default:
+		log.Fatalf("Unknown source: %s", *src)
+	}
+
+	if err := formatguesser.Add(ctx, &cfg, name, spec, *override); err != nil {
+		log.Fatalf("Failed to guess the source format, error: %v", err)
+	}
+	if err := cfg.Persist(path); err != nil {
+		log.Fatalf("Failed to write the file config, error: %v", err)
+	}
 }

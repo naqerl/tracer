@@ -30,7 +30,7 @@ type LifecycleEvent struct {
 
 type Log struct {
 	ID        int64
-	TraceID   string
+	TraceID   sql.NullString
 	Level     string
 	Message   string
 	Context   sql.NullString
