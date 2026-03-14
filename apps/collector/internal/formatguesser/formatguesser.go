@@ -22,34 +22,44 @@ import (
 
 func Add(ctx context.Context, cfg *config.Config, name string, spec source.Spec, override bool) error {
 	var app config.AppSpec
+	existingIdx := -1
+
+	if cfg.Parsers == nil {
+		cfg.Parsers = map[string]parser.Spec{}
+	}
 
 	appNames := make([]string, 0, len(cfg.Apps))
-	for _, v := range cfg.Apps {
+	for i, v := range cfg.Apps {
 		appNames = append(appNames, v.Name)
-	}
-	app.Name = generateName(appNames, name)
-
-	// Check if app with such spec already exist
-	for _, a := range cfg.Apps {
-		if reflect.DeepEqual(a.Source, spec) && !override {
-			return fmt.Errorf("app with source: %v already exist. Pass --override to override", spec)
+		if reflect.DeepEqual(v.Source, spec) {
+			if !override {
+				return fmt.Errorf("app with source: %v already exist. Pass --override to override", spec)
+			}
+			existingIdx = i
+			app.Name = v.Name
 		}
+	}
+	if existingIdx == -1 {
+		app.Name = generateName(appNames, name)
 	}
 	app.Source = spec
 
 	// Prepare a source seeker
-	sourse, err := source.New(spec)
+	src, err := source.New(spec)
 	if err != nil {
 		return fmt.Errorf("failed to extract a source, error: %v", err)
 	}
 	var ss source.SourceSeeker
 	var ok bool
-	if ss, ok = sourse.(source.SourceSeeker); !ok {
+	if ss, ok = src.(source.SourceSeeker); !ok {
 		return fmt.Errorf("source doesn't support log seeking, source: %s", spec.Type)
 	}
 	if err := ss.Open(ctx); err != nil {
 		return fmt.Errorf("failed to open the source, error: %v", err)
 	}
+	defer func() {
+		_ = ss.Close()
+	}()
 
 	// Prepare the source to read logs
 	logSize := int64(100)
@@ -76,13 +86,13 @@ func Add(ctx context.Context, cfg *config.Config, name string, spec source.Spec,
 	var line string
 	for {
 		line, formatErr = ss.Next(ctx)
-		lines = append(lines, line)
 		if formatErr != nil {
 			if errors.Is(formatErr, io.EOF) {
 				break
 			}
 			return fmt.Errorf("unexpected error when reading the source, error: %v", formatErr)
 		}
+		lines = append(lines, line)
 		curr, formatErr = guessFormat(line)
 		if formatErr != nil {
 			return fmt.Errorf("failed to guess the logs format, error: %v", formatErr)
@@ -114,6 +124,10 @@ func Add(ctx context.Context, cfg *config.Config, name string, spec source.Spec,
 	cfg.Parsers[parserId] = prev
 	app.ParserID = parserId
 
+	if existingIdx >= 0 {
+		cfg.Apps[existingIdx] = app
+		return nil
+	}
 	cfg.Apps = append(cfg.Apps, app)
 
 	return nil

@@ -61,7 +61,8 @@ func Default() Config {
 		Stats: stats.Spec{
 			StatsInterval: 30 * time.Second,
 		},
-		Apps: []AppSpec{},
+		Parsers: map[string]parser.Spec{},
+		Apps:    []AppSpec{},
 	}
 }
 

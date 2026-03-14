@@ -25,7 +25,7 @@ func New(spec Spec) Parser {
 
 	schema := format.Schema{
 		LevelField:      requiredParam(spec, "level_field"),
-		TraceIDField:    requiredParam(spec, "trace_id_field"),
+		TraceIDField:    optionalParam(spec, "trace_id_field"),
 		MessageField:    requiredParam(spec, "message_field"),
 		TimestampField:  requiredParam(spec, "timestamp_field"),
 		TimestampFormat: requiredParam(spec, "timestamp_format"),
@@ -56,4 +56,11 @@ func requiredParam(spec Spec, key string) string {
 		return v
 	}
 	panic(fmt.Sprintf("parser %q: missing params.%s", spec.ID, key))
+}
+
+func optionalParam(spec Spec, key string) string {
+	if spec.Params == nil {
+		return ""
+	}
+	return strings.TrimSpace(spec.Params[key])
 }

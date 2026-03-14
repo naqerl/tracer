@@ -24,10 +24,6 @@ import (
 )
 
 func main() {
-	// Setup context with cancellation on shutdown signals
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
-
 	// Define flags
 	var (
 		addCmd = flag.NewFlagSet("add", flag.ExitOnError)
@@ -37,12 +33,23 @@ func main() {
 	)
 	flag.Parse()
 
-	// Default behavior: run the collector
-	cfg := config.Load(*configPath)
+	logx.SetDefault()
+
+	if *printDefaults {
+		if err := printDefaultsCmd(); err != nil {
+			log.Fatalf("failed to print defaults: %s", err)
+		}
+		return
+	}
+
+	// Setup context with cancellation on shutdown signals
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
 
 	if flag.NArg() > 0 {
 		switch flag.Arg(0) {
 		case "add":
+			cfg := config.Load(*configPath)
 			handleAdd(ctx, *configPath, cfg, addCmd)
 			return
 		default:
@@ -50,15 +57,8 @@ func main() {
 		}
 	}
 
-	logx.SetDefault()
-
-	// Handle CLI commands that don't require config file
-	if *printDefaults {
-		if err := printDefaultsCmd(); err != nil {
-			log.Fatalf("failed to print defaults: %s", err)
-		}
-		return
-	}
+	// Default behavior: run the collector
+	cfg := config.Load(*configPath)
 
 	slog.Info("Starting collector",
 		"name", cfg.Transport.Name,
@@ -192,19 +192,19 @@ func serve(ctx context.Context, cfg config.Config) error {
 }
 
 func handleAdd(ctx context.Context, path string, cfg config.Config, addCmd *flag.FlagSet) {
-	addCmd.Parse(flag.Args()[1:])
 	src := addCmd.String("src", "journalctl", "source of the logs")
 	override := addCmd.Bool("override", false, "override the app unit in the config")
-	remaning := addCmd.Args()
+	addCmd.Parse(flag.Args()[1:])
+	remaining := addCmd.Args()
 
 	var name string
 	var spec source.Spec
 	switch *src {
 	case "journalctl":
-		if len(remaning) == 0 {
+		if len(remaining) == 0 {
 			log.Fatal("Missing unit name")
 		}
-		unit := remaning[0]
+		unit := remaining[0]
 		name = unit
 		spec = source.Spec{
 			Type: "journalctl",

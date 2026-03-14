@@ -59,14 +59,17 @@ func (js *journalctlSource) Open(ctx context.Context) error {
 }
 
 func (js *journalctlSource) Next(ctx context.Context) (string, error) {
+	follow := true
 	if js.seeked {
+		follow = false
 		if err := js.Close(); err != nil {
 			return "", err
 		}
+		js.seeked = false
 	}
 
 	if js.cmd == nil {
-		if err := js.startJournalCtl(); err != nil {
+		if err := js.startJournalCtl(follow); err != nil {
 			return "", err
 		}
 	}
@@ -91,6 +94,11 @@ func (js *journalctlSource) Next(ctx context.Context) (string, error) {
 }
 
 func (js *journalctlSource) Close() error {
+	if js.cmd == nil {
+		js.scanner = nil
+		js.seeked = false
+		return nil
+	}
 	if err := js.cmd.Process.Kill(); err != nil {
 		return err
 	}
@@ -152,9 +160,9 @@ func (js *journalctlSource) Seek(offset int64, whence int) (int64, error) {
 	return 0, nil
 }
 
-func (js *journalctlSource) startJournalCtl() error {
+func (js *journalctlSource) startJournalCtl(follow bool) error {
 	// Build command based on current mode
-	flags := buildFlags(js.unit, js.linesFromEnd)
+	flags := buildFlags(js.unit, js.linesFromEnd, follow)
 	cmd := exec.CommandContext(js.ctx, "journalctl", flags...)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -176,8 +184,11 @@ func (js *journalctlSource) startJournalCtl() error {
 }
 
 // buildFlags constructs journalctl flags based on current mode.
-func buildFlags(unit string, linesFromEnd int64) []string {
-	flags := []string{"-u", unit, "-o", "cat", "_TRANSPORT=stdout", "-f"}
+func buildFlags(unit string, linesFromEnd int64, follow bool) []string {
+	flags := []string{"-u", unit, "-o", "cat", "_TRANSPORT=stdout"}
+	if follow {
+		flags = append(flags, "-f")
+	}
 
 	switch linesFromEnd {
 	case -1:
