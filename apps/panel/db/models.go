@@ -9,6 +9,13 @@ import (
 	"time"
 )
 
+type AppHealthPeriod struct {
+	ID        int64
+	Status    string
+	StartedAt time.Time
+	EndedAt   sql.NullTime
+}
+
 type Config struct {
 	Key   string
 	Value string
@@ -92,6 +99,7 @@ type UserApiKey struct {
 }
 
 type UserApp struct {
-	UserID  int64
-	AppName string
+	UserID        int64
+	CollectorName string
+	AppName       string
 }

@@ -33,6 +33,10 @@ type handler struct {
 	notifyService *notify.Service
 }
 
+func appKey(collectorName, appName string) string {
+	return collectorName + ":" + appName
+}
+
 func InitMux(authService *auth.Service, userService *user.Service, ingestService *ingest.Service, dbManager *dbmanager.Manager, notifyService *notify.Service) *http.ServeMux {
 	m := http.NewServeMux()
 	h := handler{
@@ -218,10 +222,10 @@ func (h *handler) buildUserAppsData(w http.ResponseWriter, r *http.Request) (map
 		return nil, false
 	}
 
-	// Build user apps map
+	// Build user apps map keyed by "collector:app".
 	userAppMap := make(map[string]bool)
 	for _, app := range userApps {
-		userAppMap[app] = true
+		userAppMap[appKey(app.CollectorName, app.AppName)] = true
 	}
 
 	// Get apps grouped by collector
@@ -295,37 +299,37 @@ func (h *handler) updateUserApps(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Extract app names from "collector:app" pairs
-	selectedApps := make([]string, 0, len(selectedPairs))
+	selectedMap := make(map[string]bool, len(selectedPairs))
 	for _, pair := range selectedPairs {
 		parts := strings.Split(pair, ":")
 		if len(parts) == 2 {
-			selectedApps = append(selectedApps, parts[1]) // app name is the second part
+			selectedMap[pair] = true
 		}
-	}
-
-	selectedMap := make(map[string]bool)
-	for _, app := range selectedApps {
-		selectedMap[app] = true
 	}
 
 	currentMap := make(map[string]bool)
 	for _, app := range currentApps {
-		currentMap[app] = true
+		currentMap[appKey(app.CollectorName, app.AppName)] = true
 	}
 
-	for _, app := range selectedApps {
-		if !currentMap[app] {
-			if err := h.userService.AddApp(r.Context(), id, app); err != nil {
-				slog.Error("Failed to add user app", "user_id", id, "app", app, "error", err)
-			}
+	for pair := range selectedMap {
+		if currentMap[pair] {
+			continue
+		}
+		parts := strings.Split(pair, ":")
+		if len(parts) != 2 {
+			continue
+		}
+		if err := h.userService.AddApp(r.Context(), id, parts[0], parts[1]); err != nil {
+			slog.Error("Failed to add user app", "user_id", id, "collector", parts[0], "app", parts[1], "error", err)
 		}
 	}
 
 	for _, app := range currentApps {
-		if !selectedMap[app] {
-			if err := h.userService.RemoveApp(r.Context(), id, app); err != nil {
-				slog.Error("Failed to remove user app", "user_id", id, "app", app, "error", err)
+		pair := appKey(app.CollectorName, app.AppName)
+		if !selectedMap[pair] {
+			if err := h.userService.RemoveApp(r.Context(), id, app.CollectorName, app.AppName); err != nil {
+				slog.Error("Failed to remove user app", "user_id", id, "collector", app.CollectorName, "app", app.AppName, "error", err)
 			}
 		}
 	}
@@ -621,7 +625,7 @@ func (h *handler) buildNotifierSubscriptionsData(w http.ResponseWriter, r *http.
 	// Build subscription map with "collector:app" keys
 	subscriptionMap := make(map[string]bool)
 	for _, sub := range subscriptions {
-		key := sub.CollectorName + ":" + sub.AppName
+		key := appKey(sub.CollectorName, sub.AppName)
 		subscriptionMap[key] = true
 	}
 
@@ -654,7 +658,7 @@ func (h *handler) buildNotifierSubscriptionsData(w http.ResponseWriter, r *http.
 		}
 		userAppSet := make(map[string]bool)
 		for _, app := range userApps {
-			userAppSet[app] = true
+			userAppSet[appKey(app.CollectorName, app.AppName)] = true
 		}
 
 		// Filter collector apps to only show apps user has access to
@@ -662,7 +666,7 @@ func (h *handler) buildNotifierSubscriptionsData(w http.ResponseWriter, r *http.
 		for collector, apps := range collectorApps {
 			var allowedApps []string
 			for _, app := range apps {
-				if userAppSet[app] {
+				if userAppSet[appKey(collector, app)] {
 					allowedApps = append(allowedApps, app)
 				}
 			}
@@ -737,13 +741,13 @@ func (h *handler) updateNotifierSubscriptions(w http.ResponseWriter, r *http.Req
 			}
 			userAppSet := make(map[string]bool)
 			for _, app := range userApps {
-				userAppSet[app] = true
+				userAppSet[appKey(app.CollectorName, app.AppName)] = true
 			}
 
 			var filtered []notify.Subscription
 			for _, sub := range subscriptions {
 				// Allow wildcards or check app access
-				if sub.AppName == "*" || userAppSet[sub.AppName] {
+				if sub.AppName == "*" || userAppSet[appKey(sub.CollectorName, sub.AppName)] {
 					filtered = append(filtered, sub)
 				}
 			}

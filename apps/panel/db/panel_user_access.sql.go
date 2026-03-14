@@ -10,41 +10,47 @@ import (
 )
 
 const addUserApp = `-- name: AddUserApp :exec
-INSERT OR IGNORE INTO user_app (user_id, app_name)
-VALUES (?, ?)
+INSERT OR IGNORE INTO user_app (user_id, collector_name, app_name)
+VALUES (?, ?, ?)
 `
 
 type AddUserAppParams struct {
-	UserID  int64
-	AppName string
+	UserID        int64
+	CollectorName string
+	AppName       string
 }
 
 func (q *Queries) AddUserApp(ctx context.Context, arg AddUserAppParams) error {
-	_, err := q.db.ExecContext(ctx, addUserApp, arg.UserID, arg.AppName)
+	_, err := q.db.ExecContext(ctx, addUserApp, arg.UserID, arg.CollectorName, arg.AppName)
 	return err
 }
 
 const getUserApps = `-- name: GetUserApps :many
 
-SELECT app_name FROM user_app
+SELECT collector_name, app_name FROM user_app
 WHERE user_id = ?
-ORDER BY app_name
+ORDER BY collector_name, app_name
 `
 
+type GetUserAppsRow struct {
+	CollectorName string
+	AppName       string
+}
+
 // User app access queries
-func (q *Queries) GetUserApps(ctx context.Context, userID int64) ([]string, error) {
+func (q *Queries) GetUserApps(ctx context.Context, userID int64) ([]GetUserAppsRow, error) {
 	rows, err := q.db.QueryContext(ctx, getUserApps, userID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []string
+	var items []GetUserAppsRow
 	for rows.Next() {
-		var app_name string
-		if err := rows.Scan(&app_name); err != nil {
+		var i GetUserAppsRow
+		if err := rows.Scan(&i.CollectorName, &i.AppName); err != nil {
 			return nil, err
 		}
-		items = append(items, app_name)
+		items = append(items, i)
 	}
 	if err := rows.Close(); err != nil {
 		return nil, err
@@ -67,15 +73,16 @@ func (q *Queries) RemoveAllUserApps(ctx context.Context, userID int64) error {
 
 const removeUserApp = `-- name: RemoveUserApp :exec
 DELETE FROM user_app
-WHERE user_id = ? AND app_name = ?
+WHERE user_id = ? AND collector_name = ? AND app_name = ?
 `
 
 type RemoveUserAppParams struct {
-	UserID  int64
-	AppName string
+	UserID        int64
+	CollectorName string
+	AppName       string
 }
 
 func (q *Queries) RemoveUserApp(ctx context.Context, arg RemoveUserAppParams) error {
-	_, err := q.db.ExecContext(ctx, removeUserApp, arg.UserID, arg.AppName)
+	_, err := q.db.ExecContext(ctx, removeUserApp, arg.UserID, arg.CollectorName, arg.AppName)
 	return err
 }

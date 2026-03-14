@@ -13,6 +13,7 @@ import (
 type Querier interface {
 	AddNotifierSubscription(ctx context.Context, arg AddNotifierSubscriptionParams) error
 	AddUserApp(ctx context.Context, arg AddUserAppParams) error
+	CloseHealthPeriod(ctx context.Context, arg CloseHealthPeriodParams) error
 	CountByLevel(ctx context.Context, createdAt time.Time) ([]CountByLevelRow, error)
 	// Count total log groups
 	CountLogGroups(ctx context.Context) (int64, error)
@@ -31,6 +32,7 @@ type Querier interface {
 	CreateUserAPIKey(ctx context.Context, arg CreateUserAPIKeyParams) (UserApiKey, error)
 	DeleteExpiredSessions(ctx context.Context, expiresAt time.Time) error
 	DeleteNotifier(ctx context.Context, id int64) error
+	DeleteOldHealthPeriods(ctx context.Context, endedAt sql.NullTime) error
 	DeleteOldLogs(ctx context.Context, createdAt time.Time) error
 	DeleteOldStats(ctx context.Context, createdAt time.Time) error
 	DeleteSession(ctx context.Context, id string) error
@@ -43,6 +45,7 @@ type Querier interface {
 	// Settings/config queries
 	GetConfig(ctx context.Context, key string) (string, error)
 	GetGlobalNotifiers(ctx context.Context) ([]Notifier, error)
+	GetLatestHealthPeriod(ctx context.Context) (AppHealthPeriod, error)
 	GetLatestStats(ctx context.Context) (SystemStat, error)
 	GetLogByID(ctx context.Context, id int64) (Log, error)
 	// Lookup log group by ID with count and latest timestamp
@@ -64,6 +67,7 @@ type Querier interface {
 	// Returns all subscriptions (with collector) for a notifier
 	GetNotifierSubscriptions(ctx context.Context, notifierID int64) ([]GetNotifierSubscriptionsRow, error)
 	GetNotifiersForApp(ctx context.Context, appName string) ([]Notifier, error)
+	GetOpenHealthPeriod(ctx context.Context) (AppHealthPeriod, error)
 	// Get existing log group by message and level, or create if doesn't exist
 	GetOrCreateLogGroup(ctx context.Context, arg GetOrCreateLogGroupParams) (LogGroup, error)
 	GetPercentiles(ctx context.Context, createdAt time.Time) (GetPercentilesRow, error)
@@ -72,14 +76,16 @@ type Querier interface {
 	GetUserAPIKey(ctx context.Context, apiKey string) (UserApiKey, error)
 	GetUserAPIKeysByUser(ctx context.Context, userID int64) ([]UserApiKey, error)
 	// User app access queries
-	GetUserApps(ctx context.Context, userID int64) ([]string, error)
+	GetUserApps(ctx context.Context, userID int64) ([]GetUserAppsRow, error)
 	GetUserByID(ctx context.Context, id int64) (User, error)
 	GetUserByUsername(ctx context.Context, username string) (User, error)
+	SaveHealthPeriod(ctx context.Context, arg SaveHealthPeriodParams) error
 	InsertLifecycleEvent(ctx context.Context, arg InsertLifecycleEventParams) (LifecycleEvent, error)
 	InsertLog(ctx context.Context, arg InsertLogParams) (Log, error)
 	InsertSystemStats(ctx context.Context, arg InsertSystemStatsParams) error
 	ListAllNotifiers(ctx context.Context) ([]Notifier, error)
 	ListEnabledNotifiers(ctx context.Context) ([]Notifier, error)
+	ListHealthPeriodsOverlappingRange(ctx context.Context, arg ListHealthPeriodsOverlappingRangeParams) ([]AppHealthPeriod, error)
 	// List all log groups with their counts and latest timestamp
 	ListLogGroups(ctx context.Context, arg ListLogGroupsParams) ([]ListLogGroupsRow, error)
 	ListLogsByLevel(ctx context.Context, arg ListLogsByLevelParams) ([]Log, error)

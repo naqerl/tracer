@@ -17,6 +17,11 @@ type Service struct {
 	queries *db.Queries
 }
 
+type AppAccess struct {
+	CollectorName string
+	AppName       string
+}
+
 func New(sqlDB *sql.DB) *Service {
 	return &Service{
 		queries: db.New(sqlDB),
@@ -66,29 +71,43 @@ func (s *Service) HasAny(ctx context.Context) (bool, error) {
 	return count > 0, nil
 }
 
-// GetApps returns the list of apps a user has access to
-func (s *Service) GetApps(ctx context.Context, userID int64) ([]string, error) {
-	return s.queries.GetUserApps(ctx, userID)
+// GetApps returns the collector-scoped apps a user has access to.
+func (s *Service) GetApps(ctx context.Context, userID int64) ([]AppAccess, error) {
+	rows, err := s.queries.GetUserApps(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	apps := make([]AppAccess, 0, len(rows))
+	for _, row := range rows {
+		apps = append(apps, AppAccess{
+			CollectorName: row.CollectorName,
+			AppName:       row.AppName,
+		})
+	}
+	return apps, nil
 }
 
-// AddApp grants a user access to an app
-func (s *Service) AddApp(ctx context.Context, userID int64, appName string) error {
+// AddApp grants a user access to an app within a collector.
+func (s *Service) AddApp(ctx context.Context, userID int64, collectorName, appName string) error {
 	return s.queries.AddUserApp(ctx, db.AddUserAppParams{
-		UserID:  userID,
-		AppName: appName,
+		UserID:        userID,
+		CollectorName: collectorName,
+		AppName:       appName,
 	})
 }
 
-// RemoveApp revokes a user's access to an app
-func (s *Service) RemoveApp(ctx context.Context, userID int64, appName string) error {
+// RemoveApp revokes a user's access to an app within a collector.
+func (s *Service) RemoveApp(ctx context.Context, userID int64, collectorName, appName string) error {
 	return s.queries.RemoveUserApp(ctx, db.RemoveUserAppParams{
-		UserID:  userID,
-		AppName: appName,
+		UserID:        userID,
+		CollectorName: collectorName,
+		AppName:       appName,
 	})
 }
 
-// HasAppAccess checks if a user has access to a specific app
-func (s *Service) HasAppAccess(ctx context.Context, userID int64, appName string) (bool, error) {
+// HasAppAccess checks if a user has access to a specific collector app.
+func (s *Service) HasAppAccess(ctx context.Context, userID int64, collectorName, appName string) (bool, error) {
 	user, err := s.GetByID(ctx, userID)
 	if err != nil {
 		return false, err
@@ -105,7 +124,7 @@ func (s *Service) HasAppAccess(ctx context.Context, userID int64, appName string
 	}
 
 	for _, app := range apps {
-		if app == appName {
+		if app.CollectorName == collectorName && app.AppName == appName {
 			return true, nil
 		}
 	}

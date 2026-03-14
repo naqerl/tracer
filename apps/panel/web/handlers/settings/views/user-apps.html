@@ -19,7 +19,7 @@
 <div class="mb-10">
     <h2 class="text-xl font-medium mb-6">Edit User Apps</h2>
     <p class="text-fg-secondary mb-6">User: <strong class="text-fg">{{.User.Username}}</strong></p>
-    
+
     {{if .HasNoApps}}
     <div class="text-center text-fg-secondary py-8">
         <p>No applications available yet.</p>
@@ -37,7 +37,7 @@
             <div class="py-2">
                 <div style="padding-left: 0px">
                     <input type="hidden" name="" id="collector_{{$collector}}_value" value="">
-                    <button type="button" id="collector_{{$collector}}_toggle" 
+                    <button type="button" id="collector_{{$collector}}_toggle"
                             class="text-base text-fg-secondary hover:text-fg transition-colors font-mono collector-toggle"
                             data-collector="{{$collector}}" data-label="{{$collector}}">
                         [ ] {{$collector}}
@@ -46,7 +46,7 @@
                 <div class="space-y-1 mt-2">
                     {{range $apps}}
                     {{$appKey := printf "%s:%s" $collector .}}
-                    {{$isChecked := index $.UserApps .}}
+                    {{$isChecked := index $.UserApps $appKey}}
                     {{template "markdown-checkbox" dict "ID" (printf "app_%s" $appKey) "Name" "apps" "Label" . "Value" $appKey "Checked" $isChecked "Indent" 1}}
                     {{end}}
                 </div>
@@ -77,7 +77,7 @@ document.querySelectorAll('.collector-toggle').forEach(toggle => {
         const valueInput = document.getElementById('collector_' + collector + '_value');
         const isChecked = valueInput.value === 'all';
         const labelText = toggle.dataset.label;
-        
+
         // Toggle collector state
         const newChecked = !isChecked;
         if (newChecked) {
@@ -91,16 +91,16 @@ document.querySelectorAll('.collector-toggle').forEach(toggle => {
             toggle.classList.remove('text-fg');
             toggle.classList.add('text-fg-secondary');
         }
-        
+
         // Apply to all app checkboxes in this collector
         const container = toggle.closest('div.py-2');
         const appButtons = container.querySelectorAll('button[id^="app_"]');
-        
+
         appButtons.forEach(appBtn => {
             const appValueInput = document.getElementById(appBtn.id.replace('_toggle', '_value'));
             const appCheckedValue = appValueInput.dataset.checkedValue;
             const appLabel = appBtn.dataset.label;
-            
+
             if (newChecked) {
                 appValueInput.value = appCheckedValue;
                 appBtn.textContent = '[x] ' + appLabel;
@@ -124,16 +124,16 @@ document.querySelectorAll('button[id^="app_"]').forEach(appBtn => {
             const container = appBtn.closest('div.py-2');
             const collectorToggle = container.querySelector('.collector-toggle');
             if (!collectorToggle) return;
-            
+
             const appButtons = container.querySelectorAll('button[id^="app_"]');
             const allChecked = Array.from(appButtons).every(btn => {
                 const input = document.getElementById(btn.id.replace('_toggle', '_value'));
                 return input.value === input.dataset.checkedValue;
             });
-            
+
             const valueInput = document.getElementById(collectorToggle.id.replace('_toggle', '_value'));
             const labelText = collectorToggle.dataset.label;
-            
+
             if (allChecked) {
                 valueInput.value = 'all';
                 collectorToggle.textContent = '[x] ' + labelText;
@@ -154,12 +154,12 @@ document.addEventListener('DOMContentLoaded', function() {
     document.querySelectorAll('.collector-toggle').forEach(toggle => {
         const container = toggle.closest('div.py-2');
         const appButtons = container.querySelectorAll('button[id^="app_"]');
-        
+
         const allChecked = Array.from(appButtons).every(btn => {
             const input = document.getElementById(btn.id.replace('_toggle', '_value'));
             return input.value === input.dataset.checkedValue;
         });
-        
+
         if (allChecked) {
             const valueInput = document.getElementById(toggle.id.replace('_toggle', '_value'));
             const labelText = toggle.dataset.label;
