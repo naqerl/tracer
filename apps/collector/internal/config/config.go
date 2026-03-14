@@ -8,6 +8,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"tracer/apps/collector/internal/health"
 	"tracer/apps/collector/internal/parser"
 	"tracer/apps/collector/internal/source"
 	"tracer/apps/collector/internal/stats"
@@ -35,6 +36,7 @@ type AppSpec struct {
 	ParserID  string        `yaml:"parser_id"`
 	Source    source.Spec   `yaml:"source"`
 	Lifecycle LifecycleSpec `yaml:"lifecycle"`
+	Health    *health.Spec  `yaml:"health"`
 }
 
 type LifecycleSpec struct {
@@ -93,6 +95,5 @@ func Load(path string) Config {
 	if err := yaml.Unmarshal(raw, &cfg); err != nil {
 		log.Fatalf("failed to decode config: %s", err)
 	}
-
 	return cfg
 }
