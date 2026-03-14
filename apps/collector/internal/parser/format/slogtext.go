@@ -33,7 +33,7 @@ type token struct {
 func (p SlogText) Parse(line string) (types.LogEntry, error) {
 	// Trim trailing whitespace but preserve internal formatting
 	line = strings.TrimRightFunc(line, unicode.IsSpace)
-	
+
 	if line == "" {
 		return types.LogEntry{}, fmt.Errorf("empty line")
 	}
