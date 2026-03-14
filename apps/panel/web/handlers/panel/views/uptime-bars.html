@@ -1,0 +1,17 @@
+{{define "uptime-bars"}}
+{{$bars := .Bars}}
+{{$size := default "md" .Size}}
+{{if $bars}}
+<div class="flex items-end {{if eq $size `sm`}}gap-1{{else}}gap-px sm:gap-1{{end}}">
+  {{range $bars}}
+  <div
+    class="{{.Class}} box-border rounded-sm {{if eq $size `sm`}}h-6 w-2{{else}}h-8 sm:h-12 flex-1 min-w-1 sm:min-w-2{{end}}"
+    title="{{.Title}}"
+    aria-label="{{.Title}}"
+  ></div>
+  {{end}}
+</div>
+{{else}}
+<div class="text-xs text-fg-secondary">No uptime samples in range</div>
+{{end}}
+{{end}}

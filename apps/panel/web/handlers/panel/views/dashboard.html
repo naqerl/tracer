@@ -36,7 +36,7 @@
 <div class="mb-10">
   <!-- Collector Header -->
   <div class="flex items-center mb-2">
-    <a href="/panel/collectors/{{.Name}}" class="flex items-center hover:opacity-80 transition-opacity">
+    <a href="/panel/collectors/{{.Name}}?since={{$.Since}}" class="flex items-center hover:opacity-80 transition-opacity">
       <span class="text-fg-secondary text-xl mr-1">[</span>
       <h2 class="text-xl font-semibold">{{.Name}}</h2>
       <span class="text-fg-secondary text-xl ml-1">]</span>
@@ -96,16 +96,36 @@
   {{end}}
 
   <!-- Apps Grid -->
-  {{if .Apps}}
-  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-    {{range .Apps}}
-    <a href="/panel/collectors/{{$.Name}}/apps/{{.}}" class="block bg-bg-secondary hover:bg-bg-secondary/80 p-4 transition-all hover:-translate-y-0.5">
-      <span class="font-medium">{{.}}</span>
-    </a>
-    {{end}}
+  <div
+    hx-get="/panel/collectors/{{.Name}}/apps?since={{$.Since}}"
+    hx-trigger="load"
+    hx-swap="outerHTML"
+  >
+    <div class="text-fg-secondary text-sm">Loading apps...</div>
   </div>
-  {{else}}
-  <div class="text-fg-secondary text-sm">No apps registered</div>
+</div>
+{{end}}
+
+{{define "collector-apps"}}
+{{if .Apps}}
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+  {{range .Apps}}
+  <a href="/panel/collectors/{{$.CollectorName}}/apps/{{.Name}}?since={{$.Since}}" class="block bg-bg-secondary hover:bg-bg-secondary/80 p-4 transition-all hover:-translate-y-0.5">
+    <div class="font-medium">{{.Name}}</div>
+    <div
+      class="mt-2 text-xs text-fg-secondary"
+      hx-get="/panel/collectors/{{$.CollectorName}}/apps/{{.Name}}/uptime/percentage?since={{$.Since}}"
+      hx-trigger="load"
+    >uptime ...</div>
+  </a>
   {{end}}
 </div>
+{{else}}
+<div class="text-fg-secondary text-sm">No apps registered</div>
+{{end}}
+{{end}}
+
+{{define "app-health"}}
+<span>uptime </span>
+<span class="{{.Health.UptimeTextClass}}">{{if .Health.UptimeText}}{{.Health.UptimeText}}{{else}}N/A{{end}}</span>
 {{end}}

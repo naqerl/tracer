@@ -61,14 +61,14 @@
         }
         renderChart();
     }
-    
+
     function renderChart() {
         // Extract data from table - aggregate by hour
         const rows = document.querySelectorAll('#logs-data tbody tr');
         if (rows.length === 0) return;
 
         const timeCounts = new Map();
-        
+
         rows.forEach(row => {
             const timestamp = parseInt(row.dataset.timestamp) * 1000; // Convert to ms
             const hour = Math.floor(timestamp / 3600000) * 3600000; // Round to hour
@@ -79,25 +79,36 @@
         const sortedEntries = Array.from(timeCounts.entries()).sort((a, b) => a[0] - b[0]);
         const timestamps = sortedEntries.map(e => e[0] / 1000); // Back to seconds for uPlot
         const counts = sortedEntries.map(e => e[1]);
+        const minTimestamp = timestamps[0];
+        const maxTimestamp = timestamps[timestamps.length - 1];
+        const singlePointPadding = 1800; // 30 minutes in seconds
 
         // Common chart options
         const containerWidth = document.getElementById('log-chart-container').offsetWidth;
         const isMobile = window.innerWidth < 768;
-        
+
         new uPlot({
             width: containerWidth,
             height: isMobile ? 200 : 250,
             title: "Log Frequency",
             scales: {
-                x: { time: true }
+                x: {
+                    time: true,
+                    range: () => {
+                        if (minTimestamp === maxTimestamp) {
+                            return [minTimestamp - singlePointPadding, maxTimestamp + singlePointPadding];
+                        }
+                        return [minTimestamp, maxTimestamp];
+                    }
+                }
             },
             axes: [
-                { 
+                {
                     stroke: "#808080",
                     grid: { stroke: "#1E1E1E", width: 1 },
                     size: isMobile ? 40 : 50
                 },
-                { 
+                {
                     stroke: "#808080",
                     size: isMobile ? 30 : 40,
                     grid: { stroke: "#1E1E1E", width: 1 },
@@ -106,9 +117,9 @@
             ],
             series: [
                 { },
-                { 
-                    label: "Count", 
-                    stroke: "#5C9CF5", 
+                {
+                    label: "Count",
+                    stroke: "#5C9CF5",
                     fill: "rgba(92, 156, 245, 0.1)",
                     width: 2
                 }
@@ -132,21 +143,21 @@
                 const newWidth = document.getElementById('log-chart-container').offsetWidth;
                 const newIsMobile = window.innerWidth < 768;
                 const newHeight = newIsMobile ? 200 : 250;
-                
+
                 const chart = document.querySelector('#log-chart .uplot');
                 if (chart) {
                     const uplot = uPlot.charts.find(c => c.root === chart);
                     if (uplot) {
-                        uplot.setSize({ 
-                            width: newWidth, 
-                            height: newHeight 
+                        uplot.setSize({
+                            width: newWidth,
+                            height: newHeight
                         });
                     }
                 }
             }, 150);
         });
     }
-    
+
     initChart();
 })();
 </script>
