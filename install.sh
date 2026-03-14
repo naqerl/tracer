@@ -30,6 +30,8 @@ API_KEY=""
 TRACER_PANEL_HOST="${TRACER_PANEL_HOST:-}"
 TRACER_AUTOSTART="${TRACER_AUTOSTART:-0}"
 TRACER_SELF_MONITOR="${TRACER_SELF_MONITOR:-0}"
+TRACER_ADMIN_USERNAME="${TRACER_ADMIN_USERNAME:-}"
+TRACER_ADMIN_PASSWORD="${TRACER_ADMIN_PASSWORD:-}"
 
 # Installation mode
 COLLECTOR_ONLY="${COLLECTOR_ONLY:-0}"
@@ -265,9 +267,17 @@ init_panel() {
         return
     fi
 
-    # Initialize panel with auto-generated password
+    # Initialize panel with provided or auto-generated credentials
     local init_output
-    if ! init_output=$(runuser -u "${TRACER_USER}" -- "${INSTALL_DIR}/tracer-panel" -init 2>&1); then
+    local init_args=("-init")
+    if [[ -n "${TRACER_ADMIN_USERNAME}" ]]; then
+        init_args+=("-username" "${TRACER_ADMIN_USERNAME}")
+    fi
+    if [[ -n "${TRACER_ADMIN_PASSWORD}" ]]; then
+        init_args+=("-password" "${TRACER_ADMIN_PASSWORD}")
+    fi
+
+    if ! init_output=$(runuser -u "${TRACER_USER}" -- "${INSTALL_DIR}/tracer-panel" "${init_args[@]}" 2>&1); then
         log_error "Failed to initialize panel: $init_output"
         exit 1
     fi
@@ -583,6 +593,8 @@ parse_args() {
                 echo "  TRACER_PANEL_HOST   Set panel host before first start"
                 echo "  TRACER_AUTOSTART=1  Enable and start services during install"
                 echo "  TRACER_SELF_MONITOR=1  Add tracer-panel/tracer-collector journal sources"
+                echo "  TRACER_ADMIN_USERNAME  Admin username to use during panel initialization"
+                echo "  TRACER_ADMIN_PASSWORD  Admin password to use during panel initialization"
                 exit 0
                 ;;
             *)

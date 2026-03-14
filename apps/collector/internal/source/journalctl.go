@@ -45,16 +45,6 @@ func (js *journalctlSource) Open(ctx context.Context) error {
 		return errors.New("journalctl source: empty unit")
 	}
 	js.ctx = ctx
-
-	cmd := exec.CommandContext(ctx, "systemctl", "list-unit-files", js.unit)
-	if err := cmd.Run(); err != nil {
-		var exitErr *exec.ExitError
-		if errors.As(err, &exitErr) {
-			return errors.New("unit not found")
-		}
-		return err
-	}
-
 	return nil
 }
 

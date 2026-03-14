@@ -2,7 +2,8 @@ FROM docker.io/library/golang:1.25-bookworm AS build
 
 WORKDIR /src
 COPY . .
-RUN make build
+RUN make build && \
+    CGO_ENABLED=0 go build -ldflags="-s -w" -o /out/tracer-demo-loggen ./newdemo/mocklog/main.go
 
 FROM docker.io/library/debian:bookworm
 
@@ -21,13 +22,21 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /src/bin /opt/tracer-bin
+COPY --from=build /out/tracer-demo-loggen /usr/local/bin/tracer-demo-loggen
 COPY install.sh /opt/tracer/install.sh
 COPY newdemo/install-on-boot.sh /opt/tracer/newdemo/install-on-boot.sh
+COPY newdemo/register-demo-apps.sh /opt/tracer/newdemo/register-demo-apps.sh
 COPY newdemo/install-on-boot.service /etc/systemd/system/newdemo-install.service
+COPY newdemo/register-demo-apps.service /etc/systemd/system/newdemo-register-apps.service
+COPY newdemo/systemd/ /etc/systemd/system/
 
-RUN chmod 0755 /opt/tracer/install.sh /opt/tracer/newdemo/install-on-boot.sh && \
+RUN chmod 0755 /opt/tracer/install.sh /opt/tracer/newdemo/install-on-boot.sh /opt/tracer/newdemo/register-demo-apps.sh /usr/local/bin/tracer-demo-loggen && \
     mkdir -p /etc/systemd/system/multi-user.target.wants && \
-    ln -sf /etc/systemd/system/newdemo-install.service /etc/systemd/system/multi-user.target.wants/newdemo-install.service
+    ln -sf /etc/systemd/system/newdemo-install.service /etc/systemd/system/multi-user.target.wants/newdemo-install.service && \
+    ln -sf /etc/systemd/system/newdemo-register-apps.service /etc/systemd/system/multi-user.target.wants/newdemo-register-apps.service && \
+    ln -sf /etc/systemd/system/tracer-demo-api.service /etc/systemd/system/multi-user.target.wants/tracer-demo-api.service && \
+    ln -sf /etc/systemd/system/tracer-demo-worker.service /etc/systemd/system/multi-user.target.wants/tracer-demo-worker.service && \
+    ln -sf /etc/systemd/system/tracer-demo-cron.service /etc/systemd/system/multi-user.target.wants/tracer-demo-cron.service
 
 STOPSIGNAL SIGRTMIN+3
 EXPOSE 8080

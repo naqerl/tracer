@@ -8,7 +8,7 @@ DEMO_DIR := $(ROOT_DIR)/newdemo
 
 DEMO_IMAGE ?= tracer-newdemo:local
 DEMO_CONTAINER ?= tracer-newdemo
-DEMO_PORT ?= 18080
+DEMO_PORT ?= 18081
 DEMO_PANEL_URL ?= http://localhost:$(DEMO_PORT)
 
 build:

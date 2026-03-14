@@ -1,0 +1,16 @@
+[Unit]
+Description=New Demo cron logger
+After=systemd-journald.service
+Wants=systemd-journald.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/tracer-demo-loggen -service demo-cron -component cron -format json -trace-mode never -burst-requests 14 -nested-depth 4 -warn-every 2 -error-every 5 -steady-interval 5m
+Restart=always
+RestartSec=5
+DynamicUser=yes
+NoNewPrivileges=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target
