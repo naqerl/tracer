@@ -1,7 +1,7 @@
 -include ../.env
 export
 
-.PHONY: build up down logs shell reset check
+.PHONY: build up down logs shell reset check live-reload
 
 ROOT_DIR := $(abspath $(CURDIR)/..)
 DEMO_DIR := $(ROOT_DIR)/e2e
@@ -42,3 +42,6 @@ reset: down
 
 check:
 	./check.sh
+
+live-reload:
+	./live-reload.sh
