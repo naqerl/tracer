@@ -61,16 +61,6 @@ func (q *Queries) GetUserApps(ctx context.Context, userID int64) ([]GetUserAppsR
 	return items, nil
 }
 
-const removeAllUserApps = `-- name: RemoveAllUserApps :exec
-DELETE FROM user_app
-WHERE user_id = ?
-`
-
-func (q *Queries) RemoveAllUserApps(ctx context.Context, userID int64) error {
-	_, err := q.db.ExecContext(ctx, removeAllUserApps, userID)
-	return err
-}
-
 const removeUserApp = `-- name: RemoveUserApp :exec
 DELETE FROM user_app
 WHERE user_id = ? AND collector_name = ? AND app_name = ?

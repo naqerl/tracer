@@ -12,7 +12,3 @@ VALUES (?, ?, ?);
 -- name: RemoveUserApp :exec
 DELETE FROM user_app
 WHERE user_id = ? AND collector_name = ? AND app_name = ?;
-
--- name: RemoveAllUserApps :exec
-DELETE FROM user_app
-WHERE user_id = ?;

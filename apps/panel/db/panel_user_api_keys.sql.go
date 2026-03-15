@@ -48,25 +48,6 @@ func (q *Queries) DeleteUserAPIKey(ctx context.Context, id int64) error {
 	return err
 }
 
-const getUserAPIKey = `-- name: GetUserAPIKey :one
-SELECT id, user_id, api_key, name, created_at, last_used_at FROM user_api_key
-WHERE api_key = ?
-`
-
-func (q *Queries) GetUserAPIKey(ctx context.Context, apiKey string) (UserApiKey, error) {
-	row := q.db.QueryRowContext(ctx, getUserAPIKey, apiKey)
-	var i UserApiKey
-	err := row.Scan(
-		&i.ID,
-		&i.UserID,
-		&i.ApiKey,
-		&i.Name,
-		&i.CreatedAt,
-		&i.LastUsedAt,
-	)
-	return i, err
-}
-
 const getUserAPIKeysByUser = `-- name: GetUserAPIKeysByUser :many
 SELECT id, user_id, api_key, name, created_at, last_used_at FROM user_api_key
 WHERE user_id = ?
@@ -101,22 +82,6 @@ func (q *Queries) GetUserAPIKeysByUser(ctx context.Context, userID int64) ([]Use
 		return nil, err
 	}
 	return items, nil
-}
-
-const updateUserAPIKeyLastUsed = `-- name: UpdateUserAPIKeyLastUsed :exec
-UPDATE user_api_key
-SET last_used_at = ?
-WHERE api_key = ?
-`
-
-type UpdateUserAPIKeyLastUsedParams struct {
-	LastUsedAt sql.NullTime
-	ApiKey     string
-}
-
-func (q *Queries) UpdateUserAPIKeyLastUsed(ctx context.Context, arg UpdateUserAPIKeyLastUsedParams) error {
-	_, err := q.db.ExecContext(ctx, updateUserAPIKeyLastUsed, arg.LastUsedAt, arg.ApiKey)
-	return err
 }
 
 const validateAndUpdateUserAPIKey = `-- name: ValidateAndUpdateUserAPIKey :one

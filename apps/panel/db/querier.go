@@ -14,11 +14,6 @@ type Querier interface {
 	AddNotifierSubscription(ctx context.Context, arg AddNotifierSubscriptionParams) error
 	AddUserApp(ctx context.Context, arg AddUserAppParams) error
 	CloseHealthPeriod(ctx context.Context, arg CloseHealthPeriodParams) error
-	CountByLevel(ctx context.Context, createdAt time.Time) ([]CountByLevelRow, error)
-	// Count total log groups
-	CountLogGroups(ctx context.Context) (int64, error)
-	// Count log groups filtered by level
-	CountLogGroupsByLevel(ctx context.Context, lower string) (int64, error)
 	// Count total logs in a group
 	CountLogsByGroupID(ctx context.Context, groupID sql.NullInt64) (int64, error)
 	CountUsers(ctx context.Context) (int64, error)
@@ -41,13 +36,10 @@ type Querier interface {
 	DeleteSession(ctx context.Context, id string) error
 	DeleteUser(ctx context.Context, id int64) error
 	DeleteUserAPIKey(ctx context.Context, id int64) error
-	DeleteUserSessions(ctx context.Context, userID int64) error
 	DisableNotifier(ctx context.Context, id int64) error
 	EnableNotifier(ctx context.Context, id int64) error
-	FindLogsByTraceID(ctx context.Context, traceID sql.NullString) ([]Log, error)
 	GetCollectorAPIKeyByName(ctx context.Context, name string) (CollectorApiKey, error)
 	GetCollectorAPIKeys(ctx context.Context) ([]GetCollectorAPIKeysRow, error)
-	GetGlobalNotifiers(ctx context.Context) ([]Notifier, error)
 	GetLatestHealthPeriod(ctx context.Context) (AppHealthPeriod, error)
 	GetLatestStats(ctx context.Context) (SystemStat, error)
 	GetLogByID(ctx context.Context, id int64) (Log, error)
@@ -65,18 +57,15 @@ type Querier interface {
 	// 4. All apps from any collector (app = "*", collector = "*")
 	GetMatchingNotifiers(ctx context.Context, arg GetMatchingNotifiersParams) ([]Notifier, error)
 	GetNotifier(ctx context.Context, id int64) (Notifier, error)
-	GetNotifierByName(ctx context.Context, name string) (Notifier, error)
 	// Notifier subscription mapping queries
 	// Returns all subscriptions (with collector) for a notifier
 	GetNotifierSubscriptions(ctx context.Context, notifierID int64) ([]GetNotifierSubscriptionsRow, error)
-	GetNotifiersForApp(ctx context.Context, appName string) ([]Notifier, error)
 	GetOpenHealthPeriod(ctx context.Context) (AppHealthPeriod, error)
 	// Get existing log group by message and level, or create if doesn't exist
 	GetOrCreateLogGroup(ctx context.Context, arg GetOrCreateLogGroupParams) (LogGroup, error)
 	GetPercentiles(ctx context.Context, createdAt time.Time) (GetPercentilesRow, error)
 	GetSession(ctx context.Context, id string) (Session, error)
 	GetStatsHistory(ctx context.Context, createdAt time.Time) ([]SystemStat, error)
-	GetUserAPIKey(ctx context.Context, apiKey string) (UserApiKey, error)
 	GetUserAPIKeysByUser(ctx context.Context, userID int64) ([]UserApiKey, error)
 	// User app access queries
 	GetUserApps(ctx context.Context, userID int64) ([]GetUserAppsRow, error)
@@ -86,23 +75,14 @@ type Querier interface {
 	InsertLog(ctx context.Context, arg InsertLogParams) (Log, error)
 	InsertSystemStats(ctx context.Context, arg InsertSystemStatsParams) error
 	ListAllNotifiers(ctx context.Context) ([]Notifier, error)
-	ListEnabledNotifiers(ctx context.Context) ([]Notifier, error)
 	ListHealthPeriodsOverlappingRange(ctx context.Context, arg ListHealthPeriodsOverlappingRangeParams) ([]AppHealthPeriod, error)
 	// List all log groups with their counts and latest timestamp
 	ListLogGroups(ctx context.Context, arg ListLogGroupsParams) ([]ListLogGroupsRow, error)
-	ListLogsByLevel(ctx context.Context, arg ListLogsByLevelParams) ([]Log, error)
 	ListNotifiersByUser(ctx context.Context, userID int64) ([]Notifier, error)
-	ListRecentLifecycleEvents(ctx context.Context, limit int64) ([]LifecycleEvent, error)
-	ListRecentLogs(ctx context.Context, limit int64) ([]Log, error)
 	ListUsers(ctx context.Context) ([]User, error)
 	RemoveAllNotifierSubscriptions(ctx context.Context, notifierID int64) error
-	RemoveAllUserApps(ctx context.Context, userID int64) error
-	RemoveNotifierSubscription(ctx context.Context, arg RemoveNotifierSubscriptionParams) error
 	RemoveUserApp(ctx context.Context, arg RemoveUserAppParams) error
 	SaveHealthPeriod(ctx context.Context, arg SaveHealthPeriodParams) error
-	SearchLogs(ctx context.Context, arg SearchLogsParams) ([]Log, error)
-	UpdateNotifier(ctx context.Context, arg UpdateNotifierParams) error
-	UpdateUserAPIKeyLastUsed(ctx context.Context, arg UpdateUserAPIKeyLastUsedParams) error
 	ValidateAndUpdateCollectorAPIKey(ctx context.Context, arg ValidateAndUpdateCollectorAPIKeyParams) (int64, error)
 	ValidateAndUpdateUserAPIKey(ctx context.Context, arg ValidateAndUpdateUserAPIKeyParams) (UserApiKey, error)
 }

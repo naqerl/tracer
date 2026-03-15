@@ -33,38 +33,3 @@ func (q *Queries) InsertLifecycleEvent(ctx context.Context, arg InsertLifecycleE
 	)
 	return i, err
 }
-
-const listRecentLifecycleEvents = `-- name: ListRecentLifecycleEvents :many
-SELECT id, kind, raw_line, created_at
-FROM lifecycle_events
-ORDER BY created_at DESC
-LIMIT ?
-`
-
-func (q *Queries) ListRecentLifecycleEvents(ctx context.Context, limit int64) ([]LifecycleEvent, error) {
-	rows, err := q.db.QueryContext(ctx, listRecentLifecycleEvents, limit)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []LifecycleEvent
-	for rows.Next() {
-		var i LifecycleEvent
-		if err := rows.Scan(
-			&i.ID,
-			&i.Kind,
-			&i.RawLine,
-			&i.CreatedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}

@@ -24,17 +24,6 @@ INNER JOIN logs l ON l.group_id = lg.id
 WHERE lg.id = ?
 GROUP BY lg.id, lg.message, lg.level, lg.created_at;
 
--- name: CountLogGroups :one
--- Count total log groups
-SELECT COUNT(*) as total
-FROM log_groups;
-
--- name: CountLogGroupsByLevel :one
--- Count log groups filtered by level
-SELECT COUNT(*) as total
-FROM log_groups
-WHERE LOWER(level) = LOWER(?);
-
 -- name: ListLogGroups :many
 -- List all log groups with their counts and latest timestamp
 SELECT
@@ -66,28 +55,6 @@ SELECT COUNT(*) as total
 FROM logs
 WHERE group_id = ?;
 
--- name: ListRecentLogs :many
-SELECT id, trace_id, level, message, context, group_id, created_at FROM logs
-ORDER BY created_at DESC
-LIMIT ?;
-
--- name: ListLogsByLevel :many
-SELECT id, trace_id, level, message, context, group_id, created_at FROM logs
-WHERE level = ?
-ORDER BY created_at DESC
-LIMIT ?;
-
--- name: FindLogsByTraceID :many
-SELECT id, trace_id, level, message, context, group_id, created_at FROM logs
-WHERE trace_id = ?
-ORDER BY created_at;
-
--- name: CountByLevel :many
-SELECT level, COUNT(*) as count
-FROM logs
-WHERE created_at >= ?
-GROUP BY level;
-
 -- name: DeleteOldLogs :exec
 DELETE FROM logs
 WHERE created_at < ?;
@@ -95,12 +62,6 @@ WHERE created_at < ?;
 -- name: GetLogByID :one
 SELECT id, trace_id, level, message, context, group_id, created_at FROM logs
 WHERE id = ?;
-
--- name: SearchLogs :many
-SELECT id, trace_id, level, message, context, group_id, created_at FROM logs
-WHERE message LIKE ?
-ORDER BY created_at DESC
-LIMIT ?;
 
 -- name: GetPercentiles :one
 SELECT

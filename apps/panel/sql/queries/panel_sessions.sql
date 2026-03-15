@@ -12,10 +12,6 @@ WHERE id = ?;
 DELETE FROM session
 WHERE id = ?;
 
--- name: DeleteUserSessions :exec
-DELETE FROM session
-WHERE user_id = ?;
-
 -- name: DeleteExpiredSessions :exec
 DELETE FROM session
 WHERE expires_at < ?;

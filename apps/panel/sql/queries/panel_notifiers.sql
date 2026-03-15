@@ -9,10 +9,6 @@ RETURNING *;
 SELECT * FROM notifier
 WHERE id = ?;
 
--- name: GetNotifierByName :one
-SELECT * FROM notifier
-WHERE name = ?;
-
 -- name: ListAllNotifiers :many
 SELECT * FROM notifier
 ORDER BY created_at;
@@ -21,16 +17,6 @@ ORDER BY created_at;
 SELECT * FROM notifier
 WHERE user_id = ?
 ORDER BY created_at;
-
--- name: ListEnabledNotifiers :many
-SELECT * FROM notifier
-WHERE enabled = 1
-ORDER BY created_at;
-
--- name: UpdateNotifier :exec
-UPDATE notifier
-SET name = ?, type = ?, config = ?, enabled = ?
-WHERE id = ?;
 
 -- name: DeleteNotifier :exec
 DELETE FROM notifier
@@ -53,23 +39,9 @@ WHERE notifier_id = ?;
 INSERT INTO notifier_subscription (notifier_id, app_name, collector_name)
 VALUES (?, ?, ?);
 
--- name: RemoveNotifierSubscription :exec
-DELETE FROM notifier_subscription
-WHERE notifier_id = ? AND app_name = ? AND collector_name = ?;
-
 -- name: RemoveAllNotifierSubscriptions :exec
 DELETE FROM notifier_subscription
 WHERE notifier_id = ?;
-
--- name: GetNotifiersForApp :many
-SELECT n.* FROM notifier n
-JOIN notifier_subscription ns ON n.id = ns.notifier_id
-WHERE ns.app_name = ? AND n.enabled = 1;
-
--- name: GetGlobalNotifiers :many
-SELECT n.* FROM notifier n
-JOIN notifier_subscription ns ON n.id = ns.notifier_id
-WHERE ns.app_name = '*' AND n.enabled = 1;
 
 -- name: GetMatchingNotifiers :many
 -- Returns all enabled notifiers that match the given collector and app.
