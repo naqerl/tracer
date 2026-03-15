@@ -18,7 +18,7 @@ test: vet
 	go test ./...
 
 pre-commit:
-	go fmt ./...
+	test -z "$$(go fmt ./...)"
 	go vet ./...
 	staticcheck ./...
 
@@ -29,7 +29,7 @@ dev-setup: install-pre-commit-hook
 
 install-pre-commit-hook:
 	@mkdir -p .git/hooks
-	@printf '%s\n' '#!/usr/bin/env bash' 'set -euo pipefail' 'make pre-commit' 'git diff --exit-code' > .git/hooks/pre-commit
+	@printf '%s\n' '#!/usr/bin/env bash' 'set -euo pipefail' 'make pre-commit' > .git/hooks/pre-commit
 	@chmod +x .git/hooks/pre-commit
 	@echo 'Installed .git/hooks/pre-commit'
 
