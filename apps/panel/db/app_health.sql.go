@@ -77,22 +77,6 @@ func (q *Queries) GetOpenHealthPeriod(ctx context.Context) (AppHealthPeriod, err
 	return i, err
 }
 
-const saveHealthPeriod = `-- name: SaveHealthPeriod :exec
-INSERT INTO app_health_periods (status, started_at, ended_at)
-VALUES (?, ?, ?)
-`
-
-type SaveHealthPeriodParams struct {
-	Status    string
-	StartedAt time.Time
-	EndedAt   sql.NullTime
-}
-
-func (q *Queries) SaveHealthPeriod(ctx context.Context, arg SaveHealthPeriodParams) error {
-	_, err := q.db.ExecContext(ctx, saveHealthPeriod, arg.Status, arg.StartedAt, arg.EndedAt)
-	return err
-}
-
 const listHealthPeriodsOverlappingRange = `-- name: ListHealthPeriodsOverlappingRange :many
 SELECT id, status, started_at, ended_at
 FROM app_health_periods
@@ -132,4 +116,20 @@ func (q *Queries) ListHealthPeriodsOverlappingRange(ctx context.Context, arg Lis
 		return nil, err
 	}
 	return items, nil
+}
+
+const saveHealthPeriod = `-- name: SaveHealthPeriod :exec
+INSERT INTO app_health_periods (status, started_at, ended_at)
+VALUES (?, ?, ?)
+`
+
+type SaveHealthPeriodParams struct {
+	Status    string
+	StartedAt time.Time
+	EndedAt   sql.NullTime
+}
+
+func (q *Queries) SaveHealthPeriod(ctx context.Context, arg SaveHealthPeriodParams) error {
+	_, err := q.db.ExecContext(ctx, saveHealthPeriod, arg.Status, arg.StartedAt, arg.EndedAt)
+	return err
 }

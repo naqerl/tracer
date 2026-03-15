@@ -303,7 +303,7 @@ func (h *handler) requireCollectorAPIKey(w http.ResponseWriter, r *http.Request)
 		return false
 	}
 
-	valid, err := h.authService.ValidateAPIKey(r.Context(), apiKey)
+	valid, err := h.authService.ValidateCollectorAPIKey(r.Context(), apiKey)
 	if err != nil {
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return false

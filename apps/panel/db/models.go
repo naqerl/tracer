@@ -16,6 +16,14 @@ type AppHealthPeriod struct {
 	EndedAt   sql.NullTime
 }
 
+type CollectorApiKey struct {
+	Name       string
+	KeyHash    string
+	KeySuffix  string
+	CreatedAt  sql.NullTime
+	LastUsedAt sql.NullTime
+}
+
 type Config struct {
 	Key   string
 	Value string

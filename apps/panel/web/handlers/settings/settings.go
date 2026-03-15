@@ -55,9 +55,9 @@ func InitMux(authService *auth.Service, userService *user.Service, ingestService
 	m.HandleFunc("GET /users/{id}/apps", h.getUserApps)
 	m.HandleFunc("PUT /users/{id}/apps", h.updateUserApps)
 
-	// API key
-	m.HandleFunc("GET /admin/api-key", h.getAdminAPIKey)
-	m.HandleFunc("PUT /admin/api-key", h.regenerateAdminAPIKey)
+	// Collector API keys
+	m.HandleFunc("POST /admin/collector-api-keys", h.createCollectorAPIKey)
+	m.HandleFunc("DELETE /admin/collector-api-keys/{name}", h.deleteCollectorAPIKey)
 
 	// User API keys (LLM compatibility)
 	m.HandleFunc("POST /api-keys", h.createAPIKey)
@@ -113,8 +113,12 @@ func (h *handler) buildSettingsPageData(w http.ResponseWriter, r *http.Request) 
 		}
 		data["Users"] = users
 
-		apiKey, _ := h.authService.GetAPIKey(r.Context())
-		data["APIKey"] = apiKey
+		collectorAPIKeys, err := h.authService.ListCollectorAPIKeys(r.Context())
+		if err != nil {
+			h.t.RenderError(w, r, "Error", "Failed to list collector API keys", http.StatusInternalServerError)
+			return nil, err
+		}
+		data["CollectorAPIKeys"] = collectorAPIKeys
 	}
 
 	// Load notifiers (admins see all, non-admins see only their own)
@@ -337,43 +341,53 @@ func (h *handler) updateUserApps(w http.ResponseWriter, r *http.Request) {
 	htmx.Redirect(w, r, "/settings/")
 }
 
-// API key handlers
+// Collector API key handlers
 
-func (h *handler) getAdminAPIKey(w http.ResponseWriter, r *http.Request) {
+func (h *handler) createCollectorAPIKey(w http.ResponseWriter, r *http.Request) {
 	if _, err := authmw.RequireAdmin(w, r); err != nil {
 		return
 	}
 
-	apiKey, err := h.authService.GetAPIKey(r.Context())
-	if err != nil {
-		http.Error(w, "Failed to get API key", http.StatusInternalServerError)
+	name := strings.TrimSpace(r.FormValue("name"))
+	if name == "" {
+		http.Error(w, "Name required", http.StatusBadRequest)
 		return
 	}
 
-	data := map[string]any{
-		"APIKey": apiKey,
+	newKey, _, err := h.authService.GenerateCollectorAPIKey(r.Context(), name)
+	if err != nil {
+		slog.Error("Failed to generate collector API key", "error", err)
+		http.Error(w, "Failed to generate collector API key", http.StatusInternalServerError)
+		return
 	}
 
-	h.t.RenderHTTP(w, r, "api-key-partial", data)
+	data, buildErr := h.buildSettingsPageData(w, r)
+	if buildErr != nil {
+		return
+	}
+	data["NewCollectorAPIKey"] = newKey
+	data["NewCollectorAPIKeyName"] = name
+
+	h.t.RenderHTTP(w, r, "settings", data)
 }
 
-func (h *handler) regenerateAdminAPIKey(w http.ResponseWriter, r *http.Request) {
+func (h *handler) deleteCollectorAPIKey(w http.ResponseWriter, r *http.Request) {
 	if _, err := authmw.RequireAdmin(w, r); err != nil {
 		return
 	}
 
-	newKey, err := auth.GenerateAPIKey()
-	if err != nil {
-		http.Error(w, "Failed to generate API key", http.StatusInternalServerError)
+	name := r.PathValue("name")
+	if name == "" {
+		http.Error(w, "Invalid collector API key name", http.StatusBadRequest)
 		return
 	}
 
-	if err := h.authService.SetAPIKey(r.Context(), newKey); err != nil {
-		http.Error(w, "Failed to save API key", http.StatusInternalServerError)
+	if err := h.authService.DeleteCollectorAPIKey(r.Context(), name); err != nil {
+		slog.Error("Failed to delete collector API key", "error", err)
+		http.Error(w, "Failed to delete collector API key", http.StatusInternalServerError)
 		return
 	}
 
-	slog.Info("API key regenerated")
 	htmx.Redirect(w, r, "/settings/")
 }
 

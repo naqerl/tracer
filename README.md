@@ -12,7 +12,7 @@ Lightweight, self-hosted log aggregation and alerting for small to mid-sized pro
 
 Simplicity.
 
-- Run logs collector as a single binary 
+- Run logs collector as a single binary
 - Self host logs and analytics panel
 - Get error alerts via Telegram
 - View logs grouped by trace ID
@@ -80,7 +80,7 @@ Access the panel at http://localhost:8080
   - Configurable session duration
   - Admin and regular user roles
   - Per-app access control for non-admin users
-  - API key authentication for collectors (regeneratable)
+  - Multiple collector API keys with per-key revocation and one-time plaintext display
 
 - **User management** (admin only)
   - Create/delete users

@@ -64,7 +64,18 @@ CREATE TABLE IF NOT EXISTS user_api_key (
 CREATE INDEX IF NOT EXISTS idx_user_api_key_user ON user_api_key(user_id);
 CREATE INDEX IF NOT EXISTS idx_user_api_key_key ON user_api_key(api_key);
 
+CREATE TABLE IF NOT EXISTS collector_api_key (
+    name TEXT PRIMARY KEY,
+    key_hash TEXT NOT NULL UNIQUE,
+    key_suffix TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    last_used_at DATETIME
+);
+CREATE INDEX IF NOT EXISTS idx_collector_api_key_created_at ON collector_api_key(created_at);
+CREATE INDEX IF NOT EXISTS idx_collector_api_key_last_used_at ON collector_api_key(last_used_at);
+
 -- +goose Down
+DROP TABLE IF EXISTS collector_api_key;
 DROP TABLE IF EXISTS user_api_key;
 DROP TABLE IF EXISTS notifier_subscription;
 DROP TABLE IF EXISTS notifier;

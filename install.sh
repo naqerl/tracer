@@ -283,15 +283,6 @@ init_panel() {
 
     log_info "Initializing panel..."
 
-    # Check if panel is already initialized (users exist)
-    local has_users
-    has_users=$(runuser -u "${TRACER_USER}" -- "${INSTALL_DIR}/tracer-panel" -get-api-key 2>/dev/null && echo "yes" || echo "no")
-
-    if [[ "$has_users" == "yes" ]]; then
-        log_warn "Panel already initialized, skipping initialization"
-        return
-    fi
-
     # Initialize panel with provided or auto-generated credentials
     local init_output
     local init_args=("-init")
@@ -303,6 +294,10 @@ init_panel() {
     fi
 
     if ! init_output=$(runuser -u "${TRACER_USER}" -- "${INSTALL_DIR}/tracer-panel" "${init_args[@]}" 2>&1); then
+        if grep -Fq "panel already initialized" <<<"$init_output"; then
+            log_warn "Panel already initialized, skipping initialization"
+            return
+        fi
         log_error "Failed to initialize panel: $init_output"
         exit 1
     fi

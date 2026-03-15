@@ -51,6 +51,14 @@ func (h *handler) renderFormError(w http.ResponseWriter, msg string) {
 	fmt.Fprint(w, msg)
 }
 
+func (h *handler) renderSetupPage(w http.ResponseWriter, r *http.Request, errorMessage string) {
+	data := map[string]any{
+		"Title": "Setup - Tracer",
+		"Error": errorMessage,
+	}
+	h.t.RenderHTTP(w, r, "setup", data)
+}
+
 // Login handlers
 
 func (h *handler) loginPage(w http.ResponseWriter, r *http.Request) {
@@ -112,25 +120,14 @@ func (h *handler) setupPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	apiKey, err := h.authService.EnsureAPIKey(r.Context())
-	if err != nil {
-		slog.Error("Failed to get API key", "error", err)
-		h.t.RenderError(w, r, "Error", "Failed to get API key", http.StatusInternalServerError)
-		return
-	}
-
-	data := map[string]any{
-		"Title":  "Setup - Tracer",
-		"APIKey": apiKey,
-	}
-	h.t.RenderHTTP(w, r, "setup", data)
+	h.renderSetupPage(w, r, "")
 }
 
 func (h *handler) setup(w http.ResponseWriter, r *http.Request) {
 	hasUsers, err := h.userService.HasAny(r.Context())
 	if err != nil {
 		slog.Error("Failed to check users", "error", err)
-		h.renderFormError(w, "Failed to check users: "+err.Error())
+		h.renderSetupPage(w, r, "Failed to check users: "+err.Error())
 		return
 	}
 
@@ -145,39 +142,44 @@ func (h *handler) setup(w http.ResponseWriter, r *http.Request) {
 	confirmPassword := r.FormValue("confirm_password")
 
 	if username == "" || password == "" {
-		h.renderFormError(w, "Username and password are required")
+		h.renderSetupPage(w, r, "Username and password are required")
 		return
 	}
 
 	if password != confirmPassword {
-		h.renderFormError(w, "Passwords do not match")
+		h.renderSetupPage(w, r, "Passwords do not match")
 		return
 	}
 
 	user, err := h.authService.Register(r.Context(), username, password, true)
 	if err != nil {
 		slog.Error("Failed to create admin user", "error", err)
-		h.renderFormError(w, "Failed to create user: "+err.Error())
+		h.renderSetupPage(w, r, "Failed to create user: "+err.Error())
 		return
 	}
 
 	slog.Info("Admin user created", "user_id", user.ID, "username", username)
 
-	_, err = h.authService.EnsureAPIKey(r.Context())
+	collectorAPIKey, _, err := h.authService.GenerateCollectorAPIKey(r.Context(), "default")
 	if err != nil {
-		slog.Error("Failed to ensure API key", "error", err)
+		slog.Error("Failed to create collector API key", "error", err)
+		h.renderSetupPage(w, r, "User created but failed to create collector API key: "+err.Error())
+		return
 	}
 
 	token, err := h.authService.CreateSession(r.Context(), user.ID)
 	if err != nil {
 		slog.Error("Failed to create session", "error", err)
-		h.renderFormError(w, "User created but failed to create session: "+err.Error())
+		h.renderSetupPage(w, r, "User created but failed to create session: "+err.Error())
 		return
 	}
 
 	authmw.SetSessionCookie(w, r, token, int(h.sessionMax.Seconds()))
 	slog.Info("Admin user created and logged in", "username", username)
 
-	w.Header().Set("HX-Redirect", "/panel/")
-	w.WriteHeader(http.StatusOK)
+	h.t.RenderHTTP(w, r, "setup-success", map[string]any{
+		"Title":           "Setup Complete - Tracer",
+		"Username":        username,
+		"CollectorAPIKey": collectorAPIKey,
+	})
 }

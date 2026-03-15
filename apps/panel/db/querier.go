@@ -22,6 +22,8 @@ type Querier interface {
 	// Count total logs in a group
 	CountLogsByGroupID(ctx context.Context, groupID sql.NullInt64) (int64, error)
 	CountUsers(ctx context.Context) (int64, error)
+	// Collector API keys
+	CreateCollectorAPIKey(ctx context.Context, arg CreateCollectorAPIKeyParams) (CollectorApiKey, error)
 	// Notifier queries
 	CreateNotifier(ctx context.Context, arg CreateNotifierParams) (Notifier, error)
 	// Session queries
@@ -30,6 +32,7 @@ type Querier interface {
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
 	// User API key queries (LLM compatibility)
 	CreateUserAPIKey(ctx context.Context, arg CreateUserAPIKeyParams) (UserApiKey, error)
+	DeleteCollectorAPIKey(ctx context.Context, name string) error
 	DeleteExpiredSessions(ctx context.Context, expiresAt time.Time) error
 	DeleteNotifier(ctx context.Context, id int64) error
 	DeleteOldHealthPeriods(ctx context.Context, endedAt sql.NullTime) error
@@ -42,6 +45,8 @@ type Querier interface {
 	DisableNotifier(ctx context.Context, id int64) error
 	EnableNotifier(ctx context.Context, id int64) error
 	FindLogsByTraceID(ctx context.Context, traceID sql.NullString) ([]Log, error)
+	GetCollectorAPIKeyByName(ctx context.Context, name string) (CollectorApiKey, error)
+	GetCollectorAPIKeys(ctx context.Context) ([]GetCollectorAPIKeysRow, error)
 	// Settings/config queries
 	GetConfig(ctx context.Context, key string) (string, error)
 	GetGlobalNotifiers(ctx context.Context) ([]Notifier, error)
@@ -79,7 +84,6 @@ type Querier interface {
 	GetUserApps(ctx context.Context, userID int64) ([]GetUserAppsRow, error)
 	GetUserByID(ctx context.Context, id int64) (User, error)
 	GetUserByUsername(ctx context.Context, username string) (User, error)
-	SaveHealthPeriod(ctx context.Context, arg SaveHealthPeriodParams) error
 	InsertLifecycleEvent(ctx context.Context, arg InsertLifecycleEventParams) (LifecycleEvent, error)
 	InsertLog(ctx context.Context, arg InsertLogParams) (Log, error)
 	InsertSystemStats(ctx context.Context, arg InsertSystemStatsParams) error
@@ -97,10 +101,12 @@ type Querier interface {
 	RemoveAllUserApps(ctx context.Context, userID int64) error
 	RemoveNotifierSubscription(ctx context.Context, arg RemoveNotifierSubscriptionParams) error
 	RemoveUserApp(ctx context.Context, arg RemoveUserAppParams) error
+	SaveHealthPeriod(ctx context.Context, arg SaveHealthPeriodParams) error
 	SearchLogs(ctx context.Context, arg SearchLogsParams) ([]Log, error)
 	SetConfig(ctx context.Context, arg SetConfigParams) error
 	UpdateNotifier(ctx context.Context, arg UpdateNotifierParams) error
 	UpdateUserAPIKeyLastUsed(ctx context.Context, arg UpdateUserAPIKeyLastUsedParams) error
+	ValidateAndUpdateCollectorAPIKey(ctx context.Context, arg ValidateAndUpdateCollectorAPIKeyParams) (int64, error)
 	ValidateAndUpdateUserAPIKey(ctx context.Context, arg ValidateAndUpdateUserAPIKeyParams) (UserApiKey, error)
 }
 

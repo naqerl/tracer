@@ -37,11 +37,11 @@ func main() {
 	var (
 		configPath     = flag.String("config", "", "path to config file")
 		printDefaults  = flag.Bool("print-defaults", false, "print default configuration and exit")
-		generateAPIKey = flag.Bool("generate-api-key", false, "generate and persist new API key, output raw key and exit")
-		getAPIKey      = flag.Bool("get-api-key", false, "output current API key and exit")
-		initPanel      = flag.Bool("init", false, "initialize panel: create admin user, generate API key, output credentials")
+		generateAPIKey = flag.Bool("generate-api-key", false, "generate and persist a new collector API key, output raw key and exit")
+		initPanel      = flag.Bool("init", false, "initialize panel: create admin user, generate collector API key, output credentials")
 		initUsername   = flag.String("username", "admin", "admin username for -init")
 		initPassword   = flag.String("password", "", "admin password for -init (auto-generated if empty)")
+		keyName        = flag.String("key-name", "default", "collector API key name for -generate-api-key")
 	)
 	flag.Parse()
 
@@ -56,15 +56,8 @@ func main() {
 	}
 
 	if *generateAPIKey {
-		if err := generateAPIKeyCmd(); err != nil {
+		if err := generateAPIKeyCmd(*keyName); err != nil {
 			log.Fatalf("failed to generate API key: %s", err)
-		}
-		return
-	}
-
-	if *getAPIKey {
-		if err := getAPIKeyCmd(); err != nil {
-			log.Fatalf("failed to get API key: %s", err)
 		}
 		return
 	}
@@ -105,7 +98,7 @@ func printDefaultsCmd() error {
 	return nil
 }
 
-func generateAPIKeyCmd() error {
+func generateAPIKeyCmd(name string) error {
 	ctx := context.Background()
 	dataDir := config.DataDir()
 
@@ -118,41 +111,9 @@ func generateAPIKeyCmd() error {
 
 	authSvc := auth.New(sqlDB)
 
-	// Generate new API key
-	apiKey, err := auth.GenerateAPIKey()
+	apiKey, _, err := authSvc.GenerateCollectorAPIKey(ctx, name)
 	if err != nil {
-		return fmt.Errorf("generate API key: %w", err)
-	}
-
-	// Persist the key
-	if err := authSvc.SetAPIKey(ctx, apiKey); err != nil {
-		return fmt.Errorf("persist API key: %w", err)
-	}
-
-	fmt.Println(apiKey)
-	return nil
-}
-
-func getAPIKeyCmd() error {
-	ctx := context.Background()
-	dataDir := config.DataDir()
-
-	// Initialize database
-	sqlDB, err := initPanelDB(dataDir)
-	if err != nil {
-		return fmt.Errorf("initialize database: %w", err)
-	}
-	defer sqlDB.Close()
-
-	authSvc := auth.New(sqlDB)
-
-	apiKey, err := authSvc.GetAPIKey(ctx)
-	if err != nil {
-		return fmt.Errorf("get API key: %w", err)
-	}
-
-	if apiKey == "" {
-		return fmt.Errorf("no API key configured")
+		return fmt.Errorf("generate collector api key: %w", err)
 	}
 
 	fmt.Println(apiKey)
@@ -198,13 +159,9 @@ func initPanelCmd(username, password string) error {
 		return fmt.Errorf("create admin user: %w", err)
 	}
 
-	// Generate and persist API key
-	apiKey, err := auth.GenerateAPIKey()
+	apiKey, _, err := authSvc.GenerateCollectorAPIKey(ctx, "default")
 	if err != nil {
-		return fmt.Errorf("generate API key: %w", err)
-	}
-	if err := authSvc.SetAPIKey(ctx, apiKey); err != nil {
-		return fmt.Errorf("persist API key: %w", err)
+		return fmt.Errorf("generate collector api key: %w", err)
 	}
 
 	// Output credentials
@@ -245,12 +202,11 @@ func serve(ctx context.Context, cfg config.Panel) error {
 		slog.Info("No users found. Visit /setup to create the admin account.",
 			"url", fmt.Sprintf("http://localhost:%s/setup", cfg.Port))
 	} else {
-		// Ensure API key exists (only log if users exist, otherwise setup page will show it)
-		apiKey, err := authService.EnsureAPIKey(ctx)
+		collectorKeys, err := authService.ListCollectorAPIKeys(ctx)
 		if err != nil {
-			return fmt.Errorf("ensure API key: %w", err)
+			return fmt.Errorf("list collector api keys: %w", err)
 		}
-		slog.Info("API key ready", "key", apiKey)
+		slog.Info("Collector API keys loaded", "count", len(collectorKeys))
 	}
 
 	// Setup notifier factories

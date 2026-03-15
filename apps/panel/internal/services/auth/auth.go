@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
-	"crypto/subtle"
 	"database/sql"
 	"encoding/hex"
 	"errors"
@@ -178,138 +177,73 @@ func (s *Service) Login(ctx context.Context, username, password string, userServ
 
 // API Key management
 
-const (
-	apiKeyConfigKey        = "api_key" // legacy plaintext key (backward-compat only)
-	apiKeyHashConfigKey    = "api_key_hash"
-	apiKeyPreviewConfigKey = "api_key_preview"
-)
-
 func hashAPIKey(key string) string {
 	sum := sha256.Sum256([]byte(key))
 	return hex.EncodeToString(sum[:])
 }
 
-func (s *Service) GetAPIKey(ctx context.Context) (string, error) {
-	// Backward compatibility: plaintext key in legacy config.
-	value, err := db.New(s.db).GetConfig(ctx, apiKeyConfigKey)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			preview, previewErr := db.New(s.db).GetConfig(ctx, apiKeyPreviewConfigKey)
-			if previewErr != nil {
-				if errors.Is(previewErr, sql.ErrNoRows) {
-					return "", nil
-				}
-				return "", previewErr
-			}
-			return "****" + preview, nil
-		}
-		return "", err
+func maskedAPIKeySuffix(key string) string {
+	suffix := key
+	if len(suffix) > 6 {
+		suffix = suffix[len(suffix)-6:]
 	}
-	if value == "" {
-		preview, previewErr := db.New(s.db).GetConfig(ctx, apiKeyPreviewConfigKey)
-		if previewErr != nil {
-			if errors.Is(previewErr, sql.ErrNoRows) {
-				return "", nil
-			}
-			return "", previewErr
-		}
-		return "****" + preview, nil
-	}
-	return value, nil
+	return "****" + suffix
 }
 
-func (s *Service) SetAPIKey(ctx context.Context, key string) error {
-	hash := hashAPIKey(key)
-	if err := db.New(s.db).SetConfig(ctx, db.SetConfigParams{
-		Key:   apiKeyHashConfigKey,
-		Value: hash,
-	}); err != nil {
-		return err
+func (s *Service) GenerateCollectorAPIKey(ctx context.Context, name string) (string, *db.CollectorApiKey, error) {
+	key, err := generateToken(apiKeySize)
+	if err != nil {
+		return "", nil, fmt.Errorf("generate collector api key: %w", err)
 	}
 
-	preview := key
-	if len(preview) > 6 {
-		preview = preview[len(preview)-6:]
-	}
-	if err := db.New(s.db).SetConfig(ctx, db.SetConfigParams{
-		Key:   apiKeyPreviewConfigKey,
-		Value: preview,
-	}); err != nil {
-		return err
-	}
-
-	// Clear legacy plaintext value if it exists.
-	return db.New(s.db).SetConfig(ctx, db.SetConfigParams{
-		Key:   apiKeyConfigKey,
-		Value: "",
+	row, err := db.New(s.db).CreateCollectorAPIKey(ctx, db.CreateCollectorAPIKeyParams{
+		Name:      name,
+		KeyHash:   hashAPIKey(key),
+		KeySuffix: key[max(0, len(key)-6):],
 	})
+	if err != nil {
+		return "", nil, fmt.Errorf("create collector api key: %w", err)
+	}
+
+	slog.Info("Collector API key created", "name", name)
+	return key, &row, nil
 }
 
-func (s *Service) EnsureAPIKey(ctx context.Context) (string, error) {
-	hash, err := db.New(s.db).GetConfig(ctx, apiKeyHashConfigKey)
-	if err == nil && hash != "" {
-		preview, previewErr := db.New(s.db).GetConfig(ctx, apiKeyPreviewConfigKey)
-		if previewErr == nil && preview != "" {
-			return "****" + preview, nil
-		}
-		return "configured", nil
-	}
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return "", err
-	}
-
-	// Backward compatibility: migrate from plaintext config if present.
-	key, err := s.GetAPIKey(ctx)
-	if err != nil {
-		return "", err
-	}
-
-	if key != "" {
-		if len(key) >= 4 && key[:4] == "****" {
-			return key, nil
-		}
-		if err := s.SetAPIKey(ctx, key); err != nil {
-			return "", fmt.Errorf("migrate API key to hash: %w", err)
-		}
-		return "****" + key[max(0, len(key)-6):], nil
-	}
-
-	// Generate new API key
-	key, err = GenerateAPIKey()
-	if err != nil {
-		return "", fmt.Errorf("generate API key: %w", err)
-	}
-
-	if err := s.SetAPIKey(ctx, key); err != nil {
-		return "", fmt.Errorf("save API key: %w", err)
-	}
-
-	slog.Info("Generated new API key")
-	return key, nil
+func (s *Service) ListCollectorAPIKeys(ctx context.Context) ([]db.GetCollectorAPIKeysRow, error) {
+	return db.New(s.db).GetCollectorAPIKeys(ctx)
 }
 
-func (s *Service) ValidateAPIKey(ctx context.Context, key string) (bool, error) {
-	storedHash, err := db.New(s.db).GetConfig(ctx, apiKeyHashConfigKey)
-	if err == nil && storedHash != "" {
-		inputHash := hashAPIKey(key)
-		return subtle.ConstantTimeCompare([]byte(storedHash), []byte(inputHash)) == 1, nil
-	}
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return false, err
-	}
+func (s *Service) DeleteCollectorAPIKey(ctx context.Context, name string) error {
+	return db.New(s.db).DeleteCollectorAPIKey(ctx, name)
+}
 
-	// Legacy plaintext fallback.
-	storedKey, err := db.New(s.db).GetConfig(ctx, apiKeyConfigKey)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return false, nil
-		}
-		return false, err
-	}
-	if storedKey == "" {
+func (s *Service) ValidateCollectorAPIKey(ctx context.Context, key string) (bool, error) {
+	if key == "" {
 		return false, nil
 	}
-	return subtle.ConstantTimeCompare([]byte(storedKey), []byte(key)) == 1, nil
+
+	rows, err := db.New(s.db).ValidateAndUpdateCollectorAPIKey(ctx, db.ValidateAndUpdateCollectorAPIKeyParams{
+		LastUsedAt: sql.NullTime{Time: time.Now().UTC(), Valid: true},
+		KeyHash:    hashAPIKey(key),
+	})
+	if err != nil {
+		return false, err
+	}
+	if rows == 0 {
+		return false, nil
+	}
+	return true, nil
+}
+
+func (s *Service) GetCollectorAPIKeyDisplay(ctx context.Context) (string, error) {
+	keys, err := s.ListCollectorAPIKeys(ctx)
+	if err != nil {
+		return "", err
+	}
+	if len(keys) == 0 {
+		return "", nil
+	}
+	return maskedAPIKeySuffix(keys[0].KeySuffix), nil
 }
 
 // User API Key management (LLM compatibility)
