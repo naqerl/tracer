@@ -26,11 +26,6 @@ CREATE INDEX IF NOT EXISTS idx_user_app_user ON user_app(user_id);
 CREATE INDEX IF NOT EXISTS idx_user_app_collector ON user_app(collector_name);
 CREATE INDEX IF NOT EXISTS idx_user_app_app ON user_app(app_name);
 
-CREATE TABLE IF NOT EXISTS config (
-    key TEXT PRIMARY KEY,
-    value TEXT NOT NULL
-);
-
 CREATE TABLE IF NOT EXISTS notifier (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL REFERENCES user(id) ON DELETE CASCADE,
@@ -79,7 +74,6 @@ DROP TABLE IF EXISTS collector_api_key;
 DROP TABLE IF EXISTS user_api_key;
 DROP TABLE IF EXISTS notifier_subscription;
 DROP TABLE IF EXISTS notifier;
-DROP TABLE IF EXISTS config;
 DROP TABLE IF EXISTS user_app;
 DROP TABLE IF EXISTS session;
 DROP TABLE IF EXISTS user;

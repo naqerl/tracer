@@ -47,8 +47,6 @@ type Querier interface {
 	FindLogsByTraceID(ctx context.Context, traceID sql.NullString) ([]Log, error)
 	GetCollectorAPIKeyByName(ctx context.Context, name string) (CollectorApiKey, error)
 	GetCollectorAPIKeys(ctx context.Context) ([]GetCollectorAPIKeysRow, error)
-	// Settings/config queries
-	GetConfig(ctx context.Context, key string) (string, error)
 	GetGlobalNotifiers(ctx context.Context) ([]Notifier, error)
 	GetLatestHealthPeriod(ctx context.Context) (AppHealthPeriod, error)
 	GetLatestStats(ctx context.Context) (SystemStat, error)
@@ -103,7 +101,6 @@ type Querier interface {
 	RemoveUserApp(ctx context.Context, arg RemoveUserAppParams) error
 	SaveHealthPeriod(ctx context.Context, arg SaveHealthPeriodParams) error
 	SearchLogs(ctx context.Context, arg SearchLogsParams) ([]Log, error)
-	SetConfig(ctx context.Context, arg SetConfigParams) error
 	UpdateNotifier(ctx context.Context, arg UpdateNotifierParams) error
 	UpdateUserAPIKeyLastUsed(ctx context.Context, arg UpdateUserAPIKeyLastUsedParams) error
 	ValidateAndUpdateCollectorAPIKey(ctx context.Context, arg ValidateAndUpdateCollectorAPIKeyParams) (int64, error)
