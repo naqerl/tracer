@@ -76,7 +76,7 @@ func (h *handler) getDashboard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sinceLabel := readSinceLabel(r)
+	sinceLabel := ensureSinceCookie(w, r)
 	collectors, err := h.svc.ListCollectors(r.Context(), user)
 	if err != nil {
 		h.t.RenderError(w, r, "Error", "Failed to get collectors", http.StatusInternalServerError)
@@ -120,7 +120,7 @@ func (h *handler) getCollector(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sinceLabel := readSinceLabel(r)
+	sinceLabel := ensureSinceCookie(w, r)
 	h.t.RenderHTTP(w, r, "collector-overview", map[string]any{
 		"CollectorName": req.CollectorName,
 		"User":          user,
@@ -136,6 +136,7 @@ func (h *handler) getCollectorApps(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return
 	}
+	ensureSinceCookie(w, r)
 
 	req := panelsvc.GetCollectorAppsRequest{
 		CollectorName: r.PathValue("collector"),
@@ -172,7 +173,7 @@ func (h *handler) getCollectorResources(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	sinceLabel, since := readSince(r)
+	sinceLabel, since := readSince(w, r)
 
 	req := panelsvc.GetStatsHistoryRequest{
 		CollectorName: r.PathValue("collector"),
@@ -214,7 +215,7 @@ func (h *handler) getDashboardAppHealth(w http.ResponseWriter, r *http.Request) 
 
 	collectorName := r.PathValue("collector")
 	appName := r.PathValue("app")
-	_, since := readSince(r)
+	_, since := readSince(w, r)
 
 	health, err := h.svc.GetAppHealth(r.Context(), user, collectorName, appName, since)
 	if err != nil {
@@ -268,7 +269,7 @@ func (h *handler) getApp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sinceLabel, since := readSince(r)
+	sinceLabel, since := readSince(w, r)
 	uptime, err := h.svc.GetAppHealth(r.Context(), user, req.CollectorName, req.AppName, since)
 	if err != nil {
 		switch {
@@ -294,17 +295,33 @@ func (h *handler) getApp(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func readSince(r *http.Request) (string, time.Time) {
-	label := readSinceLabel(r)
+func readSince(w http.ResponseWriter, r *http.Request) (string, time.Time) {
+	label := ensureSinceCookie(w, r)
 	return label, parseSinceLabel(label)
 }
 
-func readSinceLabel(r *http.Request) string {
+func ensureSinceCookie(w http.ResponseWriter, r *http.Request) string {
 	cookie, err := r.Cookie(sinceCookieName)
-	if err != nil {
-		return defaultSinceLabel
+	if err == nil {
+		label := sanitizeSinceLabel(cookie.Value)
+		if label == cookie.Value {
+			return label
+		}
 	}
-	return sanitizeSinceLabel(cookie.Value)
+	setSinceCookie(w, r, defaultSinceLabel)
+	return defaultSinceLabel
+}
+
+func setSinceCookie(w http.ResponseWriter, r *http.Request, label string) {
+	secure := r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https"
+	http.SetCookie(w, &http.Cookie{
+		Name:     sinceCookieName,
+		Value:    label,
+		Path:     "/",
+		MaxAge:   31536000,
+		Secure:   secure,
+		SameSite: http.SameSiteLaxMode,
+	})
 }
 
 func parseSinceLabel(label string) time.Time {
@@ -475,7 +492,7 @@ func (h *handler) getLogGroups(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, since := readSince(r)
+	_, since := readSince(w, r)
 	req := panelsvc.GetLogGroupsRequest{
 		CollectorName: r.PathValue("collector"),
 		AppName:       r.PathValue("app"),
@@ -519,6 +536,7 @@ func (h *handler) getLogGroupByID(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return
 	}
+	ensureSinceCookie(w, r)
 
 	groupID, err := strconv.ParseInt(r.PathValue("groupID"), 10, 64)
 	if err != nil {
@@ -573,6 +591,7 @@ func (h *handler) getLogByID(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return
 	}
+	ensureSinceCookie(w, r)
 
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {

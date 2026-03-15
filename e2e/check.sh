@@ -10,7 +10,6 @@ DEMO_PORT="${DEMO_PORT:-18081}"
 DEMO_URL="${DEMO_URL:-http://127.0.0.1:${DEMO_PORT}}"
 DEMO_USER="${DEMO_USER:-demo}"
 DEMO_PASSWORD="${DEMO_PASSWORD:-demo123}"
-PANEL_SINCE_COOKIE='tracer_panel_since=24h'
 
 expected_units=(
   e2e-install.service
@@ -66,7 +65,7 @@ wait_for_logs() {
   local collector="$1"
   local attempt page compact
   for attempt in $(seq 1 30); do
-    page="$(curl -fsS "${DEMO_URL}/panel/collectors/${collector}/apps/tracer-demo-api.service" -H "Cookie: ${COOKIE}; ${PANEL_SINCE_COOKIE}")"
+    page="$(curl -fsS "${DEMO_URL}/panel/collectors/${collector}/apps/tracer-demo-api.service" -H "Cookie: ${COOKIE}")"
     compact="$(tr '\n' ' ' <<<"${page}")"
     if grep -Eq '<div class="text-2xl font-bold">[1-9][0-9]*</div> *<div class="text-xs text-fg-secondary">Total Logs</div>' <<<"${compact}"; then
       return 0
@@ -80,7 +79,7 @@ wait_for_panel_health() {
   local collector="$1"
   local attempt uptime
   for attempt in $(seq 1 30); do
-    uptime="$(curl -fsS "${DEMO_URL}/panel/collectors/${collector}/apps/tracer-panel.service/uptime/percentage" -H "Cookie: ${COOKIE}; ${PANEL_SINCE_COOKIE}")"
+    uptime="$(curl -fsS "${DEMO_URL}/panel/collectors/${collector}/apps/tracer-panel.service/uptime/percentage" -H "Cookie: ${COOKIE}")"
     if grep -Eq '[0-9]+\.[0-9]{2}%|[0-9]+%' <<<"${uptime}"; then
       return 0
     fi
@@ -127,12 +126,12 @@ COOKIE="$(printf '%s\n' "${login_headers}" | awk -F': ' '/^Set-Cookie: tracer_se
 [[ -n "${COOKIE}" ]] || fail "panel login did not return tracer_session cookie"
 
 log "checking dashboard"
-dashboard="$(curl -fsS "${DEMO_URL}/panel/" -H "Cookie: ${COOKIE}; ${PANEL_SINCE_COOKIE}")"
+dashboard="$(curl -fsS "${DEMO_URL}/panel/" -H "Cookie: ${COOKIE}")"
 grep -Fq "resources" <<<"${dashboard}" || fail "dashboard did not render resources link"
 collector_name="$(collector_name_from_dashboard "${dashboard}")"
 
 log "checking registered apps list"
-apps_page="$(curl -fsS "${DEMO_URL}/panel/collectors/${collector_name}/apps" -H "Cookie: ${COOKIE}; ${PANEL_SINCE_COOKIE}")"
+apps_page="$(curl -fsS "${DEMO_URL}/panel/collectors/${collector_name}/apps" -H "Cookie: ${COOKIE}")"
 for app in "${app_names[@]}"; do
   grep -Fq "${app}" <<<"${apps_page}" || fail "apps page missing ${app}"
 done
