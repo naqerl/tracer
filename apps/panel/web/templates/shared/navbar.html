@@ -4,14 +4,13 @@
     <a href="/panel/" class="text-lg font-medium hover:text-fg transition-colors" data-nav="panel">/panel</a>
     <a href="/settings/" class="text-lg font-medium hover:text-fg transition-colors" data-nav="settings">/settings</a>
   </div>
-  
+
   <form class="flex items-center gap-1 text-sm" onsubmit="return false;">
-    <input type="hidden" id="since" name="since" value="24h">
     <div class="relative group" id="since-dropdown">
       <div class="flex items-center justify-between gap-1 px-2 py-1 border border-transparent group-hover:border-bg-secondary text-fg-secondary group-hover:text-fg transition-colors cursor-pointer w-[5.5rem]">
         <span class="flex items-center gap-1">
           <span>since</span>
-          <span id="since-label">24h</span>
+          <span id="since-label">{{default "24h" .Since}}</span>
         </span>
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
       </div>
@@ -26,38 +25,81 @@
   </form>
   <script>
     (function() {
-      // Priority: URL param > localStorage > default
-      const params = new URLSearchParams(window.location.search);
-      const urlSince = params.get('since');
-      const storedSince = localStorage.getItem('since');
-      const since = urlSince || storedSince || '24h';
-      
-      document.getElementById('since').value = since;
-      document.getElementById('since-label').textContent = since;
-      
-      // Save to localStorage if from URL
-      if (urlSince) {
-        localStorage.setItem('since', urlSince);
+      const cookieName = 'tracer_panel_since';
+      const defaultSince = '24h';
+      const allowedSince = new Set(['1h', '6h', '24h', '7d', '30d']);
+
+      function readCookie(name) {
+        const prefix = name + '=';
+        const parts = document.cookie.split(';');
+        for (let i = 0; i < parts.length; i++) {
+          const cookie = parts[i].trim();
+          if (cookie.startsWith(prefix)) {
+            return decodeURIComponent(cookie.slice(prefix.length));
+          }
+        }
+        return '';
       }
-      
-      // Highlight active nav link
+
+      function writeCookie(name, value) {
+        let cookie = name + '=' + encodeURIComponent(value) + '; path=/; max-age=31536000; SameSite=Lax';
+        if (window.location.protocol === 'https:') {
+          cookie += '; Secure';
+        }
+        document.cookie = cookie;
+      }
+
+      const currentSince = readCookie(cookieName);
+      const since = allowedSince.has(currentSince) ? currentSince : defaultSince;
+      if (currentSince !== since) {
+        writeCookie(cookieName, since);
+      }
+      const sinceLabel = document.getElementById('since-label');
+      sinceLabel.textContent = since;
+      document.documentElement.dataset.since = since;
+
       const path = window.location.pathname;
       document.querySelectorAll('#nav-links a').forEach(function(link) {
         const nav = link.getAttribute('data-nav');
-        if (path === '/' + nav) {
+        if (path.startsWith('/' + nav)) {
           link.classList.remove('text-fg-secondary');
         } else {
           link.classList.add('text-fg-secondary');
         }
       });
+
+      window.navbarSelectSince = function(val) {
+        if (!allowedSince.has(val)) {
+          return;
+        }
+        writeCookie(cookieName, val);
+        sinceLabel.textContent = val;
+        document.documentElement.dataset.since = val;
+        window.location.reload();
+      };
+
+      function reloadIfSinceChanged() {
+        const activeSince = allowedSince.has(readCookie(cookieName)) ? readCookie(cookieName) : defaultSince;
+        const pageSince = document.documentElement.dataset.since || sinceLabel.textContent || defaultSince;
+        if (activeSince !== pageSince) {
+          window.location.reload();
+        }
+      }
+
+      window.addEventListener('pageshow', function(event) {
+        if (event.persisted) {
+          reloadIfSinceChanged();
+        }
+      });
+
+      window.addEventListener('popstate', function() {
+        reloadIfSinceChanged();
+      });
+
+      document.body.addEventListener('htmx:historyRestore', function() {
+        reloadIfSinceChanged();
+      });
     })();
-    
-    function navbarSelectSince(val) {
-      localStorage.setItem('since', val);
-      document.getElementById('since').value = val;
-      document.getElementById('since-label').textContent = val;
-      window.location.href = window.location.pathname + '?since=' + encodeURIComponent(val);
-    }
   </script>
 </nav>
 {{end}}

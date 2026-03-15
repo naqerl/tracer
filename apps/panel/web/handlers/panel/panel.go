@@ -37,6 +37,11 @@ var levelFilters = []LevelFilter{
 	{Val: "info", Label: "Info", Color: "blue-500"},
 }
 
+const (
+	sinceCookieName   = "tracer_panel_since"
+	defaultSinceLabel = "24h"
+)
+
 func InitMux(svc *panelsvc.Service) *http.ServeMux {
 	m := http.NewServeMux()
 	h := handler{
@@ -71,7 +76,7 @@ func (h *handler) getDashboard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sinceLabel := normalizeSince(r.URL.Query().Get("since"))
+	sinceLabel := readSinceLabel(r)
 	collectors, err := h.svc.ListCollectors(r.Context(), user)
 	if err != nil {
 		h.t.RenderError(w, r, "Error", "Failed to get collectors", http.StatusInternalServerError)
@@ -81,7 +86,7 @@ func (h *handler) getDashboard(w http.ResponseWriter, r *http.Request) {
 	h.t.RenderHTTP(w, r, "dashboard", map[string]any{
 		"Title":      "Panel",
 		"User":       user,
-		"Collectors": dashboardCollectorsView(collectors, sinceLabel),
+		"Collectors": dashboardCollectorsView(collectors),
 		"Since":      sinceLabel,
 	})
 }
@@ -115,7 +120,7 @@ func (h *handler) getCollector(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sinceLabel := normalizeSince(r.URL.Query().Get("since"))
+	sinceLabel := readSinceLabel(r)
 	h.t.RenderHTTP(w, r, "collector-overview", map[string]any{
 		"CollectorName": req.CollectorName,
 		"User":          user,
@@ -148,7 +153,6 @@ func (h *handler) getCollectorApps(w http.ResponseWriter, r *http.Request) {
 			h.t.RenderHTTP(w, r, "collector-apps", map[string]any{
 				"CollectorName": req.CollectorName,
 				"Apps":          []appView{},
-				"Since":         normalizeSince(r.URL.Query().Get("since")),
 			})
 		default:
 			h.t.RenderError(w, r, "Error", "Failed to get collector apps", http.StatusInternalServerError)
@@ -159,7 +163,6 @@ func (h *handler) getCollectorApps(w http.ResponseWriter, r *http.Request) {
 	h.t.RenderHTTP(w, r, "collector-apps", map[string]any{
 		"CollectorName": req.CollectorName,
 		"Apps":          appsView(apps),
-		"Since":         normalizeSince(r.URL.Query().Get("since")),
 	})
 }
 
@@ -169,14 +172,11 @@ func (h *handler) getCollectorResources(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	since := r.URL.Query().Get("since")
-	if since == "" {
-		since = "24h"
-	}
+	sinceLabel, since := readSince(r)
 
 	req := panelsvc.GetStatsHistoryRequest{
 		CollectorName: r.PathValue("collector"),
-		Since:         parseSince(since),
+		Since:         since,
 	}
 	if err := req.Validate(); err != nil {
 		h.t.RenderError(w, r, "Error", err.Error(), http.StatusBadRequest)
@@ -199,7 +199,7 @@ func (h *handler) getCollectorResources(w http.ResponseWriter, r *http.Request) 
 	h.t.RenderHTTP(w, r, "collector-stats", map[string]any{
 		"Title":         req.CollectorName + " Resources",
 		"CollectorName": req.CollectorName,
-		"Since":         since,
+		"Since":         sinceLabel,
 		"Stats":         stats,
 		"User":          user,
 		"IsAdmin":       user.IsAdmin,
@@ -214,9 +214,9 @@ func (h *handler) getDashboardAppHealth(w http.ResponseWriter, r *http.Request) 
 
 	collectorName := r.PathValue("collector")
 	appName := r.PathValue("app")
-	sinceLabel := normalizeSince(r.URL.Query().Get("since"))
+	_, since := readSince(r)
 
-	health, err := h.svc.GetAppHealth(r.Context(), user, collectorName, appName, parseSince(sinceLabel))
+	health, err := h.svc.GetAppHealth(r.Context(), user, collectorName, appName, since)
 	if err != nil {
 		switch {
 		case errors.Is(err, panelsvc.ErrCollectorNotFound):
@@ -268,8 +268,8 @@ func (h *handler) getApp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sinceLabel := normalizeSince(r.URL.Query().Get("since"))
-	uptime, err := h.svc.GetAppHealth(r.Context(), user, req.CollectorName, req.AppName, parseSince(sinceLabel))
+	sinceLabel, since := readSince(r)
+	uptime, err := h.svc.GetAppHealth(r.Context(), user, req.CollectorName, req.AppName, since)
 	if err != nil {
 		switch {
 		case errors.Is(err, panelsvc.ErrCollectorNotFound):
@@ -294,28 +294,40 @@ func (h *handler) getApp(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func parseSince(since string) time.Time {
-	since = normalizeSince(since)
-	duration, err := time.ParseDuration(since)
+func readSince(r *http.Request) (string, time.Time) {
+	label := readSinceLabel(r)
+	return label, parseSinceLabel(label)
+}
+
+func readSinceLabel(r *http.Request) string {
+	cookie, err := r.Cookie(sinceCookieName)
 	if err != nil {
-		// Try parsing as days (e.g., "7d" -> "168h")
-		if len(since) > 1 && since[len(since)-1] == 'd' {
-			days, err := strconv.Atoi(since[:len(since)-1])
+		return defaultSinceLabel
+	}
+	return sanitizeSinceLabel(cookie.Value)
+}
+
+func parseSinceLabel(label string) time.Time {
+	label = sanitizeSinceLabel(label)
+	duration, err := time.ParseDuration(label)
+	if err != nil {
+		if len(label) > 1 && label[len(label)-1] == 'd' {
+			days, err := strconv.Atoi(label[:len(label)-1])
 			if err == nil {
 				return time.Now().Add(-time.Duration(days) * 24 * time.Hour)
 			}
 		}
-		return time.Now().Add(-24 * time.Hour) // fallback
+		return time.Now().Add(-24 * time.Hour)
 	}
 	return time.Now().Add(-duration)
 }
 
-func normalizeSince(since string) string {
-	switch since {
+func sanitizeSinceLabel(label string) string {
+	switch label {
 	case "1h", "6h", "24h", "7d", "30d":
-		return since
+		return label
 	default:
-		return "24h"
+		return defaultSinceLabel
 	}
 }
 
@@ -351,12 +363,11 @@ type collectorView struct {
 	IsConnected  bool
 	ConnectedAt  time.Time
 	LastSeenAt   time.Time
-	Since        string
 	Stats        any
 	StatsDisplay any
 }
 
-func dashboardCollectorsView(collectors []panelsvc.CollectorView, since string) []collectorView {
+func dashboardCollectorsView(collectors []panelsvc.CollectorView) []collectorView {
 	result := make([]collectorView, 0, len(collectors))
 	for _, collector := range collectors {
 		result = append(result, collectorView{
@@ -365,7 +376,6 @@ func dashboardCollectorsView(collectors []panelsvc.CollectorView, since string) 
 			IsConnected:  collector.IsConnected,
 			ConnectedAt:  collector.ConnectedAt,
 			LastSeenAt:   collector.LastSeenAt,
-			Since:        since,
 			Stats:        collector.Stats,
 			StatsDisplay: collector.StatsDisplay,
 		})
@@ -465,11 +475,12 @@ func (h *handler) getLogGroups(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	_, since := readSince(r)
 	req := panelsvc.GetLogGroupsRequest{
 		CollectorName: r.PathValue("collector"),
 		AppName:       r.PathValue("app"),
 		Level:         r.URL.Query().Get("level"),
-		Since:         parseSince(r.URL.Query().Get("since")),
+		Since:         since,
 		Offset:        parseOffset(r.URL.Query().Get("offset")),
 		Limit:         50,
 	}
@@ -497,7 +508,6 @@ func (h *handler) getLogGroups(w http.ResponseWriter, r *http.Request) {
 	h.t.RenderHTTP(w, r, "log-groups", map[string]any{
 		"Groups":       groups,
 		"Level":        req.Level,
-		"Since":        r.URL.Query().Get("since"),
 		"Collector":    req.CollectorName,
 		"App":          req.AppName,
 		"LevelFilters": levelFilters,
