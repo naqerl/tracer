@@ -20,7 +20,7 @@
 {{end}}
 
 {{define "input-text"}}
-<input type="{{.Type}}" id="{{.ID}}" name="{{.Name}}" placeholder="{{.Placeholder}}" {{if .Required}}required{{end}} 
+<input type="{{.Type}}" id="{{.ID}}" name="{{.Name}}" placeholder="{{.Placeholder}}" {{if .Required}}required{{end}}
        class="w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg placeholder:text-fg-secondary/50">
 {{end}}
 
@@ -39,10 +39,10 @@
     </div>
 </div>
 
-<!-- LLM API Keys Section -->
+<!-- API Keys Section -->
 <div class="mb-10">
-    <h2 class="text-xl font-medium mb-6">LLM API Keys</h2>
-    <p class="text-base text-fg-secondary mb-6">Generate API keys to access logs via LLM tools.</p>
+    <h2 class="text-xl font-medium mb-6">API Keys</h2>
+    <p class="text-base text-fg-secondary mb-6">Generate API keys to access logs programmatically.</p>
 
     <form action="/settings/api-keys" method="POST" class="mb-8">
         <div class="mb-4 max-w-md">
@@ -95,7 +95,7 @@
 <!-- Users Section -->
 <div class="mb-10">
     <h2 class="text-xl font-medium mb-6">Users</h2>
-    
+
     <form action="/settings/users" method="POST" class="mb-8">
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4 max-w-2xl">
             <div>
@@ -151,14 +151,14 @@
 <div class="mb-10">
     <h2 class="text-xl font-medium mb-6">Notifications</h2>
     <p class="text-base text-fg-secondary mb-6">{{if .IsAdmin}}Configure Telegram bots for error alerts.{{else}}Configure Telegram bots for your assigned apps.{{end}}</p>
-    
+
     <form action="/settings/notifiers" method="POST" class="mb-8">
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4 max-w-3xl">
             <div>
                 {{template "input-text" dict "Type" "text" "ID" "notifier_name" "Name" "name" "Placeholder" "Name" "Required" true}}
             </div>
             <div>
-                <select id="notifier_type" name="type" required 
+                <select id="notifier_type" name="type" required
                         class="w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg cursor-pointer">
                     <option value="">Type</option>
                     <option value="telegram">Telegram</option>
