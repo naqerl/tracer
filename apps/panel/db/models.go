@@ -24,11 +24,6 @@ type CollectorApiKey struct {
 	LastUsedAt sql.NullTime
 }
 
-type Config struct {
-	Key   string
-	Value string
-}
-
 type LifecycleEvent struct {
 	ID        int64
 	Kind      string
