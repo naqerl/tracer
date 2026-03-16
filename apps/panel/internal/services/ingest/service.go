@@ -12,6 +12,7 @@ import (
 
 	"tracer/apps/panel/db"
 	"tracer/apps/panel/internal/dbmanager"
+	"tracer/apps/panel/internal/domain"
 	"tracer/apps/panel/internal/services/notify"
 	"tracer/libs/types"
 )
@@ -71,10 +72,7 @@ type SaveSystemStatsRequest struct {
 }
 
 func (r SaveSystemStatsRequest) Validate() error {
-	if r.CollectorName == "" {
-		return fmt.Errorf("collector name is required")
-	}
-	return nil
+	return domain.ValidateCollectorName(r.CollectorName)
 }
 
 // SaveSystemStats saves system statistics for a collector.
@@ -151,11 +149,16 @@ type RegisterCollectorRequest struct {
 }
 
 func (r RegisterCollectorRequest) Validate() error {
-	if r.CollectorName == "" {
-		return fmt.Errorf("collector name is required")
+	if err := domain.ValidateCollectorName(r.CollectorName); err != nil {
+		return err
 	}
 	if len(r.Apps) == 0 {
 		return fmt.Errorf("at least one app is required")
+	}
+	for _, app := range r.Apps {
+		if err := domain.ValidateAppName(app); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -188,11 +191,11 @@ type StoreLogRequest struct {
 }
 
 func (r StoreLogRequest) Validate() error {
-	if r.CollectorName == "" {
-		return fmt.Errorf("collector name is required")
+	if err := domain.ValidateCollectorName(r.CollectorName); err != nil {
+		return err
 	}
-	if r.AppName == "" {
-		return fmt.Errorf("app name is required")
+	if err := domain.ValidateAppName(r.AppName); err != nil {
+		return err
 	}
 	return nil
 }
@@ -267,11 +270,11 @@ type StoreLifecycleRequest struct {
 }
 
 func (r StoreLifecycleRequest) Validate() error {
-	if r.CollectorName == "" {
-		return fmt.Errorf("collector name is required")
+	if err := domain.ValidateCollectorName(r.CollectorName); err != nil {
+		return err
 	}
-	if r.AppName == "" {
-		return fmt.Errorf("app name is required")
+	if err := domain.ValidateAppName(r.AppName); err != nil {
+		return err
 	}
 	if err := r.Kind.Validate(); err != nil {
 		return err
@@ -323,11 +326,11 @@ type StoreHealthRequest struct {
 }
 
 func (r StoreHealthRequest) Validate() error {
-	if r.CollectorName == "" {
-		return fmt.Errorf("collector name is required")
+	if err := domain.ValidateCollectorName(r.CollectorName); err != nil {
+		return err
 	}
-	if r.AppName == "" {
-		return fmt.Errorf("app name is required")
+	if err := domain.ValidateAppName(r.AppName); err != nil {
+		return err
 	}
 	switch r.Status {
 	case types.HealthStatusUp, types.HealthStatusDown, types.HealthStatusUnknown:

@@ -16,6 +16,7 @@ import (
 	_ "modernc.org/sqlite"
 
 	"tracer/apps/panel/db"
+	"tracer/apps/panel/internal/domain"
 	appmigrations "tracer/apps/panel/sql/app"
 	collectormigrations "tracer/apps/panel/sql/collector"
 )
@@ -89,10 +90,10 @@ func (m *Manager) ListApps(collector string) ([]string, error) {
 // GetAppDB returns the database connection for the given collector/app.
 // Returns ErrDBNotFound if the database does not exist.
 func (m *Manager) GetAppDB(collectorName, appName string) (db.DBTX, error) {
-	if err := validateIdentifier(collectorName); err != nil {
+	if err := domain.ValidateCollectorName(collectorName); err != nil {
 		return nil, fmt.Errorf("invalid collector name: %w", err)
 	}
-	if err := validateIdentifier(appName); err != nil {
+	if err := domain.ValidateAppName(appName); err != nil {
 		return nil, fmt.Errorf("invalid app name: %w", err)
 	}
 	key := appDBKey(collectorName, appName)
@@ -116,10 +117,10 @@ func (m *Manager) GetAppDB(collectorName, appName string) (db.DBTX, error) {
 
 // CreateAppDB creates a new database for the given collector/app.
 func (m *Manager) CreateAppDB(collectorName, appName string) (db.DBTX, error) {
-	if err := validateIdentifier(collectorName); err != nil {
+	if err := domain.ValidateCollectorName(collectorName); err != nil {
 		return nil, fmt.Errorf("invalid collector name: %w", err)
 	}
-	if err := validateIdentifier(appName); err != nil {
+	if err := domain.ValidateAppName(appName); err != nil {
 		return nil, fmt.Errorf("invalid app name: %w", err)
 	}
 
@@ -190,7 +191,7 @@ func (m *Manager) openAppDB(collectorName, appName string) (db.DBTX, error) {
 // GetCollectorDB returns the stats database for a collector.
 // Returns ErrDBNotFound if the database does not exist.
 func (m *Manager) GetCollectorDB(collectorName string) (db.DBTX, error) {
-	if err := validateIdentifier(collectorName); err != nil {
+	if err := domain.ValidateCollectorName(collectorName); err != nil {
 		return nil, fmt.Errorf("invalid collector name: %w", err)
 	}
 
@@ -213,7 +214,7 @@ func (m *Manager) GetCollectorDB(collectorName string) (db.DBTX, error) {
 
 // CreateCollectorDB creates a new stats database for the collector.
 func (m *Manager) CreateCollectorDB(collectorName string) (db.DBTX, error) {
-	if err := validateIdentifier(collectorName); err != nil {
+	if err := domain.ValidateCollectorName(collectorName); err != nil {
 		return nil, fmt.Errorf("invalid collector name: %w", err)
 	}
 
@@ -303,25 +304,6 @@ func (m *Manager) runCollectorMigrations(sqlDB *sql.DB) error {
 
 func appDBKey(collectorName, appName string) string {
 	return collectorName + "\x00" + appName
-}
-
-func validateIdentifier(v string) error {
-	if v == "" {
-		return errors.New("must not be empty")
-	}
-	if len(v) > 128 {
-		return errors.New("must be <= 128 characters")
-	}
-	for _, r := range v {
-		if (r >= 'a' && r <= 'z') ||
-			(r >= 'A' && r <= 'Z') ||
-			(r >= '0' && r <= '9') ||
-			r == '-' || r == '_' || r == '.' {
-			continue
-		}
-		return fmt.Errorf("unsupported character %q", r)
-	}
-	return nil
 }
 
 // Close closes all database connections

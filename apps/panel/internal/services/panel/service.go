@@ -11,6 +11,7 @@ import (
 
 	"tracer/apps/panel/db"
 	"tracer/apps/panel/internal/dbmanager"
+	"tracer/apps/panel/internal/domain"
 	"tracer/apps/panel/internal/services/ingest"
 	"tracer/apps/panel/internal/services/user"
 	sharedtypes "tracer/libs/types"
@@ -98,8 +99,8 @@ type GetCollectorRequest struct {
 }
 
 func (r GetCollectorRequest) Validate() error {
-	if r.UserID <= 0 {
-		return fmt.Errorf("user id should be provided")
+	if err := domain.ValidateUserID(r.UserID); err != nil {
+		return err
 	}
 	if r.CollectorName == "" {
 		return fmt.Errorf("collector name is required")
@@ -195,8 +196,8 @@ type ListCollectorAppsRequest struct {
 }
 
 func (r ListCollectorAppsRequest) Validate() error {
-	if r.UserID <= 0 {
-		return fmt.Errorf("user id should be provided")
+	if err := domain.ValidateUserID(r.UserID); err != nil {
+		return err
 	}
 	if r.CollectorName == "" {
 		return fmt.Errorf("collector name is required")
@@ -260,8 +261,8 @@ type GetAppHealthRequest struct {
 }
 
 func (r GetAppHealthRequest) Validate() error {
-	if r.UserID <= 0 {
-		return fmt.Errorf("user id should be provided")
+	if err := domain.ValidateUserID(r.UserID); err != nil {
+		return err
 	}
 	if r.CollectorName == "" {
 		return fmt.Errorf("collector name is required")
@@ -300,8 +301,8 @@ type GetAppErrorCountRequest struct {
 }
 
 func (r GetAppErrorCountRequest) Validate() error {
-	if r.UserID <= 0 {
-		return fmt.Errorf("user id should be provided")
+	if err := domain.ValidateUserID(r.UserID); err != nil {
+		return err
 	}
 	if r.CollectorName == "" {
 		return fmt.Errorf("collector name is required")
@@ -344,8 +345,8 @@ type GetStatsHistoryRequest struct {
 }
 
 func (r GetStatsHistoryRequest) Validate() error {
-	if r.UserID <= 0 {
-		return fmt.Errorf("user id should be provided")
+	if err := domain.ValidateUserID(r.UserID); err != nil {
+		return err
 	}
 	if r.CollectorName == "" {
 		return fmt.Errorf("collector name is required")
@@ -382,8 +383,8 @@ type AppStats struct {
 }
 
 func (r GetAppStatsRequest) Validate() error {
-	if r.UserID <= 0 {
-		return fmt.Errorf("user id should be provided")
+	if err := domain.ValidateUserID(r.UserID); err != nil {
+		return err
 	}
 	if r.CollectorName == "" {
 		return fmt.Errorf("collector name is required")
@@ -441,8 +442,8 @@ type LogGroup struct {
 }
 
 func (r GetLogGroupsRequest) Validate() error {
-	if r.UserID <= 0 {
-		return fmt.Errorf("user id should be provided")
+	if err := domain.ValidateUserID(r.UserID); err != nil {
+		return err
 	}
 	if r.CollectorName == "" {
 		return fmt.Errorf("collector name is required")
@@ -519,8 +520,8 @@ type LogDetailResult struct {
 }
 
 func (r GetLogDetailRequest) Validate() error {
-	if r.UserID <= 0 {
-		return fmt.Errorf("user id should be provided")
+	if err := domain.ValidateUserID(r.UserID); err != nil {
+		return err
 	}
 	if r.CollectorName == "" {
 		return fmt.Errorf("collector name is required")
@@ -599,8 +600,8 @@ type GetLogByIDRequest struct {
 }
 
 func (r GetLogByIDRequest) Validate() error {
-	if r.UserID <= 0 {
-		return fmt.Errorf("user id should be provided")
+	if err := domain.ValidateUserID(r.UserID); err != nil {
+		return err
 	}
 	if r.CollectorName == "" {
 		return fmt.Errorf("collector name is required")
