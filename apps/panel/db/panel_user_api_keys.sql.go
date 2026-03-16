@@ -49,26 +49,33 @@ func (q *Queries) DeleteUserAPIKey(ctx context.Context, id int64) error {
 }
 
 const getUserAPIKeysByUser = `-- name: GetUserAPIKeysByUser :many
-SELECT id, user_id, api_key, name, created_at, last_used_at FROM user_api_key
+SELECT id, user_id, api_key, name, last_used_at FROM user_api_key
 WHERE user_id = ?
 ORDER BY created_at DESC
 `
 
-func (q *Queries) GetUserAPIKeysByUser(ctx context.Context, userID int64) ([]UserApiKey, error) {
+type GetUserAPIKeysByUserRow struct {
+	ID         int64
+	UserID     int64
+	ApiKey     string
+	Name       string
+	LastUsedAt sql.NullTime
+}
+
+func (q *Queries) GetUserAPIKeysByUser(ctx context.Context, userID int64) ([]GetUserAPIKeysByUserRow, error) {
 	rows, err := q.db.QueryContext(ctx, getUserAPIKeysByUser, userID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []UserApiKey
+	var items []GetUserAPIKeysByUserRow
 	for rows.Next() {
-		var i UserApiKey
+		var i GetUserAPIKeysByUserRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.UserID,
 			&i.ApiKey,
 			&i.Name,
-			&i.CreatedAt,
 			&i.LastUsedAt,
 		); err != nil {
 			return nil, err

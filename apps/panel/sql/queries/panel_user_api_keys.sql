@@ -6,7 +6,7 @@ VALUES (?, ?, ?)
 RETURNING *;
 
 -- name: GetUserAPIKeysByUser :many
-SELECT * FROM user_api_key
+SELECT id, user_id, api_key, name, last_used_at FROM user_api_key
 WHERE user_id = ?
 ORDER BY created_at DESC;
 

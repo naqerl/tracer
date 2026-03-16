@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
+	"database/sql"
 	"embed"
 	"encoding/hex"
 	"encoding/json"
@@ -11,6 +12,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -55,11 +57,13 @@ func InitMux(authService *auth.Service, userService *usersvc.Service, ingestServ
 	m.HandleFunc("GET /", h.settingsPage)
 	m.HandleFunc("POST /users", h.createUser)
 	m.HandleFunc("DELETE /users/{id}", h.deleteUser)
+	m.HandleFunc("GET /users/{id}", h.getUser)
 	m.HandleFunc("GET /users/{id}/apps", h.getUserApps)
 	m.HandleFunc("PUT /users/{id}/apps", h.updateUserApps)
 
 	// Collector API keys
 	m.HandleFunc("POST /admin/collector-api-keys", h.createCollectorAPIKey)
+	m.HandleFunc("GET /admin/collector-api-keys/{name}", h.getCollectorAPIKey)
 	m.HandleFunc("DELETE /admin/collector-api-keys/{name}", h.deleteCollectorAPIKey)
 
 	// User API keys (LLM compatibility)
@@ -68,6 +72,7 @@ func InitMux(authService *auth.Service, userService *usersvc.Service, ingestServ
 
 	// Notifiers management
 	m.HandleFunc("GET /notifiers/new", h.notifierForm)
+	m.HandleFunc("GET /notifiers/{id}", h.getNotifier)
 	m.HandleFunc("POST /notifiers", h.createNotifier)
 	m.HandleFunc("DELETE /notifiers/{id}", h.deleteNotifier)
 	m.HandleFunc("PUT /notifiers/{id}/toggle", h.toggleNotifier)
@@ -195,6 +200,32 @@ func buildNotifierFormData(r *http.Request) (notifierFormData, error) {
 	return data, nil
 }
 
+func detectNotifierSubscriptionMode(isAdmin bool, subscriptionMap map[string]bool, collectorApps map[string][]string) string {
+	if isAdmin && subscriptionMap["*:*"] {
+		return "root"
+	}
+
+	if !isAdmin && len(collectorApps) > 0 {
+		for collector := range collectorApps {
+			if !subscriptionMap[appKey(collector, "*")] {
+				return "granular"
+			}
+		}
+		for key := range subscriptionMap {
+			if key == "*:*" {
+				return "granular"
+			}
+			if strings.HasSuffix(key, ":*") {
+				continue
+			}
+			return "granular"
+		}
+		return "root"
+	}
+
+	return "granular"
+}
+
 func generateNtfyTopic() (string, error) {
 	buf := make([]byte, 32)
 	if _, err := rand.Read(buf); err != nil {
@@ -263,15 +294,19 @@ func (h *handler) deleteUser(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) getUserApps(w http.ResponseWriter, r *http.Request) {
+	h.getUser(w, r)
+}
+
+func (h *handler) getUser(w http.ResponseWriter, r *http.Request) {
 	data, ok := h.buildUserAppsData(w, r)
 	if !ok {
 		return
 	}
-	h.t.RenderHTTP(w, r, "user-apps", data)
+	h.t.RenderHTTP(w, r, "user", data)
 }
 
 func (h *handler) buildUserAppsData(w http.ResponseWriter, r *http.Request) (map[string]any, bool) {
-	_, err := h.requireAdminUser(w, r)
+	currentUser, err := h.requireAdminUser(w, r)
 	if err != nil {
 		return nil, false
 	}
@@ -318,11 +353,13 @@ func (h *handler) buildUserAppsData(w http.ResponseWriter, r *http.Request) (map
 	}
 
 	data := map[string]any{
-		"Title":         "Edit User Apps - Tracer",
+		"Title":         "User - Tracer",
+		"CurrentUser":   currentUser,
 		"User":          user,
 		"UserApps":      userAppMap,
 		"CollectorApps": collectorApps,
 		"HasNoApps":     hasNoApps,
+		"CanDelete":     currentUser.ID != user.ID,
 	}
 
 	return data, true
@@ -407,7 +444,7 @@ func (h *handler) updateUserApps(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	htmx.Redirect(w, r, "/settings/")
+	htmx.Redirect(w, r, fmt.Sprintf("/settings/users/%d", id))
 }
 
 // Collector API key handlers
@@ -460,6 +497,34 @@ func (h *handler) deleteCollectorAPIKey(w http.ResponseWriter, r *http.Request) 
 	}
 
 	htmx.Redirect(w, r, "/settings/")
+}
+
+func (h *handler) getCollectorAPIKey(w http.ResponseWriter, r *http.Request) {
+	if _, err := h.requireAdminUser(w, r); err != nil {
+		return
+	}
+
+	name := r.PathValue("name")
+	if name == "" {
+		http.Error(w, "Invalid collector API key name", http.StatusBadRequest)
+		return
+	}
+
+	key, err := h.authService.GetCollectorAPIKeyByName(r.Context(), name)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			h.t.RenderError(w, r, "Error", "Collector API key not found", http.StatusNotFound)
+			return
+		}
+		slog.Error("Failed to get collector API key", "name", name, "error", err)
+		h.t.RenderError(w, r, "Error", "Failed to get collector API key", http.StatusInternalServerError)
+		return
+	}
+
+	h.t.RenderHTTP(w, r, "collector-api-key", map[string]any{
+		"Title": "Collector API Key - Tracer",
+		"Key":   key,
+	})
 }
 
 // User API key handlers (LLM compatibility)
@@ -533,6 +598,15 @@ func (h *handler) deleteAPIKey(w http.ResponseWriter, r *http.Request) {
 }
 
 // Notifier handlers
+
+func (h *handler) getNotifier(w http.ResponseWriter, r *http.Request) {
+	data, ok := h.buildNotifierSubscriptionsData(w, r)
+	if !ok {
+		return
+	}
+	data["Title"] = "Notifier - Tracer"
+	h.t.RenderHTTP(w, r, "notifier", data)
+}
 
 func (h *handler) notifierForm(w http.ResponseWriter, r *http.Request) {
 	if _, err := h.requireAuthenticatedUser(w, r); err != nil {
@@ -714,7 +788,14 @@ func (h *handler) toggleNotifier(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	htmx.Redirect(w, r, "/settings/")
+	redirectPath := "/settings/"
+	if currentURL := r.Header.Get("HX-Current-URL"); currentURL != "" {
+		if parsed, err := url.Parse(currentURL); err == nil && parsed.Path != "" {
+			redirectPath = parsed.Path
+		}
+	}
+
+	htmx.Redirect(w, r, redirectPath)
 }
 
 func (h *handler) getNotifierSubscriptions(w http.ResponseWriter, r *http.Request) {
@@ -813,12 +894,13 @@ func (h *handler) buildNotifierSubscriptionsData(w http.ResponseWriter, r *http.
 	}
 
 	data := map[string]any{
-		"Title":         "Edit Notifier Apps - Tracer",
-		"Notifier":      setup,
-		"NotifierID":    id,
-		"Subscriptions": subscriptionMap, // map[string]bool (key: "collector:app")
-		"CollectorApps": collectorApps,   // map[string][]string
-		"IsAdmin":       user.IsAdmin,
+		"Title":            "Edit Notifier Apps - Tracer",
+		"Notifier":         setup,
+		"NotifierID":       id,
+		"Subscriptions":    subscriptionMap, // map[string]bool (key: "collector:app")
+		"CollectorApps":    collectorApps,   // map[string][]string
+		"IsAdmin":          user.IsAdmin,
+		"SubscriptionMode": detectNotifierSubscriptionMode(user.IsAdmin, subscriptionMap, collectorApps),
 	}
 
 	return data, true
@@ -843,12 +925,37 @@ func (h *handler) updateNotifierSubscriptions(w http.ResponseWriter, r *http.Req
 	}
 
 	// Parse form values: "collector:app" format
+	mode := r.FormValue("subscription_mode")
 	selectedPairs := r.Form["apps"]
 	allApps := r.FormValue("all_apps") == "on"
 
 	var subscriptions []notify.Subscription
 
-	if allApps && user.IsAdmin {
+	if mode == "root" {
+		if user.IsAdmin {
+			subscriptions = append(subscriptions, notify.Subscription{
+				AppName:       "*",
+				CollectorName: "*",
+			})
+		} else {
+			accessPolicy, err := h.userService.FindAccessPolicy(r.Context(), user.ID)
+			if err != nil {
+				http.Error(w, "Failed to get user apps", http.StatusInternalServerError)
+				return
+			}
+
+			collectors := make(map[string]bool)
+			for _, app := range accessPolicy.Apps {
+				collectors[app.CollectorName] = true
+			}
+			for collector := range collectors {
+				subscriptions = append(subscriptions, notify.Subscription{
+					CollectorName: collector,
+					AppName:       "*",
+				})
+			}
+		}
+	} else if allApps && user.IsAdmin {
 		// Global wildcard subscription (all apps from all collectors)
 		subscriptions = append(subscriptions, notify.Subscription{
 			AppName:       "*",

@@ -21,7 +21,9 @@
 
 {{define "input-text"}}
 <input type="{{.Type}}" id="{{.ID}}" name="{{.Name}}" placeholder="{{.Placeholder}}" {{if .Required}}required{{end}}
-       class="w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg placeholder:text-fg-secondary/50">
+       {{if .MaxLength}}maxlength="{{.MaxLength}}"{{end}}
+       {{if .DesktopWidth}}style="--desktop-field-width: {{.DesktopWidth}}ch;"{{end}}
+       class="w-full max-w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg placeholder:text-fg-secondary/50 md:w-[var(--desktop-field-width)]">
 {{end}}
 
 {{define "settings-content"}}
@@ -47,7 +49,7 @@
     <div class="mb-8 w-full border border-bg-secondary/70 p-4">
         <form action="/settings/api-keys" method="POST">
             <div class="mb-4 w-full">
-                {{template "input-text" dict "Type" "text" "ID" "key_name" "Name" "name" "Placeholder" "Key name" "Required" true}}
+                {{template "input-text" dict "Type" "text" "ID" "key_name" "Name" "name" "Placeholder" "Key name" "Required" true "MaxLength" 64 "DesktopWidth" 40}}
             </div>
             <button type="submit" class="text-sm text-fg border border-fg px-4 py-2 hover:bg-fg hover:text-bg transition-colors">Generate Key</button>
         </form>
@@ -59,7 +61,6 @@
             <tr class="text-left text-sm text-fg-secondary">
                 <th class="pb-2 font-medium">Name</th>
                 <th class="pb-2 font-medium">Key</th>
-                <th class="pb-2 font-medium">Created</th>
                 <th class="pb-2 font-medium">Last Used</th>
                 <th class="pb-2 font-medium"></th>
             </tr>
@@ -69,7 +70,6 @@
             <tr class="group opacity-60 hover:opacity-100 transition-opacity duration-700 hover:duration-150 border-b border-bg-secondary/50">
                 <td class="py-3">{{.Name}}</td>
                 <td class="py-3"><code class="text-sm font-mono">{{.ApiKey}}</code></td>
-                <td class="py-3 text-sm text-fg-secondary">{{formatDateTime .CreatedAt}}</td>
                 <td class="py-3 text-sm text-fg-secondary">{{if .LastUsedAt.Valid}}{{formatDateTime .LastUsedAt.Time}}{{else}}Never{{end}}</td>
                 <td class="py-3 text-right">
                     <button hx-delete="/settings/api-keys/{{.ID}}" hx-confirm="Delete API key {{.Name}}?" hx-target="body" hx-swap="outerHTML" class="text-sm text-fg-secondary hover:text-red-500 underline transition-colors">Delete</button>
@@ -99,7 +99,7 @@
     <div class="mb-8 w-full border border-bg-secondary/70 p-4">
         <form action="/settings/admin/collector-api-keys" method="POST">
             <div class="mb-4 w-full">
-                {{template "input-text" dict "Type" "text" "ID" "collector_key_name" "Name" "name" "Placeholder" "Collector key name" "Required" true}}
+                {{template "input-text" dict "Type" "text" "ID" "collector_key_name" "Name" "name" "Placeholder" "Collector key name" "Required" true "MaxLength" 64 "DesktopWidth" 40}}
             </div>
             <button type="submit" class="text-sm text-fg border border-fg px-4 py-2 hover:bg-fg hover:text-bg transition-colors">Create Collector Key</button>
         </form>
@@ -111,20 +111,20 @@
             <tr class="text-left text-sm text-fg-secondary">
                 <th class="pb-2 font-medium">Name</th>
                 <th class="pb-2 font-medium">Key</th>
-                <th class="pb-2 font-medium">Created</th>
                 <th class="pb-2 font-medium">Last Used</th>
-                <th class="pb-2 font-medium"></th>
             </tr>
         </thead>
         <tbody class="text-base">
             {{range .CollectorAPIKeys}}
             <tr class="group opacity-60 hover:opacity-100 transition-opacity duration-700 hover:duration-150 border-b border-bg-secondary/50">
-                <td class="py-3">{{.Name}}</td>
-                <td class="py-3"><code class="text-sm font-mono">****{{.KeySuffix}}</code></td>
-                <td class="py-3 text-sm text-fg-secondary">{{formatDateTime .CreatedAt}}</td>
-                <td class="py-3 text-sm text-fg-secondary">{{if .LastUsedAt.Valid}}{{formatDateTime .LastUsedAt.Time}}{{else}}Never{{end}}</td>
-                <td class="py-3 text-right">
-                    <button hx-delete="/settings/admin/collector-api-keys/{{urlEncode .Name}}" hx-confirm="Delete collector API key {{.Name}}?" hx-target="body" hx-swap="outerHTML" class="text-sm text-fg-secondary hover:text-red-500 underline transition-colors">Delete</button>
+                <td class="py-0">
+                    <a href="/settings/admin/collector-api-keys/{{urlEncode .Name}}" class="block py-3">{{.Name}}</a>
+                </td>
+                <td class="py-0">
+                    <a href="/settings/admin/collector-api-keys/{{urlEncode .Name}}" class="block py-3"><code class="text-sm font-mono">****{{.KeySuffix}}</code></a>
+                </td>
+                <td class="py-0 text-sm text-fg-secondary">
+                    <a href="/settings/admin/collector-api-keys/{{urlEncode .Name}}" class="block py-3">{{if .LastUsedAt.Valid}}{{formatDateTime .LastUsedAt.Time}}{{else}}Never{{end}}</a>
                 </td>
             </tr>
             {{end}}
@@ -141,12 +141,12 @@
 
     <div class="mb-8 w-full border border-bg-secondary/70 p-4">
         <form action="/settings/users" method="POST">
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4 w-full">
-                <div>
-                    {{template "input-text" dict "Type" "text" "ID" "username" "Name" "username" "Placeholder" "Username" "Required" true}}
+            <div class="mb-4 w-full space-y-4">
+                <div class="w-full">
+                    {{template "input-text" dict "Type" "text" "ID" "username" "Name" "username" "Placeholder" "Username" "Required" true "MaxLength" 32 "DesktopWidth" 24}}
                 </div>
-                <div>
-                    {{template "input-text" dict "Type" "password" "ID" "password" "Name" "password" "Placeholder" "Password" "Required" true}}
+                <div class="w-full">
+                    {{template "input-text" dict "Type" "password" "ID" "password" "Name" "password" "Placeholder" "Password" "Required" true "MaxLength" 72 "DesktopWidth" 32}}
                 </div>
             </div>
             {{template "markdown-checkbox" dict "ID" "is_admin" "Name" "is_admin" "Label" "Admin" "Checked" false "Indent" 0}}
@@ -163,25 +163,14 @@
                 <th class="pb-2 font-medium">Username</th>
                 <th class="pb-2 font-medium">Role</th>
                 <th class="pb-2 font-medium">Created</th>
-                <th class="pb-2 font-medium"></th>
             </tr>
         </thead>
         <tbody class="text-base">
             {{range .Users}}
             <tr class="group opacity-60 hover:opacity-100 transition-opacity duration-700 hover:duration-150 border-b border-bg-secondary/50">
-                <td class="py-3">{{.Username}}</td>
-                <td class="py-3 text-sm text-fg">{{if eq .IsAdmin 1}}Admin{{else}}User{{end}}</td>
-                <td class="py-3 text-sm text-fg-secondary">{{formatDateTime .CreatedAt}}</td>
-                <td class="py-3 text-right">
-                    <div class="flex gap-4 justify-end">
-                        {{if ne .IsAdmin 1}}
-                        <a href="/settings/users/{{.ID}}/apps" class="text-sm text-fg-secondary hover:text-fg transition-colors">Apps</a>
-                        {{end}}
-                        {{if ne .ID $.CurrentUser.ID}}
-                        <button hx-delete="/settings/users/{{.ID}}" hx-confirm="Delete user {{.Username}}?" hx-target="body" hx-swap="outerHTML" class="text-sm text-fg-secondary hover:text-red-500 underline transition-colors">Delete</button>
-                        {{end}}
-                    </div>
-                </td>
+                <td class="py-0"><a href="/settings/users/{{.ID}}" class="block py-3">{{.Username}}</a></td>
+                <td class="py-0 text-sm text-fg"><a href="/settings/users/{{.ID}}" class="block py-3">{{if eq .IsAdmin 1}}Admin{{else}}User{{end}}</a></td>
+                <td class="py-0 text-sm text-fg-secondary"><a href="/settings/users/{{.ID}}" class="block py-3">{{formatDateTime .CreatedAt}}</a></td>
             </tr>
             {{end}}
         </tbody>
@@ -206,23 +195,19 @@
                 <th class="pb-2 font-medium">Name</th>
                 <th class="pb-2 font-medium">Type</th>
                 <th class="pb-2 font-medium">Status</th>
-                <th class="pb-2 font-medium">Created</th>
-                <th class="pb-2 font-medium"></th>
             </tr>
         </thead>
         <tbody class="text-base">
             {{range .Notifiers}}
             <tr class="group opacity-60 hover:opacity-100 transition-opacity duration-700 hover:duration-150 border-b border-bg-secondary/50">
-                <td class="py-3">{{.Name}}</td>
-                <td class="py-3 text-sm text-fg-secondary">{{.Type}}</td>
-                <td class="py-3 text-sm text-fg-secondary">{{if eq .Enabled 1}}Enabled{{else}}Disabled{{end}}</td>
-                <td class="py-3 text-sm text-fg-secondary">{{formatDateTime .CreatedAt}}</td>
-                <td class="py-3 text-right">
-                    <div class="flex gap-4 justify-end">
-                        <a href="/settings/notifiers/{{.ID}}/subscriptions" class="text-sm text-fg-secondary hover:text-fg transition-colors">Subscriptions</a>
-                        <button hx-put="/settings/notifiers/{{.ID}}/toggle" hx-target="body" hx-swap="outerHTML" class="text-sm text-fg-secondary hover:text-fg transition-colors">{{if eq .Enabled 1}}Disable{{else}}Enable{{end}}</button>
-                        <button hx-delete="/settings/notifiers/{{.ID}}" hx-confirm="Delete notifier {{.Name}}?" hx-target="body" hx-swap="outerHTML" class="text-sm text-fg-secondary hover:text-red-500 underline transition-colors">Delete</button>
-                    </div>
+                <td class="py-0">
+                    <a href="/settings/notifiers/{{.ID}}" class="block py-3">{{.Name}}</a>
+                </td>
+                <td class="py-0 text-sm text-fg-secondary">
+                    <a href="/settings/notifiers/{{.ID}}" class="block py-3">{{.Type}}</a>
+                </td>
+                <td class="py-0 text-sm text-fg-secondary">
+                    <a href="/settings/notifiers/{{.ID}}" class="block py-3">{{if eq .Enabled 1}}Enabled{{else}}Disabled{{end}}</a>
                 </td>
             </tr>
             {{end}}
@@ -232,6 +217,110 @@
     <p class="text-sm text-fg-secondary/60 py-6 text-center">No notifiers configured.</p>
     {{end}}
 </div>
+{{end}}
+
+{{define "collector-api-key"}}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    {{template "head"}}
+    <title>{{.Title}}</title>
+</head>
+<body>
+    {{template "navbar" .}}
+    <div class="max-w-5xl mx-auto p-6">
+        {{template "collector-api-key-content" .}}
+    </div>
+</body>
+</html>
+{{end}}
+
+{{define "collector-api-key-content"}}
+<div class="mb-6">
+    <a href="/settings/" class="text-sm text-fg-secondary hover:text-fg transition-colors">&larr; Back to Settings</a>
+</div>
+
+<div class="mb-6">
+    <h2 class="text-xl font-medium">Collector API Key</h2>
+</div>
+
+<div class="mb-8">
+    <div class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
+        <span class="text-fg-secondary">Name:</span>
+        <span>{{.Key.Name}}</span>
+
+        <span class="text-fg-secondary">Key Suffix:</span>
+        <span class="font-mono">****{{.Key.KeySuffix}}</span>
+
+        <span class="text-fg-secondary">Created:</span>
+        <span>{{formatDateTime .Key.CreatedAt}}</span>
+
+        <span class="text-fg-secondary">Last Used:</span>
+        <span>{{if .Key.LastUsedAt.Valid}}{{formatDateTime .Key.LastUsedAt.Time}}{{else}}Never{{end}}</span>
+    </div>
+</div>
+
+<div>
+    <button hx-delete="/settings/admin/collector-api-keys/{{urlEncode .Key.Name}}"
+            hx-confirm="Delete collector API key {{.Key.Name}}?"
+            hx-target="body"
+            hx-swap="outerHTML"
+            class="text-sm text-fg-secondary hover:text-red-500 underline transition-colors">
+        Delete collector API key
+    </button>
+</div>
+{{end}}
+
+{{define "notifier"}}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    {{template "head"}}
+    <title>{{.Title}}</title>
+</head>
+<body>
+    {{template "navbar" .}}
+    <div class="max-w-5xl mx-auto p-6">
+        {{template "notifier-content" .}}
+    </div>
+    {{template "markdown-checkbox-script" .}}
+</body>
+</html>
+{{end}}
+
+{{define "notifier-content"}}
+<div class="mb-6">
+    <a href="/settings/" class="text-sm text-fg-secondary hover:text-fg transition-colors">&larr; Back to Settings</a>
+</div>
+
+<div class="mb-6 flex items-center justify-between gap-4">
+    <h2 class="text-xl font-medium">Notifier</h2>
+    <button hx-delete="/settings/notifiers/{{.Notifier.ID}}" hx-confirm="Delete notifier {{.Notifier.Name}}?" hx-target="body" hx-swap="outerHTML" class="text-sm text-fg-secondary hover:text-red-500 underline transition-colors">Delete</button>
+</div>
+
+<div class="mb-8">
+    <div class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
+        <span class="text-fg-secondary">Name:</span>
+        <span>{{.Notifier.Name}}</span>
+
+        <span class="text-fg-secondary">Type:</span>
+        <span>{{.Notifier.Type}}</span>
+
+        <span class="text-fg-secondary">Status:</span>
+        <span class="flex items-center gap-3">{{if eq .Notifier.Enabled 1}}Enabled{{else}}Disabled{{end}} <button hx-put="/settings/notifiers/{{.Notifier.ID}}/toggle" hx-target="body" hx-swap="outerHTML" class="text-sm text-fg-secondary hover:text-fg transition-colors">{{if eq .Notifier.Enabled 1}}Disable{{else}}Enable{{end}}</button></span>
+    </div>
+</div>
+
+<div class="mb-8">
+    <h3 class="text-sm text-fg-secondary mb-3">Config</h3>
+    {{template "json-viewer-full" dict "ID" "notifier-config" "Data" .Notifier.Config "Valid" true}}
+</div>
+
+<div class="mb-6">
+    <h3 class="text-xl font-medium mb-4">Subscriptions</h3>
+    {{template "notifier-subscriptions-form" .}}
+</div>
+{{template "notifier-subscriptions-script" .}}
 {{end}}
 
 {{define "notifier-form"}}
@@ -255,28 +344,31 @@
 
     <form action="/settings/notifiers" method="POST" class="p-4">
         <input type="hidden" name="type" value="{{.ActiveType}}">
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-            <div>
-                {{template "input-text" dict "Type" "text" "ID" "notifier_name" "Name" "name" "Placeholder" "Name" "Required" true}}
+        <div class="mb-4 space-y-4">
+            <div class="w-full">
+                {{template "input-text" dict "Type" "text" "ID" "notifier_name" "Name" "name" "Placeholder" "Name" "Required" true "MaxLength" 64 "DesktopWidth" 40}}
             </div>
 
             {{if eq .ActiveType "telegram"}}
-            <div>
-                {{template "input-text" dict "Type" "text" "ID" "telegram_token" "Name" "telegram_token" "Placeholder" "Bot token" "Required" true}}
+            <div class="w-full">
+                {{template "input-text" dict "Type" "text" "ID" "telegram_token" "Name" "telegram_token" "Placeholder" "Bot token" "Required" true "DesktopWidth" 40}}
             </div>
-            <div>
-                {{template "input-text" dict "Type" "text" "ID" "telegram_chat_id" "Name" "telegram_chat_id" "Placeholder" "Chat ID" "Required" true}}
+            <div class="w-full">
+                {{template "input-text" dict "Type" "text" "ID" "telegram_chat_id" "Name" "telegram_chat_id" "Placeholder" "Chat ID" "Required" true "DesktopWidth" 20}}
             </div>
             {{else if eq .ActiveType "ntfy"}}
-            <div>
+            <div class="w-full">
                 <input type="url" id="ntfy_url" name="ntfy_url" value="{{.NtfyURL}}" required
                        placeholder="Server URL"
-                       class="w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg placeholder:text-fg-secondary/50">
+                       style="--desktop-field-width: 48ch;"
+                       class="w-full max-w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg placeholder:text-fg-secondary/50 md:w-[var(--desktop-field-width)]">
             </div>
-            <div class="md:col-span-2">
+            <div class="w-full">
                 <input type="text" id="ntfy_topic" name="ntfy_topic" value="{{.NtfyTopic}}" required
                        placeholder="Topic"
-                       class="w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg placeholder:text-fg-secondary/50">
+                       maxlength="64"
+                       style="--desktop-field-width: 64ch;"
+                       class="w-full max-w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg placeholder:text-fg-secondary/50 md:w-[var(--desktop-field-width)]">
             </div>
             {{end}}
         </div>

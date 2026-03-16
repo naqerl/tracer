@@ -271,6 +271,10 @@ func (s *Service) ListCollectorAPIKeys(ctx context.Context) ([]db.GetCollectorAP
 	return db.New(s.db).GetCollectorAPIKeys(ctx)
 }
 
+func (s *Service) GetCollectorAPIKeyByName(ctx context.Context, name string) (db.CollectorApiKey, error) {
+	return db.New(s.db).GetCollectorAPIKeyByName(ctx, name)
+}
+
 func (s *Service) DeleteCollectorAPIKey(ctx context.Context, name string) error {
 	return db.New(s.db).DeleteCollectorAPIKey(ctx, name)
 }
@@ -339,7 +343,7 @@ func (s *Service) ValidateUserAPIKey(ctx context.Context, key string, userServic
 	return userID, err
 }
 
-func (s *Service) ListUserAPIKeys(ctx context.Context, userID int64) ([]db.UserApiKey, error) {
+func (s *Service) ListUserAPIKeys(ctx context.Context, userID int64) ([]db.GetUserAPIKeysByUserRow, error) {
 	return db.New(s.db).GetUserAPIKeysByUser(ctx, userID)
 }
 

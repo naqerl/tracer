@@ -9,6 +9,7 @@
     <div class="max-w-2xl mx-auto p-6">
         {{template "notifier-subscriptions-content" .}}
     </div>
+    {{template "markdown-checkbox-script" .}}
 </body>
 </html>
 {{end}}
@@ -17,99 +18,154 @@
 <a href="/settings/" class="text-accent hover:underline text-sm mb-4 inline-block">&larr; Back to Settings</a>
 <p class="text-fg-secondary mb-6">Notifier: <strong class="text-fg">{{.Notifier.Name}}</strong> <span class="text-fg-secondary">({{.Notifier.Type}})</span></p>
 
-<div class="bg-bg-secondary p-5">
-    <form hx-put="/settings/notifiers/{{.NotifierID}}/subscriptions" hx-target="body" hx-swap="outerHTML">
-        <p class="text-fg-secondary text-sm mb-4">Select which applications this notifier should receive alerts from:</p>
+{{template "notifier-subscriptions-form" .}}
+{{template "notifier-subscriptions-script" .}}
+{{end}}
 
-        {{if .IsAdmin}}
-        <!-- Global All Apps Option (Admin only) -->
-        <label class="flex items-center gap-3 p-3 bg-blue-900/30 border border-accent cursor-pointer mb-4">
-            <input type="checkbox" id="all-apps-checkbox" name="all_apps" {{if index $.Subscriptions "*:*"}}checked{{end}} class="w-5 h-5">
-            <span><strong>All Applications</strong> <span class="text-fg-secondary text-sm">(from all collectors)</span></span>
-        </label>
+{{define "notifier-subscriptions-form"}}
+<form hx-put="/settings/notifiers/{{.NotifierID}}/subscriptions" hx-target="body" hx-swap="outerHTML">
+    <div class="mb-6 w-full border border-bg-secondary/70">
+        <input type="hidden" id="subscription_mode" name="subscription_mode" value="{{.SubscriptionMode}}">
 
-        <div class="border-t border-bg my-4"></div>
-        <p class="text-fg-secondary text-sm mb-4">Or select specific collectors and applications:</p>
-        {{end}}
+        <div class="flex border-b border-bg-secondary/70 text-sm">
+            <button type="button"
+                    id="subscription-tab-root"
+                    class="px-4 py-3 text-fg-secondary hover:text-fg transition-colors {{if eq .SubscriptionMode "root"}}text-fg{{end}}"
+                    onclick="setNotifierSubscriptionMode('root')">
+                root
+            </button>
+            <button type="button"
+                    id="subscription-tab-granular"
+                    class="px-4 py-3 border-l border-bg-secondary/70 text-fg-secondary hover:text-fg transition-colors {{if eq .SubscriptionMode "granular"}}text-fg{{end}}"
+                    onclick="setNotifierSubscriptionMode('granular')">
+                granular
+            </button>
+        </div>
 
-        {{if .CollectorApps}}
-        <!-- Apps grouped by collector -->
-        <div id="apps-container" class="space-y-4 mb-6">
-            {{range $collector, $apps := .CollectorApps}}
-            <div class="border border-bg p-4 bg-bg">
-                <div class="flex items-center justify-between mb-3">
-                    <h3 class="text-fg font-medium">Collector: {{$collector}}</h3>
-                    {{$wildcardKey := printf "%s:*" $collector}}
-                    <label class="flex items-center gap-2 text-sm">
-                        <input type="checkbox" name="apps" value="{{$wildcardKey}}"
-                               {{if index $.Subscriptions $wildcardKey}}checked{{end}}
-                               class="app-checkbox collector-wildcard w-4 h-4"
-                               data-collector="{{$collector}}">
-                        <span class="text-fg-secondary">All apps from this collector</span>
-                    </label>
-                </div>
-                <div class="space-y-2 ml-4">
-                    {{range $apps}}
-                    {{$key := printf "%s:%s" $collector .}}
-                    <label class="flex items-center gap-3 p-2 hover:bg-bg-secondary transition-colors cursor-pointer">
-                        <input type="checkbox" name="apps" value="{{$key}}"
-                               {{if index $.Subscriptions $key}}checked{{end}}
-                               class="app-checkbox collector-app w-4 h-4"
-                               data-collector="{{$collector}}">
-                        <span>{{.}}</span>
-                    </label>
+        <div class="p-4">
+            <div id="subscription-panel-root" class="{{if ne .SubscriptionMode "root"}}hidden{{end}}">
+                <p class="text-fg-secondary text-sm">Send messages from all collectors and apps that you have access to.</p>
+            </div>
+
+            <div id="subscription-panel-granular" class="{{if ne .SubscriptionMode "granular"}}hidden{{end}}">
+                {{if .CollectorApps}}
+                <div id="apps-container" class="space-y-2">
+                    {{range $collector, $apps := .CollectorApps}}
+                    {{if $apps}}
+                    <div class="py-2 notifier-collector-group">
+                        {{$wildcardKey := printf "%s:*" $collector}}
+                        {{template "markdown-checkbox" dict "ID" (printf "collector_%s" $collector) "Name" "apps" "Label" $collector "Value" $wildcardKey "Checked" (index $.Subscriptions $wildcardKey) "Indent" 0}}
+                        <div class="space-y-1 mt-2">
+                            {{range $apps}}
+                            {{$key := printf "%s:%s" $collector .}}
+                            {{template "markdown-checkbox" dict "ID" (printf "sub_%s" $key) "Name" "apps" "Label" . "Value" $key "Checked" (index $.Subscriptions $key) "Indent" 1}}
+                            {{end}}
+                        </div>
+                    </div>
+                    {{end}}
                     {{end}}
                 </div>
+                {{else}}
+                <div class="text-center text-fg-secondary py-8">
+                    <p>No applications available yet.</p>
+                    <p class="text-sm mt-2">Start a collector to begin receiving logs and create applications.</p>
+                </div>
+                {{end}}
             </div>
-            {{end}}
         </div>
-        {{else}}
-        <div class="text-center text-fg-secondary py-8">
-            <p>No applications available yet.</p>
-            <p class="text-sm mt-2">Start a collector to begin receiving logs and create applications.</p>
-        </div>
-        {{end}}
+    </div>
 
-        <div class="flex gap-3">
-            <button type="submit" class="px-5 py-2.5 bg-accent hover:bg-accent/80 text-fg transition-colors">Save Changes</button>
-            <a href="/settings/" class="px-5 py-2.5 bg-bg hover:bg-bg/80 text-fg-secondary hover:text-fg transition-colors">Cancel</a>
-        </div>
-    </form>
-</div>
+    <div class="flex gap-4">
+        <button type="submit" class="text-sm text-fg border border-fg px-4 py-2 hover:bg-fg hover:text-bg transition-colors">Save Changes</button>
+    </div>
+</form>
+{{end}}
 
+{{define "notifier-subscriptions-script"}}
 <script>
-// Disable all app checkboxes when "All Applications" (global) is checked
-document.getElementById('all-apps-checkbox')?.addEventListener('change', function(e) {
-    const appCheckboxes = document.querySelectorAll('.app-checkbox');
-    appCheckboxes.forEach(cb => cb.disabled = e.target.checked);
-});
+function setNotifierSubscriptionMode(mode) {
+    const input = document.getElementById('subscription_mode');
+    const rootPanel = document.getElementById('subscription-panel-root');
+    const granularPanel = document.getElementById('subscription-panel-granular');
+    const rootTab = document.getElementById('subscription-tab-root');
+    const granularTab = document.getElementById('subscription-tab-granular');
+    if (!input || !rootPanel || !granularPanel || !rootTab || !granularTab) return;
 
-// Disable individual app checkboxes for a collector when its wildcard is checked
-document.querySelectorAll('.collector-wildcard').forEach(wildcard => {
-    wildcard.addEventListener('change', function(e) {
-        const collector = e.target.dataset.collector;
-        const collectorApps = document.querySelectorAll(`.collector-app[data-collector="${collector}"]`);
-        collectorApps.forEach(cb => cb.disabled = e.target.checked);
+    input.value = mode;
+    rootPanel.classList.toggle('hidden', mode !== 'root');
+    granularPanel.classList.toggle('hidden', mode !== 'granular');
+    rootTab.classList.toggle('text-fg', mode === 'root');
+    rootTab.classList.toggle('text-fg-secondary', mode !== 'root');
+    granularTab.classList.toggle('text-fg', mode === 'granular');
+    granularTab.classList.toggle('text-fg-secondary', mode !== 'granular');
+}
+
+function notifierButtonState(toggleBtn, checked, labelText) {
+    toggleBtn.textContent = (checked ? '[x] ' : '[ ] ') + labelText;
+    toggleBtn.classList.toggle('text-fg', checked);
+    toggleBtn.classList.toggle('text-fg-secondary', !checked);
+}
+
+function notifierInputChecked(id) {
+    const valueInput = document.getElementById(id + '_value');
+    return valueInput && valueInput.value === (valueInput.dataset.checkedValue || 'on');
+}
+
+function notifierSetChecked(id, checked) {
+    const valueInput = document.getElementById(id + '_value');
+    const toggleBtn = document.getElementById(id + '_toggle');
+    if (!valueInput || !toggleBtn) return;
+    const checkedValue = valueInput.dataset.checkedValue || 'on';
+    const labelText = toggleBtn.dataset.label;
+    valueInput.value = checked ? checkedValue : '';
+    notifierButtonState(toggleBtn, checked, labelText);
+}
+
+function notifierCollectorApps(group) {
+    return Array.from(group.querySelectorAll('button[id^="sub_"][id$="_toggle"]'));
+}
+
+document.querySelectorAll('.notifier-collector-group button[id^="collector_"][id$="_toggle"]').forEach(toggle => {
+    toggle.addEventListener('click', function() {
+        setTimeout(() => {
+            const collectorID = toggle.id.replace('_toggle', '');
+            const collectorChecked = notifierInputChecked(collectorID);
+            const group = toggle.closest('.notifier-collector-group');
+            notifierCollectorApps(group).forEach(appBtn => {
+                notifierSetChecked(appBtn.id.replace('_toggle', ''), collectorChecked);
+            });
+        }, 0);
     });
 });
 
-// Initialize states on page load
-document.addEventListener('DOMContentLoaded', function() {
-    // Check if global wildcard is checked
-    const globalCheckbox = document.getElementById('all-apps-checkbox');
-    if (globalCheckbox && globalCheckbox.checked) {
-        const appCheckboxes = document.querySelectorAll('.app-checkbox');
-        appCheckboxes.forEach(cb => cb.disabled = true);
-    }
+document.querySelectorAll('.notifier-collector-group button[id^="sub_"][id$="_toggle"]').forEach(appBtn => {
+    appBtn.addEventListener('click', function() {
+        setTimeout(() => {
+            const group = appBtn.closest('.notifier-collector-group');
+            const collectorToggle = group.querySelector('button[id^="collector_"][id$="_toggle"]');
+            if (!collectorToggle) return;
 
-    // Check if any collector wildcards are checked
-    document.querySelectorAll('.collector-wildcard').forEach(wildcard => {
-        if (wildcard.checked) {
-            const collector = wildcard.dataset.collector;
-            const collectorApps = document.querySelectorAll(`.collector-app[data-collector="${collector}"]`);
-            collectorApps.forEach(cb => cb.disabled = true);
+            const allChecked = notifierCollectorApps(group).every(btn => {
+                return notifierInputChecked(btn.id.replace('_toggle', ''));
+            });
+            notifierSetChecked(collectorToggle.id.replace('_toggle', ''), allChecked);
+        }, 0);
+    });
+});
+
+document.addEventListener('DOMContentLoaded', function() {
+    setNotifierSubscriptionMode(document.getElementById('subscription_mode')?.value || 'granular');
+    document.querySelectorAll('.notifier-collector-group').forEach(group => {
+        const collectorToggle = group.querySelector('button[id^="collector_"][id$="_toggle"]');
+        if (!collectorToggle) return;
+        const allChecked = notifierCollectorApps(group).length > 0 && notifierCollectorApps(group).every(btn => {
+            return notifierInputChecked(btn.id.replace('_toggle', ''));
+        });
+        if (allChecked) {
+            notifierSetChecked(collectorToggle.id.replace('_toggle', ''), true);
         }
     });
+
 });
 </script>
 {{end}}

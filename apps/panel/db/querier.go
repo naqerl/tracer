@@ -67,7 +67,7 @@ type Querier interface {
 	GetPercentiles(ctx context.Context, createdAt time.Time) (GetPercentilesRow, error)
 	GetSession(ctx context.Context, id string) (Session, error)
 	GetStatsHistory(ctx context.Context, createdAt time.Time) ([]SystemStat, error)
-	GetUserAPIKeysByUser(ctx context.Context, userID int64) ([]UserApiKey, error)
+	GetUserAPIKeysByUser(ctx context.Context, userID int64) ([]GetUserAPIKeysByUserRow, error)
 	GetUserByID(ctx context.Context, id int64) (User, error)
 	GrantAppAccess(ctx context.Context, arg GrantAppAccessParams) error
 	InsertLifecycleEvent(ctx context.Context, arg InsertLifecycleEventParams) (LifecycleEvent, error)
