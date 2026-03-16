@@ -69,7 +69,7 @@
   <div class="flex flex-wrap items-center gap-4 mb-4 text-xs">
     <div class="flex items-center gap-1">
       <span class="text-fg-secondary">CPU:</span>
-      <span class="{{if gt .Stats.CPUUsagePercent 80.0}}text-red-400{{else if gt .Stats.CPUUsagePercent 60.0}}text-yellow-400{{else}}text-green-400{{end}}">{{printf "%.0f" .Stats.CPUUsagePercent}}%</span>
+      <span class="{{if gt .Stats.CPUUsagePercent 80.0}}text-red-400{{else if gt .Stats.CPUUsagePercent 60.0}}text-yellow-400{{else}}text-fg-secondary{{end}}">{{printf "%.0f" .Stats.CPUUsagePercent}}%</span>
     </div>
     <div class="flex items-center gap-1">
       <span class="text-fg-secondary">RAM:</span>
@@ -78,7 +78,7 @@
       {{$memPercent = (divFloat (toFloat .Stats.MemUsedMB) (toFloat .Stats.MemTotalMB))}}
       {{$memPercent = (mulFloat $memPercent 100.0)}}
       {{end}}
-      <span class="{{if gt $memPercent 80.0}}text-red-400{{else if gt $memPercent 60.0}}text-yellow-400{{else}}text-green-400{{end}}">{{printf "%.0f" $memPercent}}%</span>
+      <span class="{{if gt $memPercent 80.0}}text-red-400{{else if gt $memPercent 60.0}}text-yellow-400{{else}}text-fg-secondary{{end}}">{{printf "%.0f" $memPercent}}%</span>
     </div>
     <div class="flex items-center gap-1">
       <span class="text-fg-secondary">Disk:</span>
@@ -87,7 +87,7 @@
       {{$diskPercent = (divFloat (toFloat .Stats.DiskUsedGB) (toFloat .Stats.DiskTotalGB))}}
       {{$diskPercent = (mulFloat $diskPercent 100.0)}}
       {{end}}
-      <span class="{{if gt $diskPercent 80.0}}text-red-400{{else if gt $diskPercent 60.0}}text-yellow-400{{else}}text-green-400{{end}}">{{printf "%.0f" $diskPercent}}%</span>
+      <span class="{{if gt $diskPercent 80.0}}text-red-400{{else if gt $diskPercent 60.0}}text-yellow-400{{else}}text-fg-secondary{{end}}">{{printf "%.0f" $diskPercent}}%</span>
     </div>
   </div>
   {{else}}
@@ -134,10 +134,10 @@
 
 {{define "app-health"}}
 <span>uptime: </span>
-<span class="inline-block w-[7ch] tabular-nums text-right whitespace-nowrap {{.Health.UptimeTextClass}}">{{if .Health.UptimeText}}{{.Health.UptimeText}}{{else}}N/A{{end}}</span>
+<span class="inline-block w-[4ch] tabular-nums text-right whitespace-nowrap {{.Health.UptimeTextClass}}">{{if .Health.UptimeText}}{{.Health.UptimeText}}{{else}}N/A{{end}}</span>
 {{end}}
 
 {{define "app-error-count"}}
 <span>errors: </span>
-<span class="inline-block w-[3ch] tabular-nums text-right whitespace-nowrap {{.Errors.Class}}">{{.Errors.Count}}</span>
+<span class="inline-block w-[3ch] tabular-nums text-left whitespace-nowrap {{.Errors.Class}}">{{.Errors.Count}}</span>
 {{end}}

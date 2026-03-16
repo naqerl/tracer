@@ -510,7 +510,13 @@ func uptimePercentText(v float64, periodCount int) string {
 	if periodCount == 0 {
 		return "N/A"
 	}
-	return fmt.Sprintf("%.2f%%", v)
+	if v >= 100 {
+		return "100"
+	}
+	if v >= 10 {
+		return fmt.Sprintf("%.1f", v)
+	}
+	return fmt.Sprintf("%.2f", v)
 }
 
 func uptimePercentClass(v float64, periodCount int) string {
