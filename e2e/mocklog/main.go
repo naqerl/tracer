@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
+	"math/rand"
 	"os"
 	"strings"
 	"sync/atomic"
@@ -22,9 +23,14 @@ type config struct {
 	service        string
 	component      string
 	format         string
+	profile        string
 	traceMode      string
 	burstRequests  int
 	steadyInterval time.Duration
+	requestDelay   time.Duration
+	randomSteady   bool
+	randomMinDelay time.Duration
+	randomMaxDelay time.Duration
 	nestedDepth    int
 	warnEvery      int
 	errorEvery     int
@@ -40,12 +46,20 @@ func main() {
 		"service", cfg.service,
 		"component", cfg.component,
 		"format", cfg.format,
+		"profile", cfg.profile,
 		"trace_mode", cfg.traceMode,
 		"burst_requests", cfg.burstRequests,
 		"steady_interval", cfg.steadyInterval.String(),
+		"request_delay", cfg.requestDelay.String(),
+		"random_steady", cfg.randomSteady,
 	)
 
 	runBurst(logger, cfg, cfg.burstRequests)
+
+	if cfg.randomSteady {
+		runRandomSteady(logger, cfg)
+		return
+	}
 
 	ticker := time.NewTicker(cfg.steadyInterval)
 	defer ticker.Stop()
@@ -64,12 +78,14 @@ func parseFlags() config {
 	flag.StringVar(&cfg.traceMode, "trace-mode", "always", "trace behavior: always, never, mixed")
 	flag.IntVar(&cfg.burstRequests, "burst-requests", 18, "number of requests emitted on startup")
 	flag.DurationVar(&cfg.steadyInterval, "steady-interval", 5*time.Minute, "interval between steady-state bursts")
+	flag.DurationVar(&cfg.requestDelay, "request-delay", 75*time.Millisecond, "delay between requests inside a burst")
 	flag.IntVar(&cfg.nestedDepth, "nested-depth", 4, "number of nested steps per request")
 	flag.IntVar(&cfg.warnEvery, "warn-every", 3, "emit a warning on every Nth request")
 	flag.IntVar(&cfg.errorEvery, "error-every", 7, "emit an error on every Nth request")
 	flag.Parse()
 
 	cfg.format = strings.ToLower(strings.TrimSpace(cfg.format))
+	cfg.profile = profileFromEnv()
 	cfg.traceMode = strings.ToLower(strings.TrimSpace(cfg.traceMode))
 
 	if cfg.format != "json" && cfg.format != "text" {
@@ -90,6 +106,11 @@ func parseFlags() config {
 	if cfg.errorEvery < 1 {
 		fail("-error-every must be >= 1")
 	}
+	if cfg.requestDelay < 0 {
+		fail("-request-delay must be >= 0")
+	}
+
+	applyProfile(&cfg)
 
 	return cfg
 }
@@ -136,10 +157,57 @@ func runBurst(logger *slog.Logger, cfg config, count int) {
 			"result", resultFor(idx),
 		)
 
-		if count > 1 {
-			time.Sleep(75 * time.Millisecond)
+		if count > 1 && cfg.requestDelay > 0 {
+			time.Sleep(cfg.requestDelay)
 		}
 	}
+}
+
+func profileFromEnv() string {
+	profile := strings.ToLower(strings.TrimSpace(os.Getenv("TRACER_DEMO_LOG_PROFILE")))
+	switch profile {
+	case "", "default", "normal":
+		return "normal"
+	case "high":
+		return "high"
+	default:
+		fail("unsupported TRACER_DEMO_LOG_PROFILE value: %s", profile)
+		return ""
+	}
+}
+
+func applyProfile(cfg *config) {
+	switch cfg.profile {
+	case "normal":
+		return
+	case "high":
+		cfg.burstRequests *= 2
+		cfg.requestDelay = 0
+		cfg.randomSteady = true
+		cfg.randomMinDelay = time.Second
+		cfg.randomMaxDelay = 3 * time.Second
+		cfg.warnEvery = max(1, cfg.warnEvery/2)
+		cfg.errorEvery = max(1, cfg.errorEvery/2)
+	default:
+		fail("unsupported profile: %s", cfg.profile)
+	}
+}
+
+func runRandomSteady(logger *slog.Logger, cfg config) {
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	for {
+		delay := randomDuration(rng, cfg.randomMinDelay, cfg.randomMaxDelay)
+		time.Sleep(delay)
+		runBurst(logger, cfg, 1)
+	}
+}
+
+func randomDuration(rng *rand.Rand, min, max time.Duration) time.Duration {
+	if max <= min {
+		return min
+	}
+	span := max - min
+	return min + time.Duration(rng.Int63n(int64(span)+1))
 }
 
 func walkFlow(ctx context.Context, logger *slog.Logger, cfg config, idx int, flowKind string, depth int) {
@@ -267,4 +335,11 @@ func slug(s string) string {
 func fail(format string, args ...any) {
 	fmt.Fprintf(os.Stderr, format+"\n", args...)
 	os.Exit(2)
+}
+
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
 }

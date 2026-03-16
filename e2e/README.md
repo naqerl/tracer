@@ -18,6 +18,21 @@ make -C e2e check
 The panel is exposed on `http://localhost:18081` by default.
 The default login is `demo / demo123`.
 
+## Load toggle
+
+The three mock systemd services (`tracer-demo-api`, `tracer-demo-worker`, `tracer-demo-cron`)
+can be switched into a higher-volume logging profile in the running container:
+
+```bash
+make -C e2e mock-logs-high
+make -C e2e mock-logs-status
+make -C e2e mock-logs-normal
+```
+
+`mock-logs-high` increases the startup burst slightly, then switches the demo services into
+a jittered steady mode that emits single flows every 1-3 seconds at random so you can observe
+continuous traffic on the topology page without rebuilding the image.
+
 ## Live reload
 
 To rebuild and hot-swap the panel binary into the running e2e container whenever

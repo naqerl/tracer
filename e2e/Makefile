@@ -1,7 +1,7 @@
 -include ../.env
 export
 
-.PHONY: build up down logs shell reset check live-reload
+.PHONY: build up down logs shell reset check live-reload mock-logs-high mock-logs-normal mock-logs-status
 
 ROOT_DIR := $(abspath $(CURDIR)/..)
 DEMO_DIR := $(ROOT_DIR)/e2e
@@ -10,6 +10,7 @@ DEMO_IMAGE ?= tracer-e2e:local
 DEMO_CONTAINER ?= tracer-e2e
 DEMO_PORT ?= 18081
 DEMO_PANEL_URL ?= http://localhost:$(DEMO_PORT)
+DEMO_UNITS := tracer-demo-api.service tracer-demo-worker.service tracer-demo-cron.service
 
 build:
 	podman build -t $(DEMO_IMAGE) -f $(DEMO_DIR)/Containerfile $(ROOT_DIR)
@@ -45,3 +46,23 @@ check:
 
 live-reload:
 	./live-reload.sh
+
+mock-logs-high:
+	@podman container exists $(DEMO_CONTAINER) >/dev/null 2>&1 || { echo "container $(DEMO_CONTAINER) is not running"; exit 1; }
+	podman exec $(DEMO_CONTAINER) systemctl set-environment TRACER_DEMO_LOG_PROFILE=high
+	podman exec $(DEMO_CONTAINER) systemctl restart $(DEMO_UNITS)
+	@echo "Mock service logging profile set to high"
+
+mock-logs-normal:
+	@podman container exists $(DEMO_CONTAINER) >/dev/null 2>&1 || { echo "container $(DEMO_CONTAINER) is not running"; exit 1; }
+	podman exec $(DEMO_CONTAINER) systemctl unset-environment TRACER_DEMO_LOG_PROFILE
+	podman exec $(DEMO_CONTAINER) systemctl restart $(DEMO_UNITS)
+	@echo "Mock service logging profile set to normal"
+
+mock-logs-status:
+	@podman container exists $(DEMO_CONTAINER) >/dev/null 2>&1 || { echo "container $(DEMO_CONTAINER) is not running"; exit 1; }
+	@profile="$$(podman exec $(DEMO_CONTAINER) systemctl show-environment | sed -n 's/^TRACER_DEMO_LOG_PROFILE=//p')"; \
+	if [ -z "$$profile" ]; then \
+		profile=normal; \
+	fi; \
+	echo "Mock service logging profile: $$profile"

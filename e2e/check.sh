@@ -22,11 +22,11 @@ expected_units=(
 )
 
 app_names=(
-  tracer-panel.service
-  tracer-collector.service
-  tracer-demo-api.service
-  tracer-demo-worker.service
-  tracer-demo-cron.service
+  tracer-panel
+  tracer-collector
+  tracer-demo-api
+  tracer-demo-worker
+  tracer-demo-cron
 )
 
 log() {
@@ -65,21 +65,21 @@ wait_for_logs() {
   local collector="$1"
   local attempt page compact
   for attempt in $(seq 1 30); do
-    page="$(curl -fsS "${DEMO_URL}/panel/collectors/${collector}/apps/tracer-demo-api.service" -H "Cookie: ${COOKIE}")"
+    page="$(curl -fsS "${DEMO_URL}/panel/collectors/${collector}/apps/tracer-demo-api" -H "Cookie: ${COOKIE}")"
     compact="$(tr '\n' ' ' <<<"${page}")"
     if grep -Eq '<div class="text-2xl font-bold">[1-9][0-9]*</div> *<div class="text-xs text-fg-secondary">Total Logs</div>' <<<"${compact}"; then
       return 0
     fi
     sleep 1
   done
-  fail "tracer-demo-api.service did not show ingested logs"
+  fail "tracer-demo-api did not show ingested logs"
 }
 
 wait_for_panel_health() {
   local collector="$1"
   local attempt uptime
   for attempt in $(seq 1 30); do
-    uptime="$(curl -fsS "${DEMO_URL}/panel/collectors/${collector}/apps/tracer-panel.service/uptime/percentage" -H "Cookie: ${COOKIE}")"
+    uptime="$(curl -fsS "${DEMO_URL}/panel/collectors/${collector}/apps/tracer-panel/uptime/percentage" -H "Cookie: ${COOKIE}")"
     if grep -Eq '[0-9]+\.[0-9]{2}%|[0-9]+%' <<<"${uptime}"; then
       return 0
     fi
