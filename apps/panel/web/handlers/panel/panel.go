@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"net/http"
 	"strconv"
 	"time"
@@ -513,10 +514,7 @@ func uptimePercentText(v float64, periodCount int) string {
 	if v >= 100 {
 		return "100"
 	}
-	if v >= 10 {
-		return fmt.Sprintf("%.1f", v)
-	}
-	return fmt.Sprintf("%.2f", v)
+	return fmt.Sprintf("%.0f", math.Floor(v))
 }
 
 func uptimePercentClass(v float64, periodCount int) string {
