@@ -58,6 +58,7 @@ func InitMux(svc *panelsvc.Service) *http.ServeMux {
 	m.HandleFunc("GET /collectors/{collector}/apps", h.getCollectorApps)
 	m.HandleFunc("GET /collectors/{collector}/resources", h.getCollectorResources)
 	m.HandleFunc("GET /collectors/{collector}/apps/{app}/uptime/percentage", h.getDashboardAppHealth)
+	m.HandleFunc("GET /collectors/{collector}/apps/{app}/errors/count", h.getDashboardAppErrorCount)
 
 	// App logs
 	m.HandleFunc("GET /collectors/{collector}/apps/{app}", h.getApp)
@@ -247,6 +248,50 @@ func (h *handler) getDashboardAppHealth(w http.ResponseWriter, r *http.Request) 
 	})
 }
 
+func (h *handler) getDashboardAppErrorCount(w http.ResponseWriter, r *http.Request) {
+	userID, err := auth.RequireOrRedirect(w, r)
+	if err != nil {
+		return
+	}
+
+	collectorName := r.PathValue("collector")
+	appName := r.PathValue("app")
+	_, since := readSince(w, r)
+
+	req := panelsvc.GetAppErrorCountRequest{
+		UserID:        userID,
+		CollectorName: collectorName,
+		AppName:       appName,
+		Since:         since,
+	}
+	if err := req.Validate(); err != nil {
+		h.t.RenderError(w, r, "Error", err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	count, err := h.svc.GetAppErrorCount(r.Context(), req)
+	if err != nil {
+		switch {
+		case errors.Is(err, panelsvc.ErrCollectorNotFound):
+			h.t.RenderError(w, r, "Error", "Collector not found", http.StatusNotFound)
+		case errors.Is(err, panelsvc.ErrAccessDenied):
+			h.t.RenderError(w, r, "Forbidden", "You don't have access to this app", http.StatusForbidden)
+		case errors.Is(err, panelsvc.ErrAppNotFound):
+			h.t.RenderError(w, r, "Error", "App not found", http.StatusNotFound)
+		default:
+			h.t.RenderError(w, r, "Error", "Failed to fetch app error count", http.StatusInternalServerError)
+		}
+		return
+	}
+
+	h.t.RenderHTTP(w, r, "app-error-count", map[string]any{
+		"Errors": appErrorCountView{
+			Count: count,
+			Class: appErrorCountClass(count),
+		},
+	})
+}
+
 // App logs handlers
 
 func (h *handler) getApp(w http.ResponseWriter, r *http.Request) {
@@ -380,6 +425,11 @@ type appHealthView struct {
 	Bars            []uptimeBarView
 }
 
+type appErrorCountView struct {
+	Count int64
+	Class string
+}
+
 type logPageView struct {
 	ID             int64
 	Level          string
@@ -435,6 +485,13 @@ func appHealthViewFromService(health panelsvc.AppHealth) appHealthView {
 		UptimeTextClass: uptimePercentClass(health.UptimePercent, health.PeriodCount),
 		Bars:            uptimeBarsView(health.Buckets),
 	}
+}
+
+func appErrorCountClass(v int64) string {
+	if v > 0 {
+		return "text-red-400"
+	}
+	return "text-fg-secondary"
 }
 
 func uptimeBarsView(buckets []panelsvc.HealthBucket) []uptimeBarView {

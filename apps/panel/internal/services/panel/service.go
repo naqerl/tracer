@@ -292,6 +292,51 @@ func (s *Service) GetAppHealth(ctx context.Context, req GetAppHealthRequest) (Ap
 	return s.readAppHealth(ctx, queries, req.Since, true)
 }
 
+type GetAppErrorCountRequest struct {
+	UserID        int64
+	CollectorName string
+	AppName       string
+	Since         time.Time
+}
+
+func (r GetAppErrorCountRequest) Validate() error {
+	if r.UserID <= 0 {
+		return fmt.Errorf("user id should be provided")
+	}
+	if r.CollectorName == "" {
+		return fmt.Errorf("collector name is required")
+	}
+	if r.AppName == "" {
+		return fmt.Errorf("app name is required")
+	}
+	if r.Since.Before(time.Now().Add(-30 * 24 * time.Hour)) {
+		return fmt.Errorf("since should be within last 30 days")
+	}
+	return nil
+}
+
+func (s *Service) GetAppErrorCount(ctx context.Context, req GetAppErrorCountRequest) (int64, error) {
+	access, err := s.userSvc.FindAccessPolicy(ctx, req.UserID)
+	if err != nil {
+		return 0, fmt.Errorf("could not list user apps: %w", err)
+	}
+	if !access.AllowedTo(req.CollectorName, req.AppName) {
+		return 0, ErrAccessDenied
+	}
+
+	queries, err := s.queriesForApp(req.CollectorName, req.AppName)
+	if err != nil {
+		return 0, err
+	}
+
+	counts, err := queries.GetPercentiles(ctx, req.Since)
+	if err != nil {
+		return 0, err
+	}
+
+	return counts.Errors, nil
+}
+
 type GetStatsHistoryRequest struct {
 	UserID        int64
 	CollectorName string
