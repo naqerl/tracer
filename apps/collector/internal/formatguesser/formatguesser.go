@@ -182,7 +182,7 @@ func guessParserSpec(line string) (parser.Spec, error) {
 var commonLogSynonyms = map[string][]string{
 	"level_field": {
 		"level", "lvl", "severity", "status", "priority", "loglevel",
-		"sev", "s", "prio", "syslogpriority", "alertlevel",
+		"sev", "s", "prio", "syslogpriority", "alertlevel", "levelname",
 	},
 	"trace_id_field": {
 		"traceid", "correlationid",
