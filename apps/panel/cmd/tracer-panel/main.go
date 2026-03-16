@@ -112,7 +112,12 @@ func generateAPIKeyCmd(name string) error {
 
 	authSvc := auth.New(sqlDB)
 
-	apiKey, _, err := authSvc.GenerateCollectorAPIKey(ctx, name)
+	req := auth.GenerateCollectorAPIKeyRequest{Name: name}
+	if err := req.Validate(); err != nil {
+		return fmt.Errorf("validate collector api key request: %w", err)
+	}
+
+	apiKey, _, err := authSvc.GenerateCollectorAPIKey(ctx, req)
 	if err != nil {
 		return fmt.Errorf("generate collector api key: %w", err)
 	}
@@ -153,12 +158,26 @@ func initPanelCmd(username, password string) error {
 		password = password[:16] // Take first 16 chars for readability
 	}
 
+	registerReq := auth.RegisterRequest{
+		Username: username,
+		Password: password,
+		IsAdmin:  true,
+	}
+	if err := registerReq.Validate(); err != nil {
+		return fmt.Errorf("validate admin user request: %w", err)
+	}
+
 	// Create admin user
-	if _, err := authSvc.Register(ctx, username, password, true); err != nil {
+	if _, err := authSvc.Register(ctx, registerReq); err != nil {
 		return fmt.Errorf("create admin user: %w", err)
 	}
 
-	apiKey, _, err := authSvc.GenerateCollectorAPIKey(ctx, "default")
+	apiKeyReq := auth.GenerateCollectorAPIKeyRequest{Name: "default"}
+	if err := apiKeyReq.Validate(); err != nil {
+		return fmt.Errorf("validate collector api key request: %w", err)
+	}
+
+	apiKey, _, err := authSvc.GenerateCollectorAPIKey(ctx, apiKeyReq)
 	if err != nil {
 		return fmt.Errorf("generate collector api key: %w", err)
 	}

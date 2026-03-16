@@ -216,12 +216,16 @@ func (h *handler) createUser(w http.ResponseWriter, r *http.Request) {
 	password := r.FormValue("password")
 	isAdmin := r.FormValue("is_admin") == "on"
 
-	if username == "" || password == "" {
-		http.Error(w, "Username and password required", http.StatusBadRequest)
+	req := auth.RegisterRequest{
+		Username: strings.TrimSpace(username),
+		Password: password,
+		IsAdmin:  isAdmin,
+	}
+	if err := req.Validate(); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-
-	_, err := h.authService.Register(r.Context(), username, password, isAdmin)
+	_, err := h.authService.Register(r.Context(), req)
 	if err != nil {
 		slog.Error("Failed to create user", "error", err)
 		http.Error(w, "Failed to create user", http.StatusInternalServerError)
@@ -413,13 +417,15 @@ func (h *handler) createCollectorAPIKey(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	name := strings.TrimSpace(r.FormValue("name"))
-	if name == "" {
-		http.Error(w, "Name required", http.StatusBadRequest)
+	req := auth.GenerateCollectorAPIKeyRequest{
+		Name: strings.TrimSpace(r.FormValue("name")),
+	}
+	if err := req.Validate(); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	newKey, _, err := h.authService.GenerateCollectorAPIKey(r.Context(), name)
+	newKey, _, err := h.authService.GenerateCollectorAPIKey(r.Context(), req)
 	if err != nil {
 		slog.Error("Failed to generate collector API key", "error", err)
 		http.Error(w, "Failed to generate collector API key", http.StatusInternalServerError)
@@ -431,7 +437,7 @@ func (h *handler) createCollectorAPIKey(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	data["NewCollectorAPIKey"] = newKey
-	data["NewCollectorAPIKeyName"] = name
+	data["NewCollectorAPIKeyName"] = req.Name
 
 	h.t.RenderHTTP(w, r, "settings", data)
 }
@@ -464,13 +470,16 @@ func (h *handler) createAPIKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	name := r.FormValue("name")
-	if name == "" {
-		http.Error(w, "Name required", http.StatusBadRequest)
+	req := auth.GenerateUserAPIKeyRequest{
+		UserID: user.ID,
+		Name:   strings.TrimSpace(r.FormValue("name")),
+	}
+	if err := req.Validate(); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	_, err = h.authService.GenerateUserAPIKey(r.Context(), user.ID, name)
+	_, err = h.authService.GenerateUserAPIKey(r.Context(), req)
 	if err != nil {
 		slog.Error("Failed to generate user API key", "error", err)
 		http.Error(w, "Failed to generate API key", http.StatusInternalServerError)
@@ -546,7 +555,7 @@ func (h *handler) createNotifier(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	name := r.FormValue("name")
+	name := strings.TrimSpace(r.FormValue("name"))
 	notifierType := r.FormValue("type")
 
 	if name == "" || notifierType == "" {
@@ -619,6 +628,10 @@ func (h *handler) createNotifier(w http.ResponseWriter, r *http.Request) {
 		Name:   name,
 		Type:   notifierType,
 		Config: configJSON,
+	}
+	if err := req.Validate(); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
 	}
 
 	// Create notifier through service (handles DB, welcome notification, registration)

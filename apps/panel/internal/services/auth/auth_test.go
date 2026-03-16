@@ -2,6 +2,7 @@ package auth
 
 import (
 	"database/sql"
+	"strings"
 	"testing"
 	"time"
 
@@ -39,7 +40,12 @@ func TestGenerateAndValidateCollectorAPIKey(t *testing.T) {
 
 	svc := New(db)
 
-	key, row, err := svc.GenerateCollectorAPIKey(ctx, "prod-a")
+	req := GenerateCollectorAPIKeyRequest{Name: "prod-a"}
+	if err := req.Validate(); err != nil {
+		t.Fatalf("validate request: %v", err)
+	}
+
+	key, row, err := svc.GenerateCollectorAPIKey(ctx, req)
 	if err != nil {
 		t.Fatalf("generate collector api key: %v", err)
 	}
@@ -80,7 +86,12 @@ func TestListCollectorAPIKeysReturnsMaskedDisplay(t *testing.T) {
 
 	svc := New(db)
 
-	key, _, err := svc.GenerateCollectorAPIKey(ctx, "prod-a")
+	req := GenerateCollectorAPIKeyRequest{Name: "prod-a"}
+	if err := req.Validate(); err != nil {
+		t.Fatalf("validate request: %v", err)
+	}
+
+	key, _, err := svc.GenerateCollectorAPIKey(ctx, req)
 	if err != nil {
 		t.Fatalf("generate collector api key: %v", err)
 	}
@@ -103,7 +114,12 @@ func TestValidateCollectorAPIKeyUpdatesLastUsedAt(t *testing.T) {
 
 	svc := New(db)
 
-	key, row, err := svc.GenerateCollectorAPIKey(ctx, "prod-a")
+	req := GenerateCollectorAPIKeyRequest{Name: "prod-a"}
+	if err := req.Validate(); err != nil {
+		t.Fatalf("validate request: %v", err)
+	}
+
+	key, row, err := svc.GenerateCollectorAPIKey(ctx, req)
 	if err != nil {
 		t.Fatalf("generate collector api key: %v", err)
 	}
@@ -125,5 +141,39 @@ func TestValidateCollectorAPIKeyUpdatesLastUsedAt(t *testing.T) {
 	}
 	if got := updated.LastUsedAt.Time.Location().String(); got != "UTC" {
 		t.Fatalf("expected UTC timestamp, got %s (%s)", updated.LastUsedAt.Time.Format(time.RFC3339Nano), got)
+	}
+}
+
+func TestRegisterRejectsTooLongPassword(t *testing.T) {
+	req := RegisterRequest{
+		Username: "admin",
+		Password: strings.Repeat("x", 73),
+		IsAdmin:  true,
+	}
+	err := req.Validate()
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+}
+
+func TestRegisterRejectsUsernameWithSurroundingWhitespace(t *testing.T) {
+	req := RegisterRequest{
+		Username: " admin ",
+		Password: "secret",
+		IsAdmin:  true,
+	}
+	err := req.Validate()
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+}
+
+func TestGenerateCollectorAPIKeyRejectsTooLongName(t *testing.T) {
+	req := GenerateCollectorAPIKeyRequest{
+		Name: strings.Repeat("n", 65),
+	}
+	err := req.Validate()
+	if err == nil {
+		t.Fatal("expected validation error")
 	}
 }

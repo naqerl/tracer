@@ -151,7 +151,17 @@ func (h *handler) setup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := h.authService.Register(r.Context(), username, password, true)
+	registerReq := authsvc.RegisterRequest{
+		Username: username,
+		Password: password,
+		IsAdmin:  true,
+	}
+	if err := registerReq.Validate(); err != nil {
+		h.renderSetupPage(w, r, "Failed to create user: "+err.Error())
+		return
+	}
+
+	user, err := h.authService.Register(r.Context(), registerReq)
 	if err != nil {
 		slog.Error("Failed to create admin user", "error", err)
 		h.renderSetupPage(w, r, "Failed to create user: "+err.Error())
@@ -160,7 +170,15 @@ func (h *handler) setup(w http.ResponseWriter, r *http.Request) {
 
 	slog.Info("Admin user created", "user_id", user.ID, "username", username)
 
-	collectorAPIKey, _, err := h.authService.GenerateCollectorAPIKey(r.Context(), "default")
+	apiKeyReq := authsvc.GenerateCollectorAPIKeyRequest{
+		Name: "default",
+	}
+	if err := apiKeyReq.Validate(); err != nil {
+		h.renderSetupPage(w, r, "User created but failed to create collector API key: "+err.Error())
+		return
+	}
+
+	collectorAPIKey, _, err := h.authService.GenerateCollectorAPIKey(r.Context(), apiKeyReq)
 	if err != nil {
 		slog.Error("Failed to create collector API key", "error", err)
 		h.renderSetupPage(w, r, "User created but failed to create collector API key: "+err.Error())

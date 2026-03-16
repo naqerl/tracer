@@ -8,6 +8,7 @@ import (
 	"log/slog"
 
 	"tracer/apps/panel/db"
+	"tracer/apps/panel/internal/domain"
 	"tracer/apps/panel/internal/services/user"
 )
 
@@ -47,6 +48,22 @@ type AddNotifierRequest struct {
 	Name   string
 	Type   string
 	Config string // JSON config, type-specific
+}
+
+func (r AddNotifierRequest) Validate() error {
+	if err := domain.ValidateUserID(r.UserID); err != nil {
+		return err
+	}
+	if err := domain.ValidateNotifierName(r.Name); err != nil {
+		return err
+	}
+	if r.Type == "" {
+		return fmt.Errorf("type is required")
+	}
+	if r.Config == "" {
+		return fmt.Errorf("config is required")
+	}
+	return nil
 }
 
 // Service manages notifications and handles database operations.

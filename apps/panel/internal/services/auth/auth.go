@@ -9,19 +9,23 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
 
 	"tracer/apps/panel/db"
+	"tracer/apps/panel/internal/domain"
 	userpkg "tracer/apps/panel/internal/services/user"
 )
 
 const (
-	bcryptCost       = 12
-	sessionTokenSize = 32
-	apiKeySize       = 32
-	SessionDuration  = 24 * time.Hour
+	bcryptCost        = 12
+	sessionTokenSize  = 32
+	apiKeySize        = 32
+	maxUsernameLength = 32
+	maxPasswordLength = 72
+	SessionDuration   = 24 * time.Hour
 )
 
 var (
@@ -31,6 +35,52 @@ var (
 
 type Service struct {
 	db db.DBTX
+}
+
+type RegisterRequest struct {
+	Username string
+	Password string
+	IsAdmin  bool
+}
+
+func (r RegisterRequest) Validate() error {
+	trimmed := strings.TrimSpace(r.Username)
+	if trimmed == "" {
+		return fmt.Errorf("username is required")
+	}
+	if trimmed != r.Username {
+		return fmt.Errorf("username must not have leading or trailing spaces")
+	}
+	if len(trimmed) > maxUsernameLength {
+		return fmt.Errorf("username must be <= %d characters", maxUsernameLength)
+	}
+	if r.Password == "" {
+		return fmt.Errorf("password is required")
+	}
+	if len(r.Password) > maxPasswordLength {
+		return fmt.Errorf("password must be <= %d characters", maxPasswordLength)
+	}
+	return nil
+}
+
+type GenerateCollectorAPIKeyRequest struct {
+	Name string
+}
+
+func (r GenerateCollectorAPIKeyRequest) Validate() error {
+	return domain.ValidateAPIKeyName(r.Name)
+}
+
+type GenerateUserAPIKeyRequest struct {
+	UserID int64
+	Name   string
+}
+
+func (r GenerateUserAPIKeyRequest) Validate() error {
+	if err := domain.ValidateUserID(r.UserID); err != nil {
+		return err
+	}
+	return domain.ValidateAPIKeyName(r.Name)
 }
 
 func New(sqlDB *sql.DB) *Service {
@@ -75,20 +125,20 @@ func GenerateAPIKey() (string, error) {
 	return generateToken(apiKeySize)
 }
 
-// Register creates a new user with hashed password
-func (s *Service) Register(ctx context.Context, username, password string, isAdmin bool) (*db.User, error) {
-	hash, err := hashPassword(password)
+// Register creates a new user with hashed password.
+func (s *Service) Register(ctx context.Context, req RegisterRequest) (*db.User, error) {
+	hash, err := hashPassword(req.Password)
 	if err != nil {
 		return nil, fmt.Errorf("hash password: %w", err)
 	}
 
 	var adminInt int64
-	if isAdmin {
+	if req.IsAdmin {
 		adminInt = 1
 	}
 
 	user, err := db.New(s.db).CreateUser(ctx, db.CreateUserParams{
-		Username:     username,
+		Username:     req.Username,
 		PasswordHash: hash,
 		IsAdmin:      adminInt,
 	})
@@ -96,7 +146,7 @@ func (s *Service) Register(ctx context.Context, username, password string, isAdm
 		return nil, fmt.Errorf("create user: %w", err)
 	}
 
-	slog.Info("User created", "username", username, "is_admin", isAdmin)
+	slog.Info("User created", "username", req.Username, "is_admin", req.IsAdmin)
 	return &user, nil
 }
 
@@ -198,14 +248,14 @@ func maskedAPIKeySuffix(key string) string {
 	return "****" + suffix
 }
 
-func (s *Service) GenerateCollectorAPIKey(ctx context.Context, name string) (string, *db.CollectorApiKey, error) {
+func (s *Service) GenerateCollectorAPIKey(ctx context.Context, req GenerateCollectorAPIKeyRequest) (string, *db.CollectorApiKey, error) {
 	key, err := generateToken(apiKeySize)
 	if err != nil {
 		return "", nil, fmt.Errorf("generate collector api key: %w", err)
 	}
 
 	row, err := db.New(s.db).CreateCollectorAPIKey(ctx, db.CreateCollectorAPIKeyParams{
-		Name:      name,
+		Name:      req.Name,
 		KeyHash:   hashAPIKey(key),
 		KeySuffix: key[max(0, len(key)-6):],
 	})
@@ -213,7 +263,7 @@ func (s *Service) GenerateCollectorAPIKey(ctx context.Context, name string) (str
 		return "", nil, fmt.Errorf("create collector api key: %w", err)
 	}
 
-	slog.Info("Collector API key created", "name", name)
+	slog.Info("Collector API key created", "name", req.Name)
 	return key, &row, nil
 }
 
@@ -256,22 +306,22 @@ func (s *Service) GetCollectorAPIKeyDisplay(ctx context.Context) (string, error)
 
 // User API Key management (LLM compatibility)
 
-func (s *Service) GenerateUserAPIKey(ctx context.Context, userID int64, name string) (*db.UserApiKey, error) {
+func (s *Service) GenerateUserAPIKey(ctx context.Context, req GenerateUserAPIKeyRequest) (*db.UserApiKey, error) {
 	key, err := generateToken(apiKeySize)
 	if err != nil {
 		return nil, fmt.Errorf("generate user API key: %w", err)
 	}
 
 	userKey, err := db.New(s.db).CreateUserAPIKey(ctx, db.CreateUserAPIKeyParams{
-		UserID: userID,
+		UserID: req.UserID,
 		ApiKey: key,
-		Name:   name,
+		Name:   req.Name,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("create user API key: %w", err)
 	}
 
-	slog.Info("User API key created", "user_id", userID, "name", name)
+	slog.Info("User API key created", "user_id", req.UserID, "name", req.Name)
 	return &userKey, nil
 }
 
