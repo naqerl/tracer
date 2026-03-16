@@ -44,9 +44,9 @@
     <h2 class="text-xl font-medium mb-6">API Keys</h2>
     <p class="text-base text-fg-secondary mb-6">Generate API keys to access logs programmatically.</p>
 
-    <div class="mb-8 max-w-3xl border border-bg-secondary/70 p-4">
+    <div class="mb-8 w-full border border-bg-secondary/70 p-4">
         <form action="/settings/api-keys" method="POST">
-            <div class="mb-4 max-w-md">
+            <div class="mb-4 w-full">
                 {{template "input-text" dict "Type" "text" "ID" "key_name" "Name" "name" "Placeholder" "Key name" "Required" true}}
             </div>
             <button type="submit" class="text-sm text-fg border border-fg px-4 py-2 hover:bg-fg hover:text-bg transition-colors">Generate Key</button>
@@ -96,9 +96,9 @@
     </div>
     {{end}}
 
-    <div class="mb-8 max-w-3xl border border-bg-secondary/70 p-4">
+    <div class="mb-8 w-full border border-bg-secondary/70 p-4">
         <form action="/settings/admin/collector-api-keys" method="POST">
-            <div class="mb-4 max-w-md">
+            <div class="mb-4 w-full">
                 {{template "input-text" dict "Type" "text" "ID" "collector_key_name" "Name" "name" "Placeholder" "Collector key name" "Required" true}}
             </div>
             <button type="submit" class="text-sm text-fg border border-fg px-4 py-2 hover:bg-fg hover:text-bg transition-colors">Create Collector Key</button>
@@ -139,9 +139,9 @@
 <div class="mb-10">
     <h2 class="text-xl font-medium mb-6">Users</h2>
 
-    <div class="mb-8 max-w-3xl border border-bg-secondary/70 p-4">
+    <div class="mb-8 w-full border border-bg-secondary/70 p-4">
         <form action="/settings/users" method="POST">
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4 max-w-2xl">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4 w-full">
                 <div>
                     {{template "input-text" dict "Type" "text" "ID" "username" "Name" "username" "Placeholder" "Username" "Required" true}}
                 </div>
@@ -235,7 +235,7 @@
 {{end}}
 
 {{define "notifier-form"}}
-<div id="notifier-form-panel" class="mb-8 max-w-3xl border border-bg-secondary/70">
+<div id="notifier-form-panel" class="mb-8 w-full border border-bg-secondary/70">
     <div class="flex border-b border-bg-secondary/70 text-sm">
         <a href="/settings/notifiers/new?type=ntfy"
            hx-get="/settings/notifiers/new?type=ntfy"
