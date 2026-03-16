@@ -30,6 +30,11 @@ var (
 	ErrInvalidLimit      = errors.New("invalid limit")
 )
 
+const (
+	maxSinceAge         = 30 * 24 * time.Hour
+	sinceValidationSkew = time.Second
+)
+
 func New(dbManager *dbmanager.Manager, ingestSvc *ingest.Service, tracker *ingest.Tracker, userSvc *user.Service) *Service {
 	return &Service{
 		dbManager: dbManager,
@@ -270,7 +275,7 @@ func (r GetAppHealthRequest) Validate() error {
 	if r.AppName == "" {
 		return fmt.Errorf("app name is required")
 	}
-	if r.Since.Before(time.Now().Add(-30 * 24 * time.Hour)) {
+	if !sinceWithinRange(r.Since) {
 		return fmt.Errorf("since should be within last 30 days")
 	}
 	return nil
@@ -310,7 +315,7 @@ func (r GetAppErrorCountRequest) Validate() error {
 	if r.AppName == "" {
 		return fmt.Errorf("app name is required")
 	}
-	if r.Since.Before(time.Now().Add(-30 * 24 * time.Hour)) {
+	if !sinceWithinRange(r.Since) {
 		return fmt.Errorf("since should be within last 30 days")
 	}
 	return nil
@@ -351,10 +356,14 @@ func (r GetStatsHistoryRequest) Validate() error {
 	if r.CollectorName == "" {
 		return fmt.Errorf("collector name is required")
 	}
-	if r.Since.Before(time.Now().Add(-30 * 24 * time.Hour)) {
+	if !sinceWithinRange(r.Since) {
 		return fmt.Errorf("since should be within last 30 days")
 	}
 	return nil
+}
+
+func sinceWithinRange(since time.Time) bool {
+	return time.Since(since) <= maxSinceAge+sinceValidationSkew
 }
 
 func (s *Service) GetStatsHistory(ctx context.Context, req GetStatsHistoryRequest) ([]db.SystemStat, error) {
