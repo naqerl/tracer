@@ -2,9 +2,13 @@ package settings
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/sha256"
 	"embed"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -63,6 +67,7 @@ func InitMux(authService *auth.Service, userService *usersvc.Service, ingestServ
 	m.HandleFunc("DELETE /api-keys/{id}", h.deleteAPIKey)
 
 	// Notifiers management
+	m.HandleFunc("GET /notifiers/new", h.notifierForm)
 	m.HandleFunc("POST /notifiers", h.createNotifier)
 	m.HandleFunc("DELETE /notifiers/{id}", h.deleteNotifier)
 	m.HandleFunc("PUT /notifiers/{id}/toggle", h.toggleNotifier)
@@ -148,7 +153,56 @@ func (h *handler) buildSettingsPageData(w http.ResponseWriter, r *http.Request) 
 		data["UserAPIKeys"] = userAPIKeys
 	}
 
+	notifierForm, err := buildNotifierFormData(r)
+	if err != nil {
+		h.t.RenderError(w, r, "Error", "Failed to prepare notifier form", http.StatusInternalServerError)
+		return nil, err
+	}
+	data["NotifierForm"] = notifierForm
+
 	return data, nil
+}
+
+type notifierFormData struct {
+	ActiveType string
+	NtfyURL    string
+	NtfyTopic  string
+}
+
+func buildNotifierFormData(r *http.Request) (notifierFormData, error) {
+	activeType := strings.TrimSpace(r.URL.Query().Get("type"))
+	switch activeType {
+	case "", "ntfy":
+		activeType = "ntfy"
+	case "telegram":
+	default:
+		activeType = "ntfy"
+	}
+
+	data := notifierFormData{
+		ActiveType: activeType,
+		NtfyURL:    "https://ntfy.sh",
+	}
+
+	if activeType == "ntfy" {
+		topic, err := generateNtfyTopic()
+		if err != nil {
+			return notifierFormData{}, fmt.Errorf("generate ntfy topic: %w", err)
+		}
+		data.NtfyTopic = topic
+	}
+
+	return data, nil
+}
+
+func generateNtfyTopic() (string, error) {
+	buf := make([]byte, 32)
+	if _, err := rand.Read(buf); err != nil {
+		return "", err
+	}
+
+	sum := sha256.Sum256(buf)
+	return hex.EncodeToString(sum[:]), nil
 }
 
 // User handlers
@@ -471,6 +525,21 @@ func (h *handler) deleteAPIKey(w http.ResponseWriter, r *http.Request) {
 
 // Notifier handlers
 
+func (h *handler) notifierForm(w http.ResponseWriter, r *http.Request) {
+	if _, err := h.requireAuthenticatedUser(w, r); err != nil {
+		return
+	}
+
+	data, err := buildNotifierFormData(r)
+	if err != nil {
+		slog.Error("Failed to build notifier form", "error", err)
+		http.Error(w, "Failed to render notifier form", http.StatusInternalServerError)
+		return
+	}
+
+	h.t.RenderHTTP(w, r, "notifier-form", data)
+}
+
 func (h *handler) createNotifier(w http.ResponseWriter, r *http.Request) {
 	user, err := h.requireAuthenticatedUser(w, r)
 	if err != nil {
@@ -490,11 +559,16 @@ func (h *handler) createNotifier(w http.ResponseWriter, r *http.Request) {
 	switch notifierType {
 	case "telegram":
 		token := r.FormValue("telegram_token")
-		chatIDStr := r.FormValue("telegram_chat_id")
-		chatID, _ := strconv.ParseInt(chatIDStr, 10, 64)
+		chatIDStr := strings.TrimSpace(r.FormValue("telegram_chat_id"))
+		chatID, err := strconv.ParseInt(chatIDStr, 10, 64)
 
-		if token == "" || chatID == 0 {
+		if token == "" || chatIDStr == "" {
 			http.Error(w, "Telegram token and chat ID required", http.StatusBadRequest)
+			return
+		}
+
+		if err != nil || chatID == 0 {
+			http.Error(w, "Telegram chat ID must be a valid integer", http.StatusBadRequest)
 			return
 		}
 
@@ -508,6 +582,29 @@ func (h *handler) createNotifier(w http.ResponseWriter, r *http.Request) {
 		cfgBytes, err := json.Marshal(cfg)
 		if err != nil {
 			slog.Error("Failed to marshal telegram config", "error", err)
+			http.Error(w, "Failed to process config", http.StatusInternalServerError)
+			return
+		}
+		configJSON = string(cfgBytes)
+	case "ntfy":
+		url := strings.TrimRight(strings.TrimSpace(r.FormValue("ntfy_url")), "/")
+		topic := strings.TrimSpace(r.FormValue("ntfy_topic"))
+
+		if url == "" || topic == "" {
+			http.Error(w, "ntfy URL and topic required", http.StatusBadRequest)
+			return
+		}
+
+		cfg := struct {
+			URL   string `json:"url"`
+			Topic string `json:"topic"`
+		}{
+			URL:   url,
+			Topic: topic,
+		}
+		cfgBytes, err := json.Marshal(cfg)
+		if err != nil {
+			slog.Error("Failed to marshal ntfy config", "error", err)
 			http.Error(w, "Failed to process config", http.StatusInternalServerError)
 			return
 		}

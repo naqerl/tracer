@@ -24,6 +24,7 @@ import (
 	"tracer/apps/panel/internal/services/auth"
 	"tracer/apps/panel/internal/services/ingest"
 	"tracer/apps/panel/internal/services/notify"
+	"tracer/apps/panel/internal/services/notify/ntfy"
 	"tracer/apps/panel/internal/services/notify/telegram"
 	panelsvc "tracer/apps/panel/internal/services/panel"
 	"tracer/apps/panel/internal/services/user"
@@ -210,6 +211,7 @@ func serve(ctx context.Context, cfg config.Panel) error {
 	// Setup notifier factories
 	notifierFactories := map[string]notify.FromRawJSON{
 		"telegram": telegram.FromRawJSON,
+		"ntfy":     ntfy.FromRawJSON,
 	}
 
 	// Create notification channel (shared between dispatcher and ingest service)

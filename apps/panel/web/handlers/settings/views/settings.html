@@ -28,7 +28,7 @@
 <!-- Account Section -->
 <div class="mb-10">
     <h2 class="text-xl font-medium mb-6">Account</h2>
-    <div class="flex items-center justify-between">
+    <div class="flex items-center justify-between border border-bg-secondary/70 p-4">
         <div>
             <p class="text-lg text-fg">{{.CurrentUser.Username}}</p>
             <p class="text-sm text-fg-secondary mt-1">{{if .IsAdmin}}Administrator{{else}}User{{end}}</p>
@@ -44,12 +44,14 @@
     <h2 class="text-xl font-medium mb-6">API Keys</h2>
     <p class="text-base text-fg-secondary mb-6">Generate API keys to access logs programmatically.</p>
 
-    <form action="/settings/api-keys" method="POST" class="mb-8">
-        <div class="mb-4 max-w-md">
-            {{template "input-text" dict "Type" "text" "ID" "key_name" "Name" "name" "Placeholder" "Key name" "Required" true}}
-        </div>
-        <button type="submit" class="text-sm text-fg border border-fg px-4 py-2 hover:bg-fg hover:text-bg transition-colors">Generate Key</button>
-    </form>
+    <div class="mb-8 max-w-3xl border border-bg-secondary/70 p-4">
+        <form action="/settings/api-keys" method="POST">
+            <div class="mb-4 max-w-md">
+                {{template "input-text" dict "Type" "text" "ID" "key_name" "Name" "name" "Placeholder" "Key name" "Required" true}}
+            </div>
+            <button type="submit" class="text-sm text-fg border border-fg px-4 py-2 hover:bg-fg hover:text-bg transition-colors">Generate Key</button>
+        </form>
+    </div>
 
     {{if .UserAPIKeys}}
     <table class="w-full">
@@ -94,12 +96,14 @@
     </div>
     {{end}}
 
-    <form action="/settings/admin/collector-api-keys" method="POST" class="mb-8">
-        <div class="mb-4 max-w-md">
-            {{template "input-text" dict "Type" "text" "ID" "collector_key_name" "Name" "name" "Placeholder" "Collector key name" "Required" true}}
-        </div>
-        <button type="submit" class="text-sm text-fg border border-fg px-4 py-2 hover:bg-fg hover:text-bg transition-colors">Create Collector Key</button>
-    </form>
+    <div class="mb-8 max-w-3xl border border-bg-secondary/70 p-4">
+        <form action="/settings/admin/collector-api-keys" method="POST">
+            <div class="mb-4 max-w-md">
+                {{template "input-text" dict "Type" "text" "ID" "collector_key_name" "Name" "name" "Placeholder" "Collector key name" "Required" true}}
+            </div>
+            <button type="submit" class="text-sm text-fg border border-fg px-4 py-2 hover:bg-fg hover:text-bg transition-colors">Create Collector Key</button>
+        </form>
+    </div>
 
     {{if .CollectorAPIKeys}}
     <table class="w-full">
@@ -135,20 +139,22 @@
 <div class="mb-10">
     <h2 class="text-xl font-medium mb-6">Users</h2>
 
-    <form action="/settings/users" method="POST" class="mb-8">
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4 max-w-2xl">
-            <div>
-                {{template "input-text" dict "Type" "text" "ID" "username" "Name" "username" "Placeholder" "Username" "Required" true}}
+    <div class="mb-8 max-w-3xl border border-bg-secondary/70 p-4">
+        <form action="/settings/users" method="POST">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4 max-w-2xl">
+                <div>
+                    {{template "input-text" dict "Type" "text" "ID" "username" "Name" "username" "Placeholder" "Username" "Required" true}}
+                </div>
+                <div>
+                    {{template "input-text" dict "Type" "password" "ID" "password" "Name" "password" "Placeholder" "Password" "Required" true}}
+                </div>
             </div>
-            <div>
-                {{template "input-text" dict "Type" "password" "ID" "password" "Name" "password" "Placeholder" "Password" "Required" true}}
+            {{template "markdown-checkbox" dict "ID" "is_admin" "Name" "is_admin" "Label" "Admin" "Checked" false "Indent" 0}}
+            <div class="mt-4">
+                <button type="submit" class="text-sm text-fg border border-fg px-4 py-2 hover:bg-fg hover:text-bg transition-colors">Add User</button>
             </div>
-        </div>
-        {{template "markdown-checkbox" dict "ID" "is_admin" "Name" "is_admin" "Label" "Admin" "Checked" false "Indent" 0}}
-        <div class="mt-4">
-            <button type="submit" class="text-sm text-fg border border-fg px-4 py-2 hover:bg-fg hover:text-bg transition-colors">Add User</button>
-        </div>
-    </form>
+        </form>
+    </div>
 
     {{if .Users}}
     <table class="w-full">
@@ -189,29 +195,9 @@
 <!-- Notifiers Section -->
 <div class="mb-10">
     <h2 class="text-xl font-medium mb-6">Notifications</h2>
-    <p class="text-base text-fg-secondary mb-6">{{if .IsAdmin}}Configure Telegram bots for error alerts.{{else}}Configure Telegram bots for your assigned apps.{{end}}</p>
+    <p class="text-base text-fg-secondary mb-6">{{if .IsAdmin}}Configure notifier endpoints for error alerts.{{else}}Configure notifier endpoints for your assigned apps.{{end}}</p>
 
-    <form action="/settings/notifiers" method="POST" class="mb-8">
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4 max-w-3xl">
-            <div>
-                {{template "input-text" dict "Type" "text" "ID" "notifier_name" "Name" "name" "Placeholder" "Name" "Required" true}}
-            </div>
-            <div>
-                <select id="notifier_type" name="type" required
-                        class="w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg cursor-pointer">
-                    <option value="">Type</option>
-                    <option value="telegram">Telegram</option>
-                </select>
-            </div>
-            <div>
-                {{template "input-text" dict "Type" "text" "ID" "telegram_token" "Name" "telegram_token" "Placeholder" "Bot token" "Required" true}}
-            </div>
-            <div>
-                {{template "input-text" dict "Type" "number" "ID" "telegram_chat_id" "Name" "telegram_chat_id" "Placeholder" "Chat ID" "Required" true}}
-            </div>
-        </div>
-        <button type="submit" class="text-sm text-fg border border-fg px-4 py-2 hover:bg-fg hover:text-bg transition-colors">Add Notifier</button>
-    </form>
+    {{template "notifier-form" .NotifierForm}}
 
     {{if .Notifiers}}
     <table class="w-full">
@@ -245,5 +231,56 @@
     {{else}}
     <p class="text-sm text-fg-secondary/60 py-6 text-center">No notifiers configured.</p>
     {{end}}
+</div>
+{{end}}
+
+{{define "notifier-form"}}
+<div id="notifier-form-panel" class="mb-8 max-w-3xl border border-bg-secondary/70">
+    <div class="flex border-b border-bg-secondary/70 text-sm">
+        <a href="/settings/notifiers/new?type=ntfy"
+           hx-get="/settings/notifiers/new?type=ntfy"
+           hx-target="#notifier-form-panel"
+           hx-swap="outerHTML"
+           class="px-4 py-3 transition-colors {{if eq .ActiveType "ntfy"}}text-fg{{else}}text-fg-secondary hover:text-fg{{end}}">
+            ntfy.sh
+        </a>
+        <a href="/settings/notifiers/new?type=telegram"
+           hx-get="/settings/notifiers/new?type=telegram"
+           hx-target="#notifier-form-panel"
+           hx-swap="outerHTML"
+           class="px-4 py-3 border-l border-bg-secondary/70 transition-colors {{if eq .ActiveType "telegram"}}text-fg{{else}}text-fg-secondary hover:text-fg{{end}}">
+            Telegram
+        </a>
+    </div>
+
+    <form action="/settings/notifiers" method="POST" class="p-4">
+        <input type="hidden" name="type" value="{{.ActiveType}}">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+            <div>
+                {{template "input-text" dict "Type" "text" "ID" "notifier_name" "Name" "name" "Placeholder" "Name" "Required" true}}
+            </div>
+
+            {{if eq .ActiveType "telegram"}}
+            <div>
+                {{template "input-text" dict "Type" "text" "ID" "telegram_token" "Name" "telegram_token" "Placeholder" "Bot token" "Required" true}}
+            </div>
+            <div>
+                {{template "input-text" dict "Type" "text" "ID" "telegram_chat_id" "Name" "telegram_chat_id" "Placeholder" "Chat ID" "Required" true}}
+            </div>
+            {{else if eq .ActiveType "ntfy"}}
+            <div>
+                <input type="url" id="ntfy_url" name="ntfy_url" value="{{.NtfyURL}}" required
+                       placeholder="Server URL"
+                       class="w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg placeholder:text-fg-secondary/50">
+            </div>
+            <div class="md:col-span-2">
+                <input type="text" id="ntfy_topic" name="ntfy_topic" value="{{.NtfyTopic}}" required
+                       placeholder="Topic"
+                       class="w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg placeholder:text-fg-secondary/50">
+            </div>
+            {{end}}
+        </div>
+        <button type="submit" class="text-sm text-fg border border-fg px-4 py-2 hover:bg-fg hover:text-bg transition-colors">Add Notifier</button>
+    </form>
 </div>
 {{end}}
