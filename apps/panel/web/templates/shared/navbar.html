@@ -2,6 +2,7 @@
 <nav class="flex items-center justify-between px-4 py-3 border-b border-bg-secondary" aria-label="Main navigation">
   <div class="flex gap-6" id="nav-links">
     <a href="/panel/" class="text-lg font-medium hover:text-fg transition-colors" data-nav="panel">/panel</a>
+    <a href="/topology/" class="text-lg font-medium hover:text-fg transition-colors" data-nav="topology">/topology</a>
     <a href="/settings/" class="text-lg font-medium hover:text-fg transition-colors" data-nav="settings">/settings</a>
   </div>
 
@@ -63,6 +64,7 @@
         const nav = link.getAttribute('data-nav');
         const isActive =
           (nav === 'panel' && path === '/panel/') ||
+          (nav === 'topology' && path === '/topology/') ||
           (nav === 'settings' && path === '/settings/');
         if (isActive) {
           link.classList.remove('text-fg-secondary');

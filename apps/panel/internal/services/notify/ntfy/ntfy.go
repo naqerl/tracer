@@ -61,8 +61,8 @@ func (n *Notifier) Notify(notification notify.Notification) error {
 		return fmt.Errorf("build ntfy request: %w", err)
 	}
 
-	req.Header.Set("Content-Type", "text/plain; charset=utf-8")
-	req.Header.Set("Title", n.name)
+	req.Header.Set("Content-Type", "text/markdown; charset=utf-8")
+	req.Header.Set("Markdown", "yes")
 	req.Header.Set("Tags", string(notification.Type))
 
 	resp, err := n.client.Do(req)

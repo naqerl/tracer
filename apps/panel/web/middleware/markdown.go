@@ -37,6 +37,9 @@ func BuildMarkdownMiddleware() func(http.Handler) http.Handler {
 				if trimmed == "/panel" {
 					trimmed = "/panel/"
 				}
+				if trimmed == "/topology" {
+					trimmed = "/topology/"
+				}
 				if trimmed == "/settings" {
 					trimmed = "/settings/"
 				}

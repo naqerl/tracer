@@ -13,6 +13,7 @@ import (
 
 	"tracer/apps/panel/internal/services/auth"
 	"tracer/apps/panel/internal/services/ingest"
+	topologysvc "tracer/apps/panel/internal/services/topology"
 	"tracer/libs/types"
 )
 
@@ -28,14 +29,16 @@ type handler struct {
 	authService   *auth.Service
 	ingestService *ingest.Service
 	tracker       *ingest.Tracker
+	topology      *topologysvc.Service
 }
 
-func InitMux(authService *auth.Service, ingestService *ingest.Service, tracker *ingest.Tracker) *http.ServeMux {
+func InitMux(authService *auth.Service, ingestService *ingest.Service, tracker *ingest.Tracker, topology *topologysvc.Service) *http.ServeMux {
 	m := http.NewServeMux()
 	h := &handler{
 		authService:   authService,
 		ingestService: ingestService,
 		tracker:       tracker,
+		topology:      topology,
 	}
 
 	m.HandleFunc("GET /ws", h.handleWebSocket)
@@ -120,6 +123,9 @@ func (h *handler) processMessage(ctx context.Context, connID, remoteAddr string,
 			slog.Error("Failed to parse collector registration", "error", err)
 			return
 		}
+		h.topology.Publish(topologysvc.Message{
+			Register: &reg,
+		})
 		h.handleRegistration(ctx, connID, remoteAddr, reg)
 	default:
 		var env types.Envelope
@@ -134,6 +140,9 @@ func (h *handler) processMessage(ctx context.Context, connID, remoteAddr string,
 func (h *handler) handleEnvelope(ctx context.Context, env types.Envelope) {
 	switch env.Type {
 	case types.EventTypeLog:
+		h.topology.Publish(topologysvc.Message{
+			Envelope: &env,
+		})
 		var evt types.LogEvent
 		if err := json.Unmarshal(env.Data, &evt); err != nil {
 			slog.Warn("Failed to decode log event", "error", err, "collector", env.Collector)
@@ -148,6 +157,9 @@ func (h *handler) handleEnvelope(ctx context.Context, env types.Envelope) {
 		}
 		h.handleLifecycle(ctx, env.Collector, evt)
 	case types.EventTypeStats:
+		h.topology.Publish(topologysvc.Message{
+			Envelope: &env,
+		})
 		var evt types.StatsEvent
 		if err := json.Unmarshal(env.Data, &evt); err != nil {
 			slog.Warn("Failed to decode stats event", "error", err, "collector", env.Collector)
@@ -167,6 +179,9 @@ func (h *handler) handleEnvelope(ctx context.Context, env types.Envelope) {
 		}
 		h.handleLog(ctx, env.Collector, evt.App, entry)
 	case types.EventTypeHealth:
+		h.topology.Publish(topologysvc.Message{
+			Envelope: &env,
+		})
 		var evt types.HealthEvent
 		if err := json.Unmarshal(env.Data, &evt); err != nil {
 			slog.Warn("Failed to decode health event", "error", err, "collector", env.Collector)
@@ -174,7 +189,7 @@ func (h *handler) handleEnvelope(ctx context.Context, env types.Envelope) {
 		}
 		h.handleHealth(ctx, env.Collector, evt)
 	default:
-		slog.Warn("Unhandled envelope type", "type", env.Type)
+		slog.Error("Unhandled envelope type", "type", env.Type)
 	}
 }
 
@@ -243,9 +258,21 @@ func (h *handler) handleLog(ctx context.Context, collector, app string, entry ty
 		return
 	}
 
-	_, err := h.ingestService.StoreLog(ctx, req)
+	logID, err := h.ingestService.StoreLog(ctx, req)
 	if err != nil {
 		slog.Error("Failed to store log", "error", err, "collector", req.CollectorName, "app", req.AppName)
+		return
+	}
+
+	if logID > 0 {
+		h.topology.Publish(topologysvc.Message{
+			Persisted: &topologysvc.PersistedLogMessage{
+				Collector: collector,
+				App:       app,
+				Level:     string(entry.Level),
+				Timestamp: entry.Timestamp.Format(time.RFC3339Nano),
+			},
+		})
 	}
 }
 
@@ -282,7 +309,9 @@ func (h *handler) handleHealth(ctx context.Context, collector string, evt types.
 
 	if err := h.ingestService.SaveHealthPeriod(ctx, req); err != nil {
 		slog.Error("Failed to store health event", "error", err, "collector", collector, "app", evt.App)
+		return
 	}
+
 }
 
 func (h *handler) pingLoop(conn *websocket.Conn) {

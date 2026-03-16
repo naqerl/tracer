@@ -9,6 +9,7 @@ import (
 	"tracer/apps/panel/web/handlers/llm"
 	"tracer/apps/panel/web/handlers/panel"
 	"tracer/apps/panel/web/handlers/settings"
+	topologyhandler "tracer/apps/panel/web/handlers/topology"
 	"tracer/apps/panel/web/middleware"
 	authmw "tracer/apps/panel/web/middleware/auth"
 )
@@ -21,8 +22,9 @@ func NewServer(deps Dependencies, port string) *http.Server {
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/panel/", http.StatusSeeOther)
 	})
-	mux.Handle("/ingest/", http.StripPrefix("/ingest", ingest.InitMux(deps.Auth, deps.Ingest, deps.Tracker)))
+	mux.Handle("/ingest/", http.StripPrefix("/ingest", ingest.InitMux(deps.Auth, deps.Ingest, deps.Tracker, deps.Topology)))
 	mux.Handle("/panel/", http.StripPrefix("/panel", panel.InitMux(deps.PanelService)))
+	mux.Handle("/topology/", http.StripPrefix("/topology", topologyhandler.InitMux(deps.Topology, deps.User)))
 	mux.Handle("/auth/", http.StripPrefix("/auth", authMux))
 	mux.Handle("/llm", llm.InitMux())
 	mux.Handle("/settings/", http.StripPrefix("/settings", settings.InitMux(deps.Auth, deps.User, deps.Ingest, deps.DBManagerx, deps.Notify)))

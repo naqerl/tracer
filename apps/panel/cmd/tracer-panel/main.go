@@ -27,6 +27,7 @@ import (
 	"tracer/apps/panel/internal/services/notify/ntfy"
 	"tracer/apps/panel/internal/services/notify/telegram"
 	panelsvc "tracer/apps/panel/internal/services/panel"
+	topologysvc "tracer/apps/panel/internal/services/topology"
 	"tracer/apps/panel/internal/services/user"
 	panelmigrations "tracer/apps/panel/sql/panel"
 	"tracer/apps/panel/web"
@@ -251,8 +252,8 @@ func serve(ctx context.Context, cfg config.Panel) error {
 
 	// Initialize collector tracker
 	tracker := ingest.NewTracker()
-
 	panelService := panelsvc.New(dbManager, ingestService, tracker, userService)
+	topologyService := topologysvc.NewService(panelService)
 
 	// Run services
 	wg.Go(func() {
@@ -294,6 +295,7 @@ func serve(ctx context.Context, cfg config.Panel) error {
 		Auth:         authService,
 		User:         userService,
 		Tracker:      tracker,
+		Topology:     topologyService,
 		PanelService: panelService,
 	}
 	server := web.NewServer(deps, cfg.Port)

@@ -120,23 +120,12 @@ func (d *Dispatcher) getNotifiers(ctx context.Context, collectorName, appName st
 
 // dispatch formats and sends a notification to all provided notifiers.
 func (d *Dispatcher) dispatch(n Notification, notifiers []Notifier) {
-	// Map notification type to emoji prefix
-	var prefix string
-	switch n.Type {
-	case TypeAlert:
-		prefix = "⚠️ alert"
-	case TypeLifecycle:
-		prefix = "lifecycle"
-	case TypeWelcome:
-		prefix = "👋 welcome"
-	case TypeSubscription:
-		prefix = "🔔 subscription"
-	default:
-		prefix = string(n.Type)
+	// Build final formatted message: {app}@{collector}\n\n{message}
+	header := n.AppName
+	if n.CollectorName != "" {
+		header = fmt.Sprintf("%s@%s", n.AppName, n.CollectorName)
 	}
-
-	// Build final formatted message: {prefix} @{app}\n{message}
-	formattedMessage := fmt.Sprintf("%s @%s\n%s", prefix, n.AppName, n.Message)
+	formattedMessage := fmt.Sprintf("%s\n\n%s", header, n.Message)
 
 	// Create notification with formatted message for sending
 	finalNotification := Notification{

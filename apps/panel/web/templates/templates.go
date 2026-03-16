@@ -44,7 +44,8 @@ func New(fsys fs.FS) Templates {
 			}
 			return val
 		},
-		"dict": dict,
+		"toJSON": toJSON,
+		"dict":   dict,
 	}
 
 	// Parse shared templates first
@@ -207,6 +208,14 @@ func dict(values ...any) map[string]any {
 		d[key] = values[i+1]
 	}
 	return d
+}
+
+func toJSON(v any) template.JS {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return template.JS("{}")
+	}
+	return template.JS(b)
 }
 
 func parseContext(v any) map[string]string {

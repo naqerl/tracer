@@ -226,12 +226,20 @@ func inferSourceSpec(raw string) (string, source.Spec) {
 		}
 	}
 
-	return raw, source.Spec{
+	return trimSystemdUnitSuffix(raw), source.Spec{
 		Type: "journalctl",
 		Params: map[string]string{
 			"unit": raw,
 		},
 	}
+}
+
+func trimSystemdUnitSuffix(raw string) string {
+	trimmed := strings.TrimSpace(raw)
+	if strings.HasSuffix(trimmed, ".service") {
+		return strings.TrimSuffix(trimmed, ".service")
+	}
+	return trimmed
 }
 
 func looksLikePath(raw string) bool {
