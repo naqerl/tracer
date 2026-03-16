@@ -63,6 +63,9 @@
     }
 
     function renderChart() {
+        const levelColor = "{{if eq .LogGroup.Level `error`}}#ef4444{{else if eq .LogGroup.Level `warn`}}#eab308{{else if eq .LogGroup.Level `info`}}#3b82f6{{else}}#808080{{end}}";
+        const levelFill = "{{if eq .LogGroup.Level `error`}}rgba(239, 68, 68, 0.1){{else if eq .LogGroup.Level `warn`}}rgba(234, 179, 8, 0.1){{else if eq .LogGroup.Level `info`}}rgba(59, 130, 246, 0.1){{else}}rgba(128, 128, 128, 0.1){{end}}";
+
         // Extract data from table - aggregate by hour
         const rows = document.querySelectorAll('#logs-data tbody tr');
         if (rows.length === 0) return;
@@ -119,8 +122,8 @@
                 { },
                 {
                     label: "Count",
-                    stroke: "#5C9CF5",
-                    fill: "rgba(92, 156, 245, 0.1)",
+                    stroke: levelColor,
+                    fill: levelFill,
                     width: 2
                 }
             ],
