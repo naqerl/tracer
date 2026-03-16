@@ -1,13 +1,20 @@
 package main
 
 import (
+	"archive/tar"
+	"compress/gzip"
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"log/slog"
+	"net/http"
+	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"syscall"
@@ -58,6 +65,9 @@ func main() {
 		case "set":
 			cfg := config.Load(*configPath)
 			handleSet(*configPath, cfg, setCmd)
+			return
+		case "update":
+			handleUpdate()
 			return
 		default:
 			log.Fatalf("Unknown command: %s\n", flag.Arg(0))
@@ -251,6 +261,184 @@ func handleSet(path string, cfg config.Config, setCmd *flag.FlagSet) {
 	}
 
 	fmt.Printf("Set %s successfully\n", key)
+}
+
+func handleUpdate() {
+	const repo = "ai-shift/tracer"
+
+	// Get current executable path
+	exePath, err := os.Executable()
+	if err != nil {
+		log.Fatalf("Failed to get executable path: %v", err)
+	}
+	// Resolve symlinks to get the real path
+	exePath, err = filepath.EvalSymlinks(exePath)
+	if err != nil {
+		log.Fatalf("Failed to resolve executable path: %v", err)
+	}
+
+	// Detect architecture
+	arch := runtime.GOARCH
+	switch arch {
+	case "amd64":
+		// keep as is
+	case "arm64":
+		// keep as is
+	default:
+		log.Fatalf("Unsupported architecture: %s", arch)
+	}
+
+	// Fetch latest version
+	fmt.Println("Checking for latest version...")
+	latestURL := fmt.Sprintf("https://api.github.com/repos/%s/releases/latest", repo)
+	resp, err := http.Get(latestURL)
+	if err != nil {
+		log.Fatalf("Failed to fetch latest version: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		log.Fatalf("Failed to fetch latest version: HTTP %d", resp.StatusCode)
+	}
+
+	var release struct {
+		TagName string `json:"tag_name"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
+		log.Fatalf("Failed to parse release info: %v", err)
+	}
+
+	version := release.TagName
+	fmt.Printf("Latest version: %s\n", version)
+
+	// Download URL
+	downloadURL := fmt.Sprintf("https://github.com/%s/releases/download/%s/tracer-%s-linux-%s.tar.gz", repo, version, version, arch)
+	fmt.Printf("Downloading from: %s\n", downloadURL)
+
+	// Download tarball
+	resp, err = http.Get(downloadURL)
+	if err != nil {
+		log.Fatalf("Failed to download: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		log.Fatalf("Failed to download: HTTP %d", resp.StatusCode)
+	}
+
+	// Create temp file
+	tmpFile, err := os.CreateTemp("", "tracer-update-*.tar.gz")
+	if err != nil {
+		log.Fatalf("Failed to create temp file: %v", err)
+	}
+	defer os.Remove(tmpFile.Name())
+
+	// Download to temp file
+	if _, err := io.Copy(tmpFile, resp.Body); err != nil {
+		tmpFile.Close()
+		log.Fatalf("Failed to download: %v", err)
+	}
+	tmpFile.Close()
+
+	// Extract tarball
+	fmt.Println("Extracting...")
+	if err := extractCollectorBinary(tmpFile.Name(), exePath); err != nil {
+		log.Fatalf("Failed to extract: %v", err)
+	}
+
+	fmt.Println()
+	fmt.Println("========================================")
+	fmt.Println("Update successful!")
+	fmt.Println("========================================")
+	fmt.Println()
+	fmt.Println("Please restart the collector to apply the update:")
+	fmt.Println()
+	fmt.Println("  sudo systemctl restart tracer-collector")
+	fmt.Println()
+}
+
+func extractCollectorBinary(tarballPath, destPath string) error {
+	f, err := os.Open(tarballPath)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	gz, err := gzip.NewReader(f)
+	if err != nil {
+		return err
+	}
+	defer gz.Close()
+
+	tr := tar.NewReader(gz)
+	for {
+		header, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return err
+		}
+
+		if header.Name != "tracer-collector" {
+			continue
+		}
+
+		// Create temp file in same directory as destination
+		tmpFile, err := os.CreateTemp(filepath.Dir(destPath), ".tracer-collector-new-*")
+		if err != nil {
+			return err
+		}
+		tmpPath := tmpFile.Name()
+
+		// Copy binary
+		if _, err := io.Copy(tmpFile, tr); err != nil {
+			tmpFile.Close()
+			os.Remove(tmpPath)
+			return err
+		}
+		tmpFile.Close()
+
+		// Make executable
+		if err := os.Chmod(tmpPath, 0755); err != nil {
+			os.Remove(tmpPath)
+			return err
+		}
+
+		// Rename to replace original
+		if err := os.Rename(tmpPath, destPath); err != nil {
+			// Try copy if rename fails (e.g., cross-device)
+			if err := copyFile(tmpPath, destPath); err != nil {
+				os.Remove(tmpPath)
+				return err
+			}
+			os.Remove(tmpPath)
+		}
+
+		return nil
+	}
+
+	return fmt.Errorf("tracer-collector binary not found in tarball")
+}
+
+func copyFile(src, dst string) error {
+	sourceFile, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer sourceFile.Close()
+
+	destFile, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer destFile.Close()
+
+	if _, err := io.Copy(destFile, sourceFile); err != nil {
+		return err
+	}
+
+	return destFile.Chmod(0755)
 }
 
 func inferSourceSpec(raw string) (string, source.Spec) {
