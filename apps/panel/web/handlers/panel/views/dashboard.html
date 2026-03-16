@@ -134,7 +134,7 @@
 
 {{define "app-health"}}
 <span>uptime: </span>
-<span class="inline-block w-[4ch] tabular-nums text-right whitespace-nowrap {{.Health.UptimeTextClass}}">{{if .Health.UptimeText}}{{.Health.UptimeText}}{{else}}N/A{{end}}</span>
+<span class="inline-block w-[3ch] tabular-nums text-right whitespace-nowrap {{.Health.UptimeTextClass}}">{{if .Health.UptimeText}}{{.Health.UptimeText}}{{else}}N/A{{end}}</span>
 {{end}}
 
 {{define "app-error-count"}}
