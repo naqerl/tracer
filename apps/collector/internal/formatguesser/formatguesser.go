@@ -137,16 +137,13 @@ func buildParserSpec(ctx context.Context, ss source.SourceSeeker, allowMixed boo
 		}
 
 		next, err := compareOrUpdate(prev, curr)
-		switch {
-		case errors.Is(err, errTypeMismatch):
+		if err != nil {
 			if !allowMixed {
 				return parser.Spec{}, nil, fmt.Errorf("failed to check the log consistency, error: %v", err)
 			}
 			prev = curr
 			i = 0
-		case err != nil:
-			return parser.Spec{}, nil, fmt.Errorf("failed to check the log consistency, error: %v", err)
-		default:
+		} else {
 			prev = next
 		}
 
@@ -315,15 +312,11 @@ func isNumeric(s string) bool {
 	return true
 }
 
-var (
-	errTypeMismatch = errors.New("spec types mismatch")
-)
-
 func compareOrUpdate(prev, curr parser.Spec) (parser.Spec, error) {
 	if prev.Type == "" {
 		prev.Type = curr.Type
 	} else if prev.Type != curr.Type {
-		return prev, errTypeMismatch
+		return prev, fmt.Errorf("spec types mismatch. Prev: %s, Curr: %s", prev.Type, curr.Type)
 	}
 
 	if prev.Params == nil {
