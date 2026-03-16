@@ -618,7 +618,8 @@ func (h *handler) getLogGroupByID(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return
 	}
-	ensureSinceCookie(w, r)
+	sinceLabel, since := readSince(w, r)
+	now := time.Now()
 
 	groupID, err := strconv.ParseInt(r.PathValue("groupID"), 10, 64)
 	if err != nil {
@@ -658,6 +659,9 @@ func (h *handler) getLogGroupByID(w http.ResponseWriter, r *http.Request) {
 		"Title":         req.AppName + " Log Details",
 		"AppName":       req.AppName,
 		"CollectorName": req.CollectorName,
+		"Since":         sinceLabel,
+		"SinceStart":    since.Unix(),
+		"SinceEnd":      now.Unix(),
 		"LogGroup":      detail.Group,
 		"Logs":          detail.Logs,
 		"Offset":        req.Offset,

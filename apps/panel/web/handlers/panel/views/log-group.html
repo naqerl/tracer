@@ -65,6 +65,8 @@
     function renderChart() {
         const levelColor = "{{if eq .LogGroup.Level `error`}}#ef4444{{else if eq .LogGroup.Level `warn`}}#eab308{{else if eq .LogGroup.Level `info`}}#3b82f6{{else}}#808080{{end}}";
         const levelFill = "{{if eq .LogGroup.Level `error`}}rgba(239, 68, 68, 0.1){{else if eq .LogGroup.Level `warn`}}rgba(234, 179, 8, 0.1){{else if eq .LogGroup.Level `info`}}rgba(59, 130, 246, 0.1){{else}}rgba(128, 128, 128, 0.1){{end}}";
+        const sinceStart = {{.SinceStart}};
+        const sinceEnd = {{.SinceEnd}};
 
         // Extract data from table - aggregate by hour
         const rows = document.querySelectorAll('#logs-data tbody tr');
@@ -82,9 +84,6 @@
         const sortedEntries = Array.from(timeCounts.entries()).sort((a, b) => a[0] - b[0]);
         const timestamps = sortedEntries.map(e => e[0] / 1000); // Back to seconds for uPlot
         const counts = sortedEntries.map(e => e[1]);
-        const minTimestamp = timestamps[0];
-        const maxTimestamp = timestamps[timestamps.length - 1];
-        const singlePointPadding = 1800; // 30 minutes in seconds
 
         // Common chart options
         const containerWidth = document.getElementById('log-chart-container').offsetWidth;
@@ -97,12 +96,7 @@
             scales: {
                 x: {
                     time: true,
-                    range: () => {
-                        if (minTimestamp === maxTimestamp) {
-                            return [minTimestamp - singlePointPadding, maxTimestamp + singlePointPadding];
-                        }
-                        return [minTimestamp, maxTimestamp];
-                    }
+                    range: () => [sinceStart, sinceEnd]
                 }
             },
             axes: [
