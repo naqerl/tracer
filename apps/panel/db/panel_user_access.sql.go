@@ -9,22 +9,6 @@ import (
 	"context"
 )
 
-const grantAppAccess = `-- name: GrantAppAccess :exec
-INSERT OR IGNORE INTO access_policy (user_id, collector_name, app_name)
-VALUES (?, ?, ?)
-`
-
-type GrantAppAccessParams struct {
-	UserID        int64
-	CollectorName string
-	AppName       string
-}
-
-func (q *Queries) GrantAppAccess(ctx context.Context, arg GrantAppAccessParams) error {
-	_, err := q.db.ExecContext(ctx, grantAppAccess, arg.UserID, arg.CollectorName, arg.AppName)
-	return err
-}
-
 const findUserAccessPolicy = `-- name: FindUserAccessPolicy :many
 
 SELECT collector_name, app_name FROM access_policy
@@ -59,6 +43,22 @@ func (q *Queries) FindUserAccessPolicy(ctx context.Context, userID int64) ([]Fin
 		return nil, err
 	}
 	return items, nil
+}
+
+const grantAppAccess = `-- name: GrantAppAccess :exec
+INSERT OR IGNORE INTO access_policy (user_id, collector_name, app_name)
+VALUES (?, ?, ?)
+`
+
+type GrantAppAccessParams struct {
+	UserID        int64
+	CollectorName string
+	AppName       string
+}
+
+func (q *Queries) GrantAppAccess(ctx context.Context, arg GrantAppAccessParams) error {
+	_, err := q.db.ExecContext(ctx, grantAppAccess, arg.UserID, arg.CollectorName, arg.AppName)
+	return err
 }
 
 const revokeAppAccess = `-- name: RevokeAppAccess :exec

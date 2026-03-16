@@ -202,7 +202,7 @@ const getOrCreateLogGroup = `-- name: GetOrCreateLogGroup :one
 INSERT INTO log_groups (message, level)
 VALUES (?, ?)
 ON CONFLICT(message, level) DO UPDATE SET message = message
-RETURNING id, message, level, created_at
+RETURNING id, message, level, datetime(created_at) as created_at
 `
 
 type GetOrCreateLogGroupParams struct {
@@ -210,15 +210,22 @@ type GetOrCreateLogGroupParams struct {
 	Level   string
 }
 
+type GetOrCreateLogGroupRow struct {
+	ID       int64
+	Message  string
+	Level    string
+	Datetime interface{}
+}
+
 // Get existing log group by message and level, or create if doesn't exist
-func (q *Queries) GetOrCreateLogGroup(ctx context.Context, arg GetOrCreateLogGroupParams) (LogGroup, error) {
+func (q *Queries) GetOrCreateLogGroup(ctx context.Context, arg GetOrCreateLogGroupParams) (GetOrCreateLogGroupRow, error) {
 	row := q.db.QueryRowContext(ctx, getOrCreateLogGroup, arg.Message, arg.Level)
-	var i LogGroup
+	var i GetOrCreateLogGroupRow
 	err := row.Scan(
 		&i.ID,
 		&i.Message,
 		&i.Level,
-		&i.CreatedAt,
+		&i.Datetime,
 	)
 	return i, err
 }

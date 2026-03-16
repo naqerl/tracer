@@ -8,7 +8,7 @@ RETURNING *;
 INSERT INTO log_groups (message, level)
 VALUES (?, ?)
 ON CONFLICT(message, level) DO UPDATE SET message = message
-RETURNING *;
+RETURNING id, message, level, datetime(created_at) as created_at;
 
 -- name: GetLogGroupByID :one
 -- Lookup log group by ID with count and latest timestamp

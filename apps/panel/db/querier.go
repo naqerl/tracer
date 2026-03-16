@@ -14,7 +14,6 @@ type Querier interface {
 	AddNotifierSubscription(ctx context.Context, arg AddNotifierSubscriptionParams) error
 	CloseHealthPeriod(ctx context.Context, arg CloseHealthPeriodParams) error
 	// Count total logs in a group
-	FindUserAccessPolicy(ctx context.Context, userID int64) ([]FindUserAccessPolicyRow, error)
 	CountLogsByGroupID(ctx context.Context, groupID sql.NullInt64) (int64, error)
 	CountUsers(ctx context.Context) (int64, error)
 	// Collector API keys
@@ -38,6 +37,8 @@ type Querier interface {
 	DeleteUserAPIKey(ctx context.Context, id int64) error
 	DisableNotifier(ctx context.Context, id int64) error
 	EnableNotifier(ctx context.Context, id int64) error
+	// User access policy queries
+	FindUserAccessPolicy(ctx context.Context, userID int64) ([]FindUserAccessPolicyRow, error)
 	FindUserCredsByUsername(ctx context.Context, username string) (FindUserCredsByUsernameRow, error)
 	GetCollectorAPIKeyByName(ctx context.Context, name string) (CollectorApiKey, error)
 	GetCollectorAPIKeys(ctx context.Context) ([]GetCollectorAPIKeysRow, error)
@@ -63,7 +64,7 @@ type Querier interface {
 	GetNotifierSubscriptions(ctx context.Context, notifierID int64) ([]GetNotifierSubscriptionsRow, error)
 	GetOpenHealthPeriod(ctx context.Context) (AppHealthPeriod, error)
 	// Get existing log group by message and level, or create if doesn't exist
-	GetOrCreateLogGroup(ctx context.Context, arg GetOrCreateLogGroupParams) (LogGroup, error)
+	GetOrCreateLogGroup(ctx context.Context, arg GetOrCreateLogGroupParams) (GetOrCreateLogGroupRow, error)
 	GetPercentiles(ctx context.Context, createdAt time.Time) (GetPercentilesRow, error)
 	GetSession(ctx context.Context, id string) (Session, error)
 	GetStatsHistory(ctx context.Context, createdAt time.Time) ([]SystemStat, error)

@@ -9,6 +9,12 @@ import (
 	"time"
 )
 
+type AccessPolicy struct {
+	UserID        int64
+	CollectorName string
+	AppName       string
+}
+
 type AppHealthPeriod struct {
 	ID        int64
 	Status    string
@@ -99,10 +105,4 @@ type UserApiKey struct {
 	Name       string
 	CreatedAt  sql.NullTime
 	LastUsedAt sql.NullTime
-}
-
-type UserApp struct {
-	UserID        int64
-	CollectorName string
-	AppName       string
 }
