@@ -196,6 +196,7 @@ func serve(ctx context.Context, cfg config.Config) error {
 func handleAdd(ctx context.Context, path string, cfg config.Config, addCmd *flag.FlagSet) {
 	override := addCmd.Bool("override", false, "override the app unit in the config")
 	healthURL := addCmd.String("health", "", "health check URL to attach as an HTTP health probe")
+	ignoreFormatChange := addCmd.Bool("ignore-format-change", false, "ignore older format changes and use the latest compatible log format")
 	addCmd.Parse(flag.Args()[1:])
 	remaining := addCmd.Args()
 
@@ -204,7 +205,10 @@ func handleAdd(ctx context.Context, path string, cfg config.Config, addCmd *flag
 	}
 	name, spec := inferSourceSpec(remaining[0])
 
-	if err := formatguesser.Add(ctx, &cfg, name, spec, *override); err != nil {
+	if err := formatguesser.Add(ctx, &cfg, name, spec, formatguesser.AddRequest{
+		Override:   *override,
+		AllowMixed: *ignoreFormatChange,
+	}); err != nil {
 		log.Fatalf("Failed to guess the source format, error: %v", err)
 	}
 	if strings.TrimSpace(*healthURL) != "" {

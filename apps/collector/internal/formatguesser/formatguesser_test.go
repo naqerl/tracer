@@ -1,6 +1,8 @@
 package formatguesser
 
 import (
+	"context"
+	"io"
 	"testing"
 
 	"github.com/go-test/deep"
@@ -639,7 +641,7 @@ func TestGuessFormat(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			curr, err := guessFormat(tt.line)
+			curr, err := guessParserSpec(tt.line)
 
 			if tt.wantErr != (err != nil) {
 				t.Fatalf("guessFormat() error = %v, wantErr = %v", err, tt.wantErr)
@@ -652,4 +654,80 @@ func TestGuessFormat(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestBuildParserSpecRejectsMixedFormatsByDefault(t *testing.T) {
+	_, _, err := buildParserSpec(context.Background(), &stubSourceSeeker{
+		lines: []string{
+			`{"ts":"2026-03-10T19:05:18Z","level":"I","msg":"a"}`,
+			`time=2026-03-10T19:06:18Z level=I msg=a`,
+		},
+	}, false)
+	if err == nil {
+		t.Fatal("buildParserSpec() error = nil, want mixed-format error")
+	}
+}
+
+func TestBuildParserSpecAllowsMixedFormatsWhenEnabled(t *testing.T) {
+	spec, lines, err := buildParserSpec(context.Background(), &stubSourceSeeker{
+		lines: []string{
+			`{"ts":"2026-03-10T19:05:18Z","level":"I","msg":"a"}`,
+			`time=2026-03-10T19:06:18Z level=I msg=a`,
+		},
+	}, true)
+	if err != nil {
+		t.Fatalf("buildParserSpec() error = %v", err)
+	}
+
+	want := parser.Spec{
+		Type: "slogtext",
+		Params: map[string]string{
+			"timestamp_field":  "time",
+			"level_field":      "level",
+			"message_field":    "msg",
+			"timestamp_format": "2006-01-02T15:04:05.999999999Z07:00",
+		},
+	}
+	if diff := deep.Equal(spec, want); diff != nil {
+		t.Fatalf("buildParserSpec() spec diff: %v", diff)
+	}
+
+	wantLines := []string{
+		`time=2026-03-10T19:06:18Z level=I msg=a`,
+	}
+	if diff := deep.Equal(lines, wantLines); diff != nil {
+		t.Fatalf("buildParserSpec() lines diff: %v", diff)
+	}
+}
+
+type stubSourceSeeker struct {
+	lines      []string
+	idx        int
+	seekCalled bool
+}
+
+func (s *stubSourceSeeker) Open(context.Context) error { return nil }
+
+func (s *stubSourceSeeker) Next(context.Context) (string, error) {
+	if s.seekCalled {
+		s.seekCalled = false
+		if len(s.lines) == 0 {
+			return "", io.EOF
+		}
+		return s.lines[0], nil
+	}
+	if s.idx >= len(s.lines) {
+		return "", io.EOF
+	}
+	line := s.lines[s.idx]
+	s.idx++
+	return line, nil
+}
+
+func (s *stubSourceSeeker) Close() error { return nil }
+
+func (s *stubSourceSeeker) Seek(offset int64, whence int) (int64, error) {
+	s.idx = 0
+	s.seekCalled = true
+	return 0, nil
 }

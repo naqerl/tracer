@@ -506,9 +506,9 @@ configure_self_monitoring() {
         else
             log_info "Adding self-monitoring for tracer-panel.service..."
             if [[ -n "${panel_health_url}" ]]; then
-                "${INSTALL_DIR}/tracer-collector" -config "${CONFIG_DIR}/collector.yaml" add --override --health "${panel_health_url}" tracer-panel.service
+                "${INSTALL_DIR}/tracer-collector" -config "${CONFIG_DIR}/collector.yaml" add --override --ignore-format-change --health "${panel_health_url}" tracer-panel.service
             else
-                "${INSTALL_DIR}/tracer-collector" -config "${CONFIG_DIR}/collector.yaml" add --override tracer-panel.service
+                "${INSTALL_DIR}/tracer-collector" -config "${CONFIG_DIR}/collector.yaml" add --override --ignore-format-change tracer-panel.service
             fi
             changed=1
         fi
@@ -518,7 +518,7 @@ configure_self_monitoring() {
         log_info "Self-monitoring for tracer-collector.service already configured"
     else
         log_info "Adding self-monitoring for tracer-collector.service..."
-        "${INSTALL_DIR}/tracer-collector" -config "${CONFIG_DIR}/collector.yaml" add --override tracer-collector.service
+        "${INSTALL_DIR}/tracer-collector" -config "${CONFIG_DIR}/collector.yaml" add --override --ignore-format-change tracer-collector.service
         changed=1
     fi
 

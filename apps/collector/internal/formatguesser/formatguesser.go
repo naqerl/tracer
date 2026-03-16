@@ -20,7 +20,12 @@ import (
 	"tracer/apps/collector/internal/source"
 )
 
-func Add(ctx context.Context, cfg *config.Config, name string, spec source.Spec, override bool) error {
+type AddRequest struct {
+	Override   bool
+	AllowMixed bool
+}
+
+func Add(ctx context.Context, cfg *config.Config, name string, spec source.Spec, req AddRequest) error {
 	var app config.AppSpec
 	existingIdx := -1
 
@@ -32,7 +37,7 @@ func Add(ctx context.Context, cfg *config.Config, name string, spec source.Spec,
 	for i, v := range cfg.Apps {
 		appNames = append(appNames, v.Name)
 		if reflect.DeepEqual(v.Source, spec) {
-			if !override {
+			if !req.Override {
 				return fmt.Errorf("app with source: %v already exist. Pass --override to override", spec)
 			}
 			existingIdx = i
@@ -44,7 +49,6 @@ func Add(ctx context.Context, cfg *config.Config, name string, spec source.Spec,
 	}
 	app.Source = spec
 
-	// Prepare a source seeker
 	src, err := source.New(spec)
 	if err != nil {
 		return fmt.Errorf("failed to extract a source, error: %v", err)
@@ -61,50 +65,11 @@ func Add(ctx context.Context, cfg *config.Config, name string, spec source.Spec,
 		_ = ss.Close()
 	}()
 
-	// Prepare the source to read logs
-	logSize := int64(100)
-	var logErr error
-	foundLine := false
-	for !foundLine && logSize > 1 {
-		if _, logErr = ss.Seek(-logSize, io.SeekEnd); logErr != nil {
-			return fmt.Errorf("failed to seek in the source, error: %v", logErr)
-		}
-		if _, logErr = ss.Next(ctx); logErr != nil {
-			logSize = logSize / 2
-			continue
-		}
-		foundLine = true
-	}
-	if !foundLine {
-		return errors.New("failed to find logs in the source")
+	prev, lines, err := buildParserSpec(ctx, ss, req.AllowMixed)
+	if err != nil {
+		return err
 	}
 
-	// Build the parser spec, store logs for further test
-	var prev, curr parser.Spec
-	var formatErr error
-	lines := make([]string, 0, logSize)
-	var line string
-	for {
-		line, formatErr = ss.Next(ctx)
-		if formatErr != nil {
-			if errors.Is(formatErr, io.EOF) {
-				break
-			}
-			return fmt.Errorf("unexpected error when reading the source, error: %v", formatErr)
-		}
-		lines = append(lines, line)
-		curr, formatErr = guessFormat(line)
-		if formatErr != nil {
-			return fmt.Errorf("failed to guess the logs format, error: %v", formatErr)
-		}
-		prev, formatErr = compareOrUpdate(prev, curr)
-		if formatErr != nil {
-			return fmt.Errorf("failed to check the log consistency, error: %v", formatErr)
-		}
-
-	}
-
-	// Create the parser from the spec and test it on the logs
 	p := parser.New(prev)
 	for _, l := range lines {
 		if _, err := p.Parse(l); err != nil {
@@ -112,17 +77,15 @@ func Add(ctx context.Context, cfg *config.Config, name string, spec source.Spec,
 		}
 	}
 
-	parserId := generateName(slices.Collect(maps.Keys(cfg.Parsers)), prev.Type, name)
-
-	// Check if parser spec already exist
+	parserID := generateName(slices.Collect(maps.Keys(cfg.Parsers)), prev.Type, name)
 	for id, s := range cfg.Parsers {
 		if s.Type == prev.Type && reflect.DeepEqual(s.Params, prev.Params) {
-			parserId = id
+			parserID = id
 			break
 		}
 	}
-	cfg.Parsers[parserId] = prev
-	app.ParserID = parserId
+	cfg.Parsers[parserID] = prev
+	app.ParserID = parserID
 
 	if existingIdx >= 0 {
 		cfg.Apps[existingIdx] = app
@@ -133,7 +96,68 @@ func Add(ctx context.Context, cfg *config.Config, name string, spec source.Spec,
 	return nil
 }
 
-func guessFormat(line string) (parser.Spec, error) {
+func buildParserSpec(ctx context.Context, ss source.SourceSeeker, allowMixed bool) (parser.Spec, []string, error) {
+	logSize := 100
+	var logErr error
+	foundLine := false
+	for !foundLine && logSize > 1 {
+		if _, logErr = ss.Seek(int64(-logSize), io.SeekEnd); logErr != nil {
+			logSize = logSize / 2
+			continue
+		}
+		if _, logErr = ss.Next(ctx); logErr != nil {
+			logSize = logSize / 2
+			continue
+		}
+		foundLine = true
+	}
+	if !foundLine {
+		return parser.Spec{}, nil, errors.New("failed to find logs in the source")
+	}
+
+	var prev parser.Spec
+	lines := make([]string, logSize)
+	var i int
+	for {
+		if i >= logSize {
+			break
+		}
+
+		line, err := ss.Next(ctx)
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			return parser.Spec{}, nil, fmt.Errorf("unexpected error when reading the source, error: %v", err)
+		}
+
+		curr, err := guessParserSpec(line)
+		if err != nil {
+			return parser.Spec{}, nil, fmt.Errorf("failed to guess the logs format, error: %v", err)
+		}
+
+		next, err := compareOrUpdate(prev, curr)
+		switch {
+		case errors.Is(err, errTypeMismatch):
+			if !allowMixed {
+				return parser.Spec{}, nil, fmt.Errorf("failed to check the log consistency, error: %v", err)
+			}
+			prev = curr
+			i = 0
+		case err != nil:
+			return parser.Spec{}, nil, fmt.Errorf("failed to check the log consistency, error: %v", err)
+		default:
+			prev = next
+		}
+
+		lines[i] = line
+		i++
+	}
+
+	return prev, lines[:i], nil
+}
+
+func guessParserSpec(line string) (parser.Spec, error) {
 	var ps parser.Spec
 
 	var jsonData map[string]any
@@ -291,11 +315,15 @@ func isNumeric(s string) bool {
 	return true
 }
 
+var (
+	errTypeMismatch = errors.New("spec types mismatch")
+)
+
 func compareOrUpdate(prev, curr parser.Spec) (parser.Spec, error) {
 	if prev.Type == "" {
 		prev.Type = curr.Type
 	} else if prev.Type != curr.Type {
-		return prev, fmt.Errorf("spec types mismatch. Prev: %s, Curr: %s", prev.Type, curr.Type)
+		return prev, errTypeMismatch
 	}
 
 	if prev.Params == nil {
