@@ -32,6 +32,7 @@ import (
 	panelmigrations "tracer/apps/panel/sql/panel"
 	"tracer/apps/panel/web"
 	"tracer/libs/logx"
+	"tracer/libs/updater"
 )
 
 func main() {
@@ -69,6 +70,17 @@ func main() {
 			log.Fatalf("failed to initialize panel: %s", err)
 		}
 		return
+	}
+
+	// Handle subcommands
+	if flag.NArg() > 0 {
+		switch flag.Arg(0) {
+		case "update":
+			handleUpdate()
+			return
+		default:
+			log.Fatalf("Unknown command: %s\n", flag.Arg(0))
+		}
 	}
 
 	// Default behavior: run the server
@@ -361,4 +373,18 @@ func runMigrations(sqlDB *sql.DB) error {
 	}
 
 	return nil
+}
+
+func handleUpdate() {
+	if err := updater.Update(updater.Options{
+		BinaryName: updater.BinaryPanel,
+		PostUpdate: func() {
+			fmt.Println("Please restart the panel to apply the update:")
+			fmt.Println()
+			fmt.Println("  sudo systemctl restart tracer-panel")
+			fmt.Println()
+		},
+	}); err != nil {
+		log.Fatalf("Update failed: %v", err)
+	}
 }
