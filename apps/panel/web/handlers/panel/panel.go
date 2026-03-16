@@ -71,13 +71,13 @@ func InitMux(svc *panelsvc.Service) *http.ServeMux {
 // Dashboard handlers
 
 func (h *handler) getDashboard(w http.ResponseWriter, r *http.Request) {
-	user, err := auth.RequireOrRedirect(w, r)
+	userID, err := auth.RequireOrRedirect(w, r)
 	if err != nil {
 		return
 	}
 
 	sinceLabel := ensureSinceCookie(w, r)
-	collectors, err := h.svc.ListCollectors(r.Context(), user)
+	collectors, err := h.svc.ListCollectors(r.Context(), userID)
 	if err != nil {
 		h.t.RenderError(w, r, "Error", "Failed to get collectors", http.StatusInternalServerError)
 		return
@@ -85,7 +85,7 @@ func (h *handler) getDashboard(w http.ResponseWriter, r *http.Request) {
 
 	h.t.RenderHTTP(w, r, "dashboard", map[string]any{
 		"Title":      "Panel",
-		"User":       user,
+		"UserID":     userID,
 		"Collectors": dashboardCollectorsView(collectors),
 		"Since":      sinceLabel,
 	})
@@ -94,12 +94,13 @@ func (h *handler) getDashboard(w http.ResponseWriter, r *http.Request) {
 // Collector handlers
 
 func (h *handler) getCollector(w http.ResponseWriter, r *http.Request) {
-	user, err := auth.RequireOrRedirect(w, r)
+	userID, err := auth.RequireOrRedirect(w, r)
 	if err != nil {
 		return
 	}
 
-	req := panelsvc.GetCollectorDetailRequest{
+	req := panelsvc.GetCollectorRequest{
+		UserID:        userID,
 		CollectorName: r.PathValue("collector"),
 	}
 	if err := req.Validate(); err != nil {
@@ -107,7 +108,7 @@ func (h *handler) getCollector(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	view, err := h.svc.GetCollector(r.Context(), user, req)
+	view, err := h.svc.GetCollector(r.Context(), req)
 	if err != nil {
 		switch {
 		case errors.Is(err, panelsvc.ErrCollectorNotFound):
@@ -123,29 +124,28 @@ func (h *handler) getCollector(w http.ResponseWriter, r *http.Request) {
 	sinceLabel := ensureSinceCookie(w, r)
 	h.t.RenderHTTP(w, r, "collector-overview", map[string]any{
 		"CollectorName": req.CollectorName,
-		"User":          user,
 		"Collector":     view,
 		"Stats":         view.Stats,
-		"StatsDisplay":  view.StatsDisplay,
 		"Since":         sinceLabel,
 	})
 }
 
 func (h *handler) getCollectorApps(w http.ResponseWriter, r *http.Request) {
-	user, err := auth.RequireOrRedirect(w, r)
+	userID, err := auth.RequireOrRedirect(w, r)
 	if err != nil {
 		return
 	}
 	ensureSinceCookie(w, r)
 
-	req := panelsvc.GetCollectorAppsRequest{
+	req := panelsvc.ListCollectorAppsRequest{
+		UserID:        userID,
 		CollectorName: r.PathValue("collector"),
 	}
 	if err := req.Validate(); err != nil {
 		h.t.RenderError(w, r, "Error", err.Error(), http.StatusBadRequest)
 		return
 	}
-	apps, err := h.svc.GetCollectorApps(r.Context(), user, req)
+	apps, err := h.svc.ListCollectorApps(r.Context(), req)
 	if err != nil {
 		switch {
 		case errors.Is(err, panelsvc.ErrCollectorNotFound):
@@ -163,12 +163,12 @@ func (h *handler) getCollectorApps(w http.ResponseWriter, r *http.Request) {
 
 	h.t.RenderHTTP(w, r, "collector-apps", map[string]any{
 		"CollectorName": req.CollectorName,
-		"Apps":          appsView(apps),
+		"Apps":          collectorAppsView(apps),
 	})
 }
 
 func (h *handler) getCollectorResources(w http.ResponseWriter, r *http.Request) {
-	user, err := auth.RequireOrRedirect(w, r)
+	userID, err := auth.RequireOrRedirect(w, r)
 	if err != nil {
 		return
 	}
@@ -176,6 +176,7 @@ func (h *handler) getCollectorResources(w http.ResponseWriter, r *http.Request) 
 	sinceLabel, since := readSince(w, r)
 
 	req := panelsvc.GetStatsHistoryRequest{
+		UserID:        userID,
 		CollectorName: r.PathValue("collector"),
 		Since:         since,
 	}
@@ -184,7 +185,7 @@ func (h *handler) getCollectorResources(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	stats, err := h.svc.GetStatsHistory(r.Context(), user, req)
+	stats, err := h.svc.GetStatsHistory(r.Context(), req)
 	if err != nil {
 		switch {
 		case errors.Is(err, panelsvc.ErrCollectorNotFound):
@@ -202,13 +203,11 @@ func (h *handler) getCollectorResources(w http.ResponseWriter, r *http.Request) 
 		"CollectorName": req.CollectorName,
 		"Since":         sinceLabel,
 		"Stats":         stats,
-		"User":          user,
-		"IsAdmin":       user.IsAdmin,
 	})
 }
 
 func (h *handler) getDashboardAppHealth(w http.ResponseWriter, r *http.Request) {
-	user, err := auth.RequireOrRedirect(w, r)
+	userID, err := auth.RequireOrRedirect(w, r)
 	if err != nil {
 		return
 	}
@@ -217,7 +216,18 @@ func (h *handler) getDashboardAppHealth(w http.ResponseWriter, r *http.Request) 
 	appName := r.PathValue("app")
 	_, since := readSince(w, r)
 
-	health, err := h.svc.GetAppHealth(r.Context(), user, collectorName, appName, since)
+	req := panelsvc.GetAppHealthRequest{
+		UserID:        userID,
+		CollectorName: collectorName,
+		AppName:       appName,
+		Since:         since,
+	}
+	if err := req.Validate(); err != nil {
+		h.t.RenderError(w, r, "Error", err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	health, err := h.svc.GetAppHealth(r.Context(), req)
 	if err != nil {
 		switch {
 		case errors.Is(err, panelsvc.ErrCollectorNotFound):
@@ -240,12 +250,13 @@ func (h *handler) getDashboardAppHealth(w http.ResponseWriter, r *http.Request) 
 // App logs handlers
 
 func (h *handler) getApp(w http.ResponseWriter, r *http.Request) {
-	user, err := auth.RequireOrRedirect(w, r)
+	userID, err := auth.RequireOrRedirect(w, r)
 	if err != nil {
 		return
 	}
 
 	req := panelsvc.GetAppStatsRequest{
+		UserID:        userID,
 		CollectorName: r.PathValue("collector"),
 		AppName:       r.PathValue("app"),
 	}
@@ -254,7 +265,7 @@ func (h *handler) getApp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	stats, err := h.svc.GetAppStats(r.Context(), user, req)
+	stats, err := h.svc.GetAppStats(r.Context(), req)
 	if err != nil {
 		switch {
 		case errors.Is(err, panelsvc.ErrCollectorNotFound):
@@ -270,7 +281,18 @@ func (h *handler) getApp(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sinceLabel, since := readSince(w, r)
-	uptime, err := h.svc.GetAppHealth(r.Context(), user, req.CollectorName, req.AppName, since)
+	healthReq := panelsvc.GetAppHealthRequest{
+		UserID:        userID,
+		CollectorName: req.CollectorName,
+		AppName:       req.AppName,
+		Since:         since,
+	}
+	if err := healthReq.Validate(); err != nil {
+		h.t.RenderError(w, r, "Error", err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	uptime, err := h.svc.GetAppHealth(r.Context(), healthReq)
 	if err != nil {
 		switch {
 		case errors.Is(err, panelsvc.ErrCollectorNotFound):
@@ -291,7 +313,6 @@ func (h *handler) getApp(w http.ResponseWriter, r *http.Request) {
 		"Stats":     stats,
 		"Since":     sinceLabel,
 		"Uptime":    appHealthViewFromService(uptime),
-		"IsAdmin":   user.IsAdmin,
 	})
 }
 
@@ -375,37 +396,34 @@ type appView struct {
 }
 
 type collectorView struct {
-	Name         string
-	RemoteAddr   string
-	IsConnected  bool
-	ConnectedAt  time.Time
-	LastSeenAt   time.Time
-	Stats        any
-	StatsDisplay any
+	Name        string
+	RemoteAddr  string
+	IsConnected bool
+	ConnectedAt time.Time
+	LastSeenAt  time.Time
+	Stats       *panelsvc.CollectorStats
 }
 
-func dashboardCollectorsView(collectors []panelsvc.CollectorView) []collectorView {
+func dashboardCollectorsView(collectors []panelsvc.Collector) []collectorView {
 	result := make([]collectorView, 0, len(collectors))
 	for _, collector := range collectors {
 		result = append(result, collectorView{
-			Name:         collector.Name,
-			RemoteAddr:   collector.RemoteAddr,
-			IsConnected:  collector.IsConnected,
-			ConnectedAt:  collector.ConnectedAt,
-			LastSeenAt:   collector.LastSeenAt,
-			Stats:        collector.Stats,
-			StatsDisplay: collector.StatsDisplay,
+			Name:        collector.Name,
+			RemoteAddr:  collector.RemoteAddr,
+			IsConnected: collector.IsConnected,
+			ConnectedAt: collector.ConnectedAt,
+			LastSeenAt:  collector.LastSeenAt,
+			Stats:       collector.Stats,
 		})
 	}
 	return result
 }
 
-func appsView(apps []panelsvc.App) []appView {
+func collectorAppsView(apps []string) []appView {
 	result := make([]appView, 0, len(apps))
 	for _, app := range apps {
 		result = append(result, appView{
-			Name:   app.Name,
-			Health: appHealthViewFromService(app.Health),
+			Name: app,
 		})
 	}
 	return result
@@ -487,13 +505,14 @@ func uptimeBucketTitle(start, end time.Time, upDuration, downDuration time.Durat
 }
 
 func (h *handler) getLogGroups(w http.ResponseWriter, r *http.Request) {
-	user, err := auth.RequireOrRedirect(w, r)
+	userID, err := auth.RequireOrRedirect(w, r)
 	if err != nil {
 		return
 	}
 
 	_, since := readSince(w, r)
 	req := panelsvc.GetLogGroupsRequest{
+		UserID:        userID,
 		CollectorName: r.PathValue("collector"),
 		AppName:       r.PathValue("app"),
 		Level:         r.URL.Query().Get("level"),
@@ -506,7 +525,7 @@ func (h *handler) getLogGroups(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	groups, err := h.svc.GetLogGroups(r.Context(), user, req)
+	groups, err := h.svc.GetLogGroups(r.Context(), req)
 	if err != nil {
 		slog.Error("GetLogGroups failed", "error", err, "collector", req.CollectorName, "app", req.AppName)
 		switch {
@@ -532,7 +551,7 @@ func (h *handler) getLogGroups(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) getLogGroupByID(w http.ResponseWriter, r *http.Request) {
-	user, err := auth.RequireOrRedirect(w, r)
+	userID, err := auth.RequireOrRedirect(w, r)
 	if err != nil {
 		return
 	}
@@ -545,6 +564,7 @@ func (h *handler) getLogGroupByID(w http.ResponseWriter, r *http.Request) {
 	}
 
 	req := panelsvc.GetLogDetailRequest{
+		UserID:        userID,
 		CollectorName: r.PathValue("collector"),
 		AppName:       r.PathValue("app"),
 		GroupID:       groupID,
@@ -556,7 +576,7 @@ func (h *handler) getLogGroupByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	detail, err := h.svc.GetLogDetail(r.Context(), user, req)
+	detail, err := h.svc.GetLogDetail(r.Context(), req)
 	if err != nil {
 		switch {
 		case errors.Is(err, panelsvc.ErrCollectorNotFound):
@@ -581,13 +601,11 @@ func (h *handler) getLogGroupByID(w http.ResponseWriter, r *http.Request) {
 		"Limit":         req.Limit,
 		"HasMore":       req.Offset+int64(len(detail.Logs)) < detail.TotalCount,
 		"NextOffset":    req.Offset + req.Limit,
-		"User":          user,
-		"IsAdmin":       user.IsAdmin,
 	})
 }
 
 func (h *handler) getLogByID(w http.ResponseWriter, r *http.Request) {
-	user, err := auth.RequireOrRedirect(w, r)
+	userID, err := auth.RequireOrRedirect(w, r)
 	if err != nil {
 		return
 	}
@@ -600,6 +618,7 @@ func (h *handler) getLogByID(w http.ResponseWriter, r *http.Request) {
 	}
 
 	req := panelsvc.GetLogByIDRequest{
+		UserID:        userID,
 		CollectorName: r.PathValue("collector"),
 		AppName:       r.PathValue("app"),
 		ID:            id,
@@ -609,7 +628,7 @@ func (h *handler) getLogByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	logEntry, err := h.svc.GetLogByID(r.Context(), user, req)
+	logEntry, err := h.svc.GetLogByID(r.Context(), req)
 	if err != nil {
 		switch {
 		case errors.Is(err, panelsvc.ErrCollectorNotFound):
@@ -639,8 +658,6 @@ func (h *handler) getLogByID(w http.ResponseWriter, r *http.Request) {
 			TraceIDDisplay: logTraceIDDisplay(logEntry.TraceID),
 			GroupID:        logEntry.GroupID.Int64,
 		},
-		"User":    user,
-		"IsAdmin": user.IsAdmin,
 	})
 }
 

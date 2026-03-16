@@ -42,14 +42,14 @@
       <span class="text-fg-secondary text-xl ml-1">]</span>
     </a>
     <hr class="flex-1 mx-4 border-bg-secondary" />
-    {{if .StatsDisplay}}
+    {{if .Stats}}
     <span class="text-fg-secondary text-xs mr-1">[</span>
-    {{if eq .StatsDisplay.Staleness "fresh"}}
-    <span class="text-xs text-fg">{{.StatsDisplay.TimestampFormatted}}</span>
-    {{else if eq .StatsDisplay.Staleness "warning"}}
-    <span class="text-xs text-yellow-400">{{.StatsDisplay.TimestampFormatted}}</span>
+    {{if eq .Stats.Staleness "fresh"}}
+    <span class="text-xs text-fg">{{.Stats.TimestampFormatted}}</span>
+    {{else if eq .Stats.Staleness "warning"}}
+    <span class="text-xs text-yellow-400">{{.Stats.TimestampFormatted}}</span>
     {{else}}
-    <span class="text-xs text-red-400">{{.StatsDisplay.TimestampFormatted}}</span>
+    <span class="text-xs text-red-400">{{.Stats.TimestampFormatted}}</span>
     {{end}}
     <span class="text-fg-secondary text-xs ml-1">]</span>
     {{end}}
@@ -69,13 +69,13 @@
   <div class="flex flex-wrap items-center gap-4 mb-4 text-xs">
     <div class="flex items-center gap-1">
       <span class="text-fg-secondary">CPU:</span>
-      <span class="{{if gt .Stats.CpuUsagePercent 80.0}}text-red-400{{else if gt .Stats.CpuUsagePercent 60.0}}text-yellow-400{{else}}text-green-400{{end}}">{{printf "%.0f" .Stats.CpuUsagePercent}}%</span>
+      <span class="{{if gt .Stats.CPUUsagePercent 80.0}}text-red-400{{else if gt .Stats.CPUUsagePercent 60.0}}text-yellow-400{{else}}text-green-400{{end}}">{{printf "%.0f" .Stats.CPUUsagePercent}}%</span>
     </div>
     <div class="flex items-center gap-1">
       <span class="text-fg-secondary">RAM:</span>
       {{$memPercent := 0.0}}
-      {{if gt .Stats.MemTotalMb 0}}
-      {{$memPercent = (divFloat (toFloat .Stats.MemUsedMb) (toFloat .Stats.MemTotalMb))}}
+      {{if gt .Stats.MemTotalMB 0}}
+      {{$memPercent = (divFloat (toFloat .Stats.MemUsedMB) (toFloat .Stats.MemTotalMB))}}
       {{$memPercent = (mulFloat $memPercent 100.0)}}
       {{end}}
       <span class="{{if gt $memPercent 80.0}}text-red-400{{else if gt $memPercent 60.0}}text-yellow-400{{else}}text-green-400{{end}}">{{printf "%.0f" $memPercent}}%</span>
@@ -83,8 +83,8 @@
     <div class="flex items-center gap-1">
       <span class="text-fg-secondary">Disk:</span>
       {{$diskPercent := 0.0}}
-      {{if gt .Stats.DiskTotalGb 0}}
-      {{$diskPercent = (divFloat (toFloat .Stats.DiskUsedGb) (toFloat .Stats.DiskTotalGb))}}
+      {{if gt .Stats.DiskTotalGB 0}}
+      {{$diskPercent = (divFloat (toFloat .Stats.DiskUsedGB) (toFloat .Stats.DiskTotalGB))}}
       {{$diskPercent = (mulFloat $diskPercent 100.0)}}
       {{end}}
       <span class="{{if gt $diskPercent 80.0}}text-red-400{{else if gt $diskPercent 60.0}}text-yellow-400{{else}}text-green-400{{end}}">{{printf "%.0f" $diskPercent}}%</span>
