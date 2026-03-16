@@ -21,6 +21,7 @@ import (
 	"tracer/apps/collector/internal/source"
 	"tracer/apps/collector/internal/stats"
 	"tracer/apps/collector/internal/transport"
+	"tracer/libs/installer"
 	"tracer/libs/logx"
 	"tracer/libs/types"
 	"tracer/libs/updater"
@@ -62,6 +63,9 @@ func main() {
 			return
 		case "update":
 			handleUpdate()
+			return
+		case "install":
+			handleInstall(flag.Args()[1:])
 			return
 		default:
 			log.Fatalf("Unknown command: %s\n", flag.Arg(0))
@@ -268,6 +272,39 @@ func handleUpdate() {
 		},
 	}); err != nil {
 		log.Fatalf("Update failed: %v", err)
+	}
+}
+
+func handleInstall(args []string) {
+	if len(args) == 0 {
+		fmt.Println("Usage: tracer-collector install <command>")
+		fmt.Println()
+		fmt.Println("Commands:")
+		fmt.Println("  metadata      Output installation metadata as JSON")
+		fmt.Println("  systemd       Output systemd service file content")
+		fmt.Println("  paths         Output default paths")
+		fmt.Println("  user          Output service user info")
+		return
+	}
+
+	meta := installer.CollectorMetadata()
+
+	switch args[0] {
+	case "metadata":
+		fmt.Println(meta.JSON())
+	case "systemd":
+		fmt.Println(meta.GenerateSystemdUnit())
+	case "paths":
+		fmt.Printf("InstallDir:  %s\n", meta.Paths.InstallDir)
+		fmt.Printf("ConfigDir:   %s\n", meta.Paths.ConfigDir)
+		fmt.Printf("ConfigFile:  %s\n", meta.Paths.ConfigFile)
+	case "user":
+		fmt.Printf("User:  %s\n", meta.User.Name)
+		fmt.Printf("Group: %s\n", meta.Group.Name)
+		fmt.Printf("Home:  %s\n", meta.User.HomeDir)
+		fmt.Printf("Shell: %s\n", meta.User.Shell)
+	default:
+		log.Fatalf("Unknown install command: %s", args[0])
 	}
 }
 
