@@ -33,6 +33,7 @@ TRACER_AUTOSTART="${TRACER_AUTOSTART:-1}"
 TRACER_SELF_MONITOR="${TRACER_SELF_MONITOR:-1}"
 TRACER_ADMIN_USERNAME="${TRACER_ADMIN_USERNAME:-}"
 TRACER_ADMIN_PASSWORD="${TRACER_ADMIN_PASSWORD:-}"
+TRACER_API_KEY="${TRACER_API_KEY:-}"
 
 # Installation mode
 COLLECTOR_ONLY="${COLLECTOR_ONLY:-0}"
@@ -112,6 +113,13 @@ check_dependencies() {
 
 resolve_install_inputs() {
     if [[ "$COLLECTOR_ONLY" == "1" ]]; then
+        # In collector-only mode, prompt for panel host and API key
+        if [[ -z "${TRACER_PANEL_HOST}" ]]; then
+            TRACER_PANEL_HOST=$(prompt_required_value "TRACER_PANEL_HOST" "Panel host URL (e.g., panel.example.com:8080)")
+        fi
+        if [[ -z "${TRACER_API_KEY}" ]]; then
+            TRACER_API_KEY=$(prompt_required_value "TRACER_API_KEY" "API key" 1)
+        fi
         return
     fi
 
@@ -311,6 +319,22 @@ configure_panel() {
     fi
 }
 
+configure_collector() {
+    if [[ "$COLLECTOR_ONLY" != "1" ]]; then
+        return
+    fi
+
+    if [[ -n "${TRACER_PANEL_HOST}" ]]; then
+        log_info "Setting collector panel host to ${TRACER_PANEL_HOST}..."
+        "${INSTALL_DIR}/tracer-collector" -config "${CONFIG_DIR}/collector.yaml" set panel-host "${TRACER_PANEL_HOST}"
+    fi
+
+    if [[ -n "${TRACER_API_KEY}" ]]; then
+        log_info "Setting collector API key..."
+        "${INSTALL_DIR}/tracer-collector" -config "${CONFIG_DIR}/collector.yaml" set api-key "${TRACER_API_KEY}"
+    fi
+}
+
 panel_bind_port() {
     if [[ "$COLLECTOR_ONLY" == "1" ]]; then
         return
@@ -355,7 +379,7 @@ init_panel() {
     # Update collector config with API key
     if [[ -n "$API_KEY" ]]; then
         log_info "Configuring collector with API key..."
-        sed -i "s/api_key:.*/api_key: ${API_KEY}/" "${CONFIG_DIR}/collector.yaml"
+        "${INSTALL_DIR}/tracer-collector" -config "${CONFIG_DIR}/collector.yaml" set api-key "${API_KEY}"
     fi
 
     log_info "Panel initialized successfully"
@@ -661,6 +685,7 @@ parse_args() {
                 echo "  TRACER_BIN_DIR      Use local directory with built binaries"
                 echo "  TRACER_PANEL_HOST   Set panel host before first start"
                 echo "  TRACER_PANEL_PORT   Set panel listen port before first start"
+                echo "  TRACER_API_KEY      Set API key for collector (required in collector-only mode)"
                 echo "  TRACER_AUTOSTART=1  Enable and start services during install"
                 echo "  TRACER_SELF_MONITOR=1  Add tracer-panel/tracer-collector journal sources"
                 echo "  TRACER_ADMIN_USERNAME  Admin username to use during panel initialization"
@@ -709,6 +734,7 @@ main() {
     generate_configs
     configure_panel
     init_panel
+    configure_collector
     create_systemd_services
     start_services
     print_instructions

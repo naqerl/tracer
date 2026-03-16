@@ -32,13 +32,21 @@ Any other logs may show some performance degradation or health status but in bot
 
 ### Install
 
+**Full install (panel + collector):**
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/ai-shift/tracer/main/install.sh | sudo bash
 ```
 
+**Collector only (for remote servers):**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/ai-shift/tracer/main/install.sh | sudo bash -s -- --collector-only
+```
+
 This installs both components:
-- **tracer-collector** - runs as root (to access any log files)
-- **tracer-panel** - runs as dedicated `tracer` user
+- **tracer-collector** - runs as dedicated `tracer-collector` user
+- **tracer-panel** - runs as dedicated `tracer` user (unless `--collector-only`)
 
 ### Configure collector
 

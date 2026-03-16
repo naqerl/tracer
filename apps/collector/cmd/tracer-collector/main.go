@@ -29,6 +29,7 @@ func main() {
 	// Define flags
 	var (
 		addCmd = flag.NewFlagSet("add", flag.ExitOnError)
+		setCmd = flag.NewFlagSet("set", flag.ExitOnError)
 
 		configPath    = flag.String("config", "", "path to config file")
 		printDefaults = flag.Bool("print-defaults", false, "print default configuration and exit")
@@ -53,6 +54,10 @@ func main() {
 		case "add":
 			cfg := config.Load(*configPath)
 			handleAdd(ctx, *configPath, cfg, addCmd)
+			return
+		case "set":
+			cfg := config.Load(*configPath)
+			handleSet(*configPath, cfg, setCmd)
 			return
 		default:
 			log.Fatalf("Unknown command: %s\n", flag.Arg(0))
@@ -217,6 +222,35 @@ func handleAdd(ctx context.Context, path string, cfg config.Config, addCmd *flag
 	if err := cfg.Persist(path); err != nil {
 		log.Fatalf("Failed to write the file config, error: %v", err)
 	}
+}
+
+func handleSet(path string, cfg config.Config, setCmd *flag.FlagSet) {
+	setCmd.Parse(flag.Args()[1:])
+	remaining := setCmd.Args()
+
+	if len(remaining) < 2 {
+		log.Fatal("Usage: tracer-collector set <key> <value>")
+	}
+
+	key := remaining[0]
+	value := remaining[1]
+
+	switch key {
+	case "api-key":
+		cfg.Transport.APIKey = value
+	case "panel-host":
+		cfg.Transport.PanelHost = value
+	case "name":
+		cfg.Transport.Name = value
+	default:
+		log.Fatalf("Unknown key: %s. Supported keys: api-key, panel-host, name", key)
+	}
+
+	if err := cfg.Persist(path); err != nil {
+		log.Fatalf("Failed to write the file config, error: %v", err)
+	}
+
+	fmt.Printf("Set %s successfully\n", key)
 }
 
 func inferSourceSpec(raw string) (string, source.Spec) {
