@@ -12,9 +12,9 @@ import (
 
 type Querier interface {
 	AddNotifierSubscription(ctx context.Context, arg AddNotifierSubscriptionParams) error
-	AddUserApp(ctx context.Context, arg AddUserAppParams) error
 	CloseHealthPeriod(ctx context.Context, arg CloseHealthPeriodParams) error
 	// Count total logs in a group
+	FindUserAccessPolicy(ctx context.Context, userID int64) ([]FindUserAccessPolicyRow, error)
 	CountLogsByGroupID(ctx context.Context, groupID sql.NullInt64) (int64, error)
 	CountUsers(ctx context.Context) (int64, error)
 	// Collector API keys
@@ -38,6 +38,7 @@ type Querier interface {
 	DeleteUserAPIKey(ctx context.Context, id int64) error
 	DisableNotifier(ctx context.Context, id int64) error
 	EnableNotifier(ctx context.Context, id int64) error
+	FindUserCredsByUsername(ctx context.Context, username string) (FindUserCredsByUsernameRow, error)
 	GetCollectorAPIKeyByName(ctx context.Context, name string) (CollectorApiKey, error)
 	GetCollectorAPIKeys(ctx context.Context) ([]GetCollectorAPIKeysRow, error)
 	GetLatestHealthPeriod(ctx context.Context) (AppHealthPeriod, error)
@@ -67,10 +68,8 @@ type Querier interface {
 	GetSession(ctx context.Context, id string) (Session, error)
 	GetStatsHistory(ctx context.Context, createdAt time.Time) ([]SystemStat, error)
 	GetUserAPIKeysByUser(ctx context.Context, userID int64) ([]UserApiKey, error)
-	// User app access queries
-	GetUserApps(ctx context.Context, userID int64) ([]GetUserAppsRow, error)
 	GetUserByID(ctx context.Context, id int64) (User, error)
-	GetUserByUsername(ctx context.Context, username string) (User, error)
+	GrantAppAccess(ctx context.Context, arg GrantAppAccessParams) error
 	InsertLifecycleEvent(ctx context.Context, arg InsertLifecycleEventParams) (LifecycleEvent, error)
 	InsertLog(ctx context.Context, arg InsertLogParams) (Log, error)
 	InsertSystemStats(ctx context.Context, arg InsertSystemStatsParams) error
@@ -81,10 +80,10 @@ type Querier interface {
 	ListNotifiersByUser(ctx context.Context, userID int64) ([]Notifier, error)
 	ListUsers(ctx context.Context) ([]User, error)
 	RemoveAllNotifierSubscriptions(ctx context.Context, notifierID int64) error
-	RemoveUserApp(ctx context.Context, arg RemoveUserAppParams) error
+	RevokeAppAccess(ctx context.Context, arg RevokeAppAccessParams) error
 	SaveHealthPeriod(ctx context.Context, arg SaveHealthPeriodParams) error
 	ValidateAndUpdateCollectorAPIKey(ctx context.Context, arg ValidateAndUpdateCollectorAPIKeyParams) (int64, error)
-	ValidateAndUpdateUserAPIKey(ctx context.Context, arg ValidateAndUpdateUserAPIKeyParams) (UserApiKey, error)
+	ValidateAndUpdateUserAPIKey(ctx context.Context, arg ValidateAndUpdateUserAPIKeyParams) (int64, error)
 }
 
 var _ Querier = (*Queries)(nil)

@@ -2,10 +2,13 @@ package notify
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
+	"sync"
 
 	"tracer/apps/panel/db"
+	"tracer/apps/panel/internal/services/user"
 )
 
 const maxWorkers = 5
@@ -17,21 +20,25 @@ type Dispatcher struct {
 	semaphore chan struct{}
 	db        db.DBTX
 	factories map[string]FromRawJSON
+	userSvc   *user.Service
 }
 
 // NewDispatcher creates a new notification dispatcher.
-func NewDispatcher(db db.DBTX, factories map[string]FromRawJSON, ch chan Notification) *Dispatcher {
+func NewDispatcher(db db.DBTX, factories map[string]FromRawJSON, ch chan Notification, userSvc *user.Service) *Dispatcher {
 	return &Dispatcher{
 		ch:        ch,
 		semaphore: make(chan struct{}, maxWorkers),
 		db:        db,
 		factories: factories,
+		userSvc:   userSvc,
 	}
 }
 
 // Start begins processing notifications. Blocks until context is cancelled.
 func (d *Dispatcher) Start(ctx context.Context) {
 	slog.Info("Notification dispatcher started")
+	var wg sync.WaitGroup
+	defer wg.Wait()
 
 	for {
 		select {
@@ -42,17 +49,24 @@ func (d *Dispatcher) Start(ctx context.Context) {
 			notifiers, err := d.getNotifiers(ctx, notification.CollectorName, notification.AppName)
 			if err != nil {
 				slog.Error("Failed to get notifiers for notification", "error", err)
-				continue
+				// NOTE: Absence of continue is intentional.
+				// Even with non-nil error there coul be some notifier
 			}
 			if len(notifiers) == 0 {
 				continue
 			}
 
-			d.semaphore <- struct{}{}
-			go func(n Notification, notifiers []Notifier) {
+			select {
+			case d.semaphore <- struct{}{}:
+			case <-ctx.Done():
+				slog.Info("Notification dispatcher stopping")
+				return
+			}
+
+			wg.Go(func() {
 				defer func() { <-d.semaphore }()
-				d.dispatch(n, notifiers)
-			}(notification, notifiers)
+				d.dispatch(notification, notifiers)
+			})
 		}
 	}
 }
@@ -65,25 +79,43 @@ func (d *Dispatcher) getNotifiers(ctx context.Context, collectorName, appName st
 		AppName:       appName,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("query matching notifiers: %w", err)
+		return nil, fmt.Errorf("could not get notifiers: %w", err)
 	}
 
 	var notifiers []Notifier
+	var errs []error
 	for _, row := range rows {
+		access, err := d.userSvc.FindAccessPolicy(ctx, row.UserID)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("could not list owner's apps for notifier %d: %w", row.ID, err))
+			continue
+		}
+
+		allowed := access.AllowedTo(collectorName, appName)
+		if !allowed {
+			continue
+		}
+
 		factory, ok := d.factories[row.Type]
 		if !ok {
-			slog.Error("Unknown notifier type", "type", row.Type, "name", row.Name)
+			errs = append(errs, fmt.Errorf("factory not found for notifier %d", row.ID))
 			continue
 		}
+
 		instance, err := factory(row.Name, row.Config)
 		if err != nil {
-			slog.Error("Failed to create notifier instance", "name", row.Name, "type", row.Type, "error", err)
+			errs = append(errs, fmt.Errorf("could not create notifier %d: %w", row.ID, err))
 			continue
 		}
+
 		notifiers = append(notifiers, instance)
 	}
 
-	return notifiers, nil
+	if len(errs) > 0 {
+		err = fmt.Errorf("could not setup one or more notifiers for %s:%s with %w", collectorName, appName, errors.Join(errs...))
+	}
+
+	return notifiers, err
 }
 
 // dispatch formats and sends a notification to all provided notifiers.

@@ -57,6 +57,23 @@ func (q *Queries) DeleteUser(ctx context.Context, id int64) error {
 	return err
 }
 
+const findUserCredsByUsername = `-- name: FindUserCredsByUsername :one
+SELECT id, password_hash FROM user
+WHERE username = ?
+`
+
+type FindUserCredsByUsernameRow struct {
+	ID           int64
+	PasswordHash string
+}
+
+func (q *Queries) FindUserCredsByUsername(ctx context.Context, username string) (FindUserCredsByUsernameRow, error) {
+	row := q.db.QueryRowContext(ctx, findUserCredsByUsername, username)
+	var i FindUserCredsByUsernameRow
+	err := row.Scan(&i.ID, &i.PasswordHash)
+	return i, err
+}
+
 const getUserByID = `-- name: GetUserByID :one
 SELECT id, username, password_hash, is_admin, created_at FROM user
 WHERE id = ?
@@ -64,24 +81,6 @@ WHERE id = ?
 
 func (q *Queries) GetUserByID(ctx context.Context, id int64) (User, error) {
 	row := q.db.QueryRowContext(ctx, getUserByID, id)
-	var i User
-	err := row.Scan(
-		&i.ID,
-		&i.Username,
-		&i.PasswordHash,
-		&i.IsAdmin,
-		&i.CreatedAt,
-	)
-	return i, err
-}
-
-const getUserByUsername = `-- name: GetUserByUsername :one
-SELECT id, username, password_hash, is_admin, created_at FROM user
-WHERE username = ?
-`
-
-func (q *Queries) GetUserByUsername(ctx context.Context, username string) (User, error) {
-	row := q.db.QueryRowContext(ctx, getUserByUsername, username)
 	var i User
 	err := row.Scan(
 		&i.ID,

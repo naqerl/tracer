@@ -132,10 +132,8 @@ func initPanelCmd(username, password string) error {
 	defer sqlDB.Close()
 
 	authSvc := auth.New(sqlDB)
-	userSvc := user.New(sqlDB)
-
 	// Check if users already exist
-	hasUsers, err := userSvc.HasAny(ctx)
+	hasUsers, err := authSvc.HasAnyUsers(ctx)
 	if err != nil {
 		return fmt.Errorf("check users: %w", err)
 	}
@@ -190,10 +188,10 @@ func serve(ctx context.Context, cfg config.Panel) error {
 
 	// Initialize services
 	authService := auth.New(panelDB)
-	userService := user.New(panelDB)
+	userService := user.NewService(panelDB)
 
 	// Check if first run (no users exist)
-	hasUsers, err := userService.HasAny(ctx)
+	hasUsers, err := authService.HasAnyUsers(ctx)
 	if err != nil {
 		return fmt.Errorf("check users: %w", err)
 	}
@@ -218,7 +216,7 @@ func serve(ctx context.Context, cfg config.Panel) error {
 	notifyChan := make(chan notify.Notification, 100)
 
 	// Initialize notification components
-	notifyDispatcher := notify.NewDispatcher(panelDB, notifierFactories, notifyChan)
+	notifyDispatcher := notify.NewDispatcher(panelDB, notifierFactories, notifyChan, userService)
 	notifyService := notify.New(panelDB, userService, notifierFactories)
 
 	// Initialize ingest service

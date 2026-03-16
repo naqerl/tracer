@@ -9,44 +9,44 @@ import (
 	"context"
 )
 
-const addUserApp = `-- name: AddUserApp :exec
-INSERT OR IGNORE INTO user_app (user_id, collector_name, app_name)
+const grantAppAccess = `-- name: GrantAppAccess :exec
+INSERT OR IGNORE INTO access_policy (user_id, collector_name, app_name)
 VALUES (?, ?, ?)
 `
 
-type AddUserAppParams struct {
+type GrantAppAccessParams struct {
 	UserID        int64
 	CollectorName string
 	AppName       string
 }
 
-func (q *Queries) AddUserApp(ctx context.Context, arg AddUserAppParams) error {
-	_, err := q.db.ExecContext(ctx, addUserApp, arg.UserID, arg.CollectorName, arg.AppName)
+func (q *Queries) GrantAppAccess(ctx context.Context, arg GrantAppAccessParams) error {
+	_, err := q.db.ExecContext(ctx, grantAppAccess, arg.UserID, arg.CollectorName, arg.AppName)
 	return err
 }
 
-const getUserApps = `-- name: GetUserApps :many
+const findUserAccessPolicy = `-- name: FindUserAccessPolicy :many
 
-SELECT collector_name, app_name FROM user_app
+SELECT collector_name, app_name FROM access_policy
 WHERE user_id = ?
 ORDER BY collector_name, app_name
 `
 
-type GetUserAppsRow struct {
+type FindUserAccessPolicyRow struct {
 	CollectorName string
 	AppName       string
 }
 
-// User app access queries
-func (q *Queries) GetUserApps(ctx context.Context, userID int64) ([]GetUserAppsRow, error) {
-	rows, err := q.db.QueryContext(ctx, getUserApps, userID)
+// User access policy queries
+func (q *Queries) FindUserAccessPolicy(ctx context.Context, userID int64) ([]FindUserAccessPolicyRow, error) {
+	rows, err := q.db.QueryContext(ctx, findUserAccessPolicy, userID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []GetUserAppsRow
+	var items []FindUserAccessPolicyRow
 	for rows.Next() {
-		var i GetUserAppsRow
+		var i FindUserAccessPolicyRow
 		if err := rows.Scan(&i.CollectorName, &i.AppName); err != nil {
 			return nil, err
 		}
@@ -61,18 +61,18 @@ func (q *Queries) GetUserApps(ctx context.Context, userID int64) ([]GetUserAppsR
 	return items, nil
 }
 
-const removeUserApp = `-- name: RemoveUserApp :exec
-DELETE FROM user_app
+const revokeAppAccess = `-- name: RevokeAppAccess :exec
+DELETE FROM access_policy
 WHERE user_id = ? AND collector_name = ? AND app_name = ?
 `
 
-type RemoveUserAppParams struct {
+type RevokeAppAccessParams struct {
 	UserID        int64
 	CollectorName string
 	AppName       string
 }
 
-func (q *Queries) RemoveUserApp(ctx context.Context, arg RemoveUserAppParams) error {
-	_, err := q.db.ExecContext(ctx, removeUserApp, arg.UserID, arg.CollectorName, arg.AppName)
+func (q *Queries) RevokeAppAccess(ctx context.Context, arg RevokeAppAccessParams) error {
+	_, err := q.db.ExecContext(ctx, revokeAppAccess, arg.UserID, arg.CollectorName, arg.AppName)
 	return err
 }

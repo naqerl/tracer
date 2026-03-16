@@ -18,4 +18,4 @@ WHERE id = ?;
 UPDATE user_api_key
 SET last_used_at = ?
 WHERE api_key = ?
-RETURNING *;
+RETURNING user_id;

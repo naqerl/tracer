@@ -9,7 +9,6 @@ import (
 
 	"tracer/apps/panel/db"
 	"tracer/apps/panel/internal/services/user"
-	sharedtypes "tracer/libs/types"
 )
 
 // DB is the database interface for the notify service.
@@ -53,7 +52,6 @@ type AddNotifierRequest struct {
 // Service manages notifications and handles database operations.
 type Service struct {
 	db        DB
-	userSvc   *user.Service
 	factories map[string]FromRawJSON
 }
 
@@ -61,7 +59,6 @@ type Service struct {
 func New(sqlDB DB, userSvc *user.Service, factories map[string]FromRawJSON) *Service {
 	return &Service{
 		db:        sqlDB,
-		userSvc:   userSvc,
 		factories: factories,
 	}
 }
@@ -110,7 +107,7 @@ func (s *Service) Add(ctx context.Context, req AddNotifierRequest) error {
 // Simply writes to the database without any registration/caching logic.
 // Returns ErrNotifierNotFound if the notifier doesn't exist.
 // Returns ErrAccessDenied if the user doesn't have access to the notifier.
-func (s *Service) SetSubscriptions(ctx context.Context, user sharedtypes.User, notifierID int64, subscriptions []Subscription) error {
+func (s *Service) SetSubscriptions(ctx context.Context, user user.User, notifierID int64, subscriptions []Subscription) error {
 	// 1. Verify notifier exists and user has access
 	queries := db.New(s.db)
 	notifier, err := queries.GetNotifier(ctx, notifierID)
@@ -137,7 +134,7 @@ func (s *Service) SetSubscriptions(ctx context.Context, user sharedtypes.User, n
 // GetSetup retrieves a notifier setup by ID (without subscriptions).
 // Returns ErrNotifierNotFound if the notifier doesn't exist.
 // Returns ErrAccessDenied if the user doesn't have access to the notifier.
-func (s *Service) GetSetup(ctx context.Context, user sharedtypes.User, notifierID int64) (Setup, error) {
+func (s *Service) GetSetup(ctx context.Context, user user.User, notifierID int64) (Setup, error) {
 	var setup Setup
 	queries := db.New(s.db)
 	notifier, err := queries.GetNotifier(ctx, notifierID)
@@ -165,7 +162,7 @@ func (s *Service) GetSetup(ctx context.Context, user sharedtypes.User, notifierI
 // GetSubscriptions retrieves subscriptions for a notifier by ID.
 // Returns ErrNotifierNotFound if the notifier doesn't exist.
 // Returns ErrAccessDenied if the user doesn't have access to the notifier.
-func (s *Service) GetSubscriptions(ctx context.Context, user sharedtypes.User, notifierID int64) ([]Subscription, error) {
+func (s *Service) GetSubscriptions(ctx context.Context, user user.User, notifierID int64) ([]Subscription, error) {
 	queries := db.New(s.db)
 	notifier, err := queries.GetNotifier(ctx, notifierID)
 	if err != nil {
@@ -198,7 +195,7 @@ func (s *Service) GetSubscriptions(ctx context.Context, user sharedtypes.User, n
 // Delete removes a notifier with access check.
 // Returns ErrNotifierNotFound if the notifier doesn't exist.
 // Returns ErrAccessDenied if the user doesn't have access to the notifier.
-func (s *Service) Delete(ctx context.Context, user sharedtypes.User, notifierID int64) error {
+func (s *Service) Delete(ctx context.Context, user user.User, notifierID int64) error {
 	// Verify notifier exists and user has access
 	queries := db.New(s.db)
 	notifier, err := queries.GetNotifier(ctx, notifierID)
@@ -219,7 +216,7 @@ func (s *Service) Delete(ctx context.Context, user sharedtypes.User, notifierID 
 // Toggle enables or disables a notifier with access check.
 // Returns ErrNotifierNotFound if the notifier doesn't exist.
 // Returns ErrAccessDenied if the user doesn't have access to the notifier.
-func (s *Service) Toggle(ctx context.Context, user sharedtypes.User, notifierID int64, enable bool) error {
+func (s *Service) Toggle(ctx context.Context, user user.User, notifierID int64, enable bool) error {
 	// Verify notifier exists and user has access
 	queries := db.New(s.db)
 	notifier, err := queries.GetNotifier(ctx, notifierID)
@@ -242,7 +239,7 @@ func (s *Service) Toggle(ctx context.Context, user sharedtypes.User, notifierID 
 
 // List returns notifiers for the given user.
 // Admins see all notifiers, non-admins see only their own.
-func (s *Service) List(ctx context.Context, user sharedtypes.User) ([]db.Notifier, error) {
+func (s *Service) List(ctx context.Context, user user.User) ([]db.Notifier, error) {
 	queries := db.New(s.db)
 	if user.IsAdmin {
 		return queries.ListAllNotifiers(ctx)
@@ -287,7 +284,7 @@ func (s *Service) setSubscriptions(ctx context.Context, notifierID int64, subscr
 }
 
 // canAccess checks if a user can access a notifier based on ownership and admin status.
-func (s *Service) canAccess(user sharedtypes.User, notifierUserID int64) bool {
+func (s *Service) canAccess(user user.User, notifierUserID int64) bool {
 	if user.IsAdmin {
 		return true
 	}

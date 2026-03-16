@@ -14,11 +14,10 @@ import (
 	"tracer/apps/panel/internal/services/auth"
 	"tracer/apps/panel/internal/services/ingest"
 	"tracer/apps/panel/internal/services/notify"
-	"tracer/apps/panel/internal/services/user"
+	usersvc "tracer/apps/panel/internal/services/user"
 	"tracer/apps/panel/web/htmx"
 	authmw "tracer/apps/panel/web/middleware/auth"
 	"tracer/apps/panel/web/templates"
-	sharedtypes "tracer/libs/types"
 )
 
 //go:embed views/*.html
@@ -27,7 +26,7 @@ var views embed.FS
 type handler struct {
 	t             templates.Templates
 	authService   *auth.Service
-	userService   *user.Service
+	userService   *usersvc.Service
 	ingestService *ingest.Service
 	dbManager     *dbmanager.Manager
 	notifyService *notify.Service
@@ -37,7 +36,7 @@ func appKey(collectorName, appName string) string {
 	return collectorName + ":" + appName
 }
 
-func InitMux(authService *auth.Service, userService *user.Service, ingestService *ingest.Service, dbManager *dbmanager.Manager, notifyService *notify.Service) *http.ServeMux {
+func InitMux(authService *auth.Service, userService *usersvc.Service, ingestService *ingest.Service, dbManager *dbmanager.Manager, notifyService *notify.Service) *http.ServeMux {
 	m := http.NewServeMux()
 	h := handler{
 		t:             templates.New(views),
@@ -73,11 +72,23 @@ func InitMux(authService *auth.Service, userService *user.Service, ingestService
 	return m
 }
 
-func (h *handler) requireAuthenticatedUser(w http.ResponseWriter, r *http.Request) (sharedtypes.User, error) {
-	user, err := authmw.GetUser(r)
+func (h *handler) requireAuthenticatedUser(w http.ResponseWriter, r *http.Request) (usersvc.User, error) {
+	userID, err := authmw.GetUserID(r)
 	if err != nil {
 		authmw.RedirectToLogin(w, r)
-		return sharedtypes.User{}, err
+		return usersvc.User{}, err
+	}
+	return h.userService.FindByID(r.Context(), userID)
+}
+
+func (h *handler) requireAdminUser(w http.ResponseWriter, r *http.Request) (usersvc.User, error) {
+	user, err := h.requireAuthenticatedUser(w, r)
+	if err != nil {
+		return usersvc.User{}, err
+	}
+	if !user.IsAdmin {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return usersvc.User{}, authmw.ErrForbidden
 	}
 	return user, nil
 }
@@ -143,7 +154,7 @@ func (h *handler) buildSettingsPageData(w http.ResponseWriter, r *http.Request) 
 // User handlers
 
 func (h *handler) createUser(w http.ResponseWriter, r *http.Request) {
-	if _, err := authmw.RequireAdmin(w, r); err != nil {
+	if _, err := h.requireAdminUser(w, r); err != nil {
 		return
 	}
 
@@ -167,7 +178,7 @@ func (h *handler) createUser(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) deleteUser(w http.ResponseWriter, r *http.Request) {
-	currentUser, err := authmw.RequireAdmin(w, r)
+	currentUser, err := h.requireAdminUser(w, r)
 	if err != nil {
 		return
 	}
@@ -202,7 +213,7 @@ func (h *handler) getUserApps(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) buildUserAppsData(w http.ResponseWriter, r *http.Request) (map[string]any, bool) {
-	_, err := authmw.RequireAdmin(w, r)
+	_, err := h.requireAdminUser(w, r)
 	if err != nil {
 		return nil, false
 	}
@@ -214,13 +225,13 @@ func (h *handler) buildUserAppsData(w http.ResponseWriter, r *http.Request) (map
 		return nil, false
 	}
 
-	user, err := h.userService.GetByID(r.Context(), id)
+	user, err := h.userService.FindByID(r.Context(), id)
 	if err != nil {
 		h.t.RenderError(w, r, "Error", "User not found", http.StatusNotFound)
 		return nil, false
 	}
 
-	userApps, err := h.userService.GetApps(r.Context(), id)
+	userApps, err := h.userService.FindAccessPolicy(r.Context(), id)
 	if err != nil {
 		h.t.RenderError(w, r, "Error", "Failed to get user apps", http.StatusInternalServerError)
 		return nil, false
@@ -228,7 +239,7 @@ func (h *handler) buildUserAppsData(w http.ResponseWriter, r *http.Request) (map
 
 	// Build user apps map keyed by "collector:app".
 	userAppMap := make(map[string]bool)
-	for _, app := range userApps {
+	for _, app := range userApps.Apps {
 		userAppMap[appKey(app.CollectorName, app.AppName)] = true
 	}
 
@@ -279,7 +290,7 @@ func (h *handler) listAppsByCollector(ctx context.Context) (map[string][]string,
 }
 
 func (h *handler) updateUserApps(w http.ResponseWriter, r *http.Request) {
-	if _, err := authmw.RequireAdmin(w, r); err != nil {
+	if _, err := h.requireAdminUser(w, r); err != nil {
 		return
 	}
 
@@ -297,7 +308,7 @@ func (h *handler) updateUserApps(w http.ResponseWriter, r *http.Request) {
 
 	// Parse form values: "collector:app" format
 	selectedPairs := r.Form["apps"]
-	currentApps, err := h.userService.GetApps(r.Context(), id)
+	currentApps, err := h.userService.FindAccessPolicy(r.Context(), id)
 	if err != nil {
 		http.Error(w, "Failed to get user apps", http.StatusInternalServerError)
 		return
@@ -312,7 +323,7 @@ func (h *handler) updateUserApps(w http.ResponseWriter, r *http.Request) {
 	}
 
 	currentMap := make(map[string]bool)
-	for _, app := range currentApps {
+	for _, app := range currentApps.Apps {
 		currentMap[appKey(app.CollectorName, app.AppName)] = true
 	}
 
@@ -324,15 +335,15 @@ func (h *handler) updateUserApps(w http.ResponseWriter, r *http.Request) {
 		if len(parts) != 2 {
 			continue
 		}
-		if err := h.userService.AddApp(r.Context(), id, parts[0], parts[1]); err != nil {
+		if err := h.userService.GrantAccess(r.Context(), id, usersvc.AppAccess{CollectorName: parts[0], AppName: parts[1]}); err != nil {
 			slog.Error("Failed to add user app", "user_id", id, "collector", parts[0], "app", parts[1], "error", err)
 		}
 	}
 
-	for _, app := range currentApps {
+	for _, app := range currentApps.Apps {
 		pair := appKey(app.CollectorName, app.AppName)
 		if !selectedMap[pair] {
-			if err := h.userService.RemoveApp(r.Context(), id, app.CollectorName, app.AppName); err != nil {
+			if err := h.userService.RevokeAccess(r.Context(), id, usersvc.AppAccess{CollectorName: app.CollectorName, AppName: app.AppName}); err != nil {
 				slog.Error("Failed to remove user app", "user_id", id, "collector", app.CollectorName, "app", app.AppName, "error", err)
 			}
 		}
@@ -344,7 +355,7 @@ func (h *handler) updateUserApps(w http.ResponseWriter, r *http.Request) {
 // Collector API key handlers
 
 func (h *handler) createCollectorAPIKey(w http.ResponseWriter, r *http.Request) {
-	if _, err := authmw.RequireAdmin(w, r); err != nil {
+	if _, err := h.requireAdminUser(w, r); err != nil {
 		return
 	}
 
@@ -372,7 +383,7 @@ func (h *handler) createCollectorAPIKey(w http.ResponseWriter, r *http.Request) 
 }
 
 func (h *handler) deleteCollectorAPIKey(w http.ResponseWriter, r *http.Request) {
-	if _, err := authmw.RequireAdmin(w, r); err != nil {
+	if _, err := h.requireAdminUser(w, r); err != nil {
 		return
 	}
 
@@ -665,13 +676,13 @@ func (h *handler) buildNotifierSubscriptionsData(w http.ResponseWriter, r *http.
 
 	// Filter by user access for non-admins
 	if !user.IsAdmin {
-		userApps, err := h.userService.GetApps(r.Context(), user.ID)
+		userApps, err := h.userService.FindAccessPolicy(r.Context(), user.ID)
 		if err != nil {
 			h.t.RenderError(w, r, "Error", "Failed to get user apps", http.StatusInternalServerError)
 			return nil, false
 		}
 		userAppSet := make(map[string]bool)
-		for _, app := range userApps {
+		for _, app := range userApps.Apps {
 			userAppSet[appKey(app.CollectorName, app.AppName)] = true
 		}
 
@@ -748,13 +759,13 @@ func (h *handler) updateNotifierSubscriptions(w http.ResponseWriter, r *http.Req
 
 		// For non-admins: filter to only apps they have access to
 		if !user.IsAdmin {
-			userApps, err := h.userService.GetApps(r.Context(), user.ID)
+			userApps, err := h.userService.FindAccessPolicy(r.Context(), user.ID)
 			if err != nil {
 				http.Error(w, "Failed to get user apps", http.StatusInternalServerError)
 				return
 			}
 			userAppSet := make(map[string]bool)
-			for _, app := range userApps {
+			for _, app := range userApps.Apps {
 				userAppSet[appKey(app.CollectorName, app.AppName)] = true
 			}
 

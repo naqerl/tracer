@@ -100,6 +100,15 @@ func (s *Service) Register(ctx context.Context, username, password string, isAdm
 	return &user, nil
 }
 
+func (s *Service) HasAnyUsers(ctx context.Context) (bool, error) {
+	count, err := db.New(s.db).CountUsers(ctx)
+	if err != nil {
+		return false, fmt.Errorf("check users existence: %w", err)
+	}
+
+	return count > 0, nil
+}
+
 // Session management
 
 func (s *Service) CreateSession(ctx context.Context, userID int64) (string, error) {
@@ -121,26 +130,24 @@ func (s *Service) CreateSession(ctx context.Context, userID int64) (string, erro
 	return token, nil
 }
 
-func (s *Service) ValidateSession(ctx context.Context, token string) (*db.User, error) {
+func (s *Service) ValidateSession(ctx context.Context, token string) (int64, error) {
 	session, err := db.New(s.db).GetSession(ctx, token)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, ErrSessionExpired
+	}
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, ErrSessionExpired
-		}
-		return nil, err
+		return 0, fmt.Errorf("could not get data from db: %w", err)
 	}
 
 	if time.Now().After(session.ExpiresAt) {
-		db.New(s.db).DeleteSession(ctx, token)
-		return nil, ErrSessionExpired
+		err = db.New(s.db).DeleteSession(ctx, token)
+		if err != nil {
+			return 0, fmt.Errorf("could not delete session: %w", err)
+		}
+		return 0, ErrSessionExpired
 	}
 
-	user, err := db.New(s.db).GetUserByID(ctx, session.UserID)
-	if err != nil {
-		return nil, fmt.Errorf("get user for session: %w", err)
-	}
-
-	return &user, nil
+	return session.UserID, nil
 }
 
 func (s *Service) DeleteSession(ctx context.Context, token string) error {
@@ -153,26 +160,27 @@ func (s *Service) CleanupExpiredSessions(ctx context.Context) error {
 
 // Login
 
-func (s *Service) Login(ctx context.Context, username, password string, userService *userpkg.Service) (*db.User, string, error) {
-	user, err := userService.GetByUsername(ctx, username)
+func (s *Service) Login(ctx context.Context, username, password string) (string, error) {
+	queries := db.New(s.db)
+	user, err := queries.FindUserCredsByUsername(ctx, username)
 	if err != nil {
-		if errors.Is(err, userpkg.ErrNotFound) {
-			return nil, "", ErrInvalidCredentials
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", ErrInvalidCredentials
 		}
-		return nil, "", err
+		return "", err
 	}
 
 	if err := checkPassword(password, user.PasswordHash); err != nil {
-		return nil, "", err
+		return "", err
 	}
 
 	token, err := s.CreateSession(ctx, user.ID)
 	if err != nil {
-		return nil, "", err
+		return "", err
 	}
 
 	slog.Info("User logged in", "username", username)
-	return user, token, nil
+	return token, nil
 }
 
 // API Key management
@@ -267,25 +275,18 @@ func (s *Service) GenerateUserAPIKey(ctx context.Context, userID int64, name str
 	return &userKey, nil
 }
 
-func (s *Service) ValidateUserAPIKey(ctx context.Context, key string, userService *userpkg.Service) (*db.User, error) {
+func (s *Service) ValidateUserAPIKey(ctx context.Context, key string, userService *userpkg.Service) (int64, error) {
 	// Validate key and update last_used_at in one query
-	userKey, err := db.New(s.db).ValidateAndUpdateUserAPIKey(ctx, db.ValidateAndUpdateUserAPIKeyParams{
+	userID, err := db.New(s.db).ValidateAndUpdateUserAPIKey(ctx, db.ValidateAndUpdateUserAPIKeyParams{
 		LastUsedAt: sql.NullTime{Time: time.Now(), Valid: true},
 		ApiKey:     key,
 	})
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, ErrInvalidCredentials
-		}
-		return nil, err
+
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, ErrInvalidCredentials
 	}
 
-	user, err := userService.GetByID(ctx, userKey.UserID)
-	if err != nil {
-		return nil, fmt.Errorf("get user for API key: %w", err)
-	}
-
-	return user, nil
+	return userID, err
 }
 
 func (s *Service) ListUserAPIKeys(ctx context.Context, userID int64) ([]db.UserApiKey, error) {

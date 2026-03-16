@@ -9,8 +9,8 @@ RETURNING *;
 SELECT * FROM user
 WHERE id = ?;
 
--- name: GetUserByUsername :one
-SELECT * FROM user
+-- name: FindUserCredsByUsername :one
+SELECT id, password_hash FROM user
 WHERE username = ?;
 
 -- name: ListUsers :many

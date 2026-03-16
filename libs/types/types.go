@@ -20,14 +20,6 @@ const (
 	LevelError LogLevel = "error"
 )
 
-// User is the authenticated user principal shared across layers.
-// It intentionally excludes persistence-only fields like password hashes.
-type User struct {
-	ID       int64  `json:"id"`
-	Username string `json:"username"`
-	IsAdmin  bool   `json:"is_admin"`
-}
-
 // Stats contains system statistics, shared between collector and panel via API
 type Stats struct {
 	CPUUsagePercent float64   `json:"cpu_usage_percent"`

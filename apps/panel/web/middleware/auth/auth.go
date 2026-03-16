@@ -5,11 +5,9 @@ import (
 	"errors"
 	"net/http"
 
-	"tracer/apps/panel/db"
 	authsvc "tracer/apps/panel/internal/services/auth"
 	usersvc "tracer/apps/panel/internal/services/user"
 	"tracer/apps/panel/web/middleware"
-	sharedtypes "tracer/libs/types"
 )
 
 type contextKey string
@@ -26,52 +24,33 @@ var (
 	ErrForbidden    = errors.New("forbidden")
 )
 
-// GetUser returns the authenticated user from the request context.
-func GetUser(r *http.Request) (sharedtypes.User, error) {
-	user, ok := r.Context().Value(userContextKey).(sharedtypes.User)
+// GetUserID returns the authenticated user ID from the request context.
+func GetUserID(r *http.Request) (int64, error) {
+	userID, ok := r.Context().Value(userContextKey).(int64)
 	if !ok {
-		return sharedtypes.User{}, ErrUnauthorized
+		return userID, ErrUnauthorized
 	}
-	return user, nil
+	return userID, nil
 }
 
 // Require returns user if authenticated, otherwise writes 401.
-func Require(w http.ResponseWriter, r *http.Request) (sharedtypes.User, error) {
-	user, err := GetUser(r)
+func Require(w http.ResponseWriter, r *http.Request) (int64, error) {
+	userID, err := GetUserID(r)
 	if err != nil {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return sharedtypes.User{}, ErrUnauthorized
+		return userID, ErrUnauthorized
 	}
-	return user, nil
+	return userID, nil
 }
 
 // RequireOrRedirect returns user if authenticated, otherwise redirects to login.
-func RequireOrRedirect(w http.ResponseWriter, r *http.Request) (sharedtypes.User, error) {
-	user, err := GetUser(r)
+func RequireOrRedirect(w http.ResponseWriter, r *http.Request) (int64, error) {
+	userID, err := GetUserID(r)
 	if err != nil {
 		RedirectToLogin(w, r)
-		return sharedtypes.User{}, ErrUnauthorized
+		return userID, ErrUnauthorized
 	}
-	return user, nil
-}
-
-// RequireAdmin returns user if admin, otherwise writes 401/403.
-func RequireAdmin(w http.ResponseWriter, r *http.Request) (sharedtypes.User, error) {
-	user, err := GetUser(r)
-	if err != nil {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return sharedtypes.User{}, ErrUnauthorized
-	}
-	if !user.IsAdmin {
-		http.Error(w, "Forbidden", http.StatusForbidden)
-		return sharedtypes.User{}, ErrForbidden
-	}
-	return user, nil
-}
-
-func IsAdmin(r *http.Request) bool {
-	user, err := GetUser(r)
-	return err == nil && user.IsAdmin
+	return userID, nil
 }
 
 func BuildLoginPathMiddleware(loginPath string) func(http.Handler) http.Handler {
@@ -94,7 +73,13 @@ func LoginPath(r *http.Request) string {
 }
 
 func RedirectToLogin(w http.ResponseWriter, r *http.Request) {
-	http.Redirect(w, r, LoginPath(r), http.StatusSeeOther)
+	loginPath := LoginPath(r)
+	if r.Header.Get("HX-Request") == "true" {
+		w.Header().Set("HX-Redirect", loginPath)
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+	http.Redirect(w, r, loginPath, http.StatusSeeOther)
 }
 
 // BuildAuthMiddleware enriches requests with auth context.
@@ -110,12 +95,13 @@ func BuildAuthMiddleware(authService *authsvc.Service, userService *usersvc.Serv
 	}
 }
 
+// FIXME: What in the fuck is going on here
 func attachMarkdownContext(w http.ResponseWriter, r *http.Request, next http.Handler, authService *authsvc.Service, userService *usersvc.Service) {
 	apiKey := r.Header.Get("X-API-Key")
 	if apiKey != "" {
-		user, err := authService.ValidateUserAPIKey(r.Context(), apiKey, userService)
+		userID, err := authService.ValidateUserAPIKey(r.Context(), apiKey, userService)
 		if err == nil {
-			ctx := context.WithValue(r.Context(), userContextKey, toPrincipalUser(user))
+			ctx := context.WithValue(r.Context(), userContextKey, userID)
 			next.ServeHTTP(w, r.WithContext(ctx))
 			return
 		}
@@ -123,6 +109,7 @@ func attachMarkdownContext(w http.ResponseWriter, r *http.Request, next http.Han
 	attachSessionContext(w, r, next, authService)
 }
 
+// FIXME: What in the fuck is going on here again
 func attachSessionContext(w http.ResponseWriter, r *http.Request, next http.Handler, authService *authsvc.Service) {
 	cookie, err := r.Cookie(sessionCookie)
 	if err != nil {
@@ -130,7 +117,7 @@ func attachSessionContext(w http.ResponseWriter, r *http.Request, next http.Hand
 		return
 	}
 
-	user, err := authService.ValidateSession(r.Context(), cookie.Value)
+	userID, err := authService.ValidateSession(r.Context(), cookie.Value)
 	if err != nil {
 		http.SetCookie(w, &http.Cookie{
 			Name:   sessionCookie,
@@ -142,19 +129,8 @@ func attachSessionContext(w http.ResponseWriter, r *http.Request, next http.Hand
 		return
 	}
 
-	ctx := context.WithValue(r.Context(), userContextKey, toPrincipalUser(user))
+	ctx := context.WithValue(r.Context(), userContextKey, userID)
 	next.ServeHTTP(w, r.WithContext(ctx))
-}
-
-func toPrincipalUser(user *db.User) sharedtypes.User {
-	if user == nil {
-		return sharedtypes.User{}
-	}
-	return sharedtypes.User{
-		ID:       user.ID,
-		Username: user.Username,
-		IsAdmin:  user.IsAdmin == 1,
-	}
 }
 
 func SetSessionCookie(w http.ResponseWriter, r *http.Request, token string, maxAge int) {

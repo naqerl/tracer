@@ -5,7 +5,6 @@ import (
 	"net/http"
 
 	"tracer/apps/panel/web/middleware"
-	authmw "tracer/apps/panel/web/middleware/auth"
 	"tracer/apps/panel/web/templates"
 )
 
@@ -30,15 +29,8 @@ func InitMux() *http.ServeMux {
 
 // llmDocs serves documentation about available markdown endpoints for LLM tools
 func (h *handler) llmDocs(w http.ResponseWriter, r *http.Request) {
-	user, err := authmw.RequireOrRedirect(w, r)
-	if err != nil {
-		return
-	}
-
 	data := map[string]any{
 		"Title":   "LLM API Documentation",
-		"User":    user,
-		"IsAdmin": user.IsAdmin,
 		"BaseURL": r.Host,
 	}
 

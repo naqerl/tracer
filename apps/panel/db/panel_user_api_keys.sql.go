@@ -88,7 +88,7 @@ const validateAndUpdateUserAPIKey = `-- name: ValidateAndUpdateUserAPIKey :one
 UPDATE user_api_key
 SET last_used_at = ?
 WHERE api_key = ?
-RETURNING id, user_id, api_key, name, created_at, last_used_at
+RETURNING user_id
 `
 
 type ValidateAndUpdateUserAPIKeyParams struct {
@@ -96,16 +96,9 @@ type ValidateAndUpdateUserAPIKeyParams struct {
 	ApiKey     string
 }
 
-func (q *Queries) ValidateAndUpdateUserAPIKey(ctx context.Context, arg ValidateAndUpdateUserAPIKeyParams) (UserApiKey, error) {
+func (q *Queries) ValidateAndUpdateUserAPIKey(ctx context.Context, arg ValidateAndUpdateUserAPIKeyParams) (int64, error) {
 	row := q.db.QueryRowContext(ctx, validateAndUpdateUserAPIKey, arg.LastUsedAt, arg.ApiKey)
-	var i UserApiKey
-	err := row.Scan(
-		&i.ID,
-		&i.UserID,
-		&i.ApiKey,
-		&i.Name,
-		&i.CreatedAt,
-		&i.LastUsedAt,
-	)
-	return i, err
+	var user_id int64
+	err := row.Scan(&user_id)
+	return user_id, err
 }

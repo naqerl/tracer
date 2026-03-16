@@ -62,7 +62,7 @@ func (h *handler) renderSetupPage(w http.ResponseWriter, r *http.Request, errorM
 // Login handlers
 
 func (h *handler) loginPage(w http.ResponseWriter, r *http.Request) {
-	if _, err := authmw.GetUser(r); err == nil {
+	if _, err := authmw.GetUserID(r); err == nil {
 		http.Redirect(w, r, "/panel/", http.StatusSeeOther)
 		return
 	}
@@ -82,7 +82,7 @@ func (h *handler) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, token, err := h.authService.Login(r.Context(), username, password, h.userService)
+	token, err := h.authService.Login(r.Context(), username, password)
 	if err != nil {
 		slog.Debug("Login failed", "username", username, "error", err)
 		h.renderFormError(w, "Invalid credentials")
@@ -90,7 +90,7 @@ func (h *handler) login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	authmw.SetSessionCookie(w, r, token, int(h.sessionMax.Seconds()))
-	slog.Info("User logged in", "username", user.Username)
+	slog.Info("User logged in", "username", username)
 
 	w.Header().Set("HX-Redirect", "/panel/")
 	w.WriteHeader(http.StatusOK)
@@ -108,7 +108,7 @@ func (h *handler) logout(w http.ResponseWriter, r *http.Request) {
 // Setup handlers
 
 func (h *handler) setupPage(w http.ResponseWriter, r *http.Request) {
-	hasUsers, err := h.userService.HasAny(r.Context())
+	hasUsers, err := h.authService.HasAnyUsers(r.Context())
 	if err != nil {
 		slog.Error("Failed to check users", "error", err)
 		h.t.RenderError(w, r, "Error", "Failed to check users", http.StatusInternalServerError)
@@ -124,7 +124,7 @@ func (h *handler) setupPage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) setup(w http.ResponseWriter, r *http.Request) {
-	hasUsers, err := h.userService.HasAny(r.Context())
+	hasUsers, err := h.authService.HasAnyUsers(r.Context())
 	if err != nil {
 		slog.Error("Failed to check users", "error", err)
 		h.renderSetupPage(w, r, "Failed to check users: "+err.Error())
