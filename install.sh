@@ -29,8 +29,8 @@ ADMIN_PASSWORD=""
 API_KEY=""
 TRACER_PANEL_HOST="${TRACER_PANEL_HOST:-}"
 TRACER_PANEL_PORT="${TRACER_PANEL_PORT:-}"
-TRACER_AUTOSTART="${TRACER_AUTOSTART:-0}"
-TRACER_SELF_MONITOR="${TRACER_SELF_MONITOR:-0}"
+TRACER_AUTOSTART="${TRACER_AUTOSTART:-1}"
+TRACER_SELF_MONITOR="${TRACER_SELF_MONITOR:-1}"
 TRACER_ADMIN_USERNAME="${TRACER_ADMIN_USERNAME:-}"
 TRACER_ADMIN_PASSWORD="${TRACER_ADMIN_PASSWORD:-}"
 
@@ -55,6 +55,37 @@ log_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
+can_prompt() {
+    [[ -r /dev/tty && -w /dev/tty ]]
+}
+
+prompt_required_value() {
+    local var_name=$1
+    local prompt_label=$2
+    local secret=${3:-0}
+    local value=""
+
+    if ! can_prompt; then
+        log_error "${var_name} is required in non-interactive mode"
+        exit 1
+    fi
+
+    while [[ -z "${value}" ]]; do
+        if [[ "${secret}" == "1" ]]; then
+            read -r -s -p "${prompt_label}: " value < /dev/tty
+            printf '\n' > /dev/tty
+        else
+            read -r -p "${prompt_label}: " value < /dev/tty
+        fi
+
+        if [[ -z "${value}" ]]; then
+            printf '%b\n' "${YELLOW}[WARN]${NC} ${var_name} cannot be empty" > /dev/tty
+        fi
+    done
+
+    printf '%s' "${value}"
+}
+
 require_cmd() {
     local cmd=$1
     if ! command -v "$cmd" >/dev/null 2>&1; then
@@ -77,6 +108,24 @@ check_dependencies() {
     require_cmd install
     require_cmd runuser
     require_cmd systemctl
+}
+
+resolve_install_inputs() {
+    if [[ "$COLLECTOR_ONLY" == "1" ]]; then
+        return
+    fi
+
+    if [[ -z "${TRACER_PANEL_HOST}" ]]; then
+        TRACER_PANEL_HOST=$(prompt_required_value "TRACER_PANEL_HOST" "Panel host URL")
+    fi
+
+    if [[ -z "${TRACER_ADMIN_USERNAME}" ]]; then
+        TRACER_ADMIN_USERNAME=$(prompt_required_value "TRACER_ADMIN_USERNAME" "Admin username")
+    fi
+
+    if [[ -z "${TRACER_ADMIN_PASSWORD}" ]]; then
+        TRACER_ADMIN_PASSWORD=$(prompt_required_value "TRACER_ADMIN_PASSWORD" "Admin password" 1)
+    fi
 }
 
 # Detect architecture
@@ -283,15 +332,11 @@ init_panel() {
 
     log_info "Initializing panel..."
 
-    # Initialize panel with provided or auto-generated credentials
+    # Initialize panel with required credentials.
     local init_output
     local init_args=("-init")
-    if [[ -n "${TRACER_ADMIN_USERNAME}" ]]; then
-        init_args+=("-username" "${TRACER_ADMIN_USERNAME}")
-    fi
-    if [[ -n "${TRACER_ADMIN_PASSWORD}" ]]; then
-        init_args+=("-password" "${TRACER_ADMIN_PASSWORD}")
-    fi
+    init_args+=("-username" "${TRACER_ADMIN_USERNAME}")
+    init_args+=("-password" "${TRACER_ADMIN_PASSWORD}")
 
     if ! init_output=$(runuser -u "${TRACER_USER}" -- "${INSTALL_DIR}/tracer-panel" "${init_args[@]}" 2>&1); then
         if grep -Fq "panel already initialized" <<<"$init_output"; then
@@ -560,7 +605,7 @@ print_instructions() {
         echo ""
 
         if [[ -n "${ADMIN_USERNAME}" && -n "${ADMIN_PASSWORD}" ]]; then
-            echo "Admin credentials (auto-generated):"
+            echo "Admin credentials:"
             echo "  Username: ${ADMIN_USERNAME}"
             echo "  Password: ${ADMIN_PASSWORD}"
             echo ""
@@ -568,20 +613,14 @@ print_instructions() {
 
         echo "Next steps:"
         echo ""
-        echo "1. Configure the panel host (required):"
-        echo "   sudo nano ${CONFIG_DIR}/panel.yaml"
-        echo ""
-        echo "   Set the host URL for your panel, e.g.:"
-        echo "   host: https://tracer.example.com"
-        echo ""
-        echo "2. Configure the collector to watch your log files:"
+        echo "1. Configure the collector to watch your log files:"
         echo "   sudo nano ${CONFIG_DIR}/collector.yaml"
         echo ""
-        echo "3. Start the services:"
+        echo "2. Start the services:"
         echo "   sudo systemctl enable --now tracer-panel"
         echo "   sudo systemctl enable --now tracer-collector"
         echo ""
-        echo "4. Access the panel at:"
+        echo "3. Access the panel at:"
         echo "   http://localhost:8080"
         echo ""
         echo "Permissions:"
@@ -653,6 +692,7 @@ main() {
 
     check_root
     check_dependencies
+    resolve_install_inputs
 
     local version
     if [[ -n "${TRACER_VERSION:-}" ]]; then
