@@ -222,18 +222,63 @@ func handleAdd(ctx context.Context, path string, cfg config.Config, addCmd *flag
 	}
 	name, spec := inferSourceSpec(remaining[0])
 
+	fmt.Printf("Adding log source: %s\n", remaining[0])
+	if spec.Type == "file" {
+		fmt.Printf("  Type: file path\n")
+		fmt.Printf("  Path: %s\n", spec.Params["path"])
+	} else {
+		fmt.Printf("  Type: systemd unit\n")
+		fmt.Printf("  Unit: %s\n", spec.Params["unit"])
+	}
+
 	if err := formatguesser.Add(ctx, &cfg, name, spec, formatguesser.AddRequest{
 		Override:   *override,
 		AllowMixed: *ignoreFormatChange,
 	}); err != nil {
 		log.Fatalf("Failed to guess the source format, error: %v", err)
 	}
+
+	// Find the app we just added/updated
+	var addedApp *config.AppSpec
+	for i := range cfg.Apps {
+		if cfg.Apps[i].Name == name || (cfg.Apps[i].Source.Type == spec.Type &&
+			cfg.Apps[i].Source.Params["unit"] == spec.Params["unit"] &&
+			cfg.Apps[i].Source.Params["path"] == spec.Params["path"]) {
+			addedApp = &cfg.Apps[i]
+			break
+		}
+	}
+
+	if addedApp == nil {
+		log.Fatalf("Failed to find the added app in config")
+	}
+
+	parserSpec := cfg.Parsers[addedApp.ParserID]
+
+	fmt.Printf("\nDetected log format:\n")
+	fmt.Printf("  Parser: %s\n", parserSpec.Type)
+	fmt.Printf("  Timestamp field: %s\n", parserSpec.Params["timestamp_field"])
+	fmt.Printf("  Timestamp format: %s\n", parserSpec.Params["timestamp_format"])
+	fmt.Printf("  Level field: %s\n", parserSpec.Params["level_field"])
+	fmt.Printf("  Message field: %s\n", parserSpec.Params["message_field"])
+	if traceField := parserSpec.Params["trace_id_field"]; traceField != "" {
+		fmt.Printf("  Trace ID field: %s\n", traceField)
+	}
+
 	if strings.TrimSpace(*healthURL) != "" {
+		fmt.Printf("\nAttaching health check: %s\n", strings.TrimSpace(*healthURL))
 		attachHTTPHealth(&cfg, name, spec, strings.TrimSpace(*healthURL))
 	}
+
 	if err := cfg.Persist(path); err != nil {
 		log.Fatalf("Failed to write the file config, error: %v", err)
 	}
+
+	fmt.Printf("\nConfiguration saved to: %s\n", path)
+	fmt.Printf("\nAdded app configuration:\n")
+	fmt.Printf("  Name: %s\n", addedApp.Name)
+	fmt.Printf("  Parser ID: %s\n", addedApp.ParserID)
+	fmt.Printf("  Source Type: %s\n", addedApp.Source.Type)
 }
 
 func handleSet(path string, cfg config.Config, setCmd *flag.FlagSet) {
