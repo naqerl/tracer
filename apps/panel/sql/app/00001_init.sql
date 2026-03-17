@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS logs (
     level TEXT NOT NULL,
     message TEXT NOT NULL,
     context TEXT DEFAULT '{}',
-    group_id INTEGER REFERENCES log_groups(id),
+    group_id INTEGER REFERENCES log_groups(id) ON DELETE CASCADE,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_logs_trace_id ON logs(trace_id) WHERE trace_id != '';
