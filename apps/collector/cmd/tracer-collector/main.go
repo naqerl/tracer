@@ -328,6 +328,8 @@ func handleAdd(ctx context.Context, path string, cfg config.Config, addCmd *flag
 	fmt.Printf("  Name: %s\n", addedApp.Name)
 	fmt.Printf("  Parser ID: %s\n", addedApp.ParserID)
 	fmt.Printf("  Source Type: %s\n", addedApp.Source.Type)
+	fmt.Printf("\nTo apply the new configuration, restart the collector:\n")
+	fmt.Printf("  sudo systemctl restart tracer-collector\n")
 }
 
 func truncateLine(s string, maxLen int) string {
