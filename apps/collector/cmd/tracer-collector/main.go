@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bufio"
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -9,6 +11,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"syscall"
@@ -213,7 +216,8 @@ func serve(ctx context.Context, cfg config.Config) error {
 func handleAdd(ctx context.Context, path string, cfg config.Config, addCmd *flag.FlagSet) {
 	override := addCmd.Bool("override", false, "override the app unit in the config")
 	healthURL := addCmd.String("health", "", "health check URL to attach as an HTTP health probe")
-	ignoreFormatChange := addCmd.Bool("ignore-format-change", false, "ignore older format changes and use the latest compatible log format")
+	favourRaw := addCmd.String("favour", "", `favour specific parser settings when conflicts occur (e.g., 'type:"json",level_field:"status"')`)
+	noConfirm := addCmd.Bool("no-confirm", false, "skip confirmation prompt and save immediately")
 	addCmd.Parse(flag.Args()[1:])
 	remaining := addCmd.Args()
 
@@ -231,29 +235,45 @@ func handleAdd(ctx context.Context, path string, cfg config.Config, addCmd *flag
 		fmt.Printf("  Unit: %s\n", spec.Params["unit"])
 	}
 
-	if err := formatguesser.Add(ctx, &cfg, name, spec, formatguesser.AddRequest{
-		Override:   *override,
-		AllowMixed: *ignoreFormatChange,
-	}); err != nil {
-		log.Fatalf("Failed to guess the source format, error: %v", err)
+	// Parse the favour spec
+	favour, err := parseFavourSpec(*favourRaw)
+	if err != nil {
+		log.Fatalf("Invalid --favour value: %v", err)
 	}
 
-	// Find the app we just added/updated
-	var addedApp *config.AppSpec
-	for i := range cfg.Apps {
-		if cfg.Apps[i].Name == name || (cfg.Apps[i].Source.Type == spec.Type &&
-			cfg.Apps[i].Source.Params["unit"] == spec.Params["unit"] &&
-			cfg.Apps[i].Source.Params["path"] == spec.Params["path"]) {
-			addedApp = &cfg.Apps[i]
-			break
+	result, err := formatguesser.Add(ctx, &cfg, name, spec, formatguesser.AddRequest{
+		Override: *override,
+		Favour:   favour,
+	})
+	if err != nil {
+		fmt.Printf("\nError: Could not analyze log format\n\n")
+
+		// Show specific error details with the problematic line
+		var guessErr formatguesser.GuessError
+		var consistencyErr formatguesser.ConsistencyError
+		if errors.As(err, &guessErr) {
+			fmt.Printf("Could not parse this log line:\n")
+			fmt.Printf("  %s\n\n", truncateLine(guessErr.Line, 200))
+			fmt.Printf("Make sure the log is in JSON or slog text format.\n")
+			fmt.Printf("For JSON: fields like level, msg, time, trace_id are expected\n")
+			fmt.Printf("For slog text: format like 'time=... level=... msg=...'\n")
+		} else if errors.As(err, &consistencyErr) {
+			fmt.Printf("Found inconsistent log format\n\n")
+			fmt.Printf("First line (established format):\n")
+			fmt.Printf("  %s\n\n", truncateLine(consistencyErr.FirstLine, 200))
+			fmt.Printf("Conflicting line:\n")
+			fmt.Printf("  %s\n\n", truncateLine(consistencyErr.Line, 200))
+			fmt.Printf("Issue: %v\n\n", consistencyErr.Unwrap())
+			fmt.Printf("To resolve, run again with:\n")
+			fmt.Printf("  %s\n\n", consistencyErr.SuggestFavour())
+		} else {
+			fmt.Printf("%v\n\n", err)
 		}
+		os.Exit(1)
 	}
 
-	if addedApp == nil {
-		log.Fatalf("Failed to find the added app in config")
-	}
-
-	parserSpec := cfg.Parsers[addedApp.ParserID]
+	parserSpec := result.ParserSpec
+	addedApp := result.App
 
 	fmt.Printf("\nDetected log format:\n")
 	fmt.Printf("  Parser: %s\n", parserSpec.Type)
@@ -265,9 +285,38 @@ func handleAdd(ctx context.Context, path string, cfg config.Config, addCmd *flag
 		fmt.Printf("  Trace ID field: %s\n", traceField)
 	}
 
+	// Show sample line preview
+	if len(result.SampleLines) > 0 {
+		fmt.Printf("\nSample log line:\n")
+		fmt.Printf("  %s\n", truncateLine(result.SampleLines[0], 150))
+		if len(result.SampleData) > 0 {
+			fmt.Printf("\nParsed fields from sample:\n")
+			keys := make([]string, 0, len(result.SampleData))
+			for k := range result.SampleData {
+				keys = append(keys, k)
+			}
+			sort.Strings(keys)
+			for _, k := range keys {
+				fmt.Printf("  %s: %s\n", k, truncateLine(result.SampleData[k], 80))
+			}
+		}
+	}
+
 	if strings.TrimSpace(*healthURL) != "" {
 		fmt.Printf("\nAttaching health check: %s\n", strings.TrimSpace(*healthURL))
 		attachHTTPHealth(&cfg, name, spec, strings.TrimSpace(*healthURL))
+	}
+
+	// Confirmation prompt
+	if !*noConfirm {
+		fmt.Printf("\nSave this configuration to %s? [Y/n]: ", path)
+		reader := bufio.NewReader(os.Stdin)
+		response, _ := reader.ReadString('\n')
+		response = strings.TrimSpace(strings.ToLower(response))
+		if response != "" && response != "y" && response != "yes" {
+			fmt.Println("Cancelled.")
+			os.Exit(0)
+		}
 	}
 
 	if err := cfg.Persist(path); err != nil {
@@ -279,6 +328,74 @@ func handleAdd(ctx context.Context, path string, cfg config.Config, addCmd *flag
 	fmt.Printf("  Name: %s\n", addedApp.Name)
 	fmt.Printf("  Parser ID: %s\n", addedApp.ParserID)
 	fmt.Printf("  Source Type: %s\n", addedApp.Source.Type)
+}
+
+func truncateLine(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen-3] + "..."
+}
+
+// parseFavourSpec parses a favour spec string like: type:"json",level_field:"status"
+// Returns an empty spec if input is empty
+func parseFavourSpec(input string) (parser.Spec, error) {
+	var spec parser.Spec
+	if strings.TrimSpace(input) == "" {
+		return spec, nil
+	}
+
+	spec.Params = make(map[string]string)
+
+	// Parse key:"value" pairs separated by commas
+	// Support both key:"value" and key:value formats
+	remaining := input
+	for remaining != "" {
+		// Find the key
+		colonIdx := strings.Index(remaining, ":")
+		if colonIdx == -1 {
+			break
+		}
+		key := strings.TrimSpace(remaining[:colonIdx])
+		remaining = remaining[colonIdx+1:]
+
+		// Skip whitespace
+		remaining = strings.TrimLeft(remaining, " ")
+
+		// Parse the value
+		var value string
+		if strings.HasPrefix(remaining, `"`) {
+			// Quoted value
+			endQuote := strings.Index(remaining[1:], `"`)
+			if endQuote == -1 {
+				return spec, fmt.Errorf("unclosed quote in value for key %q", key)
+			}
+			value = remaining[1 : endQuote+1]
+			remaining = remaining[endQuote+2:]
+		} else {
+			// Unquoted value - read until comma or end
+			commaIdx := strings.Index(remaining, ",")
+			if commaIdx == -1 {
+				value = strings.TrimSpace(remaining)
+				remaining = ""
+			} else {
+				value = strings.TrimSpace(remaining[:commaIdx])
+				remaining = remaining[commaIdx+1:]
+			}
+		}
+
+		// Store the value
+		if key == "type" {
+			spec.Type = value
+		} else {
+			spec.Params[key] = value
+		}
+
+		// Skip comma and whitespace
+		remaining = strings.TrimLeft(remaining, " ,")
+	}
+
+	return spec, nil
 }
 
 func handleSet(path string, cfg config.Config, setCmd *flag.FlagSet) {

@@ -657,46 +657,62 @@ func TestGuessFormat(t *testing.T) {
 }
 
 func TestBuildParserSpecRejectsMixedFormatsByDefault(t *testing.T) {
-	_, _, err := buildParserSpec(context.Background(), &stubSourceSeeker{
+	_, err := buildParserSpec(context.Background(), &stubSourceSeeker{
 		lines: []string{
 			`{"ts":"2026-03-10T19:05:18Z","level":"I","msg":"a"}`,
 			`time=2026-03-10T19:06:18Z level=I msg=a`,
 		},
-	}, false)
+	}, parser.Spec{})
 	if err == nil {
 		t.Fatal("buildParserSpec() error = nil, want mixed-format error")
 	}
 }
 
-func TestBuildParserSpecAllowsMixedFormatsWhenEnabled(t *testing.T) {
-	spec, lines, err := buildParserSpec(context.Background(), &stubSourceSeeker{
+func TestBuildParserSpecResolvesFieldConflictWithFavour(t *testing.T) {
+	// When favour spec provides a field value, use it to resolve conflicts
+	result, err := buildParserSpec(context.Background(), &stubSourceSeeker{
 		lines: []string{
 			`{"ts":"2026-03-10T19:05:18Z","level":"I","msg":"a"}`,
-			`time=2026-03-10T19:06:18Z level=I msg=a`,
+			`{"ts":"2026-03-10T19:06:18Z","status":"E","msg":"b"}`,
 		},
-	}, true)
+	}, parser.Spec{
+		Params: map[string]string{
+			"level_field": "level",
+		},
+	})
 	if err != nil {
 		t.Fatalf("buildParserSpec() error = %v", err)
 	}
 
-	want := parser.Spec{
-		Type: "slogtext",
-		Params: map[string]string{
-			"timestamp_field":  "time",
-			"level_field":      "level",
-			"message_field":    "msg",
-			"timestamp_format": "2006-01-02T15:04:05.999999999Z07:00",
-		},
+	// The favoured level_field should be used
+	if result.Spec.Params["level_field"] != "level" {
+		t.Fatalf("expected level_field='level', got %q", result.Spec.Params["level_field"])
 	}
-	if diff := deep.Equal(spec, want); diff != nil {
-		t.Fatalf("buildParserSpec() spec diff: %v", diff)
+	// Other fields should still be detected
+	if result.Spec.Params["message_field"] != "msg" {
+		t.Fatalf("expected message_field='msg', got %q", result.Spec.Params["message_field"])
+	}
+}
+
+func TestBuildParserSpecResolvesTimestampConflictWithFavour(t *testing.T) {
+	// When favour spec provides timestamp field, use it to resolve conflicts
+	result, err := buildParserSpec(context.Background(), &stubSourceSeeker{
+		lines: []string{
+			`{"ts":"2026-03-10T19:05:18Z","level":"I","msg":"a"}`,
+			`{"time":"2026-03-10T19:06:18Z","level":"E","msg":"b"}`,
+		},
+	}, parser.Spec{
+		Params: map[string]string{
+			"timestamp_field": "ts",
+		},
+	})
+	if err != nil {
+		t.Fatalf("buildParserSpec() error = %v", err)
 	}
 
-	wantLines := []string{
-		`time=2026-03-10T19:06:18Z level=I msg=a`,
-	}
-	if diff := deep.Equal(lines, wantLines); diff != nil {
-		t.Fatalf("buildParserSpec() lines diff: %v", diff)
+	// The favoured timestamp_field should be used
+	if result.Spec.Params["timestamp_field"] != "ts" {
+		t.Fatalf("expected timestamp_field='ts', got %q", result.Spec.Params["timestamp_field"])
 	}
 }
 

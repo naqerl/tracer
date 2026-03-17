@@ -21,11 +21,20 @@ import (
 )
 
 type AddRequest struct {
-	Override   bool
-	AllowMixed bool
+	Override bool
+	Favour   parser.Spec // Manual parser spec to resolve conflicts
 }
 
-func Add(ctx context.Context, cfg *config.Config, name string, spec source.Spec, req AddRequest) error {
+// AddResult contains the result of adding an app including preview data
+type AddResult struct {
+	App         config.AppSpec
+	ParserSpec  parser.Spec
+	SampleLines []string
+	SampleData  map[string]string
+}
+
+func Add(ctx context.Context, cfg *config.Config, name string, spec source.Spec, req AddRequest) (*AddResult, error) {
+	result := &AddResult{}
 	var app config.AppSpec
 	existingIdx := -1
 
@@ -38,7 +47,7 @@ func Add(ctx context.Context, cfg *config.Config, name string, spec source.Spec,
 		appNames = append(appNames, v.Name)
 		if reflect.DeepEqual(v.Source, spec) {
 			if !req.Override {
-				return fmt.Errorf("app with source: %v already exist. Pass --override to override", spec)
+				return nil, fmt.Errorf("app with this source already exists. Pass --override to replace it")
 			}
 			existingIdx = i
 			app.Name = v.Name
@@ -51,52 +60,66 @@ func Add(ctx context.Context, cfg *config.Config, name string, spec source.Spec,
 
 	src, err := source.New(spec)
 	if err != nil {
-		return fmt.Errorf("failed to extract a source, error: %v", err)
+		return nil, fmt.Errorf("failed to create source reader: %w", err)
 	}
 	var ss source.SourceSeeker
 	var ok bool
 	if ss, ok = src.(source.SourceSeeker); !ok {
-		return fmt.Errorf("source doesn't support log seeking, source: %s", spec.Type)
+		return nil, fmt.Errorf("source type '%s' does not support reading", spec.Type)
 	}
 	if err := ss.Open(ctx); err != nil {
-		return fmt.Errorf("failed to open the source, error: %v", err)
+		return nil, fmt.Errorf("failed to open log source: %w", err)
 	}
 	defer func() {
 		_ = ss.Close()
 	}()
 
-	prev, lines, err := buildParserSpec(ctx, ss, req.AllowMixed)
+	buildResult, err := buildParserSpec(ctx, ss, req.Favour)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	p := parser.New(prev)
-	for _, l := range lines {
+	p := parser.New(buildResult.Spec)
+	for _, l := range buildResult.Lines {
 		if _, err := p.Parse(l); err != nil {
-			return fmt.Errorf("failed to test the created parser spec on logs, error: %v", err)
+			return nil, fmt.Errorf("parser test failed on sample line: %w", err)
 		}
 	}
 
-	parserID := generateName(slices.Collect(maps.Keys(cfg.Parsers)), prev.Type, name)
+	parserID := generateName(slices.Collect(maps.Keys(cfg.Parsers)), buildResult.Spec.Type, name)
 	for id, s := range cfg.Parsers {
-		if s.Type == prev.Type && reflect.DeepEqual(s.Params, prev.Params) {
+		if s.Type == buildResult.Spec.Type && reflect.DeepEqual(s.Params, buildResult.Spec.Params) {
 			parserID = id
 			break
 		}
 	}
-	cfg.Parsers[parserID] = prev
+	cfg.Parsers[parserID] = buildResult.Spec
 	app.ParserID = parserID
 
 	if existingIdx >= 0 {
 		cfg.Apps[existingIdx] = app
-		return nil
+	} else {
+		cfg.Apps = append(cfg.Apps, app)
 	}
-	cfg.Apps = append(cfg.Apps, app)
 
-	return nil
+	result.App = app
+	result.ParserSpec = buildResult.Spec
+	result.SampleLines = buildResult.Lines
+	result.SampleData = buildResult.Parsed
+	return result, nil
 }
 
-func buildParserSpec(ctx context.Context, ss source.SourceSeeker, allowMixed bool) (parser.Spec, []string, error) {
+// BuildResult holds the result of building a parser spec including sample lines
+type BuildResult struct {
+	Spec   parser.Spec
+	Lines  []string
+	Parsed map[string]string // sample parsed fields from first line
+}
+
+func buildParserSpec(ctx context.Context, ss source.SourceSeeker, favour parser.Spec) (BuildResult, error) {
+	result := BuildResult{
+		Parsed: make(map[string]string),
+	}
 	logSize := 100
 	var logErr error
 	foundLine := false
@@ -112,12 +135,14 @@ func buildParserSpec(ctx context.Context, ss source.SourceSeeker, allowMixed boo
 		foundLine = true
 	}
 	if !foundLine {
-		return parser.Spec{}, nil, errors.New("failed to find logs in the source")
+		return result, errors.New("no logs found in the source")
 	}
 
 	var prev parser.Spec
 	lines := make([]string, logSize)
 	var i int
+	var firstLine string
+	var firstParsed map[string]any
 	for {
 		if i >= logSize {
 			break
@@ -128,40 +153,104 @@ func buildParserSpec(ctx context.Context, ss source.SourceSeeker, allowMixed boo
 			if errors.Is(err, io.EOF) {
 				break
 			}
-			return parser.Spec{}, nil, fmt.Errorf("unexpected error when reading the source, error: %v", err)
+			return result, fmt.Errorf("failed to read from source: %w", err)
 		}
 
-		curr, err := guessParserSpec(line)
+		curr, parsed, err := guessParserSpecWithData(line)
 		if err != nil {
-			return parser.Spec{}, nil, fmt.Errorf("failed to guess the logs format, error: %v", err)
+			return result, GuessError{Line: line, Err: err}
 		}
 
-		next, err := compareOrUpdate(prev, curr)
+		if firstLine == "" {
+			firstLine = line
+			firstParsed = parsed
+		}
+
+		next, conflict, err := compareOrUpdate(prev, curr, favour)
 		if err != nil {
-			if !allowMixed {
-				return parser.Spec{}, nil, fmt.Errorf("failed to check the log consistency, error: %v", err)
+			return result, ConsistencyError{
+				Line:      line,
+				FirstLine: firstLine,
+				Err:       err,
+				Field:     conflict.Field,
+				PrevValue: conflict.PrevValue,
+				CurrValue: conflict.CurrValue,
+				PrevSpec:  prev,
+				CurrSpec:  curr,
 			}
-			prev = curr
-			i = 0
-		} else {
-			prev = next
 		}
+		prev = next
 
 		lines[i] = line
 		i++
 	}
 
-	return prev, lines[:i], nil
+	// Populate parsed fields from first line for preview
+	for k, v := range firstParsed {
+		result.Parsed[k] = fmt.Sprint(v)
+	}
+
+	result.Spec = prev
+	result.Lines = lines[:i]
+	return result, nil
+}
+
+// GuessError represents an error when guessing parser format
+type GuessError struct {
+	Line string
+	Err  error
+}
+
+func (e GuessError) Error() string {
+	return fmt.Sprintf("failed to parse log line: %v", e.Err)
+}
+
+func (e GuessError) Unwrap() error {
+	return e.Err
+}
+
+// ConsistencyError represents an error when log lines have inconsistent formats
+type ConsistencyError struct {
+	Line      string      // The problematic line
+	FirstLine string      // The first line we saw (for comparison)
+	Err       error       // The specific error
+	Field     string      // The specific conflicting field (e.g., "level_field", "type")
+	PrevValue string      // Previous value
+	CurrValue string      // Current (conflicting) value
+	PrevSpec  parser.Spec // Full previous spec
+	CurrSpec  parser.Spec // Full current spec
+}
+
+func (e ConsistencyError) Error() string {
+	return fmt.Sprintf("log format inconsistent: %v", e.Err)
+}
+
+func (e ConsistencyError) Unwrap() error {
+	return e.Err
+}
+
+// SuggestFavour returns a minimal --favour flag value to resolve just this conflict
+func (e ConsistencyError) SuggestFavour() string {
+	if e.Field == "type" {
+		return fmt.Sprintf(`--favour 'type:"%s"'`, e.CurrValue)
+	}
+	return fmt.Sprintf(`--favour '%s:"%s"'`, e.Field, e.CurrValue)
 }
 
 func guessParserSpec(line string) (parser.Spec, error) {
+	ps, _, err := guessParserSpecWithData(line)
+	return ps, err
+}
+
+func guessParserSpecWithData(line string) (parser.Spec, map[string]any, error) {
 	var ps parser.Spec
 
 	var jsonData map[string]any
 	err := json.Unmarshal([]byte(line), &jsonData)
 	if err == nil {
 		ps.Type = "json"
-		return fillSpec(ps, jsonData)
+		result, err := fillSpec(ps, jsonData)
+		return result, jsonData, err
 	}
 	slog.Debug("failed to unmarshal the line to JSON")
 
@@ -172,11 +261,12 @@ func guessParserSpec(line string) (parser.Spec, error) {
 		for k, v := range tempSlogText {
 			slogTextData[k] = v
 		}
-		return fillSpec(ps, slogTextData)
+		result, err := fillSpec(ps, slogTextData)
+		return result, slogTextData, err
 	}
 	slog.Debug("failed to unmarshal the line to SlogText")
 
-	return ps, errors.New("none of the parsers gave a valid output")
+	return ps, nil, errors.New("log format not recognized. Expected JSON or slog text format")
 }
 
 var commonLogSynonyms = map[string][]string{
@@ -203,20 +293,86 @@ var commonLogSynonyms = map[string][]string{
 	},
 }
 
+// knownLogLevels contains common log level values to help us identify the actual level field
+var knownLogLevels = map[string]bool{
+	"debug": true, "info": true, "warn": true, "warning": true,
+	"error": true, "fatal": true, "panic": true, "trace": true,
+	"i": true, "w": true, "e": true, "d": true, // short forms
+}
+
+// isLogLevel checks if a value looks like a log level (not a numeric HTTP status)
+func isLogLevel(v any) bool {
+	s := strings.ToLower(fmt.Sprint(v))
+	return knownLogLevels[s]
+}
+
+// fieldPriority defines which field names are preferred when multiple matches exist
+var fieldPriority = map[string]int{
+	"level": 1, "lvl": 2, "severity": 3, "status": 10, // prefer "level" over "status"
+	"ts": 1, "timestamp": 2, "time": 3,
+	"msg": 1, "message": 2, "body": 3,
+}
+
 func fillSpec(ps parser.Spec, data map[string]any) (parser.Spec, error) {
-	params := make(map[string]string)
+	// First pass: collect all potential matches for each field
+	potentialMatches := make(map[string][]string) // field -> []dataKey
 	for dk := range data {
 		for gk, gv := range commonLogSynonyms {
-			if _, ok := params[gk]; ok {
-				continue
-			}
 			if slices.Contains(gv, prepareKey(dk)) {
-				params[gk] = dk
+				potentialMatches[gk] = append(potentialMatches[gk], dk)
 			}
 		}
 	}
-	var notFound []string
 
+	params := make(map[string]string)
+
+	// For each field, pick the best match
+	for gk, matches := range potentialMatches {
+		if len(matches) == 0 {
+			continue
+		}
+
+		// For level_field, prefer the one with a valid log level value
+		if gk == "level_field" && len(matches) > 1 {
+			bestMatch := ""
+			bestPriority := 999
+			for _, dk := range matches {
+				priority := fieldPriority[prepareKey(dk)]
+				if priority == 0 {
+					priority = 999
+				}
+				// If this field has a valid log level value, boost its priority
+				if isLogLevel(data[dk]) && priority < bestPriority {
+					bestPriority = priority
+					bestMatch = dk
+				}
+			}
+			if bestMatch != "" {
+				params[gk] = bestMatch
+				continue
+			}
+		}
+
+		// Default: pick the one with lowest priority number (or first in list)
+		bestMatch := matches[0]
+		bestPriority := fieldPriority[prepareKey(bestMatch)]
+		if bestPriority == 0 {
+			bestPriority = 999
+		}
+		for _, dk := range matches[1:] {
+			priority := fieldPriority[prepareKey(dk)]
+			if priority == 0 {
+				priority = 999
+			}
+			if priority < bestPriority {
+				bestPriority = priority
+				bestMatch = dk
+			}
+		}
+		params[gk] = bestMatch
+	}
+
+	var notFound []string
 	for k := range commonLogSynonyms {
 		if k == "trace_id_field" {
 			continue
@@ -312,11 +468,27 @@ func isNumeric(s string) bool {
 	return true
 }
 
-func compareOrUpdate(prev, curr parser.Spec) (parser.Spec, error) {
+// Conflict holds details about a format conflict
+type Conflict struct {
+	Field     string
+	PrevValue string
+	CurrValue string
+}
+
+func compareOrUpdate(prev, curr, favour parser.Spec) (parser.Spec, Conflict, error) {
+	emptyConflict := Conflict{}
+
 	if prev.Type == "" {
 		prev.Type = curr.Type
 	} else if prev.Type != curr.Type {
-		return prev, fmt.Errorf("spec types mismatch. Prev: %s, Curr: %s", prev.Type, curr.Type)
+		// Type mismatch - use favour if provided
+		if favour.Type != "" {
+			// Keep the current spec but override the type
+			prev.Type = favour.Type
+			return prev, emptyConflict, nil
+		}
+		return prev, Conflict{Field: "type", PrevValue: prev.Type, CurrValue: curr.Type},
+			fmt.Errorf("mixed log format types: %s vs %s", prev.Type, curr.Type)
 	}
 
 	if prev.Params == nil {
@@ -328,11 +500,19 @@ func compareOrUpdate(prev, curr parser.Spec) (parser.Spec, error) {
 		if !ok {
 			prev.Params[k] = currV
 		} else if prevV != currV {
-			return prev, fmt.Errorf("spec params mismatch, param: %s. Prev: %s, Curr: %s", k, prevV, currV)
+			// Use favour if it has a value for this field
+			if favour.Params != nil {
+				if favouredV, ok := favour.Params[k]; ok && favouredV != "" {
+					prev.Params[k] = favouredV
+					continue
+				}
+			}
+			return prev, Conflict{Field: k, PrevValue: prevV, CurrValue: currV},
+				fmt.Errorf("inconsistent %s: found both '%s' and '%s'", k, prevV, currV)
 		}
 	}
 
-	return prev, nil
+	return prev, emptyConflict, nil
 }
 
 func generateName(names []string, nameParts ...string) string {

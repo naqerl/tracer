@@ -50,11 +50,36 @@ This installs both components:
 
 ### Configure collector
 
-`tracer-collector` supports guessing log format based on several heuristics and common patterns. More about [here](./docs/format-guessing.md).
+`tracer-collector` automatically detects log formats (JSON, slog text) and field mappings. See [format-guessing.md](./docs/format-guessing.md) for detailed documentation.
+
+**Quick start:**
+```bash
+# Add a systemd service
+tracer-collector add myapp
+
+# Add a log file
+tracer-collector add /var/log/myapp.log
+```
+
+The collector will:
+1. Read sample logs from the source
+2. Detect the format and field mappings
+3. Show a preview of the detected configuration
+4. Ask for confirmation before saving
+
+**Resolving format conflicts:**
+If your logs use inconsistent field names (e.g., some lines use `level`, others use `status`), the collector will report a conflict. Use `--favour` to specify which field to use:
 
 ```bash
-tracer-collector add --src [journalctl] <unit>
+# First attempt shows the conflict
+tracer-collector add myapp
+# Error: inconsistent level_field: found both 'level' and 'status'
+
+# Resolve by favouring the 'status' field
+tracer-collector add myapp --favour 'level_field:"status"'
 ```
+
+Fix conflicts one at a time - each error message suggests the exact `--favour` value to use.
 
 ### Start Services
 
