@@ -5,7 +5,7 @@ Wants=systemd-journald.service
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/tracer-demo-loggen -service demo-cron -component cron -format json -trace-mode never -burst-requests 14 -nested-depth 4 -warn-every 2 -error-every 5 -steady-interval 5m
+ExecStart=/usr/local/bin/tracer-demo-loggen -service demo-cron -component cron -format json -trace-mode never -burst-requests 1 -nested-depth 4 -warn-every 2 -error-every 5 -steady-interval 2s
 Restart=always
 RestartSec=5
 DynamicUser=yes

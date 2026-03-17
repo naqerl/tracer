@@ -1,8 +1,8 @@
 [Unit]
 Description=Register E2E demo apps in Tracer collector
-After=e2e-install.service tracer-demo-api.service tracer-demo-worker.service tracer-demo-cron.service
+After=install-on-boot.service tracer-demo-api.service tracer-demo-worker.service tracer-demo-cron.service
 Wants=tracer-demo-api.service tracer-demo-worker.service tracer-demo-cron.service
-Requires=e2e-install.service
+Requires=install-on-boot.service
 
 [Service]
 Type=oneshot

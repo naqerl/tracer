@@ -29,14 +29,11 @@ COPY --from=build /out/tracer-demo-loggen /usr/local/bin/tracer-demo-loggen
 COPY install.sh /opt/tracer/install.sh
 COPY e2e/install-on-boot.sh /opt/tracer/e2e/install-on-boot.sh
 COPY e2e/register-demo-apps.sh /opt/tracer/e2e/register-demo-apps.sh
-COPY e2e/install-on-boot.service /etc/systemd/system/e2e-install.service
-COPY e2e/register-demo-apps.service /etc/systemd/system/e2e-register-apps.service
 COPY e2e/systemd/ /etc/systemd/system/
 
 RUN chmod 0755 /opt/tracer/install.sh /opt/tracer/e2e/install-on-boot.sh /opt/tracer/e2e/register-demo-apps.sh /usr/local/bin/tracer-demo-loggen && \
     mkdir -p /etc/systemd/system/multi-user.target.wants && \
-    ln -sf /etc/systemd/system/e2e-install.service /etc/systemd/system/multi-user.target.wants/e2e-install.service && \
-    ln -sf /etc/systemd/system/e2e-register-apps.service /etc/systemd/system/multi-user.target.wants/e2e-register-apps.service && \
+    ln -sf /etc/systemd/system/install-on-boot.service /etc/systemd/system/multi-user.target.wants/install-on-boot.service && \
     ln -sf /etc/systemd/system/tracer-demo-api.service /etc/systemd/system/multi-user.target.wants/tracer-demo-api.service && \
     ln -sf /etc/systemd/system/tracer-demo-worker.service /etc/systemd/system/multi-user.target.wants/tracer-demo-worker.service && \
     ln -sf /etc/systemd/system/tracer-demo-cron.service /etc/systemd/system/multi-user.target.wants/tracer-demo-cron.service
