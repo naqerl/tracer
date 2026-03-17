@@ -15,12 +15,6 @@ import (
 	"tracer/apps/collector/internal/transport"
 )
 
-const (
-	configPathEnv     = "TRACER_CONFIG"
-	defaultConfigPath = "/etc/tracer/collector.yaml"
-	defaultDataDir    = "/usr/lib/tracer/"
-)
-
 // Config is the pure YAML configuration representation
 type Config struct {
 	Transport transport.Spec `yaml:"transport"`
@@ -75,10 +69,9 @@ func (c Config) String() (string, error) {
 	return string(out), nil
 }
 
-// Load reads and parses configuration file, overlaying on top of defaults
+// Load reads and parses configuration file, overlaying on top of defaults.
+// The path must be a non-empty string (resolved by caller).
 func Load(path string) Config {
-	path = getPath(path)
-
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		log.Fatalf("failed to read config: %s", err)
@@ -94,24 +87,13 @@ func Load(path string) Config {
 	return cfg
 }
 
+// Persist writes the configuration to the specified path.
+// The path must be a non-empty string (resolved by caller).
 func (c Config) Persist(path string) error {
-	path = getPath(path)
-
 	str, err := c.String()
 	if err != nil {
 		return err
 	}
 
 	return os.WriteFile(path, []byte(str), 0644)
-}
-
-func getPath(path string) string {
-	if path == "" {
-		path = os.Getenv(configPathEnv)
-	}
-	if path == "" {
-		path = defaultConfigPath
-	}
-
-	return path
 }
