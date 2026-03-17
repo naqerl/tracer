@@ -222,6 +222,13 @@ func serve(ctx context.Context, cfg config.Panel) error {
 	}
 	defer dbManager.Close()
 
+	// Run migrations on all existing app and collector databases
+	slog.Info("Running migrations on all databases...")
+	if err := dbManager.RunMigrationsForAll(); err != nil {
+		return fmt.Errorf("run migrations: %w", err)
+	}
+	slog.Info("Migrations complete")
+
 	// Initialize panel database and run migrations
 	panelDB, err := initPanelDB(cfg.DataDir)
 	if err != nil {

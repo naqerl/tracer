@@ -106,7 +106,7 @@ func (m *Manager) GetAppDB(collectorName, appName string) (db.DBTX, error) {
 	m.mu.RUnlock()
 
 	// Check if DB file exists on disk
-	dbPath := filepath.Join(m.collectorsDir, collectorName, "apps", fmt.Sprintf("%s.db", appName))
+	dbPath := m.appDBPath(collectorName, appName)
 	if _, err := os.Stat(dbPath); os.IsNotExist(err) {
 		return nil, ErrDBNotFound
 	}
@@ -139,10 +139,8 @@ func (m *Manager) CreateAppDB(collectorName, appName string) (db.DBTX, error) {
 		return nil, fmt.Errorf("create apps dir for collector %s: %w", collectorName, err)
 	}
 
-	dbPath := filepath.Join(appsDir, fmt.Sprintf("%s.db", appName))
-	dsn := fmt.Sprintf("file:%s?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=synchronous(NORMAL)&_pragma=foreign_keys(ON)", dbPath)
-
-	sqlDB, err := sql.Open("sqlite", dsn)
+	dbPath := m.appDBPath(collectorName, appName)
+	sqlDB, err := openSQLiteDB(buildDSN(dbPath))
 	if err != nil {
 		return nil, fmt.Errorf("open database for app %s/%s: %w", collectorName, appName, err)
 	}
@@ -173,16 +171,11 @@ func (m *Manager) openAppDB(collectorName, appName string) (db.DBTX, error) {
 		return newLoggingDB(sqlDB, collectorName+"/"+appName), nil
 	}
 
-	dbPath := filepath.Join(m.collectorsDir, collectorName, "apps", fmt.Sprintf("%s.db", appName))
-	dsn := fmt.Sprintf("file:%s?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=synchronous(NORMAL)&_pragma=foreign_keys(ON)", dbPath)
-
-	sqlDB, err := sql.Open("sqlite", dsn)
+	dbPath := m.appDBPath(collectorName, appName)
+	sqlDB, err := openSQLiteDB(buildDSN(dbPath))
 	if err != nil {
 		return nil, fmt.Errorf("open database for app %s/%s: %w", collectorName, appName, err)
 	}
-
-	sqlDB.SetMaxOpenConns(1)
-	sqlDB.SetMaxIdleConns(1)
 
 	m.appDBs[key] = sqlDB
 	return newLoggingDB(sqlDB, collectorName+"/"+appName), nil
@@ -203,7 +196,7 @@ func (m *Manager) GetCollectorDB(collectorName string) (db.DBTX, error) {
 	m.mu.RUnlock()
 
 	// Check if DB file exists on disk
-	dbPath := filepath.Join(m.collectorsDir, collectorName, "collector.db")
+	dbPath := m.collectorDBPath(collectorName)
 	if _, err := os.Stat(dbPath); os.IsNotExist(err) {
 		return nil, ErrDBNotFound
 	}
@@ -231,16 +224,11 @@ func (m *Manager) CreateCollectorDB(collectorName string) (db.DBTX, error) {
 		return nil, fmt.Errorf("create collector dir for %s: %w", collectorName, err)
 	}
 
-	dbPath := filepath.Join(collectorDir, "collector.db")
-	dsn := fmt.Sprintf("file:%s?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=synchronous(NORMAL)&_pragma=foreign_keys(ON)", dbPath)
-
-	sqlDB, err := sql.Open("sqlite", dsn)
+	dbPath := m.collectorDBPath(collectorName)
+	sqlDB, err := openSQLiteDB(buildDSN(dbPath))
 	if err != nil {
 		return nil, fmt.Errorf("open collector db for %s: %w", collectorName, err)
 	}
-
-	sqlDB.SetMaxOpenConns(1)
-	sqlDB.SetMaxIdleConns(1)
 
 	// Run migrations for new database
 	if err := m.runCollectorMigrations(sqlDB); err != nil {
@@ -263,16 +251,11 @@ func (m *Manager) openCollectorDB(collectorName string) (db.DBTX, error) {
 		return newLoggingDB(sqlDB, "collector/"+collectorName), nil
 	}
 
-	dbPath := filepath.Join(m.collectorsDir, collectorName, "collector.db")
-	dsn := fmt.Sprintf("file:%s?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=synchronous(NORMAL)&_pragma=foreign_keys(ON)", dbPath)
-
-	sqlDB, err := sql.Open("sqlite", dsn)
+	dbPath := m.collectorDBPath(collectorName)
+	sqlDB, err := openSQLiteDB(buildDSN(dbPath))
 	if err != nil {
 		return nil, fmt.Errorf("open collector db for %s: %w", collectorName, err)
 	}
-
-	sqlDB.SetMaxOpenConns(1)
-	sqlDB.SetMaxIdleConns(1)
 
 	m.collectorDBs[collectorName] = sqlDB
 	return newLoggingDB(sqlDB, "collector/"+collectorName), nil
@@ -304,6 +287,87 @@ func (m *Manager) runCollectorMigrations(sqlDB *sql.DB) error {
 
 func appDBKey(collectorName, appName string) string {
 	return collectorName + "\x00" + appName
+}
+
+func (m *Manager) appDBPath(collectorName, appName string) string {
+	return filepath.Join(m.collectorsDir, collectorName, "apps", fmt.Sprintf("%s.db", appName))
+}
+
+func (m *Manager) collectorDBPath(collectorName string) string {
+	return filepath.Join(m.collectorsDir, collectorName, "collector.db")
+}
+
+func buildDSN(dbPath string) string {
+	return fmt.Sprintf("file:%s?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=synchronous(NORMAL)&_pragma=foreign_keys(ON)", dbPath)
+}
+
+func openSQLiteDB(dsn string) (*sql.DB, error) {
+	sqlDB, err := sql.Open("sqlite", dsn)
+	if err != nil {
+		return nil, err
+	}
+	sqlDB.SetMaxOpenConns(1)
+	sqlDB.SetMaxIdleConns(1)
+	return sqlDB, nil
+}
+
+// RunMigrationsForAll runs migrations on all existing collector and app databases.
+// This should be called on startup to ensure all databases are up to date.
+func (m *Manager) RunMigrationsForAll() error {
+	collectors, err := m.ListCollectors()
+	if err != nil {
+		return fmt.Errorf("list collectors: %w", err)
+	}
+
+	var errs []error
+	for _, collector := range collectors {
+		// Run collector DB migrations
+		if _, err := m.GetCollectorDB(collector); err == nil {
+			sqlDB, err := openSQLiteDB(buildDSN(m.collectorDBPath(collector)))
+			if err != nil {
+				errs = append(errs, fmt.Errorf("open collector db %s: %w", collector, err))
+				continue
+			}
+
+			if err := m.runCollectorMigrations(sqlDB); err != nil {
+				sqlDB.Close()
+				errs = append(errs, fmt.Errorf("migrate collector %s: %w", collector, err))
+				continue
+			}
+			sqlDB.Close()
+			slog.Info("Migrated collector database", "collector", collector)
+		}
+
+		// Run app DB migrations
+		apps, err := m.ListApps(collector)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("list apps for %s: %w", collector, err))
+			continue
+		}
+
+		for _, app := range apps {
+			if _, err := m.GetAppDB(collector, app); err == nil {
+				sqlDB, err := openSQLiteDB(buildDSN(m.appDBPath(collector, app)))
+				if err != nil {
+					errs = append(errs, fmt.Errorf("open app db %s/%s: %w", collector, app, err))
+					continue
+				}
+
+				if err := m.runAppMigrations(sqlDB); err != nil {
+					sqlDB.Close()
+					errs = append(errs, fmt.Errorf("migrate app %s/%s: %w", collector, app, err))
+					continue
+				}
+				sqlDB.Close()
+				slog.Info("Migrated app database", "collector", collector, "app", app)
+			}
+		}
+	}
+
+	if len(errs) > 0 {
+		return fmt.Errorf("migration errors: %v", errs)
+	}
+	return nil
 }
 
 // Close closes all database connections
