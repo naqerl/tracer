@@ -1,7 +1,7 @@
 -- name: InsertLog :one
 INSERT INTO logs (trace_id, level, message, context, group_id, created_at)
 VALUES (?, ?, ?, ?, ?, ?)
-RETURNING *;
+RETURNING id, trace_id, level, message, context, group_id, datetime(created_at) as created_at;
 
 -- name: GetOrCreateLogGroup :one
 -- Get existing log group by message and level, or create if doesn't exist

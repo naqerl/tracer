@@ -72,7 +72,7 @@ type Querier interface {
 	GetUserByID(ctx context.Context, id int64) (User, error)
 	GrantAppAccess(ctx context.Context, arg GrantAppAccessParams) error
 	InsertLifecycleEvent(ctx context.Context, arg InsertLifecycleEventParams) (LifecycleEvent, error)
-	InsertLog(ctx context.Context, arg InsertLogParams) (Log, error)
+	InsertLog(ctx context.Context, arg InsertLogParams) (InsertLogRow, error)
 	InsertSystemStats(ctx context.Context, arg InsertSystemStatsParams) error
 	ListAllNotifiers(ctx context.Context) ([]Notifier, error)
 	ListHealthPeriodsOverlappingRange(ctx context.Context, arg ListHealthPeriodsOverlappingRangeParams) ([]AppHealthPeriod, error)

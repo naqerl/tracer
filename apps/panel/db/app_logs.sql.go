@@ -262,7 +262,7 @@ func (q *Queries) GetPercentiles(ctx context.Context, createdAt time.Time) (GetP
 const insertLog = `-- name: InsertLog :one
 INSERT INTO logs (trace_id, level, message, context, group_id, created_at)
 VALUES (?, ?, ?, ?, ?, ?)
-RETURNING id, trace_id, level, message, context, group_id, created_at
+RETURNING id, trace_id, level, message, context, group_id, datetime(created_at) as created_at
 `
 
 type InsertLogParams struct {
@@ -274,7 +274,17 @@ type InsertLogParams struct {
 	CreatedAt time.Time
 }
 
-func (q *Queries) InsertLog(ctx context.Context, arg InsertLogParams) (Log, error) {
+type InsertLogRow struct {
+	ID       int64
+	TraceID  sql.NullString
+	Level    string
+	Message  string
+	Context  sql.NullString
+	GroupID  sql.NullInt64
+	Datetime interface{}
+}
+
+func (q *Queries) InsertLog(ctx context.Context, arg InsertLogParams) (InsertLogRow, error) {
 	row := q.db.QueryRowContext(ctx, insertLog,
 		arg.TraceID,
 		arg.Level,
@@ -283,7 +293,7 @@ func (q *Queries) InsertLog(ctx context.Context, arg InsertLogParams) (Log, erro
 		arg.GroupID,
 		arg.CreatedAt,
 	)
-	var i Log
+	var i InsertLogRow
 	err := row.Scan(
 		&i.ID,
 		&i.TraceID,
@@ -291,7 +301,7 @@ func (q *Queries) InsertLog(ctx context.Context, arg InsertLogParams) (Log, erro
 		&i.Message,
 		&i.Context,
 		&i.GroupID,
-		&i.CreatedAt,
+		&i.Datetime,
 	)
 	return i, err
 }
