@@ -25,6 +25,19 @@ func (q *Queries) CountLogsByGroupID(ctx context.Context, groupID sql.NullInt64)
 	return total, err
 }
 
+const deleteLogGroup = `-- name: DeleteLogGroup :execrows
+DELETE FROM log_groups WHERE id = ?
+`
+
+// Delete a log group by ID
+func (q *Queries) DeleteLogGroup(ctx context.Context, id int64) (int64, error) {
+	result, err := q.db.ExecContext(ctx, deleteLogGroup, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const deleteOldLogs = `-- name: DeleteOldLogs :exec
 DELETE FROM logs
 WHERE created_at < ?

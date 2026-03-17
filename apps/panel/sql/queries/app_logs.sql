@@ -91,3 +91,7 @@ FROM logs
 WHERE created_at >= sqlc.arg(since)
 GROUP BY time_bucket, LOWER(level)
 ORDER BY time_bucket ASC, level;
+
+-- name: DeleteLogGroup :execrows
+-- Delete a log group by ID
+DELETE FROM log_groups WHERE id = ?;

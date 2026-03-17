@@ -21,9 +21,12 @@
 {{end}}
 
 {{define "log-group-content"}}
-<!-- Breadcrumb -->
-<div class="mb-6">
+<!-- Breadcrumb with Delete -->
+<div class="mb-6 flex items-center justify-between gap-4">
     <a href="/panel/collectors/{{.CollectorName}}/apps/{{.AppName}}" class="text-sm text-fg-secondary hover:text-fg transition-colors">&larr; Back to app</a>
+    <button hx-delete="/panel/collectors/{{.CollectorName}}/apps/{{.AppName}}/logs/groups/{{.LogGroup.ID}}"
+            hx-confirm="Delete log group '{{.LogGroup.Message}}'?"
+            class="text-sm text-fg-secondary hover:text-red-500 underline transition-colors">Delete</button>
 </div>
 
 <!-- Group Header -->

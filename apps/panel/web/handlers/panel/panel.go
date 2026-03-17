@@ -65,6 +65,7 @@ func InitMux(svc *panelsvc.Service) *http.ServeMux {
 	m.HandleFunc("GET /collectors/{collector}/apps/{app}", h.getApp)
 	m.HandleFunc("GET /collectors/{collector}/apps/{app}/logs/groups", h.getLogGroups)
 	m.HandleFunc("GET /collectors/{collector}/apps/{app}/logs/groups/{groupID}", h.getLogGroupByID)
+	m.HandleFunc("DELETE /collectors/{collector}/apps/{app}/logs/groups/{groupID}", h.deleteLogGroup)
 	m.HandleFunc("GET /collectors/{collector}/apps/{app}/logs/{id}", h.getLogByID)
 
 	return m
@@ -667,6 +668,48 @@ func (h *handler) getLogGroupByID(w http.ResponseWriter, r *http.Request) {
 		"HasMore":       req.Offset+int64(len(detail.Logs)) < detail.TotalCount,
 		"NextOffset":    req.Offset + req.Limit,
 	})
+}
+
+func (h *handler) deleteLogGroup(w http.ResponseWriter, r *http.Request) {
+	userID, err := auth.RequireOrRedirect(w, r)
+	if err != nil {
+		return
+	}
+
+	groupID, err := strconv.ParseInt(r.PathValue("groupID"), 10, 64)
+	if err != nil {
+		h.t.RenderError(w, r, "Error", "Invalid group ID", http.StatusBadRequest)
+		return
+	}
+
+	req := panelsvc.DeleteLogGroupRequest{
+		UserID:        userID,
+		CollectorName: r.PathValue("collector"),
+		AppName:       r.PathValue("app"),
+		GroupID:       groupID,
+	}
+	if err := req.Validate(); err != nil {
+		h.t.RenderError(w, r, "Error", err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if err := h.svc.DeleteLogGroup(r.Context(), req); err != nil {
+		switch {
+		case errors.Is(err, panelsvc.ErrCollectorNotFound):
+			h.t.RenderError(w, r, "Error", "Collector not found", http.StatusNotFound)
+		case errors.Is(err, panelsvc.ErrAccessDenied):
+			h.t.RenderError(w, r, "Forbidden", "You don't have access to this app", http.StatusForbidden)
+		case errors.Is(err, panelsvc.ErrAppNotFound), errors.Is(err, panelsvc.ErrLogNotFound):
+			h.t.RenderError(w, r, "Error", "Group not found", http.StatusNotFound)
+		default:
+			slog.Error("Failed to delete log group", "error", err, "groupID", req.GroupID, "collector", req.CollectorName, "app", req.AppName)
+			h.t.RenderError(w, r, "Error", "Failed to delete log group", http.StatusInternalServerError)
+		}
+		return
+	}
+
+	w.Header().Set("HX-Redirect", fmt.Sprintf("/panel/collectors/%s/apps/%s", req.CollectorName, req.AppName))
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h *handler) getLogByID(w http.ResponseWriter, r *http.Request) {

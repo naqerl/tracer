@@ -28,6 +28,8 @@ type Querier interface {
 	CreateUserAPIKey(ctx context.Context, arg CreateUserAPIKeyParams) (UserApiKey, error)
 	DeleteCollectorAPIKey(ctx context.Context, name string) error
 	DeleteExpiredSessions(ctx context.Context, expiresAt time.Time) error
+	// Delete a log group by ID
+	DeleteLogGroup(ctx context.Context, id int64) (int64, error)
 	DeleteNotifier(ctx context.Context, id int64) error
 	DeleteOldHealthPeriods(ctx context.Context, endedAt sql.NullTime) error
 	DeleteOldLogs(ctx context.Context, createdAt time.Time) error

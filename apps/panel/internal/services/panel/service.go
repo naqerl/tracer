@@ -649,6 +649,55 @@ func (s *Service) GetLogByID(ctx context.Context, req GetLogByIDRequest) (db.Log
 	return logEntry, nil
 }
 
+type DeleteLogGroupRequest struct {
+	UserID        int64
+	CollectorName string
+	AppName       string
+	GroupID       int64
+}
+
+func (r DeleteLogGroupRequest) Validate() error {
+	if err := domain.ValidateUserID(r.UserID); err != nil {
+		return err
+	}
+	if r.CollectorName == "" {
+		return fmt.Errorf("collector name is required")
+	}
+	if r.AppName == "" {
+		return fmt.Errorf("app name is required")
+	}
+	if r.GroupID <= 0 {
+		return fmt.Errorf("group ID must be positive")
+	}
+	return nil
+}
+
+func (s *Service) DeleteLogGroup(ctx context.Context, req DeleteLogGroupRequest) error {
+	access, err := s.userSvc.FindAccessPolicy(ctx, req.UserID)
+	if err != nil {
+		return fmt.Errorf("could not list user apps: %w", err)
+	}
+	if !access.AllowedTo(req.CollectorName, req.AppName) {
+		return ErrAccessDenied
+	}
+
+	queries, err := s.queriesForApp(req.CollectorName, req.AppName)
+	if err != nil {
+		return err
+	}
+
+	// Then delete the group
+	rowsAffected, err := queries.DeleteLogGroup(ctx, req.GroupID)
+	if err != nil {
+		return fmt.Errorf("delete log group: %w", err)
+	}
+	if rowsAffected == 0 {
+		return ErrLogNotFound
+	}
+
+	return nil
+}
+
 func (s *Service) GetLogVolumeTimeSeries(ctx context.Context, collectorName, appName string, since time.Time, granularity string) ([]db.GetLogVolumeTimeSeriesRow, error) {
 	queries, err := s.queriesForApp(collectorName, appName)
 	if err != nil {
