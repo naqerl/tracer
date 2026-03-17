@@ -20,6 +20,7 @@ import (
 
 	"tracer/apps/panel/internal/config"
 	"tracer/apps/panel/internal/dbmanager"
+	"tracer/apps/panel/internal/install"
 	"tracer/apps/panel/internal/retention"
 	"tracer/apps/panel/internal/services/auth"
 	"tracer/apps/panel/internal/services/ingest"
@@ -31,7 +32,6 @@ import (
 	"tracer/apps/panel/internal/services/user"
 	panelmigrations "tracer/apps/panel/sql/panel"
 	"tracer/apps/panel/web"
-	"tracer/libs/installer"
 	"tracer/libs/logx"
 	"tracer/libs/updater"
 )
@@ -50,6 +50,9 @@ func main() {
 	flag.Parse()
 
 	logx.SetDefault()
+
+	// Resolve config path: flag -> env -> default
+	cfgPath := resolveConfigPath(*configPath)
 
 	// Handle CLI commands that don't require config file
 	if *printDefaults {
@@ -82,13 +85,16 @@ func main() {
 		case "install":
 			handleInstall(flag.Args()[1:])
 			return
+		case "config":
+			handleConfig(flag.Args()[1:])
+			return
 		default:
 			log.Fatalf("Unknown command: %s\n", flag.Arg(0))
 		}
 	}
 
 	// Default behavior: run the server
-	cfg := config.Load(*configPath)
+	cfg := config.Load(cfgPath)
 
 	slog.Info("Starting panel",
 		"port", cfg.Port,
@@ -394,35 +400,28 @@ func handleUpdate() {
 }
 
 func handleInstall(args []string) {
+	if err := install.Run(args); err != nil {
+		log.Fatalf("Install failed: %v", err)
+	}
+}
+
+func handleConfig(args []string) {
 	if len(args) == 0 {
-		fmt.Println("Usage: tracer-panel install <command>")
-		fmt.Println()
-		fmt.Println("Commands:")
-		fmt.Println("  metadata      Output installation metadata as JSON")
-		fmt.Println("  systemd       Output systemd service file content")
-		fmt.Println("  paths         Output default paths")
-		fmt.Println("  user          Output service user info")
-		return
+		log.Fatal("Usage: tracer-panel config <key>")
 	}
-
-	meta := installer.PanelMetadata()
-
-	switch args[0] {
-	case "metadata":
-		fmt.Println(meta.JSON())
-	case "systemd":
-		fmt.Println(meta.GenerateSystemdUnit())
-	case "paths":
-		fmt.Printf("InstallDir:  %s\n", meta.Paths.InstallDir)
-		fmt.Printf("ConfigDir:   %s\n", meta.Paths.ConfigDir)
-		fmt.Printf("ConfigFile:  %s\n", meta.Paths.ConfigFile)
-		fmt.Printf("DataDir:     %s\n", meta.Paths.DataDir)
-	case "user":
-		fmt.Printf("User:  %s\n", meta.User.Name)
-		fmt.Printf("Group: %s\n", meta.Group.Name)
-		fmt.Printf("Home:  %s\n", meta.User.HomeDir)
-		fmt.Printf("Shell: %s\n", meta.User.Shell)
-	default:
-		log.Fatalf("Unknown install command: %s", args[0])
+	if err := install.RunConfig(args[0]); err != nil {
+		log.Fatalf("Config failed: %v", err)
 	}
+}
+
+// resolveConfigPath resolves the config path from flag, env var, or default.
+// Priority: flag > env var > default from install package.
+func resolveConfigPath(flagPath string) string {
+	if flagPath != "" {
+		return flagPath
+	}
+	if envPath := os.Getenv(install.ConfigEnvVar); envPath != "" {
+		return envPath
+	}
+	return install.ConfigFilePath
 }

@@ -17,12 +17,10 @@ type Panel struct {
 }
 
 const (
-	panelConfigPathEnv     = "TRACER_PANEL_CONFIG"
-	defaultPanelConfigPath = "/etc/tracer/panel.yaml"
-	defaultDataDir         = "/var/lib/tracer"
-	defaultPort            = "8080"
-	defaultSampleRate      = 0.1
-	defaultRetentionDays   = 90
+	defaultDataDir       = "/var/lib/tracer"
+	defaultPort          = "8080"
+	defaultSampleRate    = 0.1
+	defaultRetentionDays = 90
 )
 
 // DataDir returns the data directory, checking env var first
@@ -53,15 +51,9 @@ func (p Panel) String() (string, error) {
 	return string(out), nil
 }
 
-// Load reads and parses configuration file, overlaying on top of defaults
+// Load reads and parses configuration file, overlaying on top of defaults.
+// The path must be a non-empty string (resolved by caller).
 func Load(path string) Panel {
-	if path == "" {
-		path = os.Getenv(panelConfigPathEnv)
-	}
-	if path == "" {
-		path = defaultPanelConfigPath
-	}
-
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		log.Fatalf("failed to read config: %s", err)

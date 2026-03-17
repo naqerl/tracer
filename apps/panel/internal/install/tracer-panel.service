@@ -1,0 +1,30 @@
+[Unit]
+Description=Tracer Panel
+Documentation=https://github.com/ai-shift/tracer
+After=network.target
+
+[Service]
+Type=simple
+User=tracer-panel
+Group=tracer-panel
+ExecStart=/usr/local/bin/tracer-panel -config {{.ConfigFilePath}}
+Restart=always
+RestartSec=5
+
+# Config and data setup
+ConfigurationDirectory=tracer
+ConfigurationDirectoryMode=0755
+StateDirectory=tracer
+StateDirectoryMode=0750
+
+# Security hardening
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+
+[Install]
+WantedBy=multi-user.target
