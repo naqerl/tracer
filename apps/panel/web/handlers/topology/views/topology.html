@@ -539,6 +539,14 @@
         opacity: '0.95'
       });
     }
+    if (shape === 'diamond') {
+      const diamondSize = size * 1.4;
+      return el('polygon', {
+        points: `0,${-diamondSize} ${diamondSize},0 0,${diamondSize} ${-diamondSize},0`,
+        fill: color,
+        opacity: '0.95'
+      });
+    }
     return el('circle', {
       cx: '0',
       cy: '0',
@@ -636,7 +644,7 @@
   function eventShape(type) {
     if (type === 'collector_stats') return 'square';
     if (type === 'app_health') return 'triangle';
-    if (type === 'panel_tick') return 'rectangle';
+    if (type === 'panel_tick') return 'diamond';
     return 'circle';
   }
 
@@ -656,6 +664,9 @@
       dot.className += ' h-2.5 w-2.5';
     } else if (shape === 'rectangle') {
       dot.className += ' h-2 w-4 rounded-sm';
+    } else if (shape === 'diamond') {
+      dot.className += ' h-3 w-3';
+      dot.style.clipPath = 'polygon(50% 0, 100% 50%, 50% 100%, 0 50%)';
     } else {
       dot.className += ' h-2.5 w-2.5 rounded-full';
     }
