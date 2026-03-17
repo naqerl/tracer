@@ -1,0 +1,29 @@
+[Unit]
+Description=Tracer Log Collector
+Documentation=https://github.com/ai-shift/tracer
+After=network.target
+
+[Service]
+Type=simple
+User=tracer-collector
+Group=tracer-collector
+SupplementaryGroups=systemd-journal adm
+ExecStart=/usr/local/bin/tracer-collector -config {{.ConfigFilePath}}
+Restart=always
+RestartSec=5
+
+# Config setup
+ConfigurationDirectory=tracer
+ConfigurationDirectoryMode=0755
+
+# Security hardening
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+
+[Install]
+WantedBy=multi-user.target

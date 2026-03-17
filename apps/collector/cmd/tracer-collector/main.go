@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"log/slog"
+	"os"
 	"os/signal"
 	"path/filepath"
 	"strings"
@@ -16,12 +17,12 @@ import (
 	"tracer/apps/collector/internal/config"
 	"tracer/apps/collector/internal/formatguesser"
 	"tracer/apps/collector/internal/health"
+	"tracer/apps/collector/internal/install"
 	"tracer/apps/collector/internal/lifecycle"
 	"tracer/apps/collector/internal/parser"
 	"tracer/apps/collector/internal/source"
 	"tracer/apps/collector/internal/stats"
 	"tracer/apps/collector/internal/transport"
-	"tracer/libs/installer"
 	"tracer/libs/logx"
 	"tracer/libs/types"
 	"tracer/libs/updater"
@@ -40,6 +41,9 @@ func main() {
 
 	logx.SetDefault()
 
+	// Resolve config path: flag -> env -> default
+	cfgPath := resolveConfigPath(*configPath)
+
 	if *printDefaults {
 		if err := printDefaultsCmd(); err != nil {
 			log.Fatalf("failed to print defaults: %s", err)
@@ -54,12 +58,12 @@ func main() {
 	if flag.NArg() > 0 {
 		switch flag.Arg(0) {
 		case "add":
-			cfg := config.Load(*configPath)
-			handleAdd(ctx, *configPath, cfg, addCmd)
+			cfg := config.Load(cfgPath)
+			handleAdd(ctx, cfgPath, cfg, addCmd)
 			return
 		case "set":
-			cfg := config.Load(*configPath)
-			handleSet(*configPath, cfg, setCmd)
+			cfg := config.Load(cfgPath)
+			handleSet(cfgPath, cfg, setCmd)
 			return
 		case "update":
 			handleUpdate()
@@ -73,7 +77,7 @@ func main() {
 	}
 
 	// Default behavior: run the collector
-	cfg := config.Load(*configPath)
+	cfg := config.Load(cfgPath)
 
 	slog.Info("Starting collector",
 		"name", cfg.Transport.Name,
@@ -276,35 +280,8 @@ func handleUpdate() {
 }
 
 func handleInstall(args []string) {
-	if len(args) == 0 {
-		fmt.Println("Usage: tracer-collector install <command>")
-		fmt.Println()
-		fmt.Println("Commands:")
-		fmt.Println("  metadata      Output installation metadata as JSON")
-		fmt.Println("  systemd       Output systemd service file content")
-		fmt.Println("  paths         Output default paths")
-		fmt.Println("  user          Output service user info")
-		return
-	}
-
-	meta := installer.CollectorMetadata()
-
-	switch args[0] {
-	case "metadata":
-		fmt.Println(meta.JSON())
-	case "systemd":
-		fmt.Println(meta.GenerateSystemdUnit())
-	case "paths":
-		fmt.Printf("InstallDir:  %s\n", meta.Paths.InstallDir)
-		fmt.Printf("ConfigDir:   %s\n", meta.Paths.ConfigDir)
-		fmt.Printf("ConfigFile:  %s\n", meta.Paths.ConfigFile)
-	case "user":
-		fmt.Printf("User:  %s\n", meta.User.Name)
-		fmt.Printf("Group: %s\n", meta.Group.Name)
-		fmt.Printf("Home:  %s\n", meta.User.HomeDir)
-		fmt.Printf("Shell: %s\n", meta.User.Shell)
-	default:
-		log.Fatalf("Unknown install command: %s", args[0])
+	if err := install.Run(args); err != nil {
+		log.Fatalf("Install failed: %v", err)
 	}
 }
 
@@ -353,4 +330,16 @@ func attachHTTPHealth(cfg *config.Config, name string, spec source.Spec, url str
 	}
 
 	log.Fatalf("Failed to attach health config: app %q was not found after add", name)
+}
+
+// resolveConfigPath resolves the config path from flag, env var, or default.
+// Priority: flag > env var > default from install package.
+func resolveConfigPath(flagPath string) string {
+	if flagPath != "" {
+		return flagPath
+	}
+	if envPath := os.Getenv(install.ConfigEnvVar); envPath != "" {
+		return envPath
+	}
+	return install.ConfigFilePath
 }
