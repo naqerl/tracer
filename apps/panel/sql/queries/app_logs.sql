@@ -17,7 +17,7 @@ SELECT
     lg.message,
     lg.level,
     COUNT(l.id) as count,
-    CAST(MAX(l.created_at) AS DATETIME) as latest_at,
+    (SELECT created_at FROM logs WHERE group_id = lg.id ORDER BY created_at DESC LIMIT 1) as latest_at,
     lg.created_at as created_at
 FROM log_groups lg
 INNER JOIN logs l ON l.group_id = lg.id
@@ -31,7 +31,7 @@ SELECT
     lg.message,
     lg.level,
     COUNT(l.id) as count,
-    CAST(MAX(l.created_at) AS DATETIME) as latest_at,
+    (SELECT created_at FROM logs WHERE group_id = lg.id ORDER BY created_at DESC LIMIT 1) as latest_at,
     lg.created_at as created_at
 FROM log_groups lg
 INNER JOIN logs l ON l.group_id = lg.id
