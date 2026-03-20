@@ -21,6 +21,7 @@ RETURNING id, message, level, created_at, log_count, last_log_at;
 SELECT
     message,
     level,
+    log_count,
     created_at,
     last_log_at
 FROM log_group

@@ -71,6 +71,7 @@ const getLogGroupByID = `-- name: GetLogGroupByID :one
 SELECT
     message,
     level,
+    log_count,
     created_at,
     last_log_at
 FROM log_group
@@ -80,6 +81,7 @@ WHERE id = ?
 type GetLogGroupByIDRow struct {
 	Message   string
 	Level     string
+	LogCount  int64
 	CreatedAt int64
 	LastLogAt int64
 }
@@ -90,6 +92,7 @@ func (q *Queries) GetLogGroupByID(ctx context.Context, id int64) (GetLogGroupByI
 	err := row.Scan(
 		&i.Message,
 		&i.Level,
+		&i.LogCount,
 		&i.CreatedAt,
 		&i.LastLogAt,
 	)

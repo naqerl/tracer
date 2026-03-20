@@ -564,9 +564,84 @@ func (s *Service) GetLogGroup(ctx context.Context, req GetLogGroupRequest) (LogG
 		ID:        req.GroupID,
 		Message:   row.Message,
 		Level:     row.Level,
+		Count:     row.LogCount,
 		CreatedAt: time.Unix(row.CreatedAt, 0),
 		LastLogAt: time.Unix(row.LastLogAt, 0),
 	}, nil
+}
+
+type GroupLogEntry struct {
+	ID        int64
+	Level     string
+	Context   sql.NullString
+	CreatedAt time.Time
+}
+
+type ListGroupLogsRequest struct {
+	UserID        int64
+	CollectorName string
+	AppName       string
+	GroupID       int64
+	Offset        int
+	Limit         int
+}
+
+func (r ListGroupLogsRequest) Validate() error {
+	if err := domain.ValidateUserID(r.UserID); err != nil {
+		return err
+	}
+	if r.CollectorName == "" {
+		return fmt.Errorf("collector name is required")
+	}
+	if r.AppName == "" {
+		return fmt.Errorf("app name is required")
+	}
+	if r.GroupID <= 0 {
+		return fmt.Errorf("group ID must be positive")
+	}
+	if r.Offset < 0 {
+		return fmt.Errorf("offset must be non-negative")
+	}
+	if r.Limit <= 0 {
+		return fmt.Errorf("limit must be positive")
+	}
+	return nil
+}
+
+func (s *Service) ListGroupLogs(ctx context.Context, req ListGroupLogsRequest) ([]GroupLogEntry, error) {
+	access, err := s.userSvc.FindAccessPolicy(ctx, req.UserID)
+	if err != nil {
+		return nil, fmt.Errorf("could not list user apps: %w", err)
+	}
+	if !access.AllowedTo(req.CollectorName, req.AppName) {
+		return nil, ErrAccessDenied
+	}
+
+	queries, err := s.queriesForApp(req.CollectorName, req.AppName)
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err := queries.GetLogsByGroupID(ctx, db.GetLogsByGroupIDParams{
+		GroupID: sql.NullInt64{Int64: req.GroupID, Valid: true},
+		Limit:   int64(req.Limit),
+		Offset:  int64(req.Offset),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	entries := make([]GroupLogEntry, len(rows))
+	for i, row := range rows {
+		entries[i] = GroupLogEntry{
+			ID:        row.ID,
+			Level:     row.Level,
+			Context:   row.Context,
+			CreatedAt: time.Unix(row.CreatedAt, 0),
+		}
+	}
+
+	return entries, nil
 }
 
 type GetLogByIDRequest struct {

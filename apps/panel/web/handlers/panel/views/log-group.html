@@ -43,169 +43,69 @@
     </div>
 </div>
 
-{{if .Logs}}
+<!-- Log Entries Container (loaded via HTMX) -->
+<div id="log-entries-container"
+     hx-get="/panel/collectors/{{.CollectorName}}/apps/{{.AppName}}/logs/groups/{{.LogGroup.ID}}/entries?level={{.LogGroup.Level}}"
+     hx-trigger="load"
+     hx-swap="innerHTML">
+    <div class="text-center text-sm text-fg-secondary/60 py-12">
+        <p>Loading log entries...</p>
+    </div>
+</div>
+{{end}}
+
+{{define "log-group-entries"}}
+{{if .Entries}}
 <!-- Chart Container -->
-<div id="log-chart-container">
+<div id="log-chart-container" data-level="{{.Level}}">
     <div id="log-chart"></div>
 </div>
 
 <!-- Logs Table -->
 <div class="mt-6">
-    {{template "log-group-table" .}}
+    <table id="logs-data" class="w-full">
+        <thead class="border-b border-bg-secondary">
+            <tr class="text-left text-fg text-sm">
+                <th class="pb-2 font-medium w-[1%] whitespace-nowrap pr-4">Time</th>
+                <th class="pb-2 font-medium w-full pl-4">Context</th>
+            </tr>
+        </thead>
+        <tbody>
+            {{range .Entries}}
+            <tr class="group opacity-60 hover:opacity-100 transition-opacity duration-700 hover:duration-150 cursor-pointer" data-timestamp="{{.CreatedAt.Unix}}" onclick="window.location.href='/panel/collectors/{{$.CollectorName}}/apps/{{$.AppName}}/logs/{{.ID}}'">
+                <td class="w-[1%] whitespace-nowrap align-middle pr-4">
+                    <span class="block py-2 sm:py-1 text-sm">{{formatDateTime .CreatedAt}}</span>
+                </td>
+                <td class="w-full align-middle py-2 pl-4">
+                    {{if .Context.Valid}}
+                    <div class="bg-bg-secondary p-2">
+                        {{template "json-viewer" dict "ID" (printf "context-%d" .ID) "Data" .Context.String "Valid" .Context.Valid}}
+                    </div>
+                    {{else}}
+                    <span class="text-sm text-fg-secondary/60">-</span>
+                    {{end}}
+                </td>
+            </tr>
+            {{end}}
+        </tbody>
+    </table>
+
+    <!-- Pagination -->
+    {{if .HasMore}}
+    <div class="mt-4">
+        <button hx-get="/panel/collectors/{{.CollectorName}}/apps/{{.AppName}}/logs/groups/{{.GroupID}}/entries?offset={{.NextOffset}}&level={{.Level}}"
+                hx-target="#log-entries-container"
+                hx-swap="innerHTML"
+                class="text-sm text-fg-secondary hover:text-fg transition-colors">Load more &rarr;</button>
+    </div>
+    {{end}}
 </div>
 
 <!-- Chart Rendering Script -->
-<script>
-(function() {
-    function initChart() {
-        if (typeof uPlot === 'undefined') {
-            setTimeout(initChart, 50);
-            return;
-        }
-        renderChart();
-    }
-
-    function renderChart() {
-        const levelColor = "{{if eq .LogGroup.Level `error`}}#ef4444{{else if eq .LogGroup.Level `warn`}}#eab308{{else if eq .LogGroup.Level `info`}}#3b82f6{{else}}#808080{{end}}";
-        const levelFill = "{{if eq .LogGroup.Level `error`}}rgba(239, 68, 68, 0.1){{else if eq .LogGroup.Level `warn`}}rgba(234, 179, 8, 0.1){{else if eq .LogGroup.Level `info`}}rgba(59, 130, 246, 0.1){{else}}rgba(128, 128, 128, 0.1){{end}}";
-        const sinceStart = {{.SinceStart}};
-        const sinceEnd = {{.SinceEnd}};
-
-        // Extract data from table - aggregate by hour
-        const rows = document.querySelectorAll('#logs-data tbody tr');
-        if (rows.length === 0) return;
-
-        const timeCounts = new Map();
-
-        rows.forEach(row => {
-            const timestamp = parseInt(row.dataset.timestamp) * 1000; // Convert to ms
-            const hour = Math.floor(timestamp / 3600000) * 3600000; // Round to hour
-            timeCounts.set(hour, (timeCounts.get(hour) || 0) + 1);
-        });
-
-        // Sort by time
-        const sortedEntries = Array.from(timeCounts.entries()).sort((a, b) => a[0] - b[0]);
-        const timestamps = sortedEntries.map(e => e[0] / 1000); // Back to seconds for uPlot
-        const counts = sortedEntries.map(e => e[1]);
-
-        // Common chart options
-        const containerWidth = document.getElementById('log-chart-container').offsetWidth;
-        const isMobile = window.innerWidth < 768;
-
-        new uPlot({
-            width: containerWidth,
-            height: isMobile ? 200 : 250,
-            title: "Log Frequency",
-            scales: {
-                x: {
-                    time: true,
-                    range: () => [sinceStart, sinceEnd]
-                }
-            },
-            axes: [
-                {
-                    stroke: "#808080",
-                    grid: { stroke: "#1E1E1E", width: 1 },
-                    size: isMobile ? 40 : 50
-                },
-                {
-                    stroke: "#808080",
-                    size: isMobile ? 30 : 40,
-                    grid: { stroke: "#1E1E1E", width: 1 },
-                    values: (u, vals) => vals.map(v => v.toFixed(0))
-                }
-            ],
-            series: [
-                { },
-                {
-                    label: "Count",
-                    stroke: levelColor,
-                    fill: levelFill,
-                    width: 2
-                }
-            ],
-            legend: { show: false },
-            cursor: {
-                drag: { x: false, y: false },
-                focus: { prox: isMobile ? 50 : 30 },
-                points: {
-                    size: isMobile ? 6 : 8,
-                    width: 2
-                }
-            }
-        }, [timestamps, counts], document.getElementById('log-chart'));
-
-        // Handle window resize
-        let resizeTimeout;
-        window.addEventListener('resize', () => {
-            clearTimeout(resizeTimeout);
-            resizeTimeout = setTimeout(() => {
-                const newWidth = document.getElementById('log-chart-container').offsetWidth;
-                const newIsMobile = window.innerWidth < 768;
-                const newHeight = newIsMobile ? 200 : 250;
-
-                const chart = document.querySelector('#log-chart .uplot');
-                if (chart) {
-                    const uplot = uPlot.charts.find(c => c.root === chart);
-                    if (uplot) {
-                        uplot.setSize({
-                            width: newWidth,
-                            height: newHeight
-                        });
-                    }
-                }
-            }, 150);
-        });
-    }
-
-    initChart();
-})();
-</script>
-
+<script src="/panel/logs/groups/plot"></script>
 {{else}}
 <div class="text-center text-sm text-fg-secondary/60 py-12">
     <p>No logs found for this group.</p>
-</div>
-{{end}}
-{{end}}
-
-{{define "log-group-table"}}
-<table id="logs-data" class="w-full">
-    <thead class="border-b border-bg-secondary">
-        <tr class="text-left text-fg text-sm">
-            <th class="pb-2 font-medium w-[1%] whitespace-nowrap pr-4">Time</th>
-            <th class="pb-2 font-medium w-full pl-4">Context</th>
-        </tr>
-    </thead>
-    <tbody>
-        {{if not .Logs}}
-        <tr>
-            <td colspan="2" class="text-sm text-fg-secondary/60 py-6 text-center">No logs available</td>
-        </tr>
-        {{end}}
-        {{range .Logs}}
-        <tr class="group opacity-60 hover:opacity-100 transition-opacity duration-700 hover:duration-150 cursor-pointer" data-timestamp="{{.CreatedAt}}" onclick="window.location.href='/panel/collectors/{{$.CollectorName}}/apps/{{$.AppName}}/logs/{{.ID}}'">
-            <td class="w-[1%] whitespace-nowrap align-middle pr-4">
-                <span class="block py-2 sm:py-1 text-sm">{{formatDateTime .CreatedAt}}</span>
-            </td>
-            <td class="w-full align-middle py-2 pl-4">
-                {{if .Context.Valid}}
-                <div class="bg-bg-secondary p-2">
-                    {{template "json-viewer" dict "ID" (printf "context-%d" .ID) "Data" .Context.String "Valid" .Context.Valid}}
-                </div>
-                {{else}}
-                <span class="text-sm text-fg-secondary/60">-</span>
-                {{end}}
-            </td>
-        </tr>
-        {{end}}
-    </tbody>
-</table>
-
-<!-- Pagination -->
-{{if .HasMore}}
-<div class="mt-4">
-    <a href="?offset={{.NextOffset}}" class="text-sm text-fg-secondary hover:text-fg transition-colors">Load more &rarr;</a>
 </div>
 {{end}}
 {{end}}

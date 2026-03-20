@@ -12,6 +12,8 @@ CREATE INDEX IF NOT EXISTS idx_log_group_message_level ON log_group(message, lev
 CREATE INDEX IF NOT EXISTS idx_log_group_count ON log_group(log_count DESC);
 CREATE INDEX IF NOT EXISTS idx_log_group_last_log ON log_group(last_log_at DESC);
 
+-- TODO: Remove level and message fields
+-- because they are the same for logs with the same group_id
 CREATE TABLE IF NOT EXISTS log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     trace_id TEXT,

@@ -17,7 +17,11 @@ import (
 )
 
 //go:embed views/*.html
+//go:embed views/*.js
 var views embed.FS
+
+//go:embed views/log-group-plot.js
+var logGroupPlotJS []byte
 
 type handler struct {
 	t   templates.Templates
@@ -68,6 +72,9 @@ func InitMux(svc *panelsvc.Service) *http.ServeMux {
 	m.HandleFunc("GET /collectors/{collector}/apps/{app}/logs/groups/{groupID}/entries", h.getLogGroupEntries)
 	m.HandleFunc("DELETE /collectors/{collector}/apps/{app}/logs/groups/{groupID}", h.deleteLogGroup)
 	m.HandleFunc("GET /collectors/{collector}/apps/{app}/logs/{id}", h.getLogByID)
+
+	// Static assets
+	m.HandleFunc("GET /logs/groups/plot", h.getLogGroupPlot)
 
 	return m
 }
@@ -766,6 +773,11 @@ func (h *handler) deleteLogGroup(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("HX-Redirect", fmt.Sprintf("/panel/collectors/%s/apps/%s", req.CollectorName, req.AppName))
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *handler) getLogGroupPlot(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/javascript")
+	w.Write(logGroupPlotJS)
 }
 
 func (h *handler) getLogByID(w http.ResponseWriter, r *http.Request) {
