@@ -626,20 +626,18 @@ func (h *handler) getLogGroupByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	req := panelsvc.GetLogDetailRequest{
+	req := panelsvc.GetLogGroupRequest{
 		UserID:        userID,
 		CollectorName: r.PathValue("collector"),
 		AppName:       r.PathValue("app"),
 		GroupID:       groupID,
-		Offset:        parseOffset(r.URL.Query().Get("offset")),
-		Limit:         50,
 	}
 	if err := req.Validate(); err != nil {
 		h.t.RenderError(w, r, "Error", err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	detail, err := h.svc.GetLogDetail(r.Context(), req)
+	group, err := h.svc.GetLogGroup(r.Context(), req)
 	if err != nil {
 		switch {
 		case errors.Is(err, panelsvc.ErrCollectorNotFound):
@@ -655,18 +653,13 @@ func (h *handler) getLogGroupByID(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.t.RenderHTTP(w, r, "log-group", map[string]any{
-		"Title":         req.AppName + " Log Details",
+		"Title":         req.AppName + " Log Group",
 		"AppName":       req.AppName,
 		"CollectorName": req.CollectorName,
 		"Since":         sinceLabel,
 		"SinceStart":    since.Unix(),
 		"SinceEnd":      now.Unix(),
-		"LogGroup":      detail.Group,
-		"Logs":          detail.Logs,
-		"Offset":        req.Offset,
-		"Limit":         req.Limit,
-		"HasMore":       req.Offset+int64(len(detail.Logs)) < detail.TotalCount,
-		"NextOffset":    req.Offset + req.Limit,
+		"LogGroup":      group,
 	})
 }
 
@@ -762,7 +755,7 @@ func (h *handler) getLogByID(w http.ResponseWriter, r *http.Request) {
 			Level:          logEntry.Level,
 			Message:        logEntry.Message,
 			Context:        logEntry.Context,
-			CreatedAt:      logEntry.CreatedAt,
+			CreatedAt:      time.Unix(logEntry.CreatedAt, 0),
 			TraceIDDisplay: logTraceIDDisplay(logEntry.TraceID),
 			GroupID:        logEntry.GroupID.Int64,
 		},

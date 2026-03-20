@@ -59,7 +59,7 @@ type GetUserAPIKeysByUserRow struct {
 	UserID     int64
 	ApiKey     string
 	Name       string
-	LastUsedAt sql.NullTime
+	LastUsedAt sql.NullInt64
 }
 
 func (q *Queries) GetUserAPIKeysByUser(ctx context.Context, userID int64) ([]GetUserAPIKeysByUserRow, error) {
@@ -99,7 +99,7 @@ RETURNING user_id
 `
 
 type ValidateAndUpdateUserAPIKeyParams struct {
-	LastUsedAt sql.NullTime
+	LastUsedAt sql.NullInt64
 	ApiKey     string
 }
 

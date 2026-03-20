@@ -7,7 +7,6 @@ package db
 import (
 	"context"
 	"database/sql"
-	"time"
 )
 
 type Querier interface {
@@ -27,13 +26,13 @@ type Querier interface {
 	// User API key queries (LLM compatibility)
 	CreateUserAPIKey(ctx context.Context, arg CreateUserAPIKeyParams) (UserApiKey, error)
 	DeleteCollectorAPIKey(ctx context.Context, name string) error
-	DeleteExpiredSessions(ctx context.Context, expiresAt time.Time) error
+	DeleteExpiredSessions(ctx context.Context, expiresAt int64) error
 	// Delete a log group by ID
 	DeleteLogGroup(ctx context.Context, id int64) (int64, error)
 	DeleteNotifier(ctx context.Context, id int64) error
-	DeleteOldHealthPeriods(ctx context.Context, endedAt sql.NullTime) error
-	DeleteOldLogs(ctx context.Context, createdAt time.Time) error
-	DeleteOldStats(ctx context.Context, createdAt time.Time) error
+	DeleteOldHealthPeriods(ctx context.Context, endedAt sql.NullInt64) error
+	DeleteOldLogs(ctx context.Context, createdAt int64) error
+	DeleteOldStats(ctx context.Context, createdAt int64) error
 	DeleteSession(ctx context.Context, id string) error
 	DeleteUser(ctx context.Context, id int64) error
 	DeleteUserAPIKey(ctx context.Context, id int64) error
@@ -47,7 +46,6 @@ type Querier interface {
 	GetLatestHealthPeriod(ctx context.Context) (AppHealthPeriod, error)
 	GetLatestStats(ctx context.Context) (SystemStat, error)
 	GetLogByID(ctx context.Context, id int64) (Log, error)
-	// Lookup log group by ID with count and latest timestamp
 	GetLogGroupByID(ctx context.Context, id int64) (GetLogGroupByIDRow, error)
 	// Get log volume over time bucketed by intervals and grouped by level
 	GetLogVolumeTimeSeries(ctx context.Context, arg GetLogVolumeTimeSeriesParams) ([]GetLogVolumeTimeSeriesRow, error)
@@ -66,22 +64,25 @@ type Querier interface {
 	GetNotifierSubscriptions(ctx context.Context, notifierID int64) ([]GetNotifierSubscriptionsRow, error)
 	GetOpenHealthPeriod(ctx context.Context) (AppHealthPeriod, error)
 	// Get existing log group by message and level, or create if doesn't exist
-	GetOrCreateLogGroup(ctx context.Context, arg GetOrCreateLogGroupParams) (GetOrCreateLogGroupRow, error)
-	GetPercentiles(ctx context.Context, createdAt time.Time) (GetPercentilesRow, error)
+	GetOrCreateLogGroup(ctx context.Context, arg GetOrCreateLogGroupParams) (LogGroup, error)
+	GetPercentiles(ctx context.Context, createdAt int64) (GetPercentilesRow, error)
 	GetSession(ctx context.Context, id string) (Session, error)
-	GetStatsHistory(ctx context.Context, createdAt time.Time) ([]SystemStat, error)
+	GetStatsHistory(ctx context.Context, createdAt int64) ([]SystemStat, error)
 	GetUserAPIKeysByUser(ctx context.Context, userID int64) ([]GetUserAPIKeysByUserRow, error)
 	GetUserByID(ctx context.Context, id int64) (User, error)
 	GrantAppAccess(ctx context.Context, arg GrantAppAccessParams) error
+	// Increment the log counter and update last_log_at for a group
+	IncrementLogGroupCounter(ctx context.Context, arg IncrementLogGroupCounterParams) error
 	InsertLifecycleEvent(ctx context.Context, arg InsertLifecycleEventParams) (LifecycleEvent, error)
-	InsertLog(ctx context.Context, arg InsertLogParams) (InsertLogRow, error)
+	InsertLog(ctx context.Context, arg InsertLogParams) (Log, error)
 	InsertSystemStats(ctx context.Context, arg InsertSystemStatsParams) error
 	ListAllNotifiers(ctx context.Context) ([]Notifier, error)
 	ListHealthPeriodsOverlappingRange(ctx context.Context, arg ListHealthPeriodsOverlappingRangeParams) ([]AppHealthPeriod, error)
-	// List all log groups with their counts and latest timestamp
 	ListLogGroups(ctx context.Context, arg ListLogGroupsParams) ([]ListLogGroupsRow, error)
 	ListNotifiersByUser(ctx context.Context, userID int64) ([]Notifier, error)
 	ListUsers(ctx context.Context) ([]User, error)
+	// Recalculate log_count and last_log_at for all groups after log deletion
+	RecalculateLogGroupCounters(ctx context.Context) error
 	RemoveAllNotifierSubscriptions(ctx context.Context, notifierID int64) error
 	RevokeAppAccess(ctx context.Context, arg RevokeAppAccessParams) error
 	SaveHealthPeriod(ctx context.Context, arg SaveHealthPeriodParams) error

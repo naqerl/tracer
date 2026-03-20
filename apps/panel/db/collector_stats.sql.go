@@ -7,14 +7,13 @@ package db
 
 import (
 	"context"
-	"time"
 )
 
 const deleteOldStats = `-- name: DeleteOldStats :exec
 DELETE FROM system_stats WHERE created_at < ?
 `
 
-func (q *Queries) DeleteOldStats(ctx context.Context, createdAt time.Time) error {
+func (q *Queries) DeleteOldStats(ctx context.Context, createdAt int64) error {
 	_, err := q.db.ExecContext(ctx, deleteOldStats, createdAt)
 	return err
 }
@@ -53,7 +52,7 @@ WHERE created_at >= ?
 ORDER BY created_at ASC
 `
 
-func (q *Queries) GetStatsHistory(ctx context.Context, createdAt time.Time) ([]SystemStat, error) {
+func (q *Queries) GetStatsHistory(ctx context.Context, createdAt int64) ([]SystemStat, error) {
 	rows, err := q.db.QueryContext(ctx, getStatsHistory, createdAt)
 	if err != nil {
 		return nil, err
@@ -103,7 +102,7 @@ type InsertSystemStatsParams struct {
 	DiskTotalGb     int64
 	DiskUsedGb      int64
 	DiskAvailGb     int64
-	CreatedAt       time.Time
+	CreatedAt       int64
 }
 
 func (q *Queries) InsertSystemStats(ctx context.Context, arg InsertSystemStatsParams) error {

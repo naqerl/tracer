@@ -11,3 +11,7 @@ sql:
         package: "db"
         out: "./db"
         emit_interface: true
+        overrides:
+          - db_type: "DATETIME"
+            go_type:
+              type: "int64"

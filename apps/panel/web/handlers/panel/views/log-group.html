@@ -39,7 +39,7 @@
         <span>Level: <span class="text-fg uppercase">{{.LogGroup.Level}}</span></span>
         <span>Count: <span class="text-fg">{{.LogGroup.Count}}</span></span>
         <span>First: <span class="text-fg">{{formatDateTime .LogGroup.CreatedAt}}</span></span>
-        <span>Latest: <span class="text-fg">{{formatDateTime .LogGroup.LatestAt}}</span></span>
+        <span>Latest: <span class="text-fg">{{formatDateTime .LogGroup.LastLogAt}}</span></span>
     </div>
 </div>
 
@@ -184,9 +184,9 @@
         </tr>
         {{end}}
         {{range .Logs}}
-        <tr class="group opacity-60 hover:opacity-100 transition-opacity duration-700 hover:duration-150 cursor-pointer" data-timestamp="{{.CreatedAt.Unix}}" onclick="window.location.href='/panel/collectors/{{$.CollectorName}}/apps/{{$.AppName}}/logs/{{.ID}}'">
+        <tr class="group opacity-60 hover:opacity-100 transition-opacity duration-700 hover:duration-150 cursor-pointer" data-timestamp="{{.CreatedAt}}" onclick="window.location.href='/panel/collectors/{{$.CollectorName}}/apps/{{$.AppName}}/logs/{{.ID}}'">
             <td class="w-[1%] whitespace-nowrap align-middle pr-4">
-                <span class="block py-2 sm:py-1 text-sm">{{.CreatedAt.Format "2006-01-02 15:04:05"}}</span>
+                <span class="block py-2 sm:py-1 text-sm">{{formatDateTime .CreatedAt}}</span>
             </td>
             <td class="w-full align-middle py-2 pl-4">
                 {{if .Context.Valid}}

@@ -8,12 +8,11 @@ package db
 import (
 	"context"
 	"database/sql"
-	"time"
 )
 
 const countLogsByGroupID = `-- name: CountLogsByGroupID :one
 SELECT COUNT(*) as total
-FROM logs
+FROM log
 WHERE group_id = ?
 `
 
@@ -26,7 +25,7 @@ func (q *Queries) CountLogsByGroupID(ctx context.Context, groupID sql.NullInt64)
 }
 
 const deleteLogGroup = `-- name: DeleteLogGroup :execrows
-DELETE FROM log_groups WHERE id = ?
+DELETE FROM log_group WHERE id = ?
 `
 
 // Delete a log group by ID
@@ -39,17 +38,17 @@ func (q *Queries) DeleteLogGroup(ctx context.Context, id int64) (int64, error) {
 }
 
 const deleteOldLogs = `-- name: DeleteOldLogs :exec
-DELETE FROM logs
+DELETE FROM log
 WHERE created_at < ?
 `
 
-func (q *Queries) DeleteOldLogs(ctx context.Context, createdAt time.Time) error {
+func (q *Queries) DeleteOldLogs(ctx context.Context, createdAt int64) error {
 	_, err := q.db.ExecContext(ctx, deleteOldLogs, createdAt)
 	return err
 }
 
 const getLogByID = `-- name: GetLogByID :one
-SELECT id, trace_id, level, message, context, group_id, created_at FROM logs
+SELECT id, trace_id, level, message, context, group_id, created_at FROM log
 WHERE id = ?
 `
 
@@ -70,38 +69,29 @@ func (q *Queries) GetLogByID(ctx context.Context, id int64) (Log, error) {
 
 const getLogGroupByID = `-- name: GetLogGroupByID :one
 SELECT
-    lg.id,
-    lg.message,
-    lg.level,
-    COUNT(l.id) as count,
-    (SELECT created_at FROM logs WHERE group_id = lg.id ORDER BY created_at DESC LIMIT 1) as latest_at,
-    lg.created_at as created_at
-FROM log_groups lg
-INNER JOIN logs l ON l.group_id = lg.id
-WHERE lg.id = ?
-GROUP BY lg.id, lg.message, lg.level, lg.created_at
+    message,
+    level,
+    created_at,
+    last_log_at
+FROM log_group
+WHERE id = ?
 `
 
 type GetLogGroupByIDRow struct {
-	ID        int64
 	Message   string
 	Level     string
-	Count     int64
-	LatestAt  time.Time
-	CreatedAt time.Time
+	CreatedAt int64
+	LastLogAt int64
 }
 
-// Lookup log group by ID with count and latest timestamp
 func (q *Queries) GetLogGroupByID(ctx context.Context, id int64) (GetLogGroupByIDRow, error) {
 	row := q.db.QueryRowContext(ctx, getLogGroupByID, id)
 	var i GetLogGroupByIDRow
 	err := row.Scan(
-		&i.ID,
 		&i.Message,
 		&i.Level,
-		&i.Count,
-		&i.LatestAt,
 		&i.CreatedAt,
+		&i.LastLogAt,
 	)
 	return i, err
 }
@@ -109,18 +99,18 @@ func (q *Queries) GetLogGroupByID(ctx context.Context, id int64) (GetLogGroupByI
 const getLogVolumeTimeSeries = `-- name: GetLogVolumeTimeSeries :many
 SELECT
     CASE
-        WHEN ?1 = '1min' THEN strftime('%Y-%m-%d %H:%M:00', substr(created_at, 1, 19))
+        WHEN ?1 = '1min' THEN strftime('%Y-%m-%d %H:%M:00', datetime(created_at, 'unixepoch'))
         WHEN ?1 = '5min' THEN
-            strftime('%Y-%m-%d %H:', substr(created_at, 1, 19)) ||
-            printf('%02d', (CAST(strftime('%M', substr(created_at, 1, 19)) AS INTEGER) / 5) * 5) || ':00'
+            strftime('%Y-%m-%d %H:', datetime(created_at, 'unixepoch')) ||
+            printf('%02d', (CAST(strftime('%M', datetime(created_at, 'unixepoch')) AS INTEGER) / 5) * 5) || ':00'
         WHEN ?1 = '15min' THEN
-            strftime('%Y-%m-%d %H:', substr(created_at, 1, 19)) ||
-            printf('%02d', (CAST(strftime('%M', substr(created_at, 1, 19)) AS INTEGER) / 15) * 15) || ':00'
-        WHEN ?1 = '1hour' THEN strftime('%Y-%m-%d %H:00:00', substr(created_at, 1, 19))
+            strftime('%Y-%m-%d %H:', datetime(created_at, 'unixepoch')) ||
+            printf('%02d', (CAST(strftime('%M', datetime(created_at, 'unixepoch')) AS INTEGER) / 15) * 15) || ':00'
+        WHEN ?1 = '1hour' THEN strftime('%Y-%m-%d %H:00:00', datetime(created_at, 'unixepoch'))
     END as time_bucket,
     LOWER(level) as level,
     COUNT(*) as count
-FROM logs
+FROM log
 WHERE created_at >= ?2
 GROUP BY time_bucket, LOWER(level)
 ORDER BY time_bucket ASC, level
@@ -128,7 +118,7 @@ ORDER BY time_bucket ASC, level
 
 type GetLogVolumeTimeSeriesParams struct {
 	Granularity interface{}
-	Since       time.Time
+	Since       int64
 }
 
 type GetLogVolumeTimeSeriesRow struct {
@@ -163,7 +153,7 @@ func (q *Queries) GetLogVolumeTimeSeries(ctx context.Context, arg GetLogVolumeTi
 
 const getLogsByGroupID = `-- name: GetLogsByGroupID :many
 SELECT id, level, context, created_at
-FROM logs
+FROM log
 WHERE group_id = ?
 ORDER BY created_at DESC
 LIMIT ? OFFSET ?
@@ -179,7 +169,7 @@ type GetLogsByGroupIDRow struct {
 	ID        int64
 	Level     string
 	Context   sql.NullString
-	CreatedAt time.Time
+	CreatedAt int64
 }
 
 // Get all individual logs for a specific group
@@ -212,33 +202,29 @@ func (q *Queries) GetLogsByGroupID(ctx context.Context, arg GetLogsByGroupIDPara
 }
 
 const getOrCreateLogGroup = `-- name: GetOrCreateLogGroup :one
-INSERT INTO log_groups (message, level)
-VALUES (?, ?)
+INSERT INTO log_group (message, level, created_at, log_count, last_log_at)
+VALUES (?, ?, ?, 0, 0)
 ON CONFLICT(message, level) DO UPDATE SET message = message
-RETURNING id, message, level, datetime(created_at) as created_at
+RETURNING id, message, level, created_at, log_count, last_log_at
 `
 
 type GetOrCreateLogGroupParams struct {
-	Message string
-	Level   string
-}
-
-type GetOrCreateLogGroupRow struct {
-	ID       int64
-	Message  string
-	Level    string
-	Datetime interface{}
+	Message   string
+	Level     string
+	CreatedAt int64
 }
 
 // Get existing log group by message and level, or create if doesn't exist
-func (q *Queries) GetOrCreateLogGroup(ctx context.Context, arg GetOrCreateLogGroupParams) (GetOrCreateLogGroupRow, error) {
-	row := q.db.QueryRowContext(ctx, getOrCreateLogGroup, arg.Message, arg.Level)
-	var i GetOrCreateLogGroupRow
+func (q *Queries) GetOrCreateLogGroup(ctx context.Context, arg GetOrCreateLogGroupParams) (LogGroup, error) {
+	row := q.db.QueryRowContext(ctx, getOrCreateLogGroup, arg.Message, arg.Level, arg.CreatedAt)
+	var i LogGroup
 	err := row.Scan(
 		&i.ID,
 		&i.Message,
 		&i.Level,
-		&i.Datetime,
+		&i.CreatedAt,
+		&i.LogCount,
+		&i.LastLogAt,
 	)
 	return i, err
 }
@@ -246,10 +232,10 @@ func (q *Queries) GetOrCreateLogGroup(ctx context.Context, arg GetOrCreateLogGro
 const getPercentiles = `-- name: GetPercentiles :one
 SELECT
     COUNT(*) as total,
-    (SELECT COUNT(*) FROM logs l2 WHERE LOWER(l2.level) = 'error' AND l2.created_at >= ?1) as errors,
-    (SELECT COUNT(*) FROM logs l3 WHERE LOWER(l3.level) = 'warn' AND l3.created_at >= ?1) as warnings,
-    (SELECT COUNT(*) FROM logs l4 WHERE LOWER(l4.level) = 'info' AND l4.created_at >= ?1) as infos
-FROM logs l1
+    (SELECT COUNT(*) FROM log l2 WHERE LOWER(l2.level) = 'error' AND l2.created_at >= ?1) as errors,
+    (SELECT COUNT(*) FROM log l3 WHERE LOWER(l3.level) = 'warn' AND l3.created_at >= ?1) as warnings,
+    (SELECT COUNT(*) FROM log l4 WHERE LOWER(l4.level) = 'info' AND l4.created_at >= ?1) as infos
+FROM log l1
 WHERE l1.created_at >= ?1
 `
 
@@ -260,7 +246,7 @@ type GetPercentilesRow struct {
 	Infos    int64
 }
 
-func (q *Queries) GetPercentiles(ctx context.Context, createdAt time.Time) (GetPercentilesRow, error) {
+func (q *Queries) GetPercentiles(ctx context.Context, createdAt int64) (GetPercentilesRow, error) {
 	row := q.db.QueryRowContext(ctx, getPercentiles, createdAt)
 	var i GetPercentilesRow
 	err := row.Scan(
@@ -272,10 +258,28 @@ func (q *Queries) GetPercentiles(ctx context.Context, createdAt time.Time) (GetP
 	return i, err
 }
 
+const incrementLogGroupCounter = `-- name: IncrementLogGroupCounter :exec
+UPDATE log_group
+SET log_count = log_count + 1,
+    last_log_at = ?
+WHERE id = ?
+`
+
+type IncrementLogGroupCounterParams struct {
+	LastLogAt int64
+	ID        int64
+}
+
+// Increment the log counter and update last_log_at for a group
+func (q *Queries) IncrementLogGroupCounter(ctx context.Context, arg IncrementLogGroupCounterParams) error {
+	_, err := q.db.ExecContext(ctx, incrementLogGroupCounter, arg.LastLogAt, arg.ID)
+	return err
+}
+
 const insertLog = `-- name: InsertLog :one
-INSERT INTO logs (trace_id, level, message, context, group_id, created_at)
+INSERT INTO log (trace_id, level, message, context, group_id, created_at)
 VALUES (?, ?, ?, ?, ?, ?)
-RETURNING id, trace_id, level, message, context, group_id, datetime(created_at) as created_at
+RETURNING id, trace_id, level, message, context, group_id, created_at
 `
 
 type InsertLogParams struct {
@@ -284,20 +288,10 @@ type InsertLogParams struct {
 	Message   string
 	Context   sql.NullString
 	GroupID   sql.NullInt64
-	CreatedAt time.Time
+	CreatedAt int64
 }
 
-type InsertLogRow struct {
-	ID       int64
-	TraceID  sql.NullString
-	Level    string
-	Message  string
-	Context  sql.NullString
-	GroupID  sql.NullInt64
-	Datetime interface{}
-}
-
-func (q *Queries) InsertLog(ctx context.Context, arg InsertLogParams) (InsertLogRow, error) {
+func (q *Queries) InsertLog(ctx context.Context, arg InsertLogParams) (Log, error) {
 	row := q.db.QueryRowContext(ctx, insertLog,
 		arg.TraceID,
 		arg.Level,
@@ -306,7 +300,7 @@ func (q *Queries) InsertLog(ctx context.Context, arg InsertLogParams) (InsertLog
 		arg.GroupID,
 		arg.CreatedAt,
 	)
-	var i InsertLogRow
+	var i Log
 	err := row.Scan(
 		&i.ID,
 		&i.TraceID,
@@ -314,31 +308,29 @@ func (q *Queries) InsertLog(ctx context.Context, arg InsertLogParams) (InsertLog
 		&i.Message,
 		&i.Context,
 		&i.GroupID,
-		&i.Datetime,
+		&i.CreatedAt,
 	)
 	return i, err
 }
 
 const listLogGroups = `-- name: ListLogGroups :many
 SELECT
-    lg.id,
-    lg.message,
-    lg.level,
-    COUNT(l.id) as count,
-    (SELECT created_at FROM logs WHERE group_id = lg.id ORDER BY created_at DESC LIMIT 1) as latest_at,
-    lg.created_at as created_at
-FROM log_groups lg
-INNER JOIN logs l ON l.group_id = lg.id
-WHERE lg.level like ?
-  AND l.created_at >= ?
-GROUP BY lg.id, lg.message, lg.level, lg.created_at
-ORDER BY count DESC, latest_at DESC
+    id,
+    message,
+    level,
+    log_count as count,
+    last_log_at,
+    created_at
+FROM log_group
+WHERE level like ?
+  AND last_log_at >= ?
+ORDER BY log_count DESC, last_log_at DESC
 LIMIT ? OFFSET ?
 `
 
 type ListLogGroupsParams struct {
 	Level     string
-	CreatedAt time.Time
+	LastLogAt int64
 	Limit     int64
 	Offset    int64
 }
@@ -348,15 +340,14 @@ type ListLogGroupsRow struct {
 	Message   string
 	Level     string
 	Count     int64
-	LatestAt  time.Time
-	CreatedAt time.Time
+	LastLogAt int64
+	CreatedAt int64
 }
 
-// List all log groups with their counts and latest timestamp
 func (q *Queries) ListLogGroups(ctx context.Context, arg ListLogGroupsParams) ([]ListLogGroupsRow, error) {
 	rows, err := q.db.QueryContext(ctx, listLogGroups,
 		arg.Level,
-		arg.CreatedAt,
+		arg.LastLogAt,
 		arg.Limit,
 		arg.Offset,
 	)
@@ -372,7 +363,7 @@ func (q *Queries) ListLogGroups(ctx context.Context, arg ListLogGroupsParams) ([
 			&i.Message,
 			&i.Level,
 			&i.Count,
-			&i.LatestAt,
+			&i.LastLogAt,
 			&i.CreatedAt,
 		); err != nil {
 			return nil, err
@@ -386,4 +377,16 @@ func (q *Queries) ListLogGroups(ctx context.Context, arg ListLogGroupsParams) ([
 		return nil, err
 	}
 	return items, nil
+}
+
+const recalculateLogGroupCounters = `-- name: RecalculateLogGroupCounters :exec
+UPDATE log_group
+SET log_count = COALESCE((SELECT COUNT(*) FROM log l WHERE l.group_id = log_group.id), 0),
+    last_log_at = COALESCE((SELECT MAX(created_at) FROM log l WHERE l.group_id = log_group.id), 0)
+`
+
+// Recalculate log_count and last_log_at for all groups after log deletion
+func (q *Queries) RecalculateLogGroupCounters(ctx context.Context) error {
+	_, err := q.db.ExecContext(ctx, recalculateLogGroupCounters)
+	return err
 }

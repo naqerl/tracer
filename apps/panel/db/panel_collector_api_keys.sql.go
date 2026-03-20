@@ -73,8 +73,8 @@ ORDER BY created_at DESC, name DESC
 type GetCollectorAPIKeysRow struct {
 	Name       string
 	KeySuffix  string
-	CreatedAt  sql.NullTime
-	LastUsedAt sql.NullTime
+	CreatedAt  int64
+	LastUsedAt sql.NullInt64
 }
 
 func (q *Queries) GetCollectorAPIKeys(ctx context.Context) ([]GetCollectorAPIKeysRow, error) {
@@ -112,7 +112,7 @@ WHERE key_hash = ?
 `
 
 type ValidateAndUpdateCollectorAPIKeyParams struct {
-	LastUsedAt sql.NullTime
+	LastUsedAt sql.NullInt64
 	KeyHash    string
 }
 

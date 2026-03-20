@@ -335,7 +335,7 @@ func (s *Service) GetAppErrorCount(ctx context.Context, req GetAppErrorCountRequ
 		return 0, err
 	}
 
-	counts, err := queries.GetPercentiles(ctx, req.Since)
+	counts, err := queries.GetPercentiles(ctx, req.Since.Unix())
 	if err != nil {
 		return 0, err
 	}
@@ -418,7 +418,7 @@ func (s *Service) GetAppStats(ctx context.Context, req GetAppStatsRequest) (AppS
 		return AppStats{}, err
 	}
 
-	counts, err := queries.GetPercentiles(ctx, time.Time{})
+	counts, err := queries.GetPercentiles(ctx, 0)
 	if err != nil {
 		return AppStats{}, err
 	}
@@ -446,7 +446,7 @@ type LogGroup struct {
 	Message   string
 	Level     string
 	Count     int64
-	LatestAt  time.Time
+	LastLogAt time.Time
 	CreatedAt time.Time
 }
 
@@ -490,7 +490,7 @@ func (s *Service) GetLogGroups(ctx context.Context, req GetLogGroupsRequest) ([]
 
 	rows, err := queries.ListLogGroups(ctx, db.ListLogGroupsParams{
 		Level:     level,
-		CreatedAt: req.Since,
+		LastLogAt: req.Since.Unix(),
 		Limit:     req.Limit,
 		Offset:    req.Offset,
 	})
@@ -505,30 +505,22 @@ func (s *Service) GetLogGroups(ctx context.Context, req GetLogGroupsRequest) ([]
 			Message:   row.Message,
 			Level:     row.Level,
 			Count:     row.Count,
-			LatestAt:  row.LatestAt,
-			CreatedAt: row.CreatedAt,
+			LastLogAt: time.Unix(row.LastLogAt, 0),
+			CreatedAt: time.Unix(row.CreatedAt, 0),
 		})
 	}
 
 	return groups, nil
 }
 
-type GetLogDetailRequest struct {
+type GetLogGroupRequest struct {
 	UserID        int64
 	CollectorName string
 	AppName       string
 	GroupID       int64
-	Offset        int64
-	Limit         int64
 }
 
-type LogDetailResult struct {
-	Group      LogGroup
-	Logs       []db.GetLogsByGroupIDRow
-	TotalCount int64
-}
-
-func (r GetLogDetailRequest) Validate() error {
+func (r GetLogGroupRequest) Validate() error {
 	if err := domain.ValidateUserID(r.UserID); err != nil {
 		return err
 	}
@@ -541,63 +533,39 @@ func (r GetLogDetailRequest) Validate() error {
 	if r.GroupID <= 0 {
 		return fmt.Errorf("group ID must be positive")
 	}
-	if r.Offset < 0 {
-		return fmt.Errorf("offset must be non-negative")
-	}
-	if r.Limit <= 0 {
-		return fmt.Errorf("limit must be positive")
-	}
 	return nil
 }
 
-func (s *Service) GetLogDetail(ctx context.Context, req GetLogDetailRequest) (LogDetailResult, error) {
+func (s *Service) GetLogGroup(ctx context.Context, req GetLogGroupRequest) (LogGroup, error) {
+	var group LogGroup
+
 	access, err := s.userSvc.FindAccessPolicy(ctx, req.UserID)
 	if err != nil {
-		return LogDetailResult{}, fmt.Errorf("could not list user apps: %w", err)
+		return group, fmt.Errorf("could not list user apps: %w", err)
 	}
 	if !access.AllowedTo(req.CollectorName, req.AppName) {
-		return LogDetailResult{}, ErrAccessDenied
+		return group, ErrAccessDenied
 	}
 
 	queries, err := s.queriesForApp(req.CollectorName, req.AppName)
 	if err != nil {
-		return LogDetailResult{}, err
+		return group, err
 	}
 
-	group, err := queries.GetLogGroupByID(ctx, req.GroupID)
+	row, err := queries.GetLogGroupByID(ctx, req.GroupID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return group, ErrLogNotFound
+	}
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return LogDetailResult{}, ErrLogNotFound
-		}
-		return LogDetailResult{}, err
+		return group, err
 	}
 
-	logs, err := queries.GetLogsByGroupID(ctx, db.GetLogsByGroupIDParams{
-		GroupID: sql.NullInt64{Int64: req.GroupID, Valid: true},
-		Limit:   req.Limit,
-		Offset:  req.Offset,
-	})
-	if err != nil {
-		return LogDetailResult{}, err
-	}
-
-	totalCount, err := queries.CountLogsByGroupID(ctx, sql.NullInt64{Int64: req.GroupID, Valid: true})
-	if err != nil {
-		slog.Error("Failed to count logs", "error", err)
-		totalCount = 0
-	}
-
-	return LogDetailResult{
-		Group: LogGroup{
-			ID:        group.ID,
-			Message:   group.Message,
-			Level:     group.Level,
-			Count:     group.Count,
-			LatestAt:  group.LatestAt,
-			CreatedAt: group.CreatedAt,
-		},
-		Logs:       logs,
-		TotalCount: totalCount,
+	return LogGroup{
+		ID:        req.GroupID,
+		Message:   row.Message,
+		Level:     row.Level,
+		CreatedAt: time.Unix(row.CreatedAt, 0),
+		LastLogAt: time.Unix(row.LastLogAt, 0),
 	}, nil
 }
 
@@ -705,7 +673,7 @@ func (s *Service) GetLogVolumeTimeSeries(ctx context.Context, collectorName, app
 	}
 
 	return queries.GetLogVolumeTimeSeries(ctx, db.GetLogVolumeTimeSeriesParams{
-		Since:       since,
+		Since:       since.Unix(),
 		Granularity: granularity,
 	})
 }
@@ -723,10 +691,11 @@ func (s *Service) queriesForApp(collectorName, appName string) (*db.Queries, err
 
 func formatCollectorStats(stats db.SystemStat) *CollectorStats {
 	now := time.Now()
-	age := now.Sub(stats.CreatedAt)
+	createdAt := time.Unix(stats.CreatedAt, 0)
+	age := now.Sub(createdAt)
 
 	nowY, nowM, nowD := now.Date()
-	statY, statM, statD := stats.CreatedAt.Date()
+	statY, statM, statD := createdAt.Date()
 	sameDate := nowY == statY && nowM == statM && nowD == statD
 
 	var staleness string
@@ -734,16 +703,16 @@ func formatCollectorStats(stats db.SystemStat) *CollectorStats {
 
 	if !sameDate {
 		staleness = "old"
-		formatted = stats.CreatedAt.Format("2006-01-02 15:04:05")
+		formatted = createdAt.Format("2006-01-02 15:04:05")
 	} else if age > 30*time.Minute {
 		staleness = "stale"
-		formatted = stats.CreatedAt.Format("15:04:05")
+		formatted = createdAt.Format("15:04:05")
 	} else if age > 5*time.Minute {
 		staleness = "warning"
-		formatted = stats.CreatedAt.Format("15:04:05")
+		formatted = createdAt.Format("15:04:05")
 	} else {
 		staleness = "fresh"
-		formatted = stats.CreatedAt.Format("15:04:05")
+		formatted = createdAt.Format("15:04:05")
 	}
 
 	return &CollectorStats{
@@ -771,8 +740,8 @@ func (s *Service) readAppHealth(ctx context.Context, queries *db.Queries, since 
 
 	now := time.Now()
 	periods, err := queries.ListHealthPeriodsOverlappingRange(ctx, db.ListHealthPeriodsOverlappingRangeParams{
-		StartedAt: now,
-		EndedAt:   sql.NullTime{Time: since, Valid: true},
+		StartedAt: now.Unix(),
+		EndedAt:   sql.NullInt64{Int64: since.Unix(), Valid: true},
 	})
 	if err != nil {
 		return health, err
@@ -858,10 +827,10 @@ func buildHealthBuckets(periods []db.AppHealthPeriod, since, now time.Time) []He
 }
 
 func overlapDuration(period db.AppHealthPeriod, start, end time.Time) time.Duration {
-	periodStart := period.StartedAt
+	periodStart := time.Unix(period.StartedAt, 0)
 	periodEnd := end
 	if period.EndedAt.Valid {
-		periodEnd = period.EndedAt.Time
+		periodEnd = time.Unix(period.EndedAt.Int64, 0)
 	}
 	if periodEnd.Before(periodStart) {
 		periodEnd = periodStart

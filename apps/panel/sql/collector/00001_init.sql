@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS system_stats (
     disk_total_gb INTEGER NOT NULL,
     disk_used_gb INTEGER NOT NULL,
     disk_avail_gb INTEGER NOT NULL,
-    created_at DATETIME NOT NULL
+    created_at INTEGER NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_system_stats_collector ON system_stats(collector_name);

@@ -92,7 +92,7 @@ func (s *Service) SaveSystemStats(ctx context.Context, req SaveSystemStatsReques
 		DiskTotalGb:     req.Stats.DiskTotalGB,
 		DiskUsedGb:      req.Stats.DiskUsedGB,
 		DiskAvailGb:     req.Stats.DiskAvailGB,
-		CreatedAt:       req.Stats.Timestamp,
+		CreatedAt:       req.Stats.Timestamp.Unix(),
 	})
 }
 
@@ -115,7 +115,7 @@ func (s *Service) GetStatsHistory(ctx context.Context, collector string, since t
 		return nil, err
 	}
 	queries := db.New(dbtx)
-	return queries.GetStatsHistory(ctx, since)
+	return queries.GetStatsHistory(ctx, since.UTC().Unix())
 }
 
 // DeleteOldStats removes stats older than the given time for all collectors.
@@ -136,7 +136,7 @@ func (s *Service) DeleteOldStats(ctx context.Context, before time.Time) error {
 			return err
 		}
 		queries := db.New(dbtx)
-		if err := queries.DeleteOldStats(ctx, before); err != nil {
+		if err := queries.DeleteOldStats(ctx, before.UTC().Unix()); err != nil {
 			return err
 		}
 	}
@@ -236,8 +236,8 @@ func (s *Service) StoreLog(ctx context.Context, req StoreLogRequest) (int64, err
 		return 0, err
 	}
 
-	// Store log entry
-	ts := req.Entry.Timestamp
+	// Store log entry as Unix timestamp
+	ts := req.Entry.Timestamp.Unix()
 
 	log, err := queries.InsertLog(ctx, db.InsertLogParams{
 		TraceID:   sql.NullString{String: req.Entry.TraceID, Valid: true},
@@ -252,6 +252,14 @@ func (s *Service) StoreLog(ctx context.Context, req StoreLogRequest) (int64, err
 	}
 
 	logID := log.ID
+
+	// Increment the log group counter
+	if err := queries.IncrementLogGroupCounter(ctx, db.IncrementLogGroupCounterParams{
+		ID:        logGroup.ID,
+		LastLogAt: ts,
+	}); err != nil {
+		return 0, err
+	}
 
 	// Send notification for errors
 	if isError && s.notifyChan != nil {
@@ -296,7 +304,7 @@ func (s *Service) StoreLifecycle(ctx context.Context, req StoreLifecycleRequest)
 	_, err = queries.InsertLifecycleEvent(ctx, db.InsertLifecycleEventParams{
 		Kind:      string(req.Kind),
 		RawLine:   req.RawLine,
-		CreatedAt: req.Timestamp,
+		CreatedAt: req.Timestamp.Unix(),
 	})
 	if err != nil {
 		return err
@@ -349,7 +357,6 @@ func (s *Service) SaveHealthPeriod(ctx context.Context, req StoreHealthRequest) 
 		return err
 	}
 	queries := db.New(dbtx)
-	now := req.Time
 
 	current, err := queries.GetOpenHealthPeriod(ctx)
 	switch {
@@ -358,7 +365,7 @@ func (s *Service) SaveHealthPeriod(ctx context.Context, req StoreHealthRequest) 
 			return nil
 		}
 		if err := queries.CloseHealthPeriod(ctx, db.CloseHealthPeriodParams{
-			EndedAt: sql.NullTime{Time: now, Valid: true},
+			EndedAt: sql.NullInt64{Int64: req.Time.Unix(), Valid: true},
 			ID:      current.ID,
 		}); err != nil {
 			return err
@@ -370,8 +377,8 @@ func (s *Service) SaveHealthPeriod(ctx context.Context, req StoreHealthRequest) 
 
 	err = queries.SaveHealthPeriod(ctx, db.SaveHealthPeriodParams{
 		Status:    string(req.Status),
-		StartedAt: now,
-		EndedAt:   sql.NullTime{},
+		StartedAt: req.Time.Unix(),
+		EndedAt:   sql.NullInt64{},
 	})
 	return err
 }

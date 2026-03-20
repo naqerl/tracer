@@ -60,12 +60,12 @@
         </thead>
         <tbody>
             {{range .Stats}}
-            <tr data-timestamp="{{.CreatedAt.Unix}}"
+            <tr data-timestamp="{{.CreatedAt}}"
                 data-cpu="{{.CpuUsagePercent}}"
                 data-ram-used="{{.MemUsedMb}}"
                 data-ram-total="{{.MemTotalMb}}"
                 data-disk-avail="{{.DiskAvailGb}}">
-                <td>{{.CreatedAt.Format "2006-01-02 15:04:05"}}</td>
+                <td>{{formatDateTime .CreatedAt}}</td>
                 <td>{{printf "%.1f" .CpuUsagePercent}}%</td>
                 <td>{{.MemUsedMb}} MB</td>
                 <td>{{.MemTotalMb}} MB</td>

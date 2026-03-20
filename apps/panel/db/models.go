@@ -6,7 +6,6 @@ package db
 
 import (
 	"database/sql"
-	"time"
 )
 
 type AccessPolicy struct {
@@ -18,23 +17,23 @@ type AccessPolicy struct {
 type AppHealthPeriod struct {
 	ID        int64
 	Status    string
-	StartedAt time.Time
-	EndedAt   sql.NullTime
+	StartedAt int64
+	EndedAt   sql.NullInt64
 }
 
 type CollectorApiKey struct {
 	Name       string
 	KeyHash    string
 	KeySuffix  string
-	CreatedAt  sql.NullTime
-	LastUsedAt sql.NullTime
+	CreatedAt  int64
+	LastUsedAt sql.NullInt64
 }
 
 type LifecycleEvent struct {
 	ID        int64
 	Kind      string
 	RawLine   string
-	CreatedAt time.Time
+	CreatedAt int64
 }
 
 type Log struct {
@@ -44,14 +43,16 @@ type Log struct {
 	Message   string
 	Context   sql.NullString
 	GroupID   sql.NullInt64
-	CreatedAt time.Time
+	CreatedAt int64
 }
 
 type LogGroup struct {
 	ID        int64
 	Message   string
 	Level     string
-	CreatedAt time.Time
+	CreatedAt int64
+	LogCount  int64
+	LastLogAt int64
 }
 
 type Notifier struct {
@@ -61,7 +62,7 @@ type Notifier struct {
 	Type      string
 	Config    string
 	Enabled   int64
-	CreatedAt sql.NullTime
+	CreatedAt int64
 }
 
 type NotifierSubscription struct {
@@ -73,8 +74,8 @@ type NotifierSubscription struct {
 type Session struct {
 	ID        string
 	UserID    int64
-	ExpiresAt time.Time
-	CreatedAt sql.NullTime
+	ExpiresAt int64
+	CreatedAt int64
 }
 
 type SystemStat struct {
@@ -87,7 +88,7 @@ type SystemStat struct {
 	DiskTotalGb     int64
 	DiskUsedGb      int64
 	DiskAvailGb     int64
-	CreatedAt       time.Time
+	CreatedAt       int64
 }
 
 type User struct {
@@ -95,7 +96,7 @@ type User struct {
 	Username     string
 	PasswordHash string
 	IsAdmin      int64
-	CreatedAt    sql.NullTime
+	CreatedAt    int64
 }
 
 type UserApiKey struct {
@@ -103,6 +104,6 @@ type UserApiKey struct {
 	UserID     int64
 	ApiKey     string
 	Name       string
-	CreatedAt  sql.NullTime
-	LastUsedAt sql.NullTime
+	CreatedAt  int64
+	LastUsedAt sql.NullInt64
 }

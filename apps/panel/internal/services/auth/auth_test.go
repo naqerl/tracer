@@ -139,8 +139,9 @@ func TestValidateCollectorAPIKeyUpdatesLastUsedAt(t *testing.T) {
 	if !updated.LastUsedAt.Valid {
 		t.Fatal("expected last_used_at to be updated")
 	}
-	if got := updated.LastUsedAt.Time.Location().String(); got != "UTC" {
-		t.Fatalf("expected UTC timestamp, got %s (%s)", updated.LastUsedAt.Time.Format(time.RFC3339Nano), got)
+	lastUsedTime := time.Unix(updated.LastUsedAt.Int64, 0).UTC()
+	if got := lastUsedTime.Location().String(); got != "UTC" {
+		t.Fatalf("expected UTC timestamp, got %s (%s)", lastUsedTime.Format(time.RFC3339Nano), got)
 	}
 }
 

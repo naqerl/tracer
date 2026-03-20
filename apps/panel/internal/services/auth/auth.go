@@ -167,7 +167,7 @@ func (s *Service) CreateSession(ctx context.Context, userID int64) (string, erro
 		return "", fmt.Errorf("generate session token: %w", err)
 	}
 
-	expiresAt := time.Now().Add(SessionDuration)
+	expiresAt := time.Now().Add(SessionDuration).Unix()
 	err = db.New(s.db).CreateSession(ctx, db.CreateSessionParams{
 		ID:        token,
 		UserID:    userID,
@@ -189,7 +189,7 @@ func (s *Service) ValidateSession(ctx context.Context, token string) (int64, err
 		return 0, fmt.Errorf("could not get data from db: %w", err)
 	}
 
-	if time.Now().After(session.ExpiresAt) {
+	if time.Now().Unix() > session.ExpiresAt {
 		err = db.New(s.db).DeleteSession(ctx, token)
 		if err != nil {
 			return 0, fmt.Errorf("could not delete session: %w", err)
@@ -205,7 +205,7 @@ func (s *Service) DeleteSession(ctx context.Context, token string) error {
 }
 
 func (s *Service) CleanupExpiredSessions(ctx context.Context) error {
-	return db.New(s.db).DeleteExpiredSessions(ctx, time.Now())
+	return db.New(s.db).DeleteExpiredSessions(ctx, time.Now().Unix())
 }
 
 // Login
@@ -285,7 +285,7 @@ func (s *Service) ValidateCollectorAPIKey(ctx context.Context, key string) (bool
 	}
 
 	rows, err := db.New(s.db).ValidateAndUpdateCollectorAPIKey(ctx, db.ValidateAndUpdateCollectorAPIKeyParams{
-		LastUsedAt: sql.NullTime{Time: time.Now().UTC(), Valid: true},
+		LastUsedAt: sql.NullInt64{Int64: time.Now().UTC().Unix(), Valid: true},
 		KeyHash:    hashAPIKey(key),
 	})
 	if err != nil {
@@ -332,7 +332,7 @@ func (s *Service) GenerateUserAPIKey(ctx context.Context, req GenerateUserAPIKey
 func (s *Service) ValidateUserAPIKey(ctx context.Context, key string, userService *userpkg.Service) (int64, error) {
 	// Validate key and update last_used_at in one query
 	userID, err := db.New(s.db).ValidateAndUpdateUserAPIKey(ctx, db.ValidateAndUpdateUserAPIKeyParams{
-		LastUsedAt: sql.NullTime{Time: time.Now(), Valid: true},
+		LastUsedAt: sql.NullInt64{Int64: time.Now().UTC().Unix(), Valid: true},
 		ApiKey:     key,
 	})
 

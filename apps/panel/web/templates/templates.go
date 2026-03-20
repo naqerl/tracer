@@ -117,6 +117,13 @@ func formatDateTime(t any) string {
 			return v.Time.Format("2006-01-02 15:04:05")
 		}
 		return ""
+	case int64:
+		return time.Unix(v, 0).Format("2006-01-02 15:04:05")
+	case sql.NullInt64:
+		if v.Valid {
+			return time.Unix(v.Int64, 0).Format("2006-01-02 15:04:05")
+		}
+		return ""
 	default:
 		return ""
 	}

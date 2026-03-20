@@ -4,14 +4,14 @@ CREATE TABLE IF NOT EXISTS user (
     username TEXT UNIQUE NOT NULL,
     password_hash TEXT NOT NULL,
     is_admin INTEGER NOT NULL DEFAULT 0,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
 );
 
 CREATE TABLE IF NOT EXISTS session (
     id TEXT PRIMARY KEY,
     user_id INTEGER NOT NULL REFERENCES user(id) ON DELETE CASCADE,
-    expires_at DATETIME NOT NULL,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    expires_at INTEGER NOT NULL,
+    created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
 );
 CREATE INDEX IF NOT EXISTS idx_session_expires ON session(expires_at);
 CREATE INDEX IF NOT EXISTS idx_session_user ON session(user_id);
@@ -33,7 +33,7 @@ CREATE TABLE IF NOT EXISTS notifier (
     type TEXT NOT NULL,
     config TEXT NOT NULL,
     enabled INTEGER NOT NULL DEFAULT 1,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
     UNIQUE (user_id, name)
 );
 CREATE INDEX IF NOT EXISTS idx_notifier_user ON notifier(user_id);
@@ -52,8 +52,8 @@ CREATE TABLE IF NOT EXISTS user_api_key (
     user_id INTEGER NOT NULL REFERENCES user(id) ON DELETE CASCADE,
     api_key TEXT UNIQUE NOT NULL,
     name TEXT NOT NULL,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    last_used_at DATETIME,
+    created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+    last_used_at INTEGER,
     UNIQUE (user_id, name)
 );
 CREATE INDEX IF NOT EXISTS idx_user_api_key_user ON user_api_key(user_id);
@@ -63,8 +63,8 @@ CREATE TABLE IF NOT EXISTS collector_api_key (
     name TEXT PRIMARY KEY,
     key_hash TEXT NOT NULL UNIQUE,
     key_suffix TEXT NOT NULL,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    last_used_at DATETIME
+    created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+    last_used_at INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_collector_api_key_created_at ON collector_api_key(created_at);
 CREATE INDEX IF NOT EXISTS idx_collector_api_key_last_used_at ON collector_api_key(last_used_at);

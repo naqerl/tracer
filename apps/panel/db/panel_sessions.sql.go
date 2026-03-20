@@ -7,7 +7,6 @@ package db
 
 import (
 	"context"
-	"time"
 )
 
 const createSession = `-- name: CreateSession :exec
@@ -19,7 +18,7 @@ VALUES (?, ?, ?)
 type CreateSessionParams struct {
 	ID        string
 	UserID    int64
-	ExpiresAt time.Time
+	ExpiresAt int64
 }
 
 // Session queries
@@ -33,7 +32,7 @@ DELETE FROM session
 WHERE expires_at < ?
 `
 
-func (q *Queries) DeleteExpiredSessions(ctx context.Context, expiresAt time.Time) error {
+func (q *Queries) DeleteExpiredSessions(ctx context.Context, expiresAt int64) error {
 	_, err := q.db.ExecContext(ctx, deleteExpiredSessions, expiresAt)
 	return err
 }

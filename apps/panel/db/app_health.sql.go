@@ -8,17 +8,16 @@ package db
 import (
 	"context"
 	"database/sql"
-	"time"
 )
 
 const closeHealthPeriod = `-- name: CloseHealthPeriod :exec
-UPDATE app_health_periods
+UPDATE app_health_period
 SET ended_at = ?
 WHERE id = ?
 `
 
 type CloseHealthPeriodParams struct {
-	EndedAt sql.NullTime
+	EndedAt sql.NullInt64
 	ID      int64
 }
 
@@ -28,19 +27,19 @@ func (q *Queries) CloseHealthPeriod(ctx context.Context, arg CloseHealthPeriodPa
 }
 
 const deleteOldHealthPeriods = `-- name: DeleteOldHealthPeriods :exec
-DELETE FROM app_health_periods
+DELETE FROM app_health_period
 WHERE ended_at IS NOT NULL
   AND ended_at < ?
 `
 
-func (q *Queries) DeleteOldHealthPeriods(ctx context.Context, endedAt sql.NullTime) error {
+func (q *Queries) DeleteOldHealthPeriods(ctx context.Context, endedAt sql.NullInt64) error {
 	_, err := q.db.ExecContext(ctx, deleteOldHealthPeriods, endedAt)
 	return err
 }
 
 const getLatestHealthPeriod = `-- name: GetLatestHealthPeriod :one
 SELECT id, status, started_at, ended_at
-FROM app_health_periods
+FROM app_health_period
 ORDER BY started_at DESC
 LIMIT 1
 `
@@ -59,7 +58,7 @@ func (q *Queries) GetLatestHealthPeriod(ctx context.Context) (AppHealthPeriod, e
 
 const getOpenHealthPeriod = `-- name: GetOpenHealthPeriod :one
 SELECT id, status, started_at, ended_at
-FROM app_health_periods
+FROM app_health_period
 WHERE ended_at IS NULL
 ORDER BY started_at DESC
 LIMIT 1
@@ -79,15 +78,15 @@ func (q *Queries) GetOpenHealthPeriod(ctx context.Context) (AppHealthPeriod, err
 
 const listHealthPeriodsOverlappingRange = `-- name: ListHealthPeriodsOverlappingRange :many
 SELECT id, status, started_at, ended_at
-FROM app_health_periods
+FROM app_health_period
 WHERE started_at <= ?
   AND (ended_at IS NULL OR ended_at >= ?)
 ORDER BY started_at ASC
 `
 
 type ListHealthPeriodsOverlappingRangeParams struct {
-	StartedAt time.Time
-	EndedAt   sql.NullTime
+	StartedAt int64
+	EndedAt   sql.NullInt64
 }
 
 func (q *Queries) ListHealthPeriodsOverlappingRange(ctx context.Context, arg ListHealthPeriodsOverlappingRangeParams) ([]AppHealthPeriod, error) {
@@ -119,14 +118,14 @@ func (q *Queries) ListHealthPeriodsOverlappingRange(ctx context.Context, arg Lis
 }
 
 const saveHealthPeriod = `-- name: SaveHealthPeriod :exec
-INSERT INTO app_health_periods (status, started_at, ended_at)
+INSERT INTO app_health_period (status, started_at, ended_at)
 VALUES (?, ?, ?)
 `
 
 type SaveHealthPeriodParams struct {
 	Status    string
-	StartedAt time.Time
-	EndedAt   sql.NullTime
+	StartedAt int64
+	EndedAt   sql.NullInt64
 }
 
 func (q *Queries) SaveHealthPeriod(ctx context.Context, arg SaveHealthPeriodParams) error {

@@ -7,11 +7,10 @@ package db
 
 import (
 	"context"
-	"time"
 )
 
 const insertLifecycleEvent = `-- name: InsertLifecycleEvent :one
-INSERT INTO lifecycle_events (kind, raw_line, created_at)
+INSERT INTO lifecycle_event (kind, raw_line, created_at)
 VALUES (?, ?, ?)
 RETURNING id, kind, raw_line, created_at
 `
@@ -19,7 +18,7 @@ RETURNING id, kind, raw_line, created_at
 type InsertLifecycleEventParams struct {
 	Kind      string
 	RawLine   string
-	CreatedAt time.Time
+	CreatedAt int64
 }
 
 func (q *Queries) InsertLifecycleEvent(ctx context.Context, arg InsertLifecycleEventParams) (LifecycleEvent, error) {

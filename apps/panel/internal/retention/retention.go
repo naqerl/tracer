@@ -76,13 +76,20 @@ func (s *Service) runCleanup(ctx context.Context) {
 			}
 
 			queries := db.New(sqlDB)
-			err = queries.DeleteOldLogs(ctx, cutoff)
+			err = queries.DeleteOldLogs(ctx, cutoff.Unix())
 			if err != nil {
 				slog.Error("Failed to cleanup logs", "collector", collector, "app", appName, "error", err)
 				continue
 			}
 
-			err = queries.DeleteOldHealthPeriods(ctx, sql.NullTime{Time: cutoff, Valid: true})
+			// Recalculate counters after deletion to keep them accurate
+			err = queries.RecalculateLogGroupCounters(ctx)
+			if err != nil {
+				slog.Error("Failed to recalculate log group counters", "collector", collector, "app", appName, "error", err)
+				continue
+			}
+
+			err = queries.DeleteOldHealthPeriods(ctx, sql.NullInt64{Int64: cutoff.Unix(), Valid: true})
 			if err != nil {
 				slog.Error("Failed to cleanup health periods", "collector", collector, "app", appName, "error", err)
 				continue

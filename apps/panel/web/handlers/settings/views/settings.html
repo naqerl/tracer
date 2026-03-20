@@ -70,7 +70,7 @@
             <tr class="group opacity-60 hover:opacity-100 transition-opacity duration-700 hover:duration-150 border-b border-bg-secondary/50">
                 <td class="py-3">{{.Name}}</td>
                 <td class="py-3"><code class="text-sm font-mono">{{.ApiKey}}</code></td>
-                <td class="py-3 text-sm text-fg-secondary">{{if .LastUsedAt.Valid}}{{formatDateTime .LastUsedAt.Time}}{{else}}Never{{end}}</td>
+                <td class="py-3 text-sm text-fg-secondary">{{if .LastUsedAt.Valid}}{{formatDateTime .LastUsedAt}}{{else}}Never{{end}}</td>
                 <td class="py-3 text-right">
                     <button hx-delete="/settings/api-keys/{{.ID}}" hx-confirm="Delete API key {{.Name}}?" hx-target="body" hx-swap="outerHTML" class="text-sm text-fg-secondary hover:text-red-500 underline transition-colors">Delete</button>
                 </td>
@@ -124,7 +124,7 @@
                     <a href="/settings/admin/collector-api-keys/{{urlEncode .Name}}" class="block py-3"><code class="text-sm font-mono">****{{.KeySuffix}}</code></a>
                 </td>
                 <td class="py-0 text-sm text-fg-secondary">
-                    <a href="/settings/admin/collector-api-keys/{{urlEncode .Name}}" class="block py-3">{{if .LastUsedAt.Valid}}{{formatDateTime .LastUsedAt.Time}}{{else}}Never{{end}}</a>
+                    <a href="/settings/admin/collector-api-keys/{{urlEncode .Name}}" class="block py-3">{{if .LastUsedAt.Valid}}{{formatDateTime .LastUsedAt}}{{else}}Never{{end}}</a>
                 </td>
             </tr>
             {{end}}
@@ -256,7 +256,7 @@
         <span>{{formatDateTime .Key.CreatedAt}}</span>
 
         <span class="text-fg-secondary">Last Used:</span>
-        <span>{{if .Key.LastUsedAt.Valid}}{{formatDateTime .Key.LastUsedAt.Time}}{{else}}Never{{end}}</span>
+        <span>{{if .Key.LastUsedAt.Valid}}{{formatDateTime .Key.LastUsedAt}}{{else}}Never{{end}}</span>
     </div>
 </div>
 
