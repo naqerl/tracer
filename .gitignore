@@ -3,4 +3,4 @@ bin/
 /.opencode/
 tasks/
 /.agent-shell/
-/.tasks
+/.tasks/

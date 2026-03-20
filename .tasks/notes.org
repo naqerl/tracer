@@ -22,7 +22,7 @@
   [[file:~/code/aishift/tracer/apps/panel/internal/services/panel/service.go::Since time.Time]]
 ** DONE It should return value and special not found error
   [2026-03-15 Sun]
-  [[file:~/code/aishift/tracer/apps/panel/internal/services/panel/service.go::func (s *Service) GetLogDetail(ctx context.Context, req GetLogDetailRequest) (*LogDetailResult, error) {]]
+  [[file:~/code/aishift/tracer/apps/panel/internal/services/panel/service.go::func (s *Service) GetLogDetail(ctx context.Context, req GetLogGroupRequest) (*LogDetailResult, error) {]]
 ** DONE Remove aps list from collector
   [2026-03-15 Sun]
   There is additional method to list collector's apps, so collector itself does not need them now
@@ -67,3 +67,8 @@ type HealthBucket struct {
   [2026-03-15 Sun]
   Insetead of CanAccess name it AllowedTo. Ensure that in the all call sides variable on which this method will be called will be named access, so result will look like access.AllowedTo
   [[file:~/code/aishift/tracer/apps/panel/internal/services/panel/service.go::CanAccess]]
+** DONE Move into it's own file
+  [2026-03-18 Wed]
+  [[file:~/code/aishift/tracer/apps/panel/web/handlers/panel/views/log-group.html::<script>]]
+  Create a new file in the same directory with log-group.html and serve it at /logs/groups/plot
+  Load this file as script tag
