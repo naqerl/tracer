@@ -1,4 +1,6 @@
 -- +goose Up
+-- TODO: System stats could be used with `period`
+-- pattern similar to health check to preserve space
 CREATE TABLE IF NOT EXISTS system_stats (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     collector_name TEXT NOT NULL,
