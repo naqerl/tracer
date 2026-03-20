@@ -437,8 +437,8 @@ type GetLogGroupsRequest struct {
 	AppName       string
 	Level         string
 	Since         time.Time
-	Offset        int64
-	Limit         int64
+	Offset        int
+	Limit         int
 }
 
 type LogGroup struct {
@@ -491,8 +491,8 @@ func (s *Service) GetLogGroups(ctx context.Context, req GetLogGroupsRequest) ([]
 	rows, err := queries.ListLogGroups(ctx, db.ListLogGroupsParams{
 		Level:     level,
 		LastLogAt: req.Since.Unix(),
-		Limit:     req.Limit,
-		Offset:    req.Offset,
+		Limit:     int64(req.Limit),
+		Offset:    int64(req.Offset),
 	})
 	if err != nil {
 		return nil, err
