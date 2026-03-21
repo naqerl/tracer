@@ -4,12 +4,10 @@ CREATE TABLE IF NOT EXISTS log_group (
     message TEXT NOT NULL,
     level TEXT NOT NULL,
     created_at INTEGER NOT NULL,
-    log_count INTEGER NOT NULL DEFAULT 0,
     last_log_at INTEGER NOT NULL DEFAULT 0,
     UNIQUE(message, level)
 );
 CREATE INDEX IF NOT EXISTS idx_log_group_message_level ON log_group(message, level);
-CREATE INDEX IF NOT EXISTS idx_log_group_count ON log_group(log_count DESC);
 CREATE INDEX IF NOT EXISTS idx_log_group_last_log ON log_group(last_log_at DESC);
 
 -- TODO: Remove level and message fields
