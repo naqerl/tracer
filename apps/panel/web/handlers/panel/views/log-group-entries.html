@@ -10,7 +10,7 @@
 <!-- Log Entries (loaded directly into container) -->
 {{range .Entries}}
 <div class="group cursor-pointer" data-timestamp="{{.CreatedAt.Unix}}" onclick="window.location.href='/panel/collectors/{{$.CollectorName}}/apps/{{$.AppName}}/logs/{{.ID}}'">
-    <div class="border border-bg-secondary rounded hover:border-fg-secondary/30 transition-colors">
+    <div class="border border-bg-secondary hover:border-fg-secondary/30 transition-colors">
         <!-- Card Header with Timestamp -->
         <div class="px-3 py-2 border-b border-bg-secondary/50 bg-bg-secondary/30 flex items-center justify-between">
             <span class="text-xs font-mono text-fg-secondary">{{formatDateTime .CreatedAt}}</span>
