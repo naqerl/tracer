@@ -239,77 +239,19 @@ function toggleMarkdownCheckbox(id) {
 
 {{define "json-viewer"}}
 {{if .Valid}}
-<div class="json-viewer text-sm" id="{{.ID}}">
-    <!-- Populated by JavaScript -->
+{{$data := parseJSON .Data}}
+{{if eq (len $data) 0}}
+<span class="text-fg-secondary italic">empty object</span>
+{{else}}
+<div class="json-viewer text-sm">
+    <div class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 min-w-max">
+        {{range flattenJSON $data}}
+        <span class="text-fg-secondary whitespace-nowrap">{{.Key}}</span>
+        <span>{{renderJSONValue .Value}}</span>
+        {{end}}
+    </div>
 </div>
-<script>
-(function() {
-    const container = document.getElementById('{{.ID}}');
-    const jsonData = {{.Data}};
-    
-    function renderValue(value) {
-        if (value === null) return '<span class="text-fg-secondary">null</span>';
-        if (typeof value === 'boolean') return '<span class="text-accent">' + value + '</span>';
-        if (typeof value === 'number') return '<span class="text-secondary">' + value + '</span>';
-        if (typeof value === 'string') {
-            if (/^https?:\/\//.test(value)) {
-                return '<a href="' + value + '" class="text-accent hover:underline break-all" target="_blank">' + value + '</a>';
-            }
-            return '<span class="break-words">' + value + '</span>';
-        }
-        if (typeof value === 'object') {
-            if (Array.isArray(value)) return '<span class="text-fg-secondary">[' + value.length + ' items]</span>';
-            return '<span class="text-fg-secondary">{' + Object.keys(value).length + ' keys}</span>';
-        }
-        return String(value);
-    }
-    
-    function flatten(obj, prefix) {
-        let result = [];
-        for (let key in obj) {
-            if (!obj.hasOwnProperty(key)) continue;
-            let value = obj[key];
-            let fullKey = prefix ? prefix + '.' + key : key;
-            
-            if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
-                result = result.concat(flatten(value, fullKey));
-            } else {
-                result.push({key: fullKey, value: value});
-            }
-        }
-        return result;
-    }
-    
-    try {
-        const json = JSON.parse(jsonData);
-        
-        // Check for empty object
-        if (typeof json === 'object' && json !== null && !Array.isArray(json) && Object.keys(json).length === 0) {
-            container.innerHTML = '<span class="text-fg-secondary italic">empty object</span>';
-            return;
-        }
-        
-        const pairs = flatten(json, '');
-        
-        // Check if flattened result is empty (all nested objects were empty)
-        if (pairs.length === 0) {
-            container.innerHTML = '<span class="text-fg-secondary italic">empty object</span>';
-            return;
-        }
-        
-        let html = '<div class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 min-w-max">';
-        pairs.forEach(function(pair) {
-            html += '<span class="text-fg-secondary whitespace-nowrap">' + pair.key + '</span>';
-            html += '<span>' + renderValue(pair.value) + '</span>';
-        });
-        html += '</div>';
-        
-        container.innerHTML = html;
-    } catch(e) {
-        container.innerHTML = '<span class="text-fg">' + jsonData + '</span>';
-    }
-})();
-</script>
+{{end}}
 {{else}}
 <span class="text-sm text-fg-secondary/60">-</span>
 {{end}}
@@ -317,78 +259,19 @@ function toggleMarkdownCheckbox(id) {
 
 {{define "json-viewer-full"}}
 {{if .Valid}}
-<div class="json-viewer text-sm" id="{{.ID}}">
-    <!-- Populated by JavaScript -->
+{{$data := parseJSON .Data}}
+{{if eq (len $data) 0}}
+<span class="text-fg-secondary italic">empty object</span>
+{{else}}
+<div class="json-viewer text-sm">
+    <div class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2">
+        {{range flattenJSON $data}}
+        <span class="text-fg-secondary whitespace-nowrap">{{.Key}}:</span>
+        <span>{{renderJSONValue .Value}}</span>
+        {{end}}
+    </div>
 </div>
-<script>
-(function() {
-    const container = document.getElementById('{{.ID}}');
-    const jsonData = {{.Data}};
-    
-    function renderValue(value) {
-        if (value === null) return '<span class="text-fg-secondary">null</span>';
-        if (typeof value === 'boolean') return '<span class="text-accent">' + value + '</span>';
-        if (typeof value === 'number') return '<span class="text-secondary">' + value + '</span>';
-        if (typeof value === 'string') {
-            if (/^https?:\/\//.test(value)) {
-                return '<a href="' + value + '" class="text-accent hover:underline break-all" target="_blank">' + value + '</a>';
-            }
-            return '<span class="break-words">' + value + '</span>';
-        }
-        if (typeof value === 'object') {
-            if (Array.isArray(value)) return '<span class="text-fg-secondary">[' + value.length + ' items]</span>';
-            return '<span class="text-fg-secondary">{' + Object.keys(value).length + ' keys}</span>';
-        }
-        return String(value);
-    }
-    
-    function flatten(obj, prefix) {
-        let result = [];
-        for (let key in obj) {
-            if (!obj.hasOwnProperty(key)) continue;
-            let value = obj[key];
-            let fullKey = prefix ? prefix + '.' + key : key;
-            
-            if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
-                result = result.concat(flatten(value, fullKey));
-            } else {
-                result.push({key: fullKey, value: value});
-            }
-        }
-        return result;
-    }
-    
-    try {
-        const json = JSON.parse(jsonData);
-        
-        // Check for empty object
-        if (typeof json === 'object' && json !== null && !Array.isArray(json) && Object.keys(json).length === 0) {
-            container.innerHTML = '<span class="text-fg-secondary italic">empty object</span>';
-            return;
-        }
-        
-        const pairs = flatten(json, '');
-        
-        // Check if flattened result is empty
-        if (pairs.length === 0) {
-            container.innerHTML = '<span class="text-fg-secondary italic">empty object</span>';
-            return;
-        }
-        
-        // Use grid layout like Metadata - distinct cols for keys and values
-        let html = '<div class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2">';
-        pairs.forEach(function(pair) {
-            html += '<span class="text-fg-secondary whitespace-nowrap">' + pair.key + ':</span>';
-            html += '<span>' + renderValue(pair.value) + '</span>';
-        });
-        html += '</div>';
-        
-        container.innerHTML = html;
-    } catch(e) {
-        container.innerHTML = '<span class="text-fg">' + jsonData + '</span>';
-    }
-})();
-</script>
+{{end}}
 {{else}}
 <span class="text-sm text-fg-secondary/60">No context data available</span>
 {{end}}

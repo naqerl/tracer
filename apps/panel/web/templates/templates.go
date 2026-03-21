@@ -16,6 +16,12 @@ import (
 	"tracer/apps/panel/web/middleware"
 )
 
+// jsonKV represents a key-value pair for JSON rendering
+type jsonKV struct {
+	Key   string
+	Value any
+}
+
 //go:embed shared.html
 var sharedFS embed.FS
 
@@ -44,8 +50,11 @@ func New(fsys fs.FS) Templates {
 			}
 			return val
 		},
-		"toJSON": toJSON,
-		"dict":   dict,
+		"toJSON":          toJSON,
+		"dict":            dict,
+		"parseJSON":       parseJSON,
+		"flattenJSON":     flattenJSON,
+		"renderJSONValue": renderJSONValue,
 	}
 
 	// Parse shared templates first
@@ -257,4 +266,60 @@ func parseContext(v any) map[string]string {
 	}
 
 	return result
+}
+
+// parseJSON parses a JSON string into a map
+func parseJSON(data string) []jsonKV {
+	if data == "" || data == "{}" {
+		return nil
+	}
+
+	var obj map[string]any
+	if err := json.Unmarshal([]byte(data), &obj); err != nil {
+		return nil
+	}
+
+	return flattenJSONMap(obj, "")
+}
+
+func flattenJSONMap(obj map[string]any, prefix string) []jsonKV {
+	var result []jsonKV
+	for k, v := range obj {
+		fullKey := k
+		if prefix != "" {
+			fullKey = prefix + "." + k
+		}
+
+		switch val := v.(type) {
+		case map[string]any:
+			result = append(result, flattenJSONMap(val, fullKey)...)
+		default:
+			result = append(result, jsonKV{Key: fullKey, Value: val})
+		}
+	}
+	return result
+}
+
+func flattenJSON(data []jsonKV) []jsonKV {
+	return data
+}
+
+func renderJSONValue(v any) template.HTML {
+	switch val := v.(type) {
+	case nil:
+		return template.HTML(`<span class="text-fg-secondary">null</span>`)
+	case bool:
+		return template.HTML(fmt.Sprintf(`<span class="text-accent">%t</span>`, val))
+	case float64:
+		return template.HTML(fmt.Sprintf(`<span class="text-secondary">%v</span>`, val))
+	case string:
+		if strings.HasPrefix(val, "http://") || strings.HasPrefix(val, "https://") {
+			return template.HTML(fmt.Sprintf(`<a href="%s" class="text-accent hover:underline break-all" target="_blank">%s</a>`, val, val))
+		}
+		return template.HTML(fmt.Sprintf(`<span class="break-words">%s</span>`, template.HTMLEscapeString(val)))
+	case []any:
+		return template.HTML(fmt.Sprintf(`<span class="text-fg-secondary">[%d items]</span>`, len(val)))
+	default:
+		return template.HTML(fmt.Sprintf(`<span class="text-fg-secondary">%v</span>`, val))
+	}
 }
