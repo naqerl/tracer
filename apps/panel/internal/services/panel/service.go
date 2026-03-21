@@ -484,7 +484,7 @@ func (s *Service) GetLogGroups(ctx context.Context, req GetLogGroupsRequest) ([]
 	}
 
 	level := req.Level
-	if level == "" {
+	if level == "all" {
 		level = "%"
 	}
 

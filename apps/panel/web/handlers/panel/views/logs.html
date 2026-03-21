@@ -18,20 +18,19 @@
 {{end}}
 
 {{define "level-filter"}}
-<div class="flex flex-wrap gap-6">
-  {{range .LevelFilters}}
-  {{$isActive := or (and (eq .Val "") (not $.Level)) (eq $.Level .Val)}}
-  {{$query := printf "/panel/collectors/%s/apps/%s/logs/groups" $.Collector $.App}}
-  {{if ne .Val ""}}{{$query = printf "%s?level=%s" $query .Val}}{{end}}
-  <a hx-get="{{$query}}"
-     hx-push-url="false"
-     hx-target="#log-groups"
-     class="flex flex-col items-center gap-1 cursor-pointer {{if $isActive}}text-fg{{else}}text-fg-secondary{{end}} {{if and (not $isActive) (eq .Val `error`)}}hover:text-red-500{{else if and (not $isActive) (eq .Val `warn`)}}hover:text-yellow-500{{else if and (not $isActive) (eq .Val `info`)}}hover:text-blue-500{{else if not $isActive}}hover:text-fg{{end}}">
-    <span class="text-sm">{{.Label}}</span>
-    <span class="w-1.5 h-1.5 rounded-full {{if $isActive}}bg-{{.Color}}{{else}}bg-transparent{{end}}"></span>
-  </a>
-  {{end}}
-</div>
+  <div class="flex flex-wrap gap-6">
+    {{range .LevelFilters}}
+      {{$isActive := eq $.Level .Val}}
+      {{$query := printf "/panel/collectors/%s/apps/%s/logs/groups?level=%s" $.Collector $.App .Val}}
+      <a hx-get="{{$query}}"
+         hx-push-url="false"
+         hx-target="#log-groups"
+         class="flex flex-col items-center gap-1 cursor-pointer {{if $isActive}}text-fg{{else}}text-fg-secondary{{end}} {{if and (not $isActive) (eq .Val `error`)}}hover:text-red-500{{else if and (not $isActive) (eq .Val `warn`)}}hover:text-yellow-500{{else if and (not $isActive) (eq .Val `info`)}}hover:text-blue-500{{else if not $isActive}}hover:text-fg{{end}}">
+        <span class="text-sm">{{.Label}}</span>
+        <span class="w-1.5 h-1.5 rounded-full {{if $isActive}}bg-{{.Color}}{{else}}bg-transparent{{end}}"></span>
+      </a>
+    {{end}}
+  </div>
 {{end}}
 
 {{define "log-groups-table"}}
@@ -53,15 +52,15 @@
     {{range .Groups}}
     <tr class="group opacity-60 hover:opacity-100 transition-opacity duration-700 hover:duration-150">
       <td class="hidden">{{.ID}}</td>
-      <td class="w-full align-middle">
-        <a href="/panel/collectors/{{$.Collector}}/apps/{{$.App}}/logs/groups/{{.ID}}" class="block py-2 sm:py-1 capitalize">{{.Message}}</a>
+      <td class="w-full align-top">
+        <a href="/panel/collectors/{{$.Collector}}/apps/{{$.App}}/logs/groups/{{.ID}}" class="block py-2 sm:py-1 capitalize break-all">{{.Message}}</a>
       </td>
-      <td class="w-[1%] whitespace-nowrap align-middle pr-2">
-        {{if not $.Level}}
-        <span class="inline-block w-1.5 h-1.5 rounded-full{{if eq .Level `error`}} bg-red-500{{else if eq .Level `warn`}} bg-yellow-500{{else if eq .Level `info`}} bg-blue-500{{else}} bg-fg-secondary{{end}}"></span>
+      <td class="w-[1%] whitespace-nowrap align-top pr-2 pt-2 sm:pt-1">
+        {{if eq $.Level "all"}}
+        <span class="inline-block w-1.5 h-1.5 mt-1.5 rounded-full{{if eq .Level `error`}} bg-red-500{{else if eq .Level `warn`}} bg-yellow-500{{else if eq .Level `info`}} bg-blue-500{{else}} bg-fg-secondary{{end}}"></span>
         {{end}}
       </td>
-      <td class="w-[1%] whitespace-nowrap align-middle text-fg-secondary text-right">
+      <td class="w-[1%] whitespace-nowrap align-top text-fg-secondary text-right pt-2 sm:pt-1">
         <span class="text-xs sm:text-sm">{{.Count}}</span>
       </td>
     </tr>

@@ -36,11 +36,13 @@ type LevelFilter struct {
 }
 
 var levelFilters = []LevelFilter{
-	{Val: "", Label: "All", Color: "fg"},
+	{Val: "all", Label: "All", Color: "fg"},
 	{Val: "error", Label: "Errors", Color: "red-500"},
 	{Val: "warn", Label: "Warnings", Color: "yellow-500"},
 	{Val: "info", Label: "Info", Color: "blue-500"},
 }
+
+const defaultLogLevel = "error"
 
 const (
 	sinceCookieName   = "tracer_panel_since"
@@ -320,6 +322,14 @@ func (h *handler) getApp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	level := r.URL.Query().Get("level")
+	if level == "" {
+		redirectURL := fmt.Sprintf("/panel/collectors/%s/apps/%s?level=%s",
+			req.CollectorName, req.AppName, defaultLogLevel)
+		http.Redirect(w, r, redirectURL, http.StatusSeeOther)
+		return
+	}
+
 	stats, err := h.svc.GetAppStats(r.Context(), req)
 	if err != nil {
 		switch {
@@ -368,6 +378,7 @@ func (h *handler) getApp(w http.ResponseWriter, r *http.Request) {
 		"Stats":     stats,
 		"Since":     sinceLabel,
 		"Uptime":    appHealthViewFromService(uptime),
+		"Level":     level,
 	})
 }
 
@@ -581,11 +592,17 @@ func (h *handler) getLogGroups(w http.ResponseWriter, r *http.Request) {
 	}
 
 	_, since := readSince(w, r)
+
+	level := r.URL.Query().Get("level")
+	if level == "" {
+		level = defaultLogLevel
+	}
+
 	req := panelsvc.GetLogGroupsRequest{
 		UserID:        userID,
 		CollectorName: r.PathValue("collector"),
 		AppName:       r.PathValue("app"),
-		Level:         r.URL.Query().Get("level"),
+		Level:         level,
 		Since:         since,
 		Offset:        parseOffset(r.URL.Query().Get("offset")),
 		Limit:         50,
@@ -611,9 +628,14 @@ func (h *handler) getLogGroups(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Update URL without adding history entry
+	canonicalURL := fmt.Sprintf("/panel/collectors/%s/apps/%s?level=%s",
+		req.CollectorName, req.AppName, level)
+	w.Header().Set("HX-Replace-Url", canonicalURL)
+
 	h.t.RenderHTTP(w, r, "log-groups", map[string]any{
 		"Groups":       groups,
-		"Level":        req.Level,
+		"Level":        level,
 		"Collector":    req.CollectorName,
 		"App":          req.AppName,
 		"LevelFilters": levelFilters,

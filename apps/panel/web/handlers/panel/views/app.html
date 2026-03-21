@@ -56,7 +56,7 @@
         </div>
 
         <div
-          hx-get="/panel/collectors/{{.Collector}}/apps/{{.App}}/logs/groups"
+          hx-get="/panel/collectors/{{.Collector}}/apps/{{.App}}/logs/groups?level={{.Level}}"
           hx-trigger="load"
         ></div>
     </div>
