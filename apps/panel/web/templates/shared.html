@@ -1,0 +1,395 @@
+{{define "head"}}
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="preconnect" href="https://unpkg.com" crossorigin>
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="preconnect" href="https://cdn.tailwindcss.com" crossorigin>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/uplot@1.6.30/dist/uPlot.min.css">
+<script src="https://cdn.tailwindcss.com?plugins=forms"></script>
+<script src="https://unpkg.com/htmx.org@2.0.0" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/animejs/dist/bundles/anime.umd.min.js" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/uplot@1.6.30/dist/uPlot.iife.min.js" async></script>
+<script>
+tailwind.config = {
+    theme: {
+        extend: {
+            colors: {
+                bg: {
+                    DEFAULT: '#0A0A0A',
+                    secondary: '#1E1E1E',
+                },
+                fg: {
+                    DEFAULT: '#EEEEEE',
+                    secondary: '#808080',
+                },
+                accent: '#5C9CF5',
+                secondary: '#F5A742',
+            }
+        }
+    }
+}
+</script>
+<style type="text/tailwindcss">
+@layer base {
+    body {
+        @apply bg-bg text-fg font-sans antialiased;
+    }
+}
+</style>
+{{end}}
+
+{{define "navbar"}}
+<nav class="flex items-center justify-between px-4 py-3 border-b border-bg-secondary" aria-label="Main navigation">
+  <div class="flex gap-3 sm:gap-6" id="nav-links">
+    <a href="/panel/" class="text-sm font-medium hover:text-fg transition-colors" data-nav="panel">/panel</a>
+    <a href="/topology/" class="text-sm font-medium hover:text-fg transition-colors" data-nav="topology">/topology</a>
+    <a href="/settings/" class="text-sm font-medium hover:text-fg transition-colors" data-nav="settings">/settings</a>
+  </div>
+
+  <form class="flex items-center gap-1 text-sm" onsubmit="return false;">
+    <div class="relative group" id="since-dropdown">
+      <div class="flex items-center justify-between gap-1 px-2 py-1 border border-transparent group-hover:border-bg-secondary text-fg-secondary group-hover:text-fg transition-colors cursor-pointer w-[5.5rem]">
+        <span class="flex items-center gap-1">
+          <span>since</span>
+          <span id="since-label">{{default "24h" .Since}}</span>
+        </span>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+      </div>
+      <div id="since-options" class="hidden group-hover:block absolute left-0 right-0 top-full mt-0 bg-bg border-x border-b border-bg-secondary shadow-lg z-50">
+        <button type="button" class="block w-full text-left px-2 py-1.5 text-sm hover:bg-bg-secondary transition-colors" onclick="navbarSelectSince('1h')">1h</button>
+        <button type="button" class="block w-full text-left px-2 py-1.5 text-sm hover:bg-bg-secondary transition-colors" onclick="navbarSelectSince('6h')">6h</button>
+        <button type="button" class="block w-full text-left px-2 py-1.5 text-sm hover:bg-bg-secondary transition-colors" onclick="navbarSelectSince('24h')">24h</button>
+        <button type="button" class="block w-full text-left px-2 py-1.5 text-sm hover:bg-bg-secondary transition-colors" onclick="navbarSelectSince('7d')">7d</button>
+        <button type="button" class="block w-full text-left px-2 py-1.5 text-sm hover:bg-bg-secondary transition-colors" onclick="navbarSelectSince('30d')">30d</button>
+      </div>
+    </div>
+  </form>
+  <script>
+    (function() {
+      const cookieName = 'tracer_panel_since';
+      const defaultSince = '24h';
+      const allowedSince = new Set(['1h', '6h', '24h', '7d', '30d']);
+
+      function readCookie(name) {
+        const prefix = name + '=';
+        const parts = document.cookie.split(';');
+        for (let i = 0; i < parts.length; i++) {
+          const cookie = parts[i].trim();
+          if (cookie.startsWith(prefix)) {
+            return decodeURIComponent(cookie.slice(prefix.length));
+          }
+        }
+        return '';
+      }
+
+      function writeCookie(name, value) {
+        let cookie = name + '=' + encodeURIComponent(value) + '; path=/; max-age=31536000; SameSite=Lax';
+        if (window.location.protocol === 'https:') {
+          cookie += '; Secure';
+        }
+        document.cookie = cookie;
+      }
+
+      const currentSince = readCookie(cookieName);
+      const since = allowedSince.has(currentSince) ? currentSince : defaultSince;
+      if (currentSince !== since) {
+        writeCookie(cookieName, since);
+      }
+      const sinceLabel = document.getElementById('since-label');
+      sinceLabel.textContent = since;
+      document.documentElement.dataset.since = since;
+
+      const path = window.location.pathname;
+      document.querySelectorAll('#nav-links a').forEach(function(link) {
+        const nav = link.getAttribute('data-nav');
+        const isActive =
+          (nav === 'panel' && path === '/panel/') ||
+          (nav === 'topology' && path === '/topology/') ||
+          (nav === 'settings' && path === '/settings/');
+        if (isActive) {
+          link.classList.remove('text-fg-secondary');
+        } else {
+          link.classList.add('text-fg-secondary');
+        }
+      });
+
+      window.navbarSelectSince = function(val) {
+        if (!allowedSince.has(val)) {
+          return;
+        }
+        writeCookie(cookieName, val);
+        sinceLabel.textContent = val;
+        document.documentElement.dataset.since = val;
+        window.location.reload();
+      };
+
+      function reloadIfSinceChanged() {
+        const activeSince = allowedSince.has(readCookie(cookieName)) ? readCookie(cookieName) : defaultSince;
+        const pageSince = document.documentElement.dataset.since || sinceLabel.textContent || defaultSince;
+        if (activeSince !== pageSince) {
+          window.location.reload();
+        }
+      }
+
+      window.addEventListener('pageshow', function(event) {
+        if (event.persisted) {
+          reloadIfSinceChanged();
+        }
+      });
+
+      window.addEventListener('popstate', function() {
+        reloadIfSinceChanged();
+      });
+
+      document.body.addEventListener('htmx:historyRestore', function() {
+        reloadIfSinceChanged();
+      });
+    })();
+  </script>
+</nav>
+{{end}}
+
+{{define "error"}}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    {{template "head"}}
+    <title>{{.Title}} - Tracer</title>
+</head>
+<body>
+    {{template "navbar" .}}
+    <div class="max-w-5xl mx-auto p-6">
+        <div class="mb-6">
+            <h2 class="text-xl font-medium text-red-500">{{.Title}}</h2>
+        </div>
+        <p class="text-fg-secondary">{{.Message}}</p>
+    </div>
+</body>
+</html>
+{{end}}
+
+{{define "architecture-diagram"}}
+<script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+<script>mermaid.initialize({startOnLoad:true, theme: 'neutral'});</script>
+<div class="flex justify-center">
+    <div class="mermaid text-black p-4 rounded">
+        %%{init: {"flowchart": {"curve": "linear", "width": 800}}}%%
+        {{template "mermaid-chart"}}
+    </div>
+</div>
+{{end}}
+
+{{define "mermaid-chart"}}
+graph TD
+  subgraph Collectors
+    CA[Collector A<br/>Log parsing<br/>System stats]
+    CB[Collector B<br/>Log parsing<br/>System stats]
+    CC[Collector C<br/>Log parsing<br/>System stats]
+  end
+  CA -->|WebSocket| Panel
+  CB -->|WebSocket| Panel
+  CC -->|WebSocket| Panel
+  Panel[Panel<br/>Trace grouping<br/>Sampling<br/>Deduplication] --> SQLite[SQLite DBs<br/>Logs & System Stats]
+  Panel --> Notifications[Notifications<br/>Telegram Alerts<br/>Errors, Startups, Resources]
+  Panel --> WebUI[Web UI<br/>Analytics Dashboard<br/>Log Viewer]
+{{end}}
+
+{{define "markdown-checkbox"}}
+{{$id := .ID}}
+{{$name := .Name}}
+{{$label := .Label}}
+{{$value := .Value | default "on"}}
+{{$checked := .Checked}}
+{{$indent := .Indent | default 0}}
+{{$padding := mul $indent 24}}
+<div style="padding-left: {{$padding}}px">
+    <input type="hidden" name="{{$name}}" id="{{$id}}_value" value="{{if $checked}}{{$value}}{{end}}" data-checked-value="{{$value}}">
+    <button type="button" id="{{$id}}_toggle" class="text-base transition-colors font-mono {{if $checked}}text-fg{{else}}text-fg-secondary hover:text-fg{{end}}"
+            onclick="toggleMarkdownCheckbox('{{$id}}')" data-label="{{$label}}">
+        {{if $checked}}[x]{{else}}[ ]{{end}} {{$label}}
+    </button>
+</div>
+{{end}}
+
+{{define "markdown-checkbox-script"}}
+<script>
+function toggleMarkdownCheckbox(id) {
+    const valueInput = document.getElementById(id + '_value');
+    const toggleBtn = document.getElementById(id + '_toggle');
+    const checkedValue = valueInput.dataset.checkedValue || 'on';
+    const isChecked = valueInput.value === checkedValue;
+    
+    // Get the label text - get from data attribute to avoid parsing issues
+    const labelText = toggleBtn.dataset.label;
+    
+    if (isChecked) {
+        valueInput.value = '';
+        toggleBtn.textContent = '[ ] ' + labelText;
+        toggleBtn.classList.remove('text-fg');
+        toggleBtn.classList.add('text-fg-secondary');
+    } else {
+        valueInput.value = checkedValue;
+        toggleBtn.textContent = '[x] ' + labelText;
+        toggleBtn.classList.remove('text-fg-secondary');
+        toggleBtn.classList.add('text-fg');
+    }
+}
+</script>
+{{end}}
+
+{{define "json-viewer"}}
+{{if .Valid}}
+<div class="json-viewer text-sm" id="{{.ID}}">
+    <!-- Populated by JavaScript -->
+</div>
+<script>
+(function() {
+    const container = document.getElementById('{{.ID}}');
+    const jsonData = {{.Data}};
+    
+    function renderValue(value) {
+        if (value === null) return '<span class="text-fg-secondary">null</span>';
+        if (typeof value === 'boolean') return '<span class="text-accent">' + value + '</span>';
+        if (typeof value === 'number') return '<span class="text-secondary">' + value + '</span>';
+        if (typeof value === 'string') {
+            if (/^https?:\/\//.test(value)) {
+                return '<a href="' + value + '" class="text-accent hover:underline break-all" target="_blank">' + value + '</a>';
+            }
+            return '<span class="break-words">' + value + '</span>';
+        }
+        if (typeof value === 'object') {
+            if (Array.isArray(value)) return '<span class="text-fg-secondary">[' + value.length + ' items]</span>';
+            return '<span class="text-fg-secondary">{' + Object.keys(value).length + ' keys}</span>';
+        }
+        return String(value);
+    }
+    
+    function flatten(obj, prefix) {
+        let result = [];
+        for (let key in obj) {
+            if (!obj.hasOwnProperty(key)) continue;
+            let value = obj[key];
+            let fullKey = prefix ? prefix + '.' + key : key;
+            
+            if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+                result = result.concat(flatten(value, fullKey));
+            } else {
+                result.push({key: fullKey, value: value});
+            }
+        }
+        return result;
+    }
+    
+    try {
+        const json = JSON.parse(jsonData);
+        
+        // Check for empty object
+        if (typeof json === 'object' && json !== null && !Array.isArray(json) && Object.keys(json).length === 0) {
+            container.innerHTML = '<span class="text-fg-secondary italic">empty object</span>';
+            return;
+        }
+        
+        const pairs = flatten(json, '');
+        
+        // Check if flattened result is empty (all nested objects were empty)
+        if (pairs.length === 0) {
+            container.innerHTML = '<span class="text-fg-secondary italic">empty object</span>';
+            return;
+        }
+        
+        let html = '<div class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 min-w-max">';
+        pairs.forEach(function(pair) {
+            html += '<span class="text-fg-secondary whitespace-nowrap">' + pair.key + '</span>';
+            html += '<span>' + renderValue(pair.value) + '</span>';
+        });
+        html += '</div>';
+        
+        container.innerHTML = html;
+    } catch(e) {
+        container.innerHTML = '<span class="text-fg">' + jsonData + '</span>';
+    }
+})();
+</script>
+{{else}}
+<span class="text-sm text-fg-secondary/60">-</span>
+{{end}}
+{{end}}
+
+{{define "json-viewer-full"}}
+{{if .Valid}}
+<div class="json-viewer text-sm" id="{{.ID}}">
+    <!-- Populated by JavaScript -->
+</div>
+<script>
+(function() {
+    const container = document.getElementById('{{.ID}}');
+    const jsonData = {{.Data}};
+    
+    function renderValue(value) {
+        if (value === null) return '<span class="text-fg-secondary">null</span>';
+        if (typeof value === 'boolean') return '<span class="text-accent">' + value + '</span>';
+        if (typeof value === 'number') return '<span class="text-secondary">' + value + '</span>';
+        if (typeof value === 'string') {
+            if (/^https?:\/\//.test(value)) {
+                return '<a href="' + value + '" class="text-accent hover:underline break-all" target="_blank">' + value + '</a>';
+            }
+            return '<span class="break-words">' + value + '</span>';
+        }
+        if (typeof value === 'object') {
+            if (Array.isArray(value)) return '<span class="text-fg-secondary">[' + value.length + ' items]</span>';
+            return '<span class="text-fg-secondary">{' + Object.keys(value).length + ' keys}</span>';
+        }
+        return String(value);
+    }
+    
+    function flatten(obj, prefix) {
+        let result = [];
+        for (let key in obj) {
+            if (!obj.hasOwnProperty(key)) continue;
+            let value = obj[key];
+            let fullKey = prefix ? prefix + '.' + key : key;
+            
+            if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+                result = result.concat(flatten(value, fullKey));
+            } else {
+                result.push({key: fullKey, value: value});
+            }
+        }
+        return result;
+    }
+    
+    try {
+        const json = JSON.parse(jsonData);
+        
+        // Check for empty object
+        if (typeof json === 'object' && json !== null && !Array.isArray(json) && Object.keys(json).length === 0) {
+            container.innerHTML = '<span class="text-fg-secondary italic">empty object</span>';
+            return;
+        }
+        
+        const pairs = flatten(json, '');
+        
+        // Check if flattened result is empty
+        if (pairs.length === 0) {
+            container.innerHTML = '<span class="text-fg-secondary italic">empty object</span>';
+            return;
+        }
+        
+        // Use grid layout like Metadata - distinct cols for keys and values
+        let html = '<div class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2">';
+        pairs.forEach(function(pair) {
+            html += '<span class="text-fg-secondary whitespace-nowrap">' + pair.key + ':</span>';
+            html += '<span>' + renderValue(pair.value) + '</span>';
+        });
+        html += '</div>';
+        
+        container.innerHTML = html;
+    } catch(e) {
+        container.innerHTML = '<span class="text-fg">' + jsonData + '</span>';
+    }
+})();
+</script>
+{{else}}
+<span class="text-sm text-fg-secondary/60">No context data available</span>
+{{end}}
+{{end}}

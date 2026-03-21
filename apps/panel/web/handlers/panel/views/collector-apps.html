@@ -1,0 +1,26 @@
+{{define "collector-apps"}}
+{{if .Apps}}
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+  {{range .Apps}}
+  <a href="/panel/collectors/{{$.CollectorName}}/apps/{{.Name}}" class="block bg-bg-secondary hover:bg-bg-secondary/80 p-4 transition-all hover:-translate-y-0.5">
+    <div class="font-medium">{{.Name}}</div>
+    <div class="mt-2 text-xs text-fg-secondary">
+      <span
+        hx-get="/panel/collectors/{{$.CollectorName}}/apps/{{.Name}}/uptime/percentage"
+        hx-trigger="load"
+        hx-swap="outerHTML"
+      >uptime: ...</span>
+      <span class="text-fg-secondary"> | </span>
+      <span
+        hx-get="/panel/collectors/{{$.CollectorName}}/apps/{{.Name}}/errors/count"
+        hx-trigger="load"
+        hx-swap="outerHTML"
+      >errors: ...</span>
+    </div>
+  </a>
+  {{end}}
+</div>
+{{else}}
+<div class="text-fg-secondary text-sm">No apps registered</div>
+{{end}}
+{{end}}

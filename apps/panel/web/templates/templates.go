@@ -16,7 +16,7 @@ import (
 	"tracer/apps/panel/web/middleware"
 )
 
-//go:embed shared/*.html
+//go:embed shared.html
 var sharedFS embed.FS
 
 type Templates struct {
@@ -49,7 +49,7 @@ func New(fsys fs.FS) Templates {
 	}
 
 	// Parse shared templates first
-	views := template.Must(template.New("").Funcs(funcMap).ParseFS(sharedFS, "shared/*.html"))
+	views := template.Must(template.New("").Funcs(funcMap).ParseFS(sharedFS, "shared.html"))
 	// Then parse feature-specific views
 	views = template.Must(views.ParseFS(fsys, "views/*.html"))
 

@@ -40,8 +40,6 @@
     </div>
 </div>
 
-
-
 <!-- Log Entries Container (loaded via HTMX) -->
 <div id="log-entries-container" class="mt-6 space-y-3"
      hx-get="/panel/collectors/{{.CollectorName}}/apps/{{.AppName}}/logs/groups/{{.LogGroup.ID}}/entries?level={{.LogGroup.Level}}"
@@ -51,61 +49,4 @@
         <p>Loading log entries...</p>
     </div>
 </div>
-{{end}}
-
-{{define "log-group-entries"}}
-{{if .Entries}}
-{{if not .Offset}}
-<!-- Chart Container (only on first load) -->
-<div id="log-chart-container" data-level="{{.Level}}">
-    <div id="log-chart"></div>
-</div>
-{{end}}
-
-<!-- Log Entries (loaded directly into container) -->
-{{range .Entries}}
-<div class="group cursor-pointer" data-timestamp="{{.CreatedAt.Unix}}" onclick="window.location.href='/panel/collectors/{{$.CollectorName}}/apps/{{$.AppName}}/logs/{{.ID}}'">
-    <div class="border border-bg-secondary rounded hover:border-fg-secondary/30 transition-colors">
-        <!-- Card Header with Timestamp -->
-        <div class="px-3 py-2 border-b border-bg-secondary/50 bg-bg-secondary/30 flex items-center justify-between">
-            <span class="text-xs font-mono text-fg-secondary">{{formatDateTime .CreatedAt}}</span>
-            <span class="text-xs text-fg-secondary/60 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">View details →</span>
-        </div>
-        <!-- Card Body with Context -->
-        <div class="p-3 overflow-x-auto">
-            {{if .Context.Valid}}
-            <div class="min-w-max">
-                {{template "json-viewer" dict "ID" (printf "context-%d" .ID) "Data" .Context.String "Valid" .Context.Valid}}
-            </div>
-            {{else}}
-            <span class="text-sm text-fg-secondary/60 italic">No context data</span>
-            {{end}}
-        </div>
-    </div>
-</div>
-{{end}}
-
-{{if .HasMore}}
-<!-- Infinite scroll sentinel - replaces itself with next batch -->
-<div class="mt-2 h-4"
-     hx-get="/panel/collectors/{{.CollectorName}}/apps/{{.AppName}}/logs/groups/{{.GroupID}}/entries?offset={{.NextOffset}}&level={{.Level}}"
-     hx-trigger="revealed"
-     hx-swap="outerHTML">
-    <div class="text-center text-sm text-fg-secondary/40 py-2">
-        <span>...</span>
-    </div>
-</div>
-{{end}}
-
-{{if not .Offset}}
-<!-- Chart Rendering Script (only on first load) -->
-<script src="/panel/logs/groups/plot"></script>
-{{end}}
-{{else}}
-{{if not .Offset}}
-<div class="text-center text-sm text-fg-secondary/60 py-12">
-    <p>No logs found for this group.</p>
-</div>
-{{end}}
-{{end}}
 {{end}}
