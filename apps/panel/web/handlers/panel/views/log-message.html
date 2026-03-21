@@ -1,0 +1,6 @@
+{{define "log-message"}}
+<div class="mb-2">
+    <span class="inline-block w-2 h-2 rounded-full mr-3 mt-2{{if eq .Level `error`}} bg-red-500{{else if eq .Level `warn`}} bg-yellow-500{{else if eq .Level `info`}} bg-blue-500{{else}} bg-fg-secondary{{end}}"></span>
+    <span class="text-xl font-medium break-all">{{.Message}}</span>
+</div>
+{{end}}

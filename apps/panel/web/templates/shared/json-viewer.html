@@ -58,7 +58,7 @@
             return;
         }
         
-        let html = '<div class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">';
+        let html = '<div class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 min-w-max">';
         pairs.forEach(function(pair) {
             html += '<span class="text-fg-secondary whitespace-nowrap">' + pair.key + '</span>';
             html += '<span>' + renderValue(pair.value) + '</span>';
@@ -154,3 +154,5 @@
 <span class="text-sm text-fg-secondary/60">No context data available</span>
 {{end}}
 {{end}}
+
+
