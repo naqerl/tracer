@@ -493,8 +493,8 @@ func (s *Service) GetLogGroups(ctx context.Context, req GetLogGroupsRequest) ([]
 	}
 
 	rows, err := queries.ListLogGroups(ctx, db.ListLogGroupsParams{
+		CreatedAt: req.Since.Unix(),
 		Level:     level,
-		LastLogAt: req.Since.Unix(),
 		Limit:     int64(req.Limit),
 		Offset:    int64(req.Offset),
 	})
@@ -556,7 +556,7 @@ func (s *Service) GetLogGroup(ctx context.Context, req GetLogGroupRequest) (LogG
 		return group, err
 	}
 
-	row, err := queries.GetLogGroupByID(ctx, req.GroupID)
+	row, err := queries.GetLogGroupByID(ctx, sql.NullInt64{Int64: req.GroupID, Valid: true})
 	if errors.Is(err, sql.ErrNoRows) {
 		return group, ErrLogNotFound
 	}
@@ -586,6 +586,7 @@ type ListGroupLogsRequest struct {
 	CollectorName string
 	AppName       string
 	GroupID       int64
+	Since         time.Time
 	Offset        int
 	Limit         int
 }
@@ -602,6 +603,9 @@ func (r ListGroupLogsRequest) Validate() error {
 	}
 	if r.GroupID <= 0 {
 		return fmt.Errorf("group ID must be positive")
+	}
+	if !sinceWithinRange(r.Since) {
+		return fmt.Errorf("since should be within last 30 days")
 	}
 	if r.Offset < 0 {
 		return fmt.Errorf("offset must be non-negative")
@@ -627,9 +631,10 @@ func (s *Service) ListGroupLogs(ctx context.Context, req ListGroupLogsRequest) (
 	}
 
 	rows, err := queries.GetLogsByGroupID(ctx, db.GetLogsByGroupIDParams{
-		GroupID: sql.NullInt64{Int64: req.GroupID, Valid: true},
-		Limit:   int64(req.Limit),
-		Offset:  int64(req.Offset),
+		GroupID:   sql.NullInt64{Int64: req.GroupID, Valid: true},
+		CreatedAt: req.Since.Unix(),
+		Limit:     int64(req.Limit),
+		Offset:    int64(req.Offset),
 	})
 	if err != nil {
 		return nil, err
