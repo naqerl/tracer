@@ -4,48 +4,57 @@ VALUES (?, ?, ?, ?, ?, ?)
 RETURNING id, trace_id, level, message, context, group_id, created_at;
 
 -- name: IncrementLogGroupCounter :exec
--- Increment the log counter and update last_log_at for a group
+-- Update last_log_at for a group
 UPDATE log_group
-SET log_count = log_count + 1,
-    last_log_at = ?
+SET last_log_at = ?
 WHERE id = ?;
 
 -- name: GetOrCreateLogGroup :one
 -- Get existing log group by message and level, or create if doesn't exist
-INSERT INTO log_group (message, level, created_at, log_count, last_log_at)
-VALUES (?, ?, ?, 0, 0)
+INSERT INTO log_group (message, level, created_at, last_log_at)
+VALUES (?, ?, ?, 0)
 ON CONFLICT(message, level) DO UPDATE SET message = message
-RETURNING id, message, level, created_at, log_count, last_log_at;
+RETURNING id, message, level, created_at, last_log_at;
 
 -- name: GetLogGroupByID :one
 SELECT
     message,
     level,
-    log_count,
     created_at,
-    last_log_at
+    CAST(COALESCE((SELECT MAX(created_at) FROM log WHERE log.group_id = ?1), 0) AS INTEGER) as last_log_at,
+    (SELECT COUNT(*) FROM log WHERE log.group_id = ?1) as log_count
 FROM log_group
-WHERE id = ?;
+WHERE id = ?1;
 
 -- name: ListLogGroups :many
+WITH group_stats AS (
+    SELECT 
+        l.group_id,
+        COUNT(*) as count,
+        MAX(l.created_at) as last_log_at
+    FROM log l
+    WHERE l.created_at >= ?1
+    GROUP BY l.group_id
+)
 SELECT
-    id,
-    message,
-    level,
-    log_count as count,
-    last_log_at,
-    created_at
-FROM log_group
-WHERE level like ?
-  AND last_log_at >= ?
-ORDER BY log_count DESC, last_log_at DESC
-LIMIT ? OFFSET ?;
+    lg.id,
+    lg.message,
+    lg.level,
+    gs.count,
+    CAST(gs.last_log_at AS INTEGER) as last_log_at,
+    lg.created_at
+FROM log_group lg
+INNER JOIN group_stats gs ON gs.group_id = lg.id
+WHERE lg.level LIKE ?2
+ORDER BY gs.count DESC, gs.last_log_at DESC
+LIMIT ?3 OFFSET ?4;
 
 -- name: GetLogsByGroupID :many
 -- Get all individual logs for a specific group
 SELECT id, level, context, created_at
 FROM log
 WHERE group_id = ?
+  AND created_at >= ?
 ORDER BY created_at DESC
 LIMIT ? OFFSET ?;
 
@@ -60,10 +69,9 @@ DELETE FROM log
 WHERE created_at < ?;
 
 -- name: RecalculateLogGroupCounters :exec
--- Recalculate log_count and last_log_at for all groups after log deletion
+-- Recalculate last_log_at for all groups after log deletion
 UPDATE log_group
-SET log_count = COALESCE((SELECT COUNT(*) FROM log l WHERE l.group_id = log_group.id), 0),
-    last_log_at = COALESCE((SELECT MAX(created_at) FROM log l WHERE l.group_id = log_group.id), 0);
+SET last_log_at = COALESCE((SELECT MAX(created_at) FROM log l WHERE l.group_id = log_group.id), 0);
 
 -- name: GetLogByID :one
 SELECT id, trace_id, level, message, context, group_id, created_at FROM log
