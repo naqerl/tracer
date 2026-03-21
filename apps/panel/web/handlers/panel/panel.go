@@ -69,6 +69,7 @@ func InitMux(svc *panelsvc.Service) *http.ServeMux {
 
 	// App logs
 	m.HandleFunc("GET /collectors/{collector}/apps/{app}", h.getApp)
+	m.HandleFunc("GET /collectors/{collector}/apps/{app}/stats", h.getAppStats)
 	m.HandleFunc("GET /collectors/{collector}/apps/{app}/logs/groups", h.getLogGroups)
 	m.HandleFunc("GET /collectors/{collector}/apps/{app}/logs/groups/{groupID}", h.getLogGroupByID)
 	m.HandleFunc("GET /collectors/{collector}/apps/{app}/logs/groups/{groupID}/entries", h.getLogGroupEntries)
@@ -312,44 +313,22 @@ func (h *handler) getApp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	req := panelsvc.GetAppStatsRequest{
-		UserID:        userID,
-		CollectorName: r.PathValue("collector"),
-		AppName:       r.PathValue("app"),
-	}
-	if err := req.Validate(); err != nil {
-		h.t.RenderError(w, r, "Error", err.Error(), http.StatusBadRequest)
-		return
-	}
+	collectorName := r.PathValue("collector")
+	appName := r.PathValue("app")
 
 	level := r.URL.Query().Get("level")
 	if level == "" {
 		redirectURL := fmt.Sprintf("/panel/collectors/%s/apps/%s?level=%s",
-			req.CollectorName, req.AppName, defaultLogLevel)
+			collectorName, appName, defaultLogLevel)
 		http.Redirect(w, r, redirectURL, http.StatusSeeOther)
-		return
-	}
-
-	stats, err := h.svc.GetAppStats(r.Context(), req)
-	if err != nil {
-		switch {
-		case errors.Is(err, panelsvc.ErrCollectorNotFound):
-			h.t.RenderError(w, r, "Error", "Collector not found", http.StatusNotFound)
-		case errors.Is(err, panelsvc.ErrAccessDenied):
-			h.t.RenderError(w, r, "Forbidden", "You don't have access to this app", http.StatusForbidden)
-		case errors.Is(err, panelsvc.ErrAppNotFound):
-			h.t.RenderError(w, r, "Error", "App not found", http.StatusNotFound)
-		default:
-			h.t.RenderError(w, r, "Error", "Failed to fetch analytics", http.StatusInternalServerError)
-		}
 		return
 	}
 
 	sinceLabel, since := readSince(w, r)
 	healthReq := panelsvc.GetAppHealthRequest{
 		UserID:        userID,
-		CollectorName: req.CollectorName,
-		AppName:       req.AppName,
+		CollectorName: collectorName,
+		AppName:       appName,
 		Since:         since,
 	}
 	if err := healthReq.Validate(); err != nil {
@@ -372,13 +351,51 @@ func (h *handler) getApp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.t.RenderHTTP(w, r, "app", map[string]any{
-		"Title":     req.AppName + " Analytics",
-		"App":       req.AppName,
-		"Collector": req.CollectorName,
-		"Stats":     stats,
+		"Title":     appName + " Analytics",
+		"App":       appName,
+		"Collector": collectorName,
 		"Since":     sinceLabel,
 		"Uptime":    appHealthViewFromService(uptime),
 		"Level":     level,
+	})
+}
+
+func (h *handler) getAppStats(w http.ResponseWriter, r *http.Request) {
+	userID, err := auth.RequireOrRedirect(w, r)
+	if err != nil {
+		return
+	}
+
+	_, since := readSince(w, r)
+
+	req := panelsvc.GetAppStatsRequest{
+		UserID:        userID,
+		CollectorName: r.PathValue("collector"),
+		AppName:       r.PathValue("app"),
+		Since:         since,
+	}
+	if err := req.Validate(); err != nil {
+		h.t.RenderError(w, r, "Error", err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	stats, err := h.svc.GetAppStats(r.Context(), req)
+	if err != nil {
+		switch {
+		case errors.Is(err, panelsvc.ErrCollectorNotFound):
+			h.t.RenderError(w, r, "Error", "Collector not found", http.StatusNotFound)
+		case errors.Is(err, panelsvc.ErrAccessDenied):
+			h.t.RenderError(w, r, "Forbidden", "You don't have access to this app", http.StatusForbidden)
+		case errors.Is(err, panelsvc.ErrAppNotFound):
+			h.t.RenderError(w, r, "Error", "App not found", http.StatusNotFound)
+		default:
+			h.t.RenderError(w, r, "Error", "Failed to fetch stats", http.StatusInternalServerError)
+		}
+		return
+	}
+
+	h.t.RenderHTTP(w, r, "app-stats", map[string]any{
+		"Stats": stats,
 	})
 }
 

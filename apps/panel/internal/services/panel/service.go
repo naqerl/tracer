@@ -382,6 +382,7 @@ type GetAppStatsRequest struct {
 	UserID        int64
 	CollectorName string
 	AppName       string
+	Since         time.Time
 }
 
 type AppStats struct {
@@ -401,6 +402,9 @@ func (r GetAppStatsRequest) Validate() error {
 	if r.AppName == "" {
 		return fmt.Errorf("app name is required")
 	}
+	if !sinceWithinRange(r.Since) {
+		return fmt.Errorf("since should be within last 30 days")
+	}
 	return nil
 }
 
@@ -418,7 +422,7 @@ func (s *Service) GetAppStats(ctx context.Context, req GetAppStatsRequest) (AppS
 		return AppStats{}, err
 	}
 
-	counts, err := queries.GetPercentiles(ctx, 0)
+	counts, err := queries.GetPercentiles(ctx, req.Since.Unix())
 	if err != nil {
 		return AppStats{}, err
 	}
