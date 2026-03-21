@@ -35,33 +35,10 @@
 {{define "collector-section"}}
 <div class="mb-10">
   <!-- Collector Header -->
-  <div class="flex items-center mb-2">
-    <a href="/panel/collectors/{{.Name}}" class="flex items-center hover:opacity-80 transition-opacity">
-      <span class="text-fg-secondary text-xl mr-1">[</span>
-      <h2 class="text-xl font-semibold">{{.Name}}</h2>
-      <span class="text-fg-secondary text-xl ml-1">]</span>
+  <div class="mb-2">
+    <a href="/panel/collectors/{{.Name}}" class="text-xl font-semibold hover:opacity-80 transition-opacity">
+      {{.Name}}
     </a>
-    <hr class="flex-1 mx-4 border-bg-secondary" />
-    {{if .Stats}}
-    <span class="text-fg-secondary text-xs mr-1">[</span>
-    {{if eq .Stats.Staleness "fresh"}}
-    <span class="text-xs text-fg">{{.Stats.TimestampFormatted}}</span>
-    {{else if eq .Stats.Staleness "warning"}}
-    <span class="text-xs text-yellow-400">{{.Stats.TimestampFormatted}}</span>
-    {{else}}
-    <span class="text-xs text-red-400">{{.Stats.TimestampFormatted}}</span>
-    {{end}}
-    <span class="text-fg-secondary text-xs ml-1">]</span>
-    {{end}}
-    <span class="text-xs text-fg-secondary mx-1">[</span>
-    <a hx-get="/panel/collectors/{{.Name}}/resources"
-       hx-target="body"
-       hx-push-url="true"
-       class="text-xs text-accent hover:underline cursor-pointer"
-       title="View resource usage history">
-      resources
-    </a>
-    <span class="text-xs text-fg-secondary ml-1">]</span>
   </div>
 
   <!-- Stats Row -->
@@ -89,9 +66,25 @@
       {{end}}
       <span class="{{if gt $diskPercent 80.0}}text-red-400{{else if gt $diskPercent 60.0}}text-yellow-400{{else}}text-fg-secondary{{end}}">{{printf "%.0f" $diskPercent}}%</span>
     </div>
+    <a hx-get="/panel/collectors/{{.Name}}/resources"
+       hx-target="body"
+       hx-push-url="true"
+       class="text-fg-secondary hover:text-fg cursor-pointer ml-auto"
+       title="View metrics history">
+      Metrics <span class="text-fg-secondary">&rarr;</span>
+    </a>
   </div>
   {{else}}
-  <div class="text-fg-secondary text-xs mb-4">No stats available</div>
+  <div class="flex items-center justify-between mb-4">
+    <span class="text-fg-secondary text-xs">No stats available</span>
+    <a hx-get="/panel/collectors/{{.Name}}/resources"
+       hx-target="body"
+       hx-push-url="true"
+       class="text-xs text-fg-secondary hover:text-fg cursor-pointer"
+       title="View metrics history">
+      Metrics <span class="text-fg-secondary">&rarr;</span>
+    </a>
+  </div>
   {{end}}
 
   <!-- Apps Grid -->
