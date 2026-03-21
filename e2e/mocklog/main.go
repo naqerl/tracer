@@ -144,6 +144,11 @@ func runBurst(logger *slog.Logger, cfg config, count int) {
 			flowKind = "schedule"
 		}
 
+		// Generate long HTTP-like access log line periodically
+		if idx%5 == 0 {
+			logLongAccessLine(idx)
+		}
+
 		logEvent(ctx, logger, slog.LevelInfo, "flow.started",
 			"service", cfg.service,
 			"component", cfg.component,
@@ -161,6 +166,41 @@ func runBurst(logger *slog.Logger, cfg config, count int) {
 			time.Sleep(cfg.requestDelay)
 		}
 	}
+}
+
+func logLongAccessLine(idx int) {
+	ips := []string{"94.72.34.234", "203.0.113.45", "198.51.100.12", "192.168.1.100", "10.0.0.55"}
+	methods := []string{"GET", "POST", "PUT", "DELETE", "PATCH"}
+	paths := []string{
+		"/api/v1/customers/updates/0e8dc8e5-5d1b-4859-8321-70ef7c4c8dc3",
+		"/api/v2/products/search?q=some+very+long+search+query+with+many+parameters&limit=100&offset=0&sort=created_at&order=desc&filter=active",
+		"/api/v1/orders/batch/process?validate=true&notify=false&retry=3&timeout=30000&worker=background-queue-7",
+		"/internal/admin/system/config/advanced?region=us-east-1&env=production&debug=false&log_level=info&metrics=true&tracing=enabled",
+		"/assets/static/images/products/very-long-path-to-product-image-file-name-with-many-characters-xyz123abc456def789.png?width=1920&height=1080&quality=90&format=webp&cache=3600",
+	}
+	agents := []string{
+		"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+		"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Version/14.1.1 Safari/605.1.15",
+	}
+
+	ip := ips[idx%len(ips)]
+	method := methods[idx%len(methods)]
+	path := paths[idx%len(paths)]
+	agent := agents[idx%len(agents)]
+	status := 200
+	if idx%11 == 0 {
+		status = 500
+	} else if idx%7 == 0 {
+		status = 404
+	} else if idx%3 == 0 {
+		status = 400
+	}
+
+	// Output raw access log line without structured wrapping
+	// Format: 127.0.0.1:0 - "GET /path HTTP/1.1" 200 - "User-Agent"
+	now := time.Now().UTC().Format("2006-01-02T15:04:05.000Z")
+	message := fmt.Sprintf(`%s:0 - "%s %s HTTP/1.1" %d - "%s"`, ip, method, path, status, agent)
+	fmt.Printf("%s: %s\n", now, message)
 }
 
 func profileFromEnv() string {
