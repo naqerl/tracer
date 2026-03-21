@@ -51,7 +51,6 @@ type LogGroup struct {
 	Message   string
 	Level     string
 	CreatedAt int64
-	LogCount  int64
 	LastLogAt int64
 }
 

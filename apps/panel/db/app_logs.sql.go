@@ -71,30 +71,30 @@ const getLogGroupByID = `-- name: GetLogGroupByID :one
 SELECT
     message,
     level,
-    log_count,
     created_at,
-    last_log_at
+    CAST(COALESCE((SELECT MAX(created_at) FROM log WHERE log.group_id = ?1), 0) AS INTEGER) as last_log_at,
+    (SELECT COUNT(*) FROM log WHERE log.group_id = ?1) as log_count
 FROM log_group
-WHERE id = ?
+WHERE id = ?1
 `
 
 type GetLogGroupByIDRow struct {
 	Message   string
 	Level     string
-	LogCount  int64
 	CreatedAt int64
 	LastLogAt int64
+	LogCount  int64
 }
 
-func (q *Queries) GetLogGroupByID(ctx context.Context, id int64) (GetLogGroupByIDRow, error) {
-	row := q.db.QueryRowContext(ctx, getLogGroupByID, id)
+func (q *Queries) GetLogGroupByID(ctx context.Context, groupID sql.NullInt64) (GetLogGroupByIDRow, error) {
+	row := q.db.QueryRowContext(ctx, getLogGroupByID, groupID)
 	var i GetLogGroupByIDRow
 	err := row.Scan(
 		&i.Message,
 		&i.Level,
-		&i.LogCount,
 		&i.CreatedAt,
 		&i.LastLogAt,
+		&i.LogCount,
 	)
 	return i, err
 }
@@ -158,14 +158,16 @@ const getLogsByGroupID = `-- name: GetLogsByGroupID :many
 SELECT id, level, context, created_at
 FROM log
 WHERE group_id = ?
+  AND created_at >= ?
 ORDER BY created_at DESC
 LIMIT ? OFFSET ?
 `
 
 type GetLogsByGroupIDParams struct {
-	GroupID sql.NullInt64
-	Limit   int64
-	Offset  int64
+	GroupID   sql.NullInt64
+	CreatedAt int64
+	Limit     int64
+	Offset    int64
 }
 
 type GetLogsByGroupIDRow struct {
@@ -177,7 +179,12 @@ type GetLogsByGroupIDRow struct {
 
 // Get all individual logs for a specific group
 func (q *Queries) GetLogsByGroupID(ctx context.Context, arg GetLogsByGroupIDParams) ([]GetLogsByGroupIDRow, error) {
-	rows, err := q.db.QueryContext(ctx, getLogsByGroupID, arg.GroupID, arg.Limit, arg.Offset)
+	rows, err := q.db.QueryContext(ctx, getLogsByGroupID,
+		arg.GroupID,
+		arg.CreatedAt,
+		arg.Limit,
+		arg.Offset,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -205,10 +212,10 @@ func (q *Queries) GetLogsByGroupID(ctx context.Context, arg GetLogsByGroupIDPara
 }
 
 const getOrCreateLogGroup = `-- name: GetOrCreateLogGroup :one
-INSERT INTO log_group (message, level, created_at, log_count, last_log_at)
-VALUES (?, ?, ?, 0, 0)
+INSERT INTO log_group (message, level, created_at, last_log_at)
+VALUES (?, ?, ?, 0)
 ON CONFLICT(message, level) DO UPDATE SET message = message
-RETURNING id, message, level, created_at, log_count, last_log_at
+RETURNING id, message, level, created_at, last_log_at
 `
 
 type GetOrCreateLogGroupParams struct {
@@ -226,7 +233,6 @@ func (q *Queries) GetOrCreateLogGroup(ctx context.Context, arg GetOrCreateLogGro
 		&i.Message,
 		&i.Level,
 		&i.CreatedAt,
-		&i.LogCount,
 		&i.LastLogAt,
 	)
 	return i, err
@@ -263,8 +269,7 @@ func (q *Queries) GetPercentiles(ctx context.Context, createdAt int64) (GetPerce
 
 const incrementLogGroupCounter = `-- name: IncrementLogGroupCounter :exec
 UPDATE log_group
-SET log_count = log_count + 1,
-    last_log_at = ?
+SET last_log_at = ?
 WHERE id = ?
 `
 
@@ -273,7 +278,7 @@ type IncrementLogGroupCounterParams struct {
 	ID        int64
 }
 
-// Increment the log counter and update last_log_at for a group
+// Update last_log_at for a group
 func (q *Queries) IncrementLogGroupCounter(ctx context.Context, arg IncrementLogGroupCounterParams) error {
 	_, err := q.db.ExecContext(ctx, incrementLogGroupCounter, arg.LastLogAt, arg.ID)
 	return err
@@ -317,23 +322,32 @@ func (q *Queries) InsertLog(ctx context.Context, arg InsertLogParams) (Log, erro
 }
 
 const listLogGroups = `-- name: ListLogGroups :many
+WITH group_stats AS (
+    SELECT 
+        l.group_id,
+        COUNT(*) as count,
+        MAX(l.created_at) as last_log_at
+    FROM log l
+    WHERE l.created_at >= ?1
+    GROUP BY l.group_id
+)
 SELECT
-    id,
-    message,
-    level,
-    log_count as count,
-    last_log_at,
-    created_at
-FROM log_group
-WHERE level like ?
-  AND last_log_at >= ?
-ORDER BY log_count DESC, last_log_at DESC
-LIMIT ? OFFSET ?
+    lg.id,
+    lg.message,
+    lg.level,
+    gs.count,
+    CAST(gs.last_log_at AS INTEGER) as last_log_at,
+    lg.created_at
+FROM log_group lg
+INNER JOIN group_stats gs ON gs.group_id = lg.id
+WHERE lg.level LIKE ?2
+ORDER BY gs.count DESC, gs.last_log_at DESC
+LIMIT ?3 OFFSET ?4
 `
 
 type ListLogGroupsParams struct {
+	CreatedAt int64
 	Level     string
-	LastLogAt int64
 	Limit     int64
 	Offset    int64
 }
@@ -349,8 +363,8 @@ type ListLogGroupsRow struct {
 
 func (q *Queries) ListLogGroups(ctx context.Context, arg ListLogGroupsParams) ([]ListLogGroupsRow, error) {
 	rows, err := q.db.QueryContext(ctx, listLogGroups,
+		arg.CreatedAt,
 		arg.Level,
-		arg.LastLogAt,
 		arg.Limit,
 		arg.Offset,
 	)
@@ -384,11 +398,10 @@ func (q *Queries) ListLogGroups(ctx context.Context, arg ListLogGroupsParams) ([
 
 const recalculateLogGroupCounters = `-- name: RecalculateLogGroupCounters :exec
 UPDATE log_group
-SET log_count = COALESCE((SELECT COUNT(*) FROM log l WHERE l.group_id = log_group.id), 0),
-    last_log_at = COALESCE((SELECT MAX(created_at) FROM log l WHERE l.group_id = log_group.id), 0)
+SET last_log_at = COALESCE((SELECT MAX(created_at) FROM log l WHERE l.group_id = log_group.id), 0)
 `
 
-// Recalculate log_count and last_log_at for all groups after log deletion
+// Recalculate last_log_at for all groups after log deletion
 func (q *Queries) RecalculateLogGroupCounters(ctx context.Context) error {
 	_, err := q.db.ExecContext(ctx, recalculateLogGroupCounters)
 	return err

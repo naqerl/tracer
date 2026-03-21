@@ -46,7 +46,7 @@ type Querier interface {
 	GetLatestHealthPeriod(ctx context.Context) (AppHealthPeriod, error)
 	GetLatestStats(ctx context.Context) (SystemStat, error)
 	GetLogByID(ctx context.Context, id int64) (Log, error)
-	GetLogGroupByID(ctx context.Context, id int64) (GetLogGroupByIDRow, error)
+	GetLogGroupByID(ctx context.Context, groupID sql.NullInt64) (GetLogGroupByIDRow, error)
 	// Get log volume over time bucketed by intervals and grouped by level
 	GetLogVolumeTimeSeries(ctx context.Context, arg GetLogVolumeTimeSeriesParams) ([]GetLogVolumeTimeSeriesRow, error)
 	// Get all individual logs for a specific group
@@ -71,7 +71,7 @@ type Querier interface {
 	GetUserAPIKeysByUser(ctx context.Context, userID int64) ([]GetUserAPIKeysByUserRow, error)
 	GetUserByID(ctx context.Context, id int64) (User, error)
 	GrantAppAccess(ctx context.Context, arg GrantAppAccessParams) error
-	// Increment the log counter and update last_log_at for a group
+	// Update last_log_at for a group
 	IncrementLogGroupCounter(ctx context.Context, arg IncrementLogGroupCounterParams) error
 	InsertLifecycleEvent(ctx context.Context, arg InsertLifecycleEventParams) (LifecycleEvent, error)
 	InsertLog(ctx context.Context, arg InsertLogParams) (Log, error)
@@ -81,7 +81,7 @@ type Querier interface {
 	ListLogGroups(ctx context.Context, arg ListLogGroupsParams) ([]ListLogGroupsRow, error)
 	ListNotifiersByUser(ctx context.Context, userID int64) ([]Notifier, error)
 	ListUsers(ctx context.Context) ([]User, error)
-	// Recalculate log_count and last_log_at for all groups after log deletion
+	// Recalculate last_log_at for all groups after log deletion
 	RecalculateLogGroupCounters(ctx context.Context) error
 	RemoveAllNotifierSubscriptions(ctx context.Context, notifierID int64) error
 	RevokeAppAccess(ctx context.Context, arg RevokeAppAccessParams) error
