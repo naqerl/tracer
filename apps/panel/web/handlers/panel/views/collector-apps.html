@@ -9,13 +9,13 @@
         hx-get="/panel/collectors/{{$.CollectorName}}/apps/{{.Name}}/uptime/percentage"
         hx-trigger="load"
         hx-swap="outerHTML"
-      >uptime: ...</span>
+      >uptime: <span class="inline-block w-[3ch] tabular-nums text-right whitespace-nowrap">N/A</span></span>
       <span class="text-fg-secondary"> | </span>
       <span
         hx-get="/panel/collectors/{{$.CollectorName}}/apps/{{.Name}}/errors/count"
         hx-trigger="load"
         hx-swap="outerHTML"
-      >errors: ...</span>
+      >errors: <span class="inline-block w-[3ch] tabular-nums text-left whitespace-nowrap">0</span></span>
     </div>
   </a>
   {{end}}
