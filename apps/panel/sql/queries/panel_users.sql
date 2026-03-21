@@ -1,8 +1,8 @@
 -- User queries
 
 -- name: CreateUser :one
-INSERT INTO user (username, password_hash, is_admin)
-VALUES (?, ?, ?)
+INSERT INTO user (username, password_hash, is_admin, created_at)
+VALUES (?, ?, ?, ?)
 RETURNING *;
 
 -- name: GetUserByID :one

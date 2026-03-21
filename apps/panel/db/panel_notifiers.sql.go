@@ -27,17 +27,18 @@ func (q *Queries) AddNotifierSubscription(ctx context.Context, arg AddNotifierSu
 
 const createNotifier = `-- name: CreateNotifier :one
 
-INSERT INTO notifier (user_id, name, type, config, enabled)
-VALUES (?, ?, ?, ?, ?)
+INSERT INTO notifier (user_id, name, type, config, enabled, created_at)
+VALUES (?, ?, ?, ?, ?, ?)
 RETURNING id, user_id, name, type, config, enabled, created_at
 `
 
 type CreateNotifierParams struct {
-	UserID  int64
-	Name    string
-	Type    string
-	Config  string
-	Enabled int64
+	UserID    int64
+	Name      string
+	Type      string
+	Config    string
+	Enabled   int64
+	CreatedAt int64
 }
 
 // Notifier queries
@@ -48,6 +49,7 @@ func (q *Queries) CreateNotifier(ctx context.Context, arg CreateNotifierParams) 
 		arg.Type,
 		arg.Config,
 		arg.Enabled,
+		arg.CreatedAt,
 	)
 	var i Notifier
 	err := row.Scan(

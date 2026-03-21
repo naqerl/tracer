@@ -1,8 +1,8 @@
 -- Collector API keys
 
 -- name: CreateCollectorAPIKey :one
-INSERT INTO collector_api_key (name, key_hash, key_suffix)
-VALUES (?, ?, ?)
+INSERT INTO collector_api_key (name, key_hash, key_suffix, created_at)
+VALUES (?, ?, ?, ?)
 RETURNING name, key_hash, key_suffix, created_at, last_used_at;
 
 -- name: GetCollectorAPIKeyByName :one

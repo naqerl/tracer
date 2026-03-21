@@ -1,8 +1,8 @@
 -- Session queries
 
 -- name: CreateSession :exec
-INSERT INTO session (id, user_id, expires_at)
-VALUES (?, ?, ?);
+INSERT INTO session (id, user_id, expires_at, created_at)
+VALUES (?, ?, ?, ?);
 
 -- name: GetSession :one
 SELECT * FROM session

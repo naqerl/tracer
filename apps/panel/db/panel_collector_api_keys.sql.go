@@ -12,8 +12,8 @@ import (
 
 const createCollectorAPIKey = `-- name: CreateCollectorAPIKey :one
 
-INSERT INTO collector_api_key (name, key_hash, key_suffix)
-VALUES (?, ?, ?)
+INSERT INTO collector_api_key (name, key_hash, key_suffix, created_at)
+VALUES (?, ?, ?, ?)
 RETURNING name, key_hash, key_suffix, created_at, last_used_at
 `
 
@@ -21,11 +21,17 @@ type CreateCollectorAPIKeyParams struct {
 	Name      string
 	KeyHash   string
 	KeySuffix string
+	CreatedAt int64
 }
 
 // Collector API keys
 func (q *Queries) CreateCollectorAPIKey(ctx context.Context, arg CreateCollectorAPIKeyParams) (CollectorApiKey, error) {
-	row := q.db.QueryRowContext(ctx, createCollectorAPIKey, arg.Name, arg.KeyHash, arg.KeySuffix)
+	row := q.db.QueryRowContext(ctx, createCollectorAPIKey,
+		arg.Name,
+		arg.KeyHash,
+		arg.KeySuffix,
+		arg.CreatedAt,
+	)
 	var i CollectorApiKey
 	err := row.Scan(
 		&i.Name,

@@ -12,20 +12,26 @@ import (
 
 const createUserAPIKey = `-- name: CreateUserAPIKey :one
 
-INSERT INTO user_api_key (user_id, api_key, name)
-VALUES (?, ?, ?)
+INSERT INTO user_api_key (user_id, api_key, name, created_at)
+VALUES (?, ?, ?, ?)
 RETURNING id, user_id, api_key, name, created_at, last_used_at
 `
 
 type CreateUserAPIKeyParams struct {
-	UserID int64
-	ApiKey string
-	Name   string
+	UserID    int64
+	ApiKey    string
+	Name      string
+	CreatedAt int64
 }
 
 // User API key queries (LLM compatibility)
 func (q *Queries) CreateUserAPIKey(ctx context.Context, arg CreateUserAPIKeyParams) (UserApiKey, error) {
-	row := q.db.QueryRowContext(ctx, createUserAPIKey, arg.UserID, arg.ApiKey, arg.Name)
+	row := q.db.QueryRowContext(ctx, createUserAPIKey,
+		arg.UserID,
+		arg.ApiKey,
+		arg.Name,
+		arg.CreatedAt,
+	)
 	var i UserApiKey
 	err := row.Scan(
 		&i.ID,

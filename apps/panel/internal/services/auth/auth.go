@@ -141,6 +141,7 @@ func (s *Service) Register(ctx context.Context, req RegisterRequest) (*db.User, 
 		Username:     req.Username,
 		PasswordHash: hash,
 		IsAdmin:      adminInt,
+		CreatedAt:    time.Now().UTC().Unix(),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("create user: %w", err)
@@ -172,6 +173,7 @@ func (s *Service) CreateSession(ctx context.Context, userID int64) (string, erro
 		ID:        token,
 		UserID:    userID,
 		ExpiresAt: expiresAt,
+		CreatedAt: time.Now().UTC().Unix(),
 	})
 	if err != nil {
 		return "", fmt.Errorf("create session: %w", err)
@@ -258,6 +260,7 @@ func (s *Service) GenerateCollectorAPIKey(ctx context.Context, req GenerateColle
 		Name:      req.Name,
 		KeyHash:   hashAPIKey(key),
 		KeySuffix: key[max(0, len(key)-6):],
+		CreatedAt: time.Now().UTC().Unix(),
 	})
 	if err != nil {
 		return "", nil, fmt.Errorf("create collector api key: %w", err)
@@ -317,9 +320,10 @@ func (s *Service) GenerateUserAPIKey(ctx context.Context, req GenerateUserAPIKey
 	}
 
 	userKey, err := db.New(s.db).CreateUserAPIKey(ctx, db.CreateUserAPIKeyParams{
-		UserID: req.UserID,
-		ApiKey: key,
-		Name:   req.Name,
+		UserID:    req.UserID,
+		ApiKey:    key,
+		Name:      req.Name,
+		CreatedAt: time.Now().UTC().Unix(),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("create user API key: %w", err)

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"time"
 
 	"tracer/apps/panel/db"
 )
@@ -99,6 +100,7 @@ func (s *Service) Create(ctx context.Context, username, passwordHash string, isA
 		Username:     username,
 		PasswordHash: passwordHash,
 		IsAdmin:      adminInt,
+		CreatedAt:    time.Now().UTC().Unix(),
 	})
 	if err != nil {
 		return User{}, fmt.Errorf("create user: %w", err)

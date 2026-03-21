@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"tracer/apps/panel/db"
 	"tracer/apps/panel/internal/domain"
@@ -106,11 +107,12 @@ func (s *Service) Add(ctx context.Context, req AddNotifierRequest) error {
 	// 3. Save to database only after welcome notification succeeded
 	queries := db.New(s.db)
 	_, err = queries.CreateNotifier(ctx, db.CreateNotifierParams{
-		UserID:  req.UserID,
-		Name:    req.Name,
-		Type:    req.Type,
-		Config:  req.Config,
-		Enabled: int64(1),
+		UserID:    req.UserID,
+		Name:      req.Name,
+		Type:      req.Type,
+		Config:    req.Config,
+		Enabled:   int64(1),
+		CreatedAt: time.Now().UTC().Unix(),
 	})
 	if err != nil {
 		return fmt.Errorf("create notifier in DB: %w", err)

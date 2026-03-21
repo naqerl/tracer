@@ -1,8 +1,8 @@
 -- User API key queries (LLM compatibility)
 
 -- name: CreateUserAPIKey :one
-INSERT INTO user_api_key (user_id, api_key, name)
-VALUES (?, ?, ?)
+INSERT INTO user_api_key (user_id, api_key, name, created_at)
+VALUES (?, ?, ?, ?)
 RETURNING *;
 
 -- name: GetUserAPIKeysByUser :many

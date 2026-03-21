@@ -11,19 +11,25 @@ import (
 
 const createSession = `-- name: CreateSession :exec
 
-INSERT INTO session (id, user_id, expires_at)
-VALUES (?, ?, ?)
+INSERT INTO session (id, user_id, expires_at, created_at)
+VALUES (?, ?, ?, ?)
 `
 
 type CreateSessionParams struct {
 	ID        string
 	UserID    int64
 	ExpiresAt int64
+	CreatedAt int64
 }
 
 // Session queries
 func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) error {
-	_, err := q.db.ExecContext(ctx, createSession, arg.ID, arg.UserID, arg.ExpiresAt)
+	_, err := q.db.ExecContext(ctx, createSession,
+		arg.ID,
+		arg.UserID,
+		arg.ExpiresAt,
+		arg.CreatedAt,
+	)
 	return err
 }
 

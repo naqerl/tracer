@@ -1,8 +1,8 @@
 -- Notifier queries
 
 -- name: CreateNotifier :one
-INSERT INTO notifier (user_id, name, type, config, enabled)
-VALUES (?, ?, ?, ?, ?)
+INSERT INTO notifier (user_id, name, type, config, enabled, created_at)
+VALUES (?, ?, ?, ?, ?, ?)
 RETURNING *;
 
 -- name: GetNotifier :one
