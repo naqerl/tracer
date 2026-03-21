@@ -23,12 +23,12 @@ func parseLogLevel(level string) slog.Level {
 	}
 }
 
-// DefaultLogger creates a production-ready Text logger writing to stdout.
+// DefaultLogger creates a production-ready Text logger writing to stderr.
 // The log level is determined by the LOG_LEVEL environment variable (case-insensitive).
 // Supported levels: debug, info, warn/warning, error. Defaults to info.
 func DefaultLogger() *slog.Logger {
 	level := parseLogLevel(os.Getenv("LOG_LEVEL"))
-	return slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+	return slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
 		Level: level,
 	}))
 }
