@@ -722,6 +722,7 @@ func (h *handler) getLogGroupEntries(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	_, since := readSince(w, r)
 	offset := parseOffset(r.URL.Query().Get("offset"))
 	limit := 50
 
@@ -730,6 +731,7 @@ func (h *handler) getLogGroupEntries(w http.ResponseWriter, r *http.Request) {
 		CollectorName: r.PathValue("collector"),
 		AppName:       r.PathValue("app"),
 		GroupID:       groupID,
+		Since:         since,
 		Offset:        offset,
 		Limit:         limit + 1,
 	}
