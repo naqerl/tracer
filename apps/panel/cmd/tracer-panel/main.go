@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"flag"
 	"fmt"
 	"log"
@@ -10,14 +9,11 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"sync"
 	"syscall"
 	"time"
 
-	"github.com/pressly/goose/v3"
-	_ "modernc.org/sqlite"
-
+	"tracer/apps/panel/internal/cli"
 	"tracer/apps/panel/internal/config"
 	"tracer/apps/panel/internal/dbmanager"
 	"tracer/apps/panel/internal/install"
@@ -30,7 +26,6 @@ import (
 	panelsvc "tracer/apps/panel/internal/services/panel"
 	topologysvc "tracer/apps/panel/internal/services/topology"
 	"tracer/apps/panel/internal/services/user"
-	panelmigrations "tracer/apps/panel/sql/panel"
 	"tracer/apps/panel/web"
 	"tracer/libs/logx"
 	"tracer/libs/updater"
@@ -124,25 +119,10 @@ func printDefaultsCmd() error {
 
 func generateAPIKeyCmd(name string) error {
 	ctx := context.Background()
-	dataDir := config.DataDir()
 
-	// Initialize database
-	sqlDB, err := initPanelDB(dataDir)
+	apiKey, err := cli.GenerateCollectorAPIKey(ctx, name)
 	if err != nil {
-		return fmt.Errorf("initialize database: %w", err)
-	}
-	defer sqlDB.Close()
-
-	authSvc := auth.New(sqlDB)
-
-	req := auth.GenerateCollectorAPIKeyRequest{Name: name}
-	if err := req.Validate(); err != nil {
-		return fmt.Errorf("validate collector api key request: %w", err)
-	}
-
-	apiKey, _, err := authSvc.GenerateCollectorAPIKey(ctx, req)
-	if err != nil {
-		return fmt.Errorf("generate collector api key: %w", err)
+		return err
 	}
 
 	fmt.Println(apiKey)
@@ -151,64 +131,20 @@ func generateAPIKeyCmd(name string) error {
 
 func initPanelCmd(username, password string) error {
 	ctx := context.Background()
-	dataDir := config.DataDir()
 
-	// Initialize database
-	sqlDB, err := initPanelDB(dataDir)
-	if err != nil {
-		return fmt.Errorf("initialize database: %w", err)
-	}
-	defer sqlDB.Close()
-
-	authSvc := auth.New(sqlDB)
-	// Check if users already exist
-	hasUsers, err := authSvc.HasAnyUsers(ctx)
-	if err != nil {
-		return fmt.Errorf("check users: %w", err)
-	}
-
-	if hasUsers {
-		return fmt.Errorf("panel already initialized (users exist)")
-	}
-
-	// Generate random password if not provided
-	if password == "" {
-		var err error
-		password, err = auth.GenerateAPIKey()
-		if err != nil {
-			return fmt.Errorf("generate password: %w", err)
-		}
-		password = password[:16] // Take first 16 chars for readability
-	}
-
-	registerReq := auth.RegisterRequest{
+	result, err := cli.InitPanel(ctx, cli.InitOptions{
 		Username: username,
 		Password: password,
-		IsAdmin:  true,
-	}
-	if err := registerReq.Validate(); err != nil {
-		return fmt.Errorf("validate admin user request: %w", err)
-	}
-
-	// Create admin user
-	if _, err := authSvc.Register(ctx, registerReq); err != nil {
-		return fmt.Errorf("create admin user: %w", err)
-	}
-
-	apiKeyReq := auth.GenerateCollectorAPIKeyRequest{Name: "default"}
-	if err := apiKeyReq.Validate(); err != nil {
-		return fmt.Errorf("validate collector api key request: %w", err)
-	}
-
-	apiKey, _, err := authSvc.GenerateCollectorAPIKey(ctx, apiKeyReq)
+	})
 	if err != nil {
-		return fmt.Errorf("generate collector api key: %w", err)
+		return err
 	}
 
-	// Output credentials
-	fmt.Printf("admin_username=%s\n", username)
-	fmt.Printf("admin_password=%s\n", password)
-	fmt.Printf("collector_api_key=%s\n", apiKey)
+	fmt.Printf("admin_username=%s\n", result.AdminUsername)
+	if result.IsNewPassword {
+		fmt.Printf("admin_password=%s\n", result.AdminPassword)
+	}
+	fmt.Printf("collector_api_key=%s\n", result.CollectorAPIKey)
 	return nil
 }
 
@@ -230,7 +166,7 @@ func serve(ctx context.Context, cfg config.Panel) error {
 	slog.Info("Migrations complete")
 
 	// Initialize panel database and run migrations
-	panelDB, err := initPanelDB(cfg.DataDir)
+	panelDB, err := dbmanager.OpenPanelDB(cfg.DataDir)
 	if err != nil {
 		return fmt.Errorf("initialize panel database: %w", err)
 	}
@@ -357,41 +293,6 @@ func serve(ctx context.Context, cfg config.Panel) error {
 	return nil
 }
 
-func initPanelDB(dataDir string) (*sql.DB, error) {
-	if err := os.MkdirAll(dataDir, 0755); err != nil {
-		return nil, fmt.Errorf("create data dir: %w", err)
-	}
-
-	dbPath := filepath.Join(dataDir, "panel.db")
-	dsn := fmt.Sprintf("file:%s?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=synchronous(NORMAL)&_pragma=foreign_keys(ON)", dbPath)
-
-	sqlDB, err := sql.Open("sqlite", dsn)
-	if err != nil {
-		return nil, fmt.Errorf("open panel database: %w", err)
-	}
-
-	if err := runMigrations(sqlDB); err != nil {
-		sqlDB.Close()
-		return nil, fmt.Errorf("run migrations: %w", err)
-	}
-
-	return sqlDB, nil
-}
-
-func runMigrations(sqlDB *sql.DB) error {
-	gooseProvider, err := goose.NewProvider(goose.DialectSQLite3, sqlDB, panelmigrations.Embed)
-	if err != nil {
-		return fmt.Errorf("create goose provider: %w", err)
-	}
-
-	_, err = gooseProvider.Up(context.Background())
-	if err != nil {
-		return fmt.Errorf("run migrations: %w", err)
-	}
-
-	return nil
-}
-
 func handleUpdate() {
 	if err := updater.Update(updater.Options{
 		BinaryName: updater.BinaryPanel,
@@ -407,7 +308,7 @@ func handleUpdate() {
 }
 
 func handleInstall(args []string) {
-	if err := install.Run(args); err != nil {
+	if err := install.Run(); err != nil {
 		log.Fatalf("Install failed: %v", err)
 	}
 }
@@ -427,7 +328,7 @@ func resolveConfigPath(flagPath string) string {
 	if flagPath != "" {
 		return flagPath
 	}
-	if envPath := os.Getenv(install.ConfigEnvVar); envPath != "" {
+	if envPath := os.Getenv(install.ConfigPathEnv); envPath != "" {
 		return envPath
 	}
 	return install.ConfigFilePath
