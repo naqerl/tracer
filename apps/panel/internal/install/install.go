@@ -2,77 +2,35 @@
 package install
 
 import (
-	_ "embed"
+	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"strings"
-	"text/template"
 
 	"gopkg.in/yaml.v3"
 
+	"tracer/apps/panel/internal/cli"
 	"tracer/apps/panel/internal/config"
 )
 
-// Public constants for config path - single source of truth
 const (
-	ConfigFilePath = "/etc/tracer/panel.yaml"
-	ConfigEnvVar   = "TRACER_PANEL_CONFIG"
+	ConfigDir     = "/etc/tracer"
+	DataDir       = "/var/lib/tracer"
+	ConfigPathEnv = "TRACER_PANEL_CONFIG"
+	User          = "tracer"
 )
 
-//go:embed tracer-panel.service
-var serviceTemplate string
+var (
+	ConfigFilePath = ConfigDir + "/panel.yaml"
+	ConfigEnvVar   = ConfigPathEnv
+)
 
-var serviceTmpl = template.Must(template.New("service").Parse(serviceTemplate))
-
-// Run executes the install command.
-func Run(args []string) error {
-	if len(args) == 0 {
-		return runSetup()
-	}
-
-	switch args[0] {
-	case "setup":
-		return runSetup()
-	case "binary":
-		return installBinary()
-	case "user":
-		return createUser()
-	case "dirs":
-		return createDirs()
-	case "config":
-		return createConfig()
-	case "systemd":
-		return installSystemd()
-	case "metadata":
-		return printMetadata()
-	default:
-		return fmt.Errorf("unknown install command: %s", args[0])
-	}
-}
-
-// RunConfig outputs a config value by key.
-// Supported keys: host
-func RunConfig(key string) error {
-	cfg := config.Load(ConfigFilePath)
-
-	switch key {
-	case "host":
-		fmt.Println(cfg.Host)
-	default:
-		return fmt.Errorf("unknown config key: %s", key)
-	}
-
-	return nil
-}
-
-func runSetup() error {
+func Run() error {
 	// All logs go to stderr, only API key goes to stdout
 	fmt.Fprintln(os.Stderr, "Setting up tracer-panel...")
 
-	if err := installBinary(); err != nil {
-		return fmt.Errorf("install binary: %w", err)
-	}
 	if err := createUser(); err != nil {
 		return fmt.Errorf("create user: %w", err)
 	}
@@ -83,18 +41,16 @@ func runSetup() error {
 		return fmt.Errorf("create config: %w", err)
 	}
 
-	// Always initialize panel and get API key
+	// Install systemd service if enabled at compile time
+	if err := maybeInstallSystemd(); err != nil {
+		return fmt.Errorf("install systemd: %w", err)
+	}
+
+	// Initialize panel and get API key
 	apiKey, err := initializeAndGetAPIKey()
 	if err != nil {
 		return fmt.Errorf("initialize panel: %w", err)
 	}
-
-	if err := installSystemd(); err != nil {
-		return fmt.Errorf("install systemd: %w", err)
-	}
-
-	fmt.Fprintln(os.Stderr, "\nSetup complete! Start the service with:")
-	fmt.Fprintln(os.Stderr, "  sudo systemctl enable --now tracer-panel")
 
 	// Output only API key to stdout
 	if apiKey != "" {
@@ -107,6 +63,7 @@ func runSetup() error {
 // initializeAndGetAPIKey runs panel initialization and returns the collector API key.
 // It uses TRACER_ADMIN_USERNAME and TRACER_ADMIN_PASSWORD env vars if available,
 // otherwise auto-generates admin credentials.
+// Returns an error if the panel is already initialized (to avoid overwriting existing API keys).
 func initializeAndGetAPIKey() (string, error) {
 	// Check if host is configured
 	cfg := config.Load(ConfigFilePath)
@@ -114,75 +71,29 @@ func initializeAndGetAPIKey() (string, error) {
 		return "", fmt.Errorf("panel host not configured")
 	}
 
-	// Get credentials from env vars or auto-generate
-	adminUser := os.Getenv("TRACER_ADMIN_USERNAME")
-	adminPass := os.Getenv("TRACER_ADMIN_PASSWORD")
-
-	if adminUser == "" {
-		adminUser = "admin"
-	}
-	if adminPass == "" {
-		var err error
-		adminPass, err = generateRandomPassword()
-		if err != nil {
-			return "", fmt.Errorf("generate admin password: %w", err)
-		}
-	}
-
 	fmt.Fprintln(os.Stderr, "Initializing panel...")
 
-	// Run init command
-	cmd := exec.Command("/usr/local/bin/tracer-panel", "-config", ConfigFilePath, "-init", "-username", adminUser, "-password", adminPass)
-	output, err := cmd.CombinedOutput()
+	ctx := context.Background()
+
+	// Try to initialize - env vars are handled internally by cli.InitPanel
+	result, err := cli.InitPanel(ctx, cli.InitOptions{})
 	if err != nil {
-		// Check if already initialized - if so, just generate a new API key
-		if strings.Contains(string(output), "already initialized") {
-			fmt.Fprintln(os.Stderr, "  Panel already initialized, generating new API key...")
-			cmd = exec.Command("/usr/local/bin/tracer-panel", "-config", ConfigFilePath, "-generate-api-key")
-			keyOutput, keyErr := cmd.CombinedOutput()
-			if keyErr != nil {
-				return "", fmt.Errorf("generate api key failed: %w\nOutput: %s", keyErr, string(keyOutput))
-			}
-			return strings.TrimSpace(string(keyOutput)), nil
+		if errors.Is(err, cli.ErrAlreadyInitialized) {
+			return "", fmt.Errorf("panel already initialized")
 		}
-		return "", fmt.Errorf("init failed: %w\nOutput: %s", err, string(output))
+		return "", fmt.Errorf("initialize panel: %w", err)
 	}
 
-	// Parse API key from output
-	outputStr := string(output)
-	for _, line := range strings.Split(outputStr, "\n") {
-		if strings.HasPrefix(line, "collector_api_key=") {
-			apiKey := strings.TrimPrefix(line, "collector_api_key=")
-			// Fix database permissions - init runs as root but panel runs as tracer-panel
-			if err := fixDBPermissions(); err != nil {
-				return "", fmt.Errorf("fix database permissions: %w", err)
-			}
-			return apiKey, nil
-		}
+	// New initialization succeeded
+	if result.IsNewPassword {
+		fmt.Fprintf(os.Stderr, "Admin password: %s\n", result.AdminPassword)
 	}
 
-	// Fix database permissions even if we didn't find the key
 	if err := fixDBPermissions(); err != nil {
 		return "", fmt.Errorf("fix database permissions: %w", err)
 	}
 
-	return "", fmt.Errorf("api key not found in init output")
-}
-
-// generateRandomPassword generates a random password for the admin user.
-func generateRandomPassword() (string, error) {
-	// Use openssl to generate a random password if available
-	cmd := exec.Command("openssl", "rand", "-base64", "16")
-	output, err := cmd.Output()
-	if err != nil {
-		// Fallback: generate a simple random string
-		b := make([]byte, 16)
-		for i := range b {
-			b[i] = byte(65 + (i % 26)) // A-Z
-		}
-		return string(b), nil
-	}
-	return strings.TrimSpace(string(output)), nil
+	return result.CollectorAPIKey, nil
 }
 
 // fixDBPermissions ensures the database files are owned by the panel user.
@@ -221,49 +132,21 @@ func fixDBPermissions() error {
 	return nil
 }
 
-func installBinary() error {
-	exe, err := os.Executable()
-	if err != nil {
-		return err
-	}
-
-	src, err := os.Open(exe)
-	if err != nil {
-		return err
-	}
-	defer src.Close()
-
-	dstPath := "/usr/local/bin/tracer-panel"
-	fmt.Fprintf(os.Stderr, "Installing binary to %s...\n", dstPath)
-
-	dst, err := os.OpenFile(dstPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0755)
-	if err != nil {
-		return err
-	}
-	defer dst.Close()
-
-	if _, err := dst.ReadFrom(src); err != nil {
-		return err
-	}
-
-	return nil
-}
-
 func createUser() error {
 	fmt.Fprintln(os.Stderr, "Creating user tracer-panel...")
 
-	if err := run("groupadd", "-r", "tracer-panel"); err != nil {
+	if err := run("groupadd", "-r", User); err != nil {
 		if !isExitError(err) {
 			return err
 		}
-		fmt.Fprintln(os.Stderr, "  Group already exists")
+		fmt.Fprintf(os.Stderr, "  Group %s already exists\n", User)
 	}
 
-	if err := run("useradd", "-r", "-g", "tracer-panel", "-s", "/usr/sbin/nologin", "-d", "/var/lib/tracer", "-c", "Tracer Panel Service", "tracer-panel"); err != nil {
+	if err := run("useradd", "-r", "-g", User, "-s", "/usr/sbin/nologin", "-d", "/var/lib/tracer", "-c", "Tracer Panel Service", User); err != nil {
 		if !isExitError(err) {
 			return err
 		}
-		fmt.Fprintln(os.Stderr, "  User already exists")
+		fmt.Fprintf(os.Stderr, "  User %s already exists\n", User)
 	}
 
 	return nil
@@ -272,20 +155,21 @@ func createUser() error {
 func createDirs() error {
 	fmt.Fprintln(os.Stderr, "Creating directories...")
 
-	if err := os.MkdirAll("/etc/tracer", 0755); err != nil {
-		return err
+	if err := os.MkdirAll(ConfigDir, 0755); err != nil {
+		return fmt.Errorf("could not create config directory %s with %w", ConfigDir, err)
 	}
-	if err := os.MkdirAll("/var/lib/tracer", 0750); err != nil {
-		return err
-	}
-
-	// Only chown the directories themselves, not recursively.
-	// The config file will be chowned separately when created.
-	if err := run("chown", "root:tracer-panel", "/etc/tracer"); err != nil {
-		return err
+	if err := run("chown", "root:tracer", ConfigDir); err != nil {
+		return fmt.Errorf("could not set ownership of %s with %w", ConfigDir, err)
 	}
 
-	return run("chown", "tracer-panel:tracer-panel", "/var/lib/tracer")
+	if err := os.MkdirAll(DataDir, 0750); err != nil {
+		return fmt.Errorf("could not create data directory %s with %w", DataDir, err)
+	}
+	if err := run("chown", "tracer:tracer", DataDir); err != nil {
+		return fmt.Errorf("could not set ownership of %s with %w", DataDir, err)
+	}
+
+	return nil
 }
 
 func createConfig() error {
@@ -312,45 +196,7 @@ func createConfig() error {
 		return err
 	}
 
-	return run("chown", "root:tracer-panel", ConfigFilePath)
-}
-
-func installSystemd() error {
-	fmt.Fprintln(os.Stderr, "Installing systemd service...")
-
-	var buf strings.Builder
-	data := struct {
-		ConfigFilePath string
-	}{
-		ConfigFilePath: ConfigFilePath,
-	}
-	if err := serviceTmpl.Execute(&buf, data); err != nil {
-		return fmt.Errorf("execute template: %w", err)
-	}
-
-	if err := os.WriteFile("/etc/systemd/system/tracer-panel.service", []byte(buf.String()), 0644); err != nil {
-		return err
-	}
-
-	return run("systemctl", "daemon-reload")
-}
-
-func printMetadata() error {
-	meta := map[string]any{
-		"binary": "tracer-panel",
-		"paths": map[string]string{
-			"install_dir": "/usr/local/bin",
-			"config_dir":  "/etc/tracer",
-			"config_file": ConfigFilePath,
-			"data_dir":    "/var/lib/tracer",
-		},
-		"user": map[string]string{
-			"name": "tracer-panel",
-		},
-	}
-	out, _ := yaml.Marshal(meta)
-	fmt.Print(string(out))
-	return nil
+	return run("chown", "root:tracer", ConfigFilePath)
 }
 
 func run(name string, args ...string) error {
@@ -366,4 +212,25 @@ func isExitError(err error) bool {
 		return true
 	}
 	return false
+}
+
+// RunConfig prints the value of a configuration key.
+// This is used by the "config" subcommand.
+func RunConfig(key string) error {
+	cfg := config.Load(ConfigFilePath)
+
+	switch key {
+	case "host":
+		fmt.Println(cfg.Host)
+	case "port":
+		fmt.Println(cfg.Port)
+	case "data_dir":
+		fmt.Println(cfg.DataDir)
+	case "config_file":
+		fmt.Println(ConfigFilePath)
+	default:
+		return fmt.Errorf("unknown config key: %s", key)
+	}
+
+	return nil
 }
