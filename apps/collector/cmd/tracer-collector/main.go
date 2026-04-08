@@ -72,7 +72,7 @@ func main() {
 			handleUpdate()
 			return
 		case "install":
-			handleInstall(flag.Args()[1:])
+			handleInstall()
 			return
 		default:
 			log.Fatalf("Unknown command: %s\n", flag.Arg(0))
@@ -443,8 +443,8 @@ func handleUpdate() {
 	}
 }
 
-func handleInstall(args []string) {
-	if err := install.Run(args); err != nil {
+func handleInstall() {
+	if err := install.Run(); err != nil {
 		log.Fatalf("Install failed: %v", err)
 	}
 }
