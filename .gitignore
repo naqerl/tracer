@@ -4,3 +4,4 @@ bin/
 tasks/
 /.agent-shell/
 /.tasks/
+config.mk
