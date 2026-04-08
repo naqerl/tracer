@@ -1,6 +1,6 @@
 [Unit]
 Description=Tracer Log Collector
-Documentation=https://github.com/ai-shift/tracer
+Documentation=https://git.naqerl.com/eco/tracer/about
 After=network.target
 
 [Service]
