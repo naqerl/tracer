@@ -1,13 +1,73 @@
 #!/bin/bash
 #
 # Tracer Installation Script
-# Usage: curl -fsSL https://raw.githubusercontent.com/ai-shift/tracer/main/install.sh | sudo bash
+# Usage: curl -fsSL https://git.naqerl.com/eco/tracer/plain/install.sh | sudo bash
 #
-# This script downloads binaries to /tmp and lets them handle their own installation.
+# This script installs Go if needed, downloads the latest stable source from main,
+# configures the build, and installs tracer. Supports multiple init systems via
+# ./configure options.
+#
+# The main branch always contains the latest stable version.
+#
+# Options:
+#   --without-panel    Install collector only (no panel)
+#   --without-systemd  Disable systemd support
 #
 set -euo pipefail
 
-REPO="ai-shift/tracer"
+REPO_URL="https://git.naqerl.com/eco/tracer"
+GO_MIN_VERSION="1.23.0"
+GO_DOWNLOAD_VERSION="1.23.6"
+
+# Stable version source - main branch always contains latest stable
+tracer_ref="main"
+
+# Parse command line arguments
+CONFIGURE_FLAGS=""
+WITHOUT_PANEL=false
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --without-panel)
+            WITHOUT_PANEL=true
+            CONFIGURE_FLAGS="$CONFIGURE_FLAGS --without-panel"
+            shift
+            ;;
+        --without-systemd)
+            CONFIGURE_FLAGS="$CONFIGURE_FLAGS --without-systemd"
+            shift
+            ;;
+        --prefix=*|--bindir=*|--sysconfdir=*|--localstatedir=*)
+            CONFIGURE_FLAGS="$CONFIGURE_FLAGS $1"
+            shift
+            ;;
+        --help|-h)
+            echo "Usage: install.sh [options]"
+            echo ""
+            echo "Installation options:"
+            echo "  --without-panel       Install collector only (no panel)"
+            echo "  --without-systemd     Disable systemd support"
+            echo "  --prefix=PATH         Installation prefix (default: /usr/local)"
+            echo "  --bindir=PATH         Binary directory (default: PREFIX/bin)"
+            echo "  --sysconfdir=PATH     Config directory (default: /etc)"
+            echo "  --localstatedir=PATH  State directory (default: /var)"
+            echo "  --help                Show this help"
+            echo ""
+            echo "Environment variables:"
+            echo "  TRACER_ADMIN_USERNAME Admin username (default: admin)"
+            echo "  TRACER_ADMIN_PASSWORD Admin password (auto-generated if not set)"
+            exit 0
+            ;;
+        *)
+            echo "Unknown option: $1"
+            echo "Use --help for usage information"
+            exit 1
+            ;;
+    esac
+done
+
+# Trim leading space
+CONFIGURE_FLAGS="${CONFIGURE_FLAGS# }"
 
 # Colors
 RED='\033[0;31m'
@@ -34,8 +94,135 @@ detect_arch() {
     esac
 }
 
-get_latest_version() {
-    curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" | grep '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/'
+version_ge() {
+    printf '%s\n%s\n' "$2" "$1" | sort -V -C
+}
+
+check_go() {
+    if command -v go &> /dev/null; then
+        local current_version
+        current_version=$(go version | grep -oE '[0-9]+\.[0-9]+(\.[0-9]+)?' | head -1)
+        if [[ -n "$current_version" ]]; then
+            if version_ge "$current_version" "$GO_MIN_VERSION"; then
+                log_info "Found Go $current_version"
+                return 0
+            else
+                log_warn "Go $current_version found, but $GO_MIN_VERSION+ required"
+            fi
+        fi
+    fi
+    return 1
+}
+
+install_go_temp() {
+    log_info "Go ${GO_MIN_VERSION}+ is required but not found in PATH"
+    echo ""
+    echo "Official installation instructions: https://go.dev/doc/install"
+    echo ""
+    
+    local arch
+    arch=$(detect_arch)
+    local go_tarball="go${GO_DOWNLOAD_VERSION}.linux-${arch}.tar.gz"
+    local go_url="https://go.dev/dl/${go_tarball}"
+    
+    # Create temp directory for Go installation
+    GO_TEMP_DIR=$(mktemp -d)
+    log_info "Downloading Go ${GO_DOWNLOAD_VERSION} to temporary directory: $GO_TEMP_DIR"
+    log_info "Go will be deleted after successful installation"
+    
+    if ! curl -fsSL "$go_url" -o "${GO_TEMP_DIR}/${go_tarball}"; then
+        rm -rf "$GO_TEMP_DIR"
+        log_error "Failed to download Go. Please install Go ${GO_MIN_VERSION}+ manually."
+        echo ""
+        echo "Installation instructions: https://go.dev/doc/install"
+        exit 1
+    fi
+    
+    log_info "Extracting Go..."
+    tar -C "$GO_TEMP_DIR" -xzf "${GO_TEMP_DIR}/${go_tarball}"
+    rm -f "${GO_TEMP_DIR}/${go_tarball}"
+    
+    # Export PATH to use temp Go
+    export PATH="${GO_TEMP_DIR}/go/bin:$PATH"
+    
+    if ! command -v go &> /dev/null; then
+        rm -rf "$GO_TEMP_DIR"
+        log_error "Go installation verification failed"
+        exit 1
+    fi
+    
+    log_info "Go $(go version) ready for build (temporary)"
+    echo ""
+}
+
+cleanup_go_temp() {
+    if [[ -n "${GO_TEMP_DIR:-}" && -d "$GO_TEMP_DIR" ]]; then
+        log_info "Cleaning up temporary Go installation..."
+        rm -rf "$GO_TEMP_DIR"
+    fi
+}
+
+clone_repo() {
+    local dest_dir="$1"
+
+    log_info "Downloading tracer source (stable: ${tracer_ref})..."
+
+    local snapshot_url="${REPO_URL}/snapshot/tracer-${tracer_ref}.tar.gz"
+    if curl -fsSL "$snapshot_url" 2>/dev/null | tar -xz -C "$dest_dir" --strip-components=1; then
+        return 0
+    fi
+
+    log_error "Failed to download tracer source"
+    return 1
+}
+
+install_tracer() {
+    local repo_dir="$1"
+    local go_was_temp="${2:-false}"
+    
+    cd "$repo_dir"
+    
+    # Run configure with all flags
+    log_info "Configuring build..."
+    if [[ -n "$CONFIGURE_FLAGS" ]]; then
+        log_info "Configure flags: $CONFIGURE_FLAGS"
+        # shellcheck disable=SC2086
+        ./configure $CONFIGURE_FLAGS
+    else
+        ./configure
+    fi
+    
+    # Build
+    log_info "Building..."
+    make build
+    
+    # Install
+    log_info "Installing..."
+    make install
+    
+    # Cleanup temp Go on successful installation
+    if [[ "$go_was_temp" == "true" ]]; then
+        cleanup_go_temp
+    fi
+}
+
+start_services() {
+    if [[ -f /etc/systemd/system/tracer-collector.service ]]; then
+        log_info "Starting tracer-collector service..."
+        systemctl daemon-reload 2>/dev/null || true
+        systemctl enable --now tracer-collector 2>/dev/null || log_warn "Failed to start tracer-collector"
+    fi
+    
+    if [[ "$WITHOUT_PANEL" == "false" ]] && [[ -f /etc/systemd/system/tracer-panel.service ]]; then
+        log_info "Starting tracer-panel service..."
+        systemctl enable --now tracer-panel 2>/dev/null || log_warn "Failed to start tracer-panel"
+        
+        # Add self-monitoring
+        sleep 2
+        tracer-collector add --health "http://localhost:8080/auth/login" tracer-panel.service 2>/dev/null || true
+    fi
+    
+    tracer-collector add tracer-collector.service 2>/dev/null || true
 }
 
 main() {
@@ -47,78 +234,80 @@ main() {
     echo "=========================================="
     echo ""
 
-    local version=${TRACER_VERSION:-$(get_latest_version)}
-    log_info "Installing tracer ${version}..."
-
-    local tmp_dir=$(mktemp -d)
-    trap "rm -rf ${tmp_dir}" EXIT
-
-    # Download binaries to /tmp
-    if [[ -n "${TRACER_BIN_DIR:-}" ]]; then
-        log_info "Using local binaries from ${TRACER_BIN_DIR}"
-        cp "${TRACER_BIN_DIR}/tracer-collector" "${tmp_dir}/"
-        cp "${TRACER_BIN_DIR}/tracer-panel" "${tmp_dir}/" 2>/dev/null || true
-    else
-        local arch=$(detect_arch)
-        log_info "Downloading tracer ${version} for linux-${arch}..."
-        curl -fsSL "https://github.com/${REPO}/releases/download/${version}/tracer-${version}-linux-${arch}.tar.gz" \
-            | tar -xz -C "${tmp_dir}"
+    # Check Go early and show warning upfront if we'll need temporary install
+    if ! check_go &>/dev/null; then
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        log_warn "Go is not installed or version is below ${GO_MIN_VERSION}"
+        log_warn "This script will temporarily download Go to build tracer."
+        log_warn "The self-update feature will NOT work unless Go is permanently installed."
+        echo ""
+        echo "To enable updates, please install Go:"
+        echo "  https://go.dev/doc/install"
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo ""
     fi
 
-    # Run panel self-installation first (unless collector-only) to initialize and get API key
-    local api_key=""
-    if [[ -z "${TRACER_COLLECTOR_ONLY:-}" ]]; then
-        log_info "Setting up tracer-panel..."
-        # Panel logs to stderr, only API key goes to stdout
-        api_key=$("${tmp_dir}/tracer-panel" install setup)
-        if [[ -n "$api_key" ]]; then
-            log_info "Panel initialized, API key generated"
-        fi
+    local go_was_temp=false
+    local GO_TEMP_DIR=""
+    
+    if ! check_go; then
+        install_go_temp
+        go_was_temp=true
     fi
-
-    # Run collector self-installation from /tmp
-    log_info "Setting up tracer-collector..."
-    if [[ -n "$api_key" ]]; then
-        # Pass API key to collector via flag
-        "${tmp_dir}/tracer-collector" install setup -api-key "$api_key"
-    else
-        "${tmp_dir}/tracer-collector" install setup
+    
+    local src_dir
+    src_dir=$(mktemp -d)
+    
+    if ! clone_repo "$src_dir"; then
+        rm -rf "$src_dir"
+        exit 1
     fi
-
+    
+    if ! install_tracer "$src_dir" "$go_was_temp"; then
+        log_error "Installation failed"
+        rm -rf "$src_dir"
+        exit 1
+    fi
+    
+    log_info "Cleaning up build directory..."
+    rm -rf "$src_dir"
+    
     echo ""
     echo "=============================================="
     log_info "Installation complete!"
     echo "=============================================="
     echo ""
-
-    # Start services
-    log_info "Starting services..."
-    systemctl enable --now tracer-collector
-
-    if [[ -z "${TRACER_COLLECTOR_ONLY:-}" ]]; then
-        systemctl enable --now tracer-panel
+    
+    if [[ "$WITHOUT_PANEL" == "false" ]]; then
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        log_info "Panel initialization:"
+        echo "  Run: tracer-panel -init -username <user> -password <pass>"
+        echo "  Or visit http://<host>:8080/setup to create the admin account"
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo ""
     fi
-
-    # Add self-monitoring
-    if [[ -z "${TRACER_COLLECTOR_ONLY:-}" ]]; then
-        log_info "Configuring self-monitoring..."
-
-        # Wait for panel to be ready by watching journalctl for 5 log entries
-        journalctl -u tracer-panel -f | timeout 10 head -n 5 || true
-        tracer-collector add \
-                         --health "$(tracer-panel config host)/auth/login" \
-                         tracer-panel.service || true
+    
+    if [[ "$go_was_temp" == "true" ]]; then
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        log_warn "IMPORTANT: Go was installed temporarily for this build only."
+        log_warn "The self-update feature requires Go to be permanently installed."
+        echo ""
+        echo "To enable updates, please install Go:"
+        echo "  https://go.dev/doc/install"
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo ""
     fi
-
-    # Wait for collector logs
-    journalctl -u tracer-collector -f | timeout 10 head -n 5 || true
-    tracer-collector add tracer-collector.service || true
+    
+    start_services
 
     echo ""
     echo "Services status:"
-    systemctl status tracer-collector --no-pager -l | head -5
-    if [[ -z "${TRACER_COLLECTOR_ONLY:-}" ]]; then
-        systemctl status tracer-panel --no-pager -l | head -5
+    systemctl status tracer-collector --no-pager -l 2>/dev/null | head -5 || \
+        echo "  tracer-collector: check 'systemctl status tracer-collector'"
+    
+    if [[ "$WITHOUT_PANEL" == "false" ]]; then
+        systemctl status tracer-panel --no-pager -l 2>/dev/null | head -5 || \
+            echo "  tracer-panel: check 'systemctl status tracer-panel'"
     fi
 }
 
