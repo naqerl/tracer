@@ -30,23 +30,77 @@ Any other logs may show some performance degradation or health status but in bot
 
 ## Installation
 
-### Install
+### Quick Install
 
 **Full install (panel + collector):**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ai-shift/tracer/main/install.sh | sudo bash
+curl -fsSL https://git.naqerl.com/eco/tracer/plain/install.sh | sudo bash
 ```
 
 **Collector only (for remote servers):**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ai-shift/tracer/main/install.sh | sudo bash -s -- --collector-only
+export TRACER_COLLECTOR_ONLY=1
+curl -fsSL https://git.naqerl.com/eco/tracer/plain/install.sh | sudo bash
 ```
 
-This installs both components:
-- **tracer-collector** - runs as dedicated `tracer-collector` user
-- **tracer-panel** - runs as dedicated `tracer` user (unless `--collector-only`)
+### Build from Source
+
+Tracer uses GNU Build System (configure + make) for flexible installation:
+
+```bash
+git clone https://git.naqerl.com/eco/tracer.git
+cd tracer
+
+# Configure with your preferred options
+./configure --prefix=/usr/local
+
+# Build
+make build
+
+# Install (requires root)
+sudo make install
+```
+
+#### Configure Options
+
+The `./configure` script selects which init system files to install:
+
+```bash
+# Auto-detect init system (default)
+./configure
+
+# Explicit systemd service files
+./configure --with-systemd
+
+# No init system - manual service management only
+./configure --without-init
+
+# Podman Quadlet files (systemd-managed containers)
+./configure --with-podman
+
+# Docker service helpers
+./configure --with-docker
+
+# Guix Shepherd service definitions
+./configure --with-shepherd
+
+# Multiple init systems (e.g., systemd + podman)
+./configure --with-systemd --with-podman
+
+# Custom paths
+./configure --prefix=/usr --sysconfdir=/etc --localstatedir=/var
+```
+
+**Note:** `--with-podman` and `--with-docker` install **service files**, not images. To build images, use `make podman-build` or `make docker-build` (see Container Images section below).
+
+After installation with `--without-init`, start services manually:
+
+```bash
+sudo -u tracer-collector /usr/local/bin/tracer-collector -config /etc/tracer/collector.yaml
+sudo -u tracer-panel /usr/local/bin/tracer-panel -config /etc/tracer/panel.yaml
+```
 
 ### Configure collector
 
@@ -162,6 +216,62 @@ Access the panel at http://localhost:8080
 - Keep-alive ping/pong for connection health
 
 ## Development
+
+### Build from Source
+
+```bash
+# Configure (optional, uses sensible defaults)
+./configure
+
+# Build binaries
+make build
+
+# Run tests
+make test
+
+# Lint
+make vet
+```
+
+### Manual Installation (without curl script)
+
+```bash
+./configure --prefix=/usr/local
+make build
+sudo make install
+sudo make install-systemd  # If using systemd
+```
+
+### Uninstall
+
+```bash
+sudo make uninstall
+```
+
+### Container Images
+
+**Build standalone container image (no root needed):**
+
+```bash
+make build
+make docker-build   # Creates tracer:latest Docker image
+# OR
+make podman-build   # Creates tracer:latest Podman image
+```
+
+**Systemd-managed containers (root needed for Quadlet files):**
+
+For systemd to manage your containers (auto-start, restart, logging):
+
+```bash
+./configure --with-podman
+make build
+sudo make install   # Installs to /etc/containers/systemd/
+systemctl --user enable --now tracer-panel
+systemctl --user enable --now tracer-collector
+```
+
+This creates [Podman Quadlet](https://docs.podman.io/en/latest/markdown/podman-systemd.unit.5.html) files - systemd units that run containers instead of binaries.
 
 ### Deployment
 
