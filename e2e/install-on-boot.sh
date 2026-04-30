@@ -1,26 +1,28 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-export TRACER_BIN_DIR=/opt/tracer-bin
-export TRACER_VERSION=local
-export TRACER_PANEL_HOST="${TRACER_PANEL_HOST:-http://localhost:8080}"
-export TRACER_ADMIN_USERNAME="${TRACER_ADMIN_USERNAME:-demo}"
-export TRACER_ADMIN_PASSWORD="${TRACER_ADMIN_PASSWORD:-demo123}"
+# E2E bootstrap script - runs self-install for pre-built binaries.
+# Binaries are built with correct ldflags during container image build.
 
-/opt/tracer/install.sh
+export TRACER_PANEL_HOST=http://localhost:8080
 
-# Register demo apps in collector
-collector_bin="/usr/local/bin/tracer-collector"
+tracer-collector install
+tracer-panel install
 
-units=(
-    tracer-demo-api.service
-    tracer-demo-worker.service
-    tracer-demo-cron.service
-)
+systemctl start tracer-demo-api tracer-demo-worker tracer-demo-cron
+systemctl start tracer-collector tracer-panel
 
-for unit in "${units[@]}"; do
-    journalctl -u "$unit" -f | timeout 10 head -n 5 || true
-    "$collector_bin" add "$unit" || true
-done
+sleep 3
 
-systemctl restart tracer-collector.service
+api_key=$(tracer-panel -init -username demo -password demo123 2>/dev/null | grep '^collector_api_key=' | cut -d= -f2)
+if [ -n "$api_key" ]; then
+    tracer-collector set api-key "$api_key"
+fi
+
+tracer-collector add tracer-demo-api.service || true
+tracer-collector add tracer-demo-worker.service || true
+tracer-collector add tracer-demo-cron.service || true
+tracer-collector add -health "http://localhost:8080/auth/login" tracer-panel.service || true
+tracer-collector add tracer-collector.service || true
+
+systemctl restart tracer-collector
