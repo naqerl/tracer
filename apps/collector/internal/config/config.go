@@ -2,7 +2,6 @@ package config
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"time"
 
@@ -15,7 +14,6 @@ import (
 	"tracer/apps/collector/internal/transport"
 )
 
-// Config is the pure YAML configuration representation
 type Config struct {
 	Transport transport.Spec `yaml:"transport"`
 
@@ -39,7 +37,6 @@ type LifecycleSpec struct {
 	ExitPattern    string `yaml:"exit_pattern"`
 }
 
-// Default returns the default collector configuration
 func Default() Config {
 	hostname, _ := os.Hostname()
 	if hostname == "" {
@@ -60,7 +57,6 @@ func Default() Config {
 	}
 }
 
-// String returns the YAML representation of the configuration
 func (c Config) String() (string, error) {
 	out, err := yaml.Marshal(c)
 	if err != nil {
@@ -69,26 +65,20 @@ func (c Config) String() (string, error) {
 	return string(out), nil
 }
 
-// Load reads and parses configuration file, overlaying on top of defaults.
-// The path must be a non-empty string (resolved by caller).
-func Load(path string) Config {
+func Load(path string) (Config, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
-		log.Fatalf("failed to read config: %s", err)
+		return Config{}, fmt.Errorf("read config: %w", err)
 	}
 
-	// Start with defaults
 	cfg := Default()
 
-	// Overlay with file contents
 	if err := yaml.Unmarshal(raw, &cfg); err != nil {
-		log.Fatalf("failed to decode config: %s", err)
+		return Config{}, fmt.Errorf("decode config: %w", err)
 	}
-	return cfg
+	return cfg, nil
 }
 
-// Persist writes the configuration to the specified path.
-// The path must be a non-empty string (resolved by caller).
 func (c Config) Persist(path string) error {
 	str, err := c.String()
 	if err != nil {

@@ -1,8 +1,8 @@
 package config
 
 import (
+	"errors"
 	"fmt"
-	"log"
 	"os"
 
 	"gopkg.in/yaml.v3"
@@ -23,7 +23,6 @@ const (
 	defaultRetentionDays = 90
 )
 
-// DataDir returns the data directory, checking env var first
 func DataDir() string {
 	if dir := os.Getenv("TRACER_DATA_DIR"); dir != "" {
 		return dir
@@ -31,7 +30,6 @@ func DataDir() string {
 	return defaultDataDir
 }
 
-// Default returns the default panel configuration
 func Default() Panel {
 	return Panel{
 		Port:          defaultPort,
@@ -42,7 +40,6 @@ func Default() Panel {
 	}
 }
 
-// String returns the YAML representation of the configuration
 func (p Panel) String() (string, error) {
 	out, err := yaml.Marshal(p)
 	if err != nil {
@@ -51,25 +48,21 @@ func (p Panel) String() (string, error) {
 	return string(out), nil
 }
 
-// Load reads and parses configuration file, overlaying on top of defaults.
-// The path must be a non-empty string (resolved by caller).
-func Load(path string) Panel {
+func Load(path string) (Panel, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
-		log.Fatalf("failed to read config: %s", err)
+		return Panel{}, fmt.Errorf("read config: %w", err)
 	}
 
-	// Start with defaults
 	cfg := Default()
 
-	// Overlay with file contents
 	if err := yaml.Unmarshal(raw, &cfg); err != nil {
-		log.Fatalf("failed to decode config: %s", err)
+		return Panel{}, fmt.Errorf("decode config: %w", err)
 	}
 
 	if cfg.Host == "" {
-		log.Fatalf("host is required (e.g., https://tracer.example.com)")
+		return Panel{}, errors.New("host is required (e.g., https://tracer.example.com)")
 	}
 
-	return cfg
+	return cfg, nil
 }
