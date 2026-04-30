@@ -13,7 +13,6 @@ import (
 type contextKey string
 
 const (
-	userContextKey      contextKey = "user"
 	loginPathContextKey contextKey = "login_path"
 	sessionCookie       string     = "tracer_session"
 	defaultLoginPath    string     = "/auth/login"
@@ -26,7 +25,7 @@ var (
 
 // GetUserID returns the authenticated user ID from the request context.
 func GetUserID(r *http.Request) (int64, error) {
-	userID, ok := r.Context().Value(userContextKey).(int64)
+	userID, ok := middleware.GetUserID(r)
 	if !ok {
 		return userID, ErrUnauthorized
 	}
@@ -86,6 +85,10 @@ func RedirectToLogin(w http.ResponseWriter, r *http.Request) {
 func BuildAuthMiddleware(authService *authsvc.Service, userService *usersvc.Service) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if middleware.HasUserID(r) {
+				next.ServeHTTP(w, r)
+				return
+			}
 			if middleware.IsMarkdownFormat(r) {
 				attachMarkdownContext(w, r, next, authService, userService)
 				return
@@ -95,21 +98,19 @@ func BuildAuthMiddleware(authService *authsvc.Service, userService *usersvc.Serv
 	}
 }
 
-// FIXME: What in the fuck is going on here
 func attachMarkdownContext(w http.ResponseWriter, r *http.Request, next http.Handler, authService *authsvc.Service, userService *usersvc.Service) {
 	apiKey := r.Header.Get("X-API-Key")
 	if apiKey != "" {
 		userID, err := authService.ValidateUserAPIKey(r.Context(), apiKey, userService)
 		if err == nil {
-			ctx := context.WithValue(r.Context(), userContextKey, userID)
-			next.ServeHTTP(w, r.WithContext(ctx))
+			r = middleware.SetUserID(r, userID)
+			next.ServeHTTP(w, r)
 			return
 		}
 	}
 	attachSessionContext(w, r, next, authService)
 }
 
-// FIXME: What in the fuck is going on here again
 func attachSessionContext(w http.ResponseWriter, r *http.Request, next http.Handler, authService *authsvc.Service) {
 	cookie, err := r.Cookie(sessionCookie)
 	if err != nil {
@@ -129,8 +130,8 @@ func attachSessionContext(w http.ResponseWriter, r *http.Request, next http.Hand
 		return
 	}
 
-	ctx := context.WithValue(r.Context(), userContextKey, userID)
-	next.ServeHTTP(w, r.WithContext(ctx))
+	r = middleware.SetUserID(r, userID)
+	next.ServeHTTP(w, r)
 }
 
 func SetSessionCookie(w http.ResponseWriter, r *http.Request, token string, maxAge int) {
