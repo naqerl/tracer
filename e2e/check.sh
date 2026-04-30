@@ -15,17 +15,17 @@ expected_units=(
   install-on-boot.service
   tracer-panel.service
   tracer-collector.service
-  tracer-demo-api.service
-  tracer-demo-worker.service
-  tracer-demo-cron.service
+  demo-api.service
+  demo-worker.service
+  demo-cron.service
 )
 
 app_names=(
   tracer-panel
   tracer-collector
-  tracer-demo-api
-  tracer-demo-worker
-  tracer-demo-cron
+  demo-api
+  demo-worker
+  demo-cron
 )
 
 log() {
@@ -65,14 +65,14 @@ wait_for_logs() {
   local attempt page compact
   for attempt in $(seq 1 30); do
     # Check the stats endpoint directly since main page loads async via htmx
-    page="$(curl -fsS "${DEMO_URL}/panel/collectors/${collector}/apps/tracer-demo-api/stats" -H "Cookie: ${COOKIE}")"
+    page="$(curl -fsS "${DEMO_URL}/panel/collectors/${collector}/apps/demo-api/stats" -H "Cookie: ${COOKIE}")"
     compact="$(tr '\n' ' ' <<<"${page}")"
     if grep -Eq '<div class="text-2xl font-bold">[1-9][0-9]*</div>.*<div class="text-xs text-fg-secondary">Total Logs</div>' <<<"${compact}"; then
       return 0
     fi
     sleep 1
   done
-  fail "tracer-demo-api did not show ingested logs"
+  fail "demo-api did not show ingested logs"
 }
 
 wait_for_panel_health() {

@@ -7,9 +7,10 @@ set -euo pipefail
 export TRACER_PANEL_HOST=http://localhost:8080
 
 tracer-collector install
+tracer-collector set name demo
 tracer-panel install
 
-systemctl start tracer-demo-api tracer-demo-worker tracer-demo-cron
+systemctl start demo-api demo-worker demo-cron
 systemctl start tracer-collector tracer-panel
 
 sleep 3
@@ -19,9 +20,9 @@ if [ -n "$api_key" ]; then
     tracer-collector set api-key "$api_key"
 fi
 
-tracer-collector add tracer-demo-api.service || true
-tracer-collector add tracer-demo-worker.service || true
-tracer-collector add tracer-demo-cron.service || true
+tracer-collector add demo-api.service || true
+tracer-collector add demo-worker.service || true
+tracer-collector add demo-cron.service || true
 tracer-collector add -health "http://localhost:8080/auth/login" tracer-panel.service || true
 tracer-collector add tracer-collector.service || true
 

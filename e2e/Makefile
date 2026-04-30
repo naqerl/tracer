@@ -10,7 +10,7 @@ DEMO_IMAGE ?= tracer-e2e:local
 DEMO_CONTAINER ?= tracer-e2e
 DEMO_PORT ?= 18081
 DEMO_PANEL_URL ?= http://localhost:$(DEMO_PORT)
-DEMO_UNITS := tracer-demo-api.service tracer-demo-worker.service tracer-demo-cron.service
+DEMO_UNITS := demo-api.service demo-worker.service demo-cron.service
 
 build:
 	podman build -t $(DEMO_IMAGE) -f $(DEMO_DIR)/Containerfile $(ROOT_DIR)

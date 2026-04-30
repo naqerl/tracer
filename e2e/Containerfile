@@ -39,9 +39,9 @@ COPY e2e/systemd/ /etc/systemd/system/
 RUN chmod 0755 /opt/tracer/e2e/install-on-boot.sh /usr/local/bin/tracer-demo-loggen && \
     mkdir -p /etc/systemd/system/multi-user.target.wants && \
     ln -sf /etc/systemd/system/install-on-boot.service /etc/systemd/system/multi-user.target.wants/install-on-boot.service && \
-    ln -sf /etc/systemd/system/tracer-demo-api.service /etc/systemd/system/multi-user.target.wants/tracer-demo-api.service && \
-    ln -sf /etc/systemd/system/tracer-demo-worker.service /etc/systemd/system/multi-user.target.wants/tracer-demo-worker.service && \
-    ln -sf /etc/systemd/system/tracer-demo-cron.service /etc/systemd/system/multi-user.target.wants/tracer-demo-cron.service
+    ln -sf /etc/systemd/system/demo-api.service /etc/systemd/system/multi-user.target.wants/demo-api.service && \
+    ln -sf /etc/systemd/system/demo-worker.service /etc/systemd/system/multi-user.target.wants/demo-worker.service && \
+    ln -sf /etc/systemd/system/demo-cron.service /etc/systemd/system/multi-user.target.wants/demo-cron.service
 
 STOPSIGNAL SIGRTMIN+3
 EXPOSE 8080
