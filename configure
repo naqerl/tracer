@@ -14,29 +14,40 @@ log_warn() { echo "[configure] WARNING: $1"; }
 log_error() { echo "[configure] ERROR: $1"; }
 
 while [ $# -gt 0 ]; do
-	case $1 in
-		--prefix=*) PREFIX="${1#*=}"; shift ;;
-		--bindir=*) BINDIR="${1#*=}"; shift ;;
-		--sysconfdir=*) SYSCONFDIR="${1#*=}"; shift ;;
-		--localstatedir=*) LOCALSTATEDIR="${1#*=}"; shift ;;
-		--without-systemd) SYSTEMD="no"; shift ;;
-		--without-panel) WITH_PANEL="no"; shift ;;
-		--help|-h)
-			echo "Usage: ./configure [options]"
-			echo "  --prefix=PATH         Installation prefix (default: /usr/local)"
-			echo "  --bindir=PATH         Binary directory (default: PREFIX/bin)"
-			echo "  --sysconfdir=PATH     Config directory (default: /etc)"
-			echo "  --localstatedir=PATH  State directory (default: /var)"
-			echo "  --without-systemd     Disable systemd support"
-			echo "  --without-panel       Install collector only (no panel)"
-			echo "  --help                Show this help"
-			echo ""
-			echo "Systemd is enabled by default if present on the system."
-			echo "Use --without-systemd to force disable."
-			exit 0
-			;;
-		*) log_error "Unknown option: $1"; exit 1 ;;
-	esac
+        case $1 in
+                --prefix=*) PREFIX="${1#*=}"; shift ;;
+                --bindir=*) BINDIR="${1#*=}"; shift ;;
+                --sysconfdir=*) SYSCONFDIR="${1#*=}"; shift ;;
+                --localstatedir=*) LOCALSTATEDIR="${1#*=}"; shift ;;
+                --with-systemd=yes) SYSTEMD="yes"; shift ;;
+                --with-systemd=no) SYSTEMD="no"; shift ;;
+                --with-systemd=auto) SYSTEMD="auto"; shift ;;
+                --with-systemd=*)
+                        log_error "Invalid value for --with-systemd: ${1#*=}. Must be yes, no, or auto"
+                        exit 1
+                        ;;
+                --with-panel=yes) WITH_PANEL="yes"; shift ;;
+                --with-panel=no) WITH_PANEL="no"; shift ;;
+                --with-panel=*)
+                        log_error "Invalid value for --with-panel: ${1#*=}. Must be yes or no"
+                        exit 1
+                        ;;
+                --help|-h)
+                        echo "Usage: ./configure [options]"
+                        echo "  --prefix=PATH              Installation prefix (default: /usr/local)"
+                        echo "  --bindir=PATH              Binary directory (default: PREFIX/bin)"
+                        echo "  --sysconfdir=PATH          Config directory (default: /etc)"
+                        echo "  --localstatedir=PATH       State directory (default: /var)"
+                        echo "  --with-systemd=yes|no|auto Enable/disable systemd support (default: auto)"
+                        echo "  --with-panel=yes|no        Include panel build (default: yes)"
+                        echo "  --help                     Show this help"
+                        echo ""
+                        echo "Systemd auto-detection is performed when --with-systemd=auto (the default)."
+                        echo "Use yes/no to force a specific behavior."
+                        exit 0
+                        ;;
+                *) log_error "Unknown option: $1"; exit 1 ;;
+        esac
 done
 
 [ -z "$BINDIR" ] && BINDIR="$PREFIX/bin"
@@ -45,54 +56,42 @@ log_info "Configuring tracer build..."
 echo
 
 version_ge() {
-	printf "%s\n%s\n" "$2" "$1" | sort -V -C
+        printf "%s\n%s\n" "$2" "$1" | sort -V -C
 }
 
 check_go() {
-	if command -v go > /dev/null 2>&1; then
-		local current_version
-		current_version=$(go version | grep -oE "[0-9]+\.[0-9]+(\.[0-9]+)?" | head -1)
-		if [ -n "$current_version" ]; then
-			if version_ge "$current_version" "$GO_MIN_VERSION"; then
-				log_info "Found Go $current_version"
-				return 0
-			else
-				log_error "Go $current_version found, but $GO_MIN_VERSION+ required"
-				echo ""
-				echo "Please upgrade Go to version $GO_MIN_VERSION or later."
-				echo "Official installation instructions: https://go.dev/doc/install"
-				exit 1
-			fi
-		fi
-	fi
-
-	log_error "Go is not installed or not found in PATH"
-	echo ""
-	echo "Go $GO_MIN_VERSION or later is required to build tracer."
-	echo "Official installation instructions: https://go.dev/doc/install"
-	echo ""
-	echo "Note: The install.sh script can temporarily download and use Go for installation,"
-	echo "      but Go must be permanently installed for the self-update feature to work."
-	exit 1
+        if ! command -v go > /dev/null 2>&1; then
+                log_error "Go is not installed or not found in PATH"
+                exit 1
+        fi
+        local go_version
+        go_version=$(go version | awk '{print $3}' | sed 's/^go//')
+        if ! version_ge "$go_version" "$GO_MIN_VERSION"; then
+                log_error "Go version $go_version is too old. Minimum required: $GO_MIN_VERSION"
+                exit 1
+        fi
+        log_info "Found Go $go_version"
 }
 
 detect_systemd() {
-	if [ "$SYSTEMD" = "no" ]; then
-		log_info "Systemd disabled by user"
-		return
-	fi
-	if command -v systemctl > /dev/null 2>&1 && [ -d /run/systemd ]; then
-		SYSTEMD="yes"
-		log_info "Systemd detected"
-	else
-		SYSTEMD="no"
-		log_info "Systemd not detected"
-	fi
+        case "$SYSTEMD" in
+                yes) log_info "Systemd enabled by user" ;;
+                no) log_info "Systemd disabled by user" ;;
+                auto)
+                        if command -v systemctl > /dev/null 2>&1 && [ -d /run/systemd ]; then
+                                SYSTEMD="yes"
+                                log_info "Systemd detected"
+                        else
+                                SYSTEMD="no"
+                                log_info "Systemd not detected"
+                        fi
+                        ;;
+        esac
 }
 
 generate_config() {
-	mkdir -p build
-	cat > build/config.mk << EOF
+        mkdir -p build
+        cat > build/config.mk << EOF
 # Generated by configure
 PREFIX = $PREFIX
 BINDIR = $BINDIR
@@ -107,39 +106,43 @@ CGO_ENABLED = 0
 COLLECTOR_SRC = ./apps/collector/cmd/tracer-collector/main.go
 PANEL_SRC = ./apps/panel/cmd/tracer-panel/main.go
 BUILD_DIR = ./build
+TRACER_GROUP = tracer
 COLLECTOR_USER = tracer-collector
 PANEL_USER = tracer-panel
 EOF
-	log_info "Generated build/config.mk"
+        log_info "Generated build/config.mk"
 }
 
 print_summary() {
-	echo
-	echo "========================================"
-	echo "Configuration Summary"
-	echo "========================================"
-	echo
-	echo "Installation paths:"
-	echo "  prefix:        $PREFIX"
-	echo "  bindir:        $BINDIR"
-	echo "  sysconfdir:    $SYSCONFDIR"
-	echo "  localstatedir: $LOCALSTATEDIR"
-	echo
-	echo "Options:"
-	echo "  systemd:       $SYSTEMD"
-	echo "  panel:         $WITH_PANEL"
-	[ "$SYSTEMD" = "no" ] && echo "Note: Services must be started manually"
-	[ "$WITH_PANEL" = "no" ] && echo "Note: Panel will not be installed"
-	echo
-	echo "Type 'make' to build, 'sudo make install' to install."
-	echo
+        echo
+        echo "========================================"
+        echo "Configuration Summary"
+        echo "========================================"
+        echo
+        echo "Installation paths:"
+        echo "  prefix:        $PREFIX"
+        echo "  bindir:        $BINDIR"
+        echo "  sysconfdir:    $SYSCONFDIR"
+        echo "  localstatedir: $LOCALSTATEDIR"
+        echo
+        echo "Options:"
+        echo "  systemd:       $SYSTEMD"
+        echo "  panel:         $WITH_PANEL"
+        echo "  tracer group:  tracer"
+        echo "  panel user:    tracer-panel"
+        echo "  collector user: tracer-collector"
+        [ "$SYSTEMD" = "no" ] && echo "Note: Services must be started manually"
+        [ "$WITH_PANEL" = "no" ] && echo "Note: Panel will not be installed"
+        echo
+        echo "Type 'make' to build, 'sudo make install' to install."
+        echo
 }
 
 main() {
-	check_go
-	detect_systemd
-	generate_config
-	print_summary
+        check_go
+        detect_systemd
+        generate_config
+        print_summary
 }
 
 main "$@"
