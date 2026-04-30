@@ -1,0 +1,88 @@
+#+title: Tracer
+#+options: toc:nil num:nil
+#+html_head: <link rel="stylesheet" type="text/css" href="/style.css" />
+
+#+begin_export html
+<section class="hero">
+  <div class="hero-text">
+    <h1>Tracer</h1>
+    <p class="slogan">the first and the last monitoring tool you need to install</p>
+  </div>
+  <div class="hero-demo">
+    <iframe src="https://git.naqerl.com/eco/tracer"
+            loading="lazy" title="Tracer main interface demo">
+    </iframe>
+  </div>
+</section>
+#+end_export
+
+* Data Collector
+
+#+begin_export html
+<div class="section-card">
+  <div class="card-img">
+    <iframe src="https://git.naqerl.com/eco/tracer"
+            loading="lazy" title="Tracer collector demo">
+    </iframe>
+  </div>
+  <div class="card-desc">
+#+end_export
+
+The collector sits on each host and gathers metrics, logs, and traces
+with near-zero overhead.  It streams data back to the panel over a
+secure, lightweight protocol.
+
+#+begin_export html
+  </div>
+</div>
+#+end_export
+
+* Application View
+
+#+begin_export html
+<div class="section-card">
+  <div class="card-img">
+    <iframe src="https://git.naqerl.com/eco/tracer"
+            loading="lazy" title="Tracer application view demo">
+    </iframe>
+  </div>
+  <div class="card-desc">
+#+end_export
+
+Drill into individual applications and services.  See request
+latencies, error rates, and dependency graphs per app — no extra
+instrumentation required.
+
+#+begin_export html
+  </div>
+</div>
+#+end_export
+
+* Installation
+
+#+begin_export html
+<div class="install-panel">
+  <div class="card">
+    <h3>One-liner install</h3>
+    <pre><code>curl -fsSL https://git.naqerl.com/eco/tracer/install.sh | sh</code></pre>
+    <p>A single command sets up the panel, the collector, and starts everything.</p>
+  </div>
+  <div class="card">
+    <h3>Try it in a container</h3>
+    <p>A container image is available for testing without installing anything on your host:</p>
+    <pre><code>docker run --rm -p 8080:8080 git.naqerl.com/eco/tracer:latest</code></pre>
+  </div>
+</div>
+#+end_export
+
+* Footer
+
+#+begin_export html
+<div class="site-footer">
+  <a href="https://git.naqerl.com/eco/tracer">Source code</a>
+  <span class="sep">·</span>
+  <a href="https://naqerl.com">Author</a>
+  <span class="sep">·</span>
+  <a href="mailto:me@naqerl.com">me@naqerl.com</a>
+</div>
+#+end_export
