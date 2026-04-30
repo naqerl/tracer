@@ -1,10 +1,7 @@
-.PHONY: build clean dev-server
-
-build:
-	@emacs -Q --batch --script build.el
+.PHONY: clean dev-server
 
 clean:
-	rm -rf html/ .packages/
+	rm -rf ./html
 
 dev-server:
 	@echo "Serving on http://localhost:$$PORT"
