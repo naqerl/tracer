@@ -44,8 +44,6 @@ p, li { color: var(--fg-secondary); }
 /* ─── Hero ─── */
 .hero {
   display: flex;
-  align-items: center;
-  gap: 3rem;
   padding: 3rem 0 4rem;
   margin-bottom: 3rem;
 }

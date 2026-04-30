@@ -44,8 +44,6 @@ p, li { color: var(--fg-secondary); }
 /* ─── Hero ─── */
 .hero {
   display: flex;
-  align-items: center;
-  gap: 3rem;
   padding: 3rem 0 4rem;
   margin-bottom: 3rem;
 }
@@ -152,6 +150,7 @@ pre code { color: var(--fg); }
 .site-footer {
   margin-top: 4rem;
   padding-top: 2rem;
+  font-size: 0.875rem;
   display: flex;
   align-items: center;
   gap: 0.5rem;
