@@ -1,7 +1,7 @@
 [Unit]
-Description=Bootstrap Tracer with install.sh
-After=network.target systemd-journald.service tracer-demo-api.service tracer-demo-worker.service tracer-demo-cron.service
-Wants=network.target tracer-demo-api.service tracer-demo-worker.service tracer-demo-cron.service
+Description=Bootstrap Tracer with standard make install
+After=network.target systemd-journald.service
+Wants=network.target
 
 [Service]
 Type=oneshot

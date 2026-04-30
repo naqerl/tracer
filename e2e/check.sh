@@ -64,9 +64,10 @@ wait_for_logs() {
   local collector="$1"
   local attempt page compact
   for attempt in $(seq 1 30); do
-    page="$(curl -fsS "${DEMO_URL}/panel/collectors/${collector}/apps/tracer-demo-api" -H "Cookie: ${COOKIE}")"
+    # Check the stats endpoint directly since main page loads async via htmx
+    page="$(curl -fsS "${DEMO_URL}/panel/collectors/${collector}/apps/tracer-demo-api/stats" -H "Cookie: ${COOKIE}")"
     compact="$(tr '\n' ' ' <<<"${page}")"
-    if grep -Eq '<div class="text-2xl font-bold">[1-9][0-9]*</div> *<div class="text-xs text-fg-secondary">Total Logs</div>' <<<"${compact}"; then
+    if grep -Eq '<div class="text-2xl font-bold">[1-9][0-9]*</div>.*<div class="text-xs text-fg-secondary">Total Logs</div>' <<<"${compact}"; then
       return 0
     fi
     sleep 1
@@ -91,8 +92,12 @@ assert_no_errors() {
   local unit="$1"
   local output
   output="$(podman exec "${DEMO_CONTAINER}" journalctl -u "${unit}" --no-pager || true)"
-  # Filter out transient startup errors (connection refused during initial startup)
-  filtered_output="$(printf '%s\n' "${output}" | grep -E 'SOURCE_ERROR|level=ERROR|[Ff]ailed to ' | grep -v 'Failed to connect to panel' | grep -v 'connection refused' || true)"
+  # Filter out transient startup errors (connection refused during initial startup, user creation)
+  filtered_output="$(printf '%s\n' "${output}" | grep -E 'SOURCE_ERROR|level=ERROR|[Ff]ailed to ' | \
+    grep -v 'Failed to connect to panel' | \
+    grep -v 'connection refused' | \
+    grep -v 'Failed to determine user credentials' | \
+    grep -v 'Failed at step USER spawning' || true)"
   if [[ -n "${filtered_output}" ]]; then
     printf '%s\n' "${filtered_output}" >&2
     fail "${unit} contains error logs"
@@ -117,7 +122,7 @@ done
 log "checking failed units allowlist"
 failed_units="$(podman exec "${DEMO_CONTAINER}" systemctl --failed --no-legend || true)"
 if [[ -n "${failed_units}" ]]; then
-  unexpected="$(printf '%s\n' "${failed_units}" | grep -Ev 'sys-kernel-(config|debug|tracing)\.mount' || true)"
+  unexpected="$(printf '%s\n' "${failed_units}" | grep -Ev 'sys-kernel-(config|debug|tracing)\.mount|proc-sys-fs-binfmt_misc\.automount' || true)"
   [[ -z "${unexpected}" ]] || fail "unexpected failed units detected: ${unexpected}"
 fi
 

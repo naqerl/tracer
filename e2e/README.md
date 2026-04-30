@@ -1,9 +1,12 @@
 # E2E Demo
 
-This demo bakes the local `bin/` artifacts into a Debian Bookworm image with systemd
-and runs `install.sh` automatically on boot via a systemd oneshot unit.
-Three systemd-managed mock apps are enabled in the image and a follow-up oneshot
-unit registers them in the collector via the guesser.
+This demo runs a full end-to-end test that mirrors the actual user installation flow:
+`./configure && make build && make install`
+
+The container starts with the source code and runs the standard installation at boot,
+ensuring the actual installation process works correctly on end-user systems.
+
+Three systemd-managed mock apps provide logs for testing.
 
 ## Usage
 
