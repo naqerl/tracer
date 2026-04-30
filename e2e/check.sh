@@ -127,9 +127,17 @@ if [[ -n "${failed_units}" ]]; then
 fi
 
 log "checking panel login and session"
-login_headers="$(curl -fsS -D - -o /dev/null -X POST -d "username=${DEMO_USER}" -d "password=${DEMO_PASSWORD}" "${DEMO_URL}/auth/login")"
-COOKIE="$(printf '%s\n' "${login_headers}" | awk -F': ' '/^Set-Cookie: tracer_session=/{print $2}' | cut -d';' -f1)"
-[[ -n "${COOKIE}" ]] || fail "panel login did not return tracer_session cookie"
+# Detect if panel is in no-auth mode
+no_auth=false
+if curl -fsS -o /dev/null -w "%{http_code}" "${DEMO_URL}/panel/" 2>/dev/null | grep -q '200'; then
+  no_auth=true
+  COOKIE=""
+  log "no-auth mode detected, skipping login"
+else
+  login_headers="$(curl -fsS -D - -o /dev/null -X POST -d "username=${DEMO_USER}" -d "password=${DEMO_PASSWORD}" "${DEMO_URL}/auth/login")"
+  COOKIE="$(printf '%s\n' "${login_headers}" | awk -F': ' '/^Set-Cookie: tracer_session=/{print $2}' | cut -d';' -f1)"
+  [[ -n "${COOKIE}" ]] || fail "panel login did not return tracer_session cookie"
+fi
 
 log "checking dashboard"
 dashboard="$(curl -fsS "${DEMO_URL}/panel/" -H "Cookie: ${COOKIE}")"
@@ -149,7 +157,11 @@ wait_for_logs "${collector_name}"
 log "crawling panel UI"
 (
   cd "${REPO_ROOT}"
-  go run ./e2e/crawler/main.go -url "${DEMO_URL}" -username "${DEMO_USER}" -password "${DEMO_PASSWORD}" -start /panel/
+  if $no_auth; then
+    go run ./e2e/crawler/main.go -url "${DEMO_URL}" -no-auth -start /panel/
+  else
+    go run ./e2e/crawler/main.go -url "${DEMO_URL}" -username "${DEMO_USER}" -password "${DEMO_PASSWORD}" -start /panel/
+  fi
 )
 
 log "checking panel and collector journals"

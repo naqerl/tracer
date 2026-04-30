@@ -34,11 +34,13 @@ var (
 )
 
 func main() {
+	var noAuth bool
 	flag.StringVar(&baseURL, "url", "http://localhost:18081", "Base URL to crawl")
 	flag.StringVar(&username, "username", "demo", "Username for login")
 	flag.StringVar(&password, "password", "demo123", "Password for login")
 	flag.StringVar(&startPath, "start", "/panel/", "Path to start crawling from")
 	flag.IntVar(&maxDepth, "depth", 100, "Maximum crawl depth")
+	flag.BoolVar(&noAuth, "no-auth", false, "Skip login (panel in no-auth mode)")
 	flag.Parse()
 
 	jar, err := cookiejar.New(nil)
@@ -61,11 +63,14 @@ func main() {
 	fmt.Printf("Max Depth: %d\n", maxDepth)
 	fmt.Println()
 
-	if err := login(); err != nil {
+	if noAuth {
+		fmt.Println("OK no-auth mode (skipping login)")
+	} else if err := login(); err != nil {
 		fmt.Printf("Login failed: %v\n", err)
 		os.Exit(1)
+	} else {
+		fmt.Println("OK logged in successfully")
 	}
-	fmt.Println("OK logged in successfully")
 	fmt.Println()
 
 	fmt.Println("=== Crawling ===")

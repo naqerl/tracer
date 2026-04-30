@@ -10,6 +10,15 @@ tracer-collector install
 tracer-collector set name demo
 tracer-panel install
 
+# Add no-auth and readonly flags for demo iframes
+mkdir -p /etc/systemd/system/tracer-panel.service.d
+cat > /etc/systemd/system/tracer-panel.service.d/demo-flags.conf <<'EOF'
+[Service]
+ExecStart=
+ExecStart=/usr/local/bin/tracer-panel -config /etc/tracer/panel.yaml -no-auth -readonly
+EOF
+systemctl daemon-reload
+
 systemctl start demo-api demo-worker demo-cron
 systemctl start tracer-collector tracer-panel
 
