@@ -5,19 +5,17 @@ After=network.target
 
 [Service]
 Type=simple
-User=tracer-panel
-Group=tracer-panel
-ExecStart=/usr/local/bin/tracer-panel -config {{.ConfigFilePath}}
+User={{.User}}
+Group={{.Group}}
+ExecStart={{.Bindir}}/tracer-panel -config {{.ConfigFilePath}}
 Restart=always
 RestartSec=5
 
-# Config and data setup
 ConfigurationDirectory=tracer
 ConfigurationDirectoryMode=0755
 StateDirectory=tracer
 StateDirectoryMode=0750
 
-# Security hardening
 NoNewPrivileges=yes
 ProtectSystem=strict
 ProtectHome=yes

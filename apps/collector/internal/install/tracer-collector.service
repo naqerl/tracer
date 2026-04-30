@@ -5,18 +5,16 @@ After=network.target
 
 [Service]
 Type=simple
-User=tracer-collector
-Group=tracer-collector
+User={{.User}}
+Group={{.Group}}
 SupplementaryGroups=systemd-journal adm
-ExecStart=/usr/local/bin/tracer-collector -config {{.ConfigFilePath}}
+ExecStart={{.Bindir}}/tracer-collector -config {{.ConfigFilePath}}
 Restart=always
 RestartSec=5
 
-# Config setup
 ConfigurationDirectory=tracer
 ConfigurationDirectoryMode=0755
 
-# Security hardening
 NoNewPrivileges=yes
 ProtectSystem=strict
 ProtectHome=read-only
