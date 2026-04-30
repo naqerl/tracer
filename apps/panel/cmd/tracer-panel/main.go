@@ -89,7 +89,10 @@ func main() {
 	}
 
 	// Default behavior: run the server
-	cfg := config.Load(cfgPath)
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		log.Fatalf("failed to load config: %s", err)
+	}
 
 	slog.Info("Starting panel",
 		"port", cfg.Port,

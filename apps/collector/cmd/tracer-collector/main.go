@@ -61,11 +61,17 @@ func main() {
 	if flag.NArg() > 0 {
 		switch flag.Arg(0) {
 		case "add":
-			cfg := config.Load(cfgPath)
+			cfg, err := config.Load(cfgPath)
+			if err != nil {
+				log.Fatalf("failed to load config: %s", err)
+			}
 			handleAdd(ctx, cfgPath, cfg, addCmd)
 			return
 		case "set":
-			cfg := config.Load(cfgPath)
+			cfg, err := config.Load(cfgPath)
+			if err != nil {
+				log.Fatalf("failed to load config: %s", err)
+			}
 			handleSet(cfgPath, cfg, setCmd)
 			return
 		case "update":
@@ -80,7 +86,10 @@ func main() {
 	}
 
 	// Default behavior: run the collector
-	cfg := config.Load(cfgPath)
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		log.Fatalf("failed to load config: %s", err)
+	}
 
 	slog.Info("Starting collector",
 		"name", cfg.Transport.Name,
