@@ -9,8 +9,8 @@
     <p class="slogan">the first and the last monitoring tool you need to install</p>
   </div>
   <div class="hero-demo">
-    <iframe src="https://git.naqerl.com/eco/tracer"
-            loading="lazy" title="Tracer main interface demo">
+    <iframe src="http://devenv:18081/topology/graph"
+             loading="lazy" title="Tracer topology graph demo">
     </iframe>
   </div>
 </section>
@@ -19,44 +19,24 @@
 * Data Collector
 
 #+begin_export html
-<div class="section-card">
-  <div class="card-img">
-    <iframe src="https://git.naqerl.com/eco/tracer"
-            loading="lazy" title="Tracer collector demo">
-    </iframe>
-  </div>
-  <div class="card-desc">
+<iframe src="http://devenv:18081/panel/collectors/demo/resources" loading="lazy" title="Tracer collector demo" id="collector-view">
+</iframe>
 #+end_export
 
 The collector sits on each host and gathers metrics, logs, and traces
 with near-zero overhead.  It streams data back to the panel over a
 secure, lightweight protocol.
 
-#+begin_export html
-  </div>
-</div>
-#+end_export
-
 * Application View
 
 #+begin_export html
-<div class="section-card">
-  <div class="card-img">
-    <iframe src="https://git.naqerl.com/eco/tracer"
-            loading="lazy" title="Tracer application view demo">
-    </iframe>
-  </div>
-  <div class="card-desc">
+<iframe src="http://devenv:18081/panel/collectors/demo/apps/tracer-panel" loading="lazy" title="Tracer application view demo" id="application-view">
+</iframe>
 #+end_export
 
 Drill into individual applications and services.  See request
 latencies, error rates, and dependency graphs per app — no extra
 instrumentation required.
-
-#+begin_export html
-  </div>
-</div>
-#+end_export
 
 * Installation
 
