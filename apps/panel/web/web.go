@@ -1,6 +1,7 @@
 package web
 
 import (
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -9,13 +10,13 @@ import (
 	"tracer/apps/panel/web/handlers/llm"
 	"tracer/apps/panel/web/handlers/panel"
 	"tracer/apps/panel/web/handlers/settings"
-	topologyhandler "tracer/apps/panel/web/handlers/topology"
+	"tracer/apps/panel/web/handlers/topology"
 	"tracer/apps/panel/web/middleware"
 	authmw "tracer/apps/panel/web/middleware/auth"
 )
 
 // NewServer creates and configures an HTTP server with all handlers.
-func NewServer(deps Dependencies, port string) *http.Server {
+func NewServer(deps Dependencies, port string, noAuth bool, readOnly bool) *http.Server {
 	mux := http.NewServeMux()
 	authMux := auth.InitMux(deps.Auth, deps.User)
 
@@ -24,7 +25,7 @@ func NewServer(deps Dependencies, port string) *http.Server {
 	})
 	mux.Handle("/ingest/", http.StripPrefix("/ingest", ingest.InitMux(deps.Auth, deps.Ingest, deps.Tracker, deps.Topology)))
 	mux.Handle("/panel/", http.StripPrefix("/panel", panel.InitMux(deps.PanelService)))
-	mux.Handle("/topology/", http.StripPrefix("/topology", topologyhandler.InitMux(deps.Topology, deps.User)))
+	mux.Handle("/topology/", http.StripPrefix("/topology", topology.InitMux(deps.Topology, deps.User)))
 	mux.Handle("/auth/", http.StripPrefix("/auth", authMux))
 	mux.Handle("/llm", llm.InitMux())
 	mux.Handle("/settings/", http.StripPrefix("/settings", settings.InitMux(deps.Auth, deps.User, deps.Ingest, deps.DBManagerx, deps.Notify)))
@@ -32,7 +33,24 @@ func NewServer(deps Dependencies, port string) *http.Server {
 	markdownMiddleware := middleware.BuildMarkdownMiddleware()
 	loginPathMiddleware := authmw.BuildLoginPathMiddleware("/auth/login")
 	authMiddleware := authmw.BuildAuthMiddleware(deps.Auth, deps.User)
-	handler := middleware.LoggingMiddleware(markdownMiddleware(loginPathMiddleware(authMiddleware(mux))))
+
+	var handler http.Handler = mux
+
+	if readOnly {
+		handler = middleware.BuildReadOnlyMiddleware()(handler)
+		slog.Info("read-only mode enabled")
+	}
+
+	handler = authMiddleware(handler)
+	handler = loginPathMiddleware(handler)
+	handler = markdownMiddleware(handler)
+
+	if noAuth {
+		handler = middleware.BuildNoAuthMiddleware(deps.User)(handler)
+		slog.Warn("no-auth mode enabled")
+	}
+
+	handler = middleware.LoggingMiddleware(handler)
 
 	return &http.Server{
 		Addr:        ":" + port,
