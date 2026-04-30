@@ -32,6 +32,7 @@ func InitMux(svc *topologysvc.Service, userSvc *usersvc.Service) *http.ServeMux 
 	}
 
 	m.HandleFunc("GET /", h.getTopologyPage)
+	m.HandleFunc("GET /graph", h.getTopologyGraph)
 	m.HandleFunc("GET /events", h.streamTopologyEvents)
 
 	return m
@@ -49,10 +50,37 @@ func (h *handler) getTopologyPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.t.RenderHTTP(w, r, "topology", map[string]any{
+	data := map[string]any{
 		"Title":    "Topology",
 		"Snapshot": snapshot,
-	})
+	}
+
+	h.t.RenderHTTP(w, r, "topology", data)
+}
+
+func (h *handler) getTopologyGraph(w http.ResponseWriter, r *http.Request) {
+	userID, err := authmw.RequireOrRedirect(w, r)
+	if err != nil {
+		return
+	}
+
+	snapshot, err := h.svc.GetSnapshot(r.Context(), userID)
+	if err != nil {
+		h.t.RenderError(w, r, "Error", "Failed to load topology", http.StatusInternalServerError)
+		return
+	}
+
+	data := map[string]any{
+		"Title":    "Topology",
+		"Snapshot": snapshot,
+	}
+
+	if r.Header.Get("HX-Request") == "true" {
+		h.t.RenderHTTP(w, r, "topology-graph", data)
+		return
+	}
+
+	h.t.RenderHTTP(w, r, "topology-graph-page", data)
 }
 
 func (h *handler) streamTopologyEvents(w http.ResponseWriter, r *http.Request) {
