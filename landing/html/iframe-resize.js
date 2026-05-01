@@ -15,8 +15,6 @@ function observe(iframe) {
         // Configure MutationObserver to watch for DOM changes
         const observer = new MutationObserver(() => {
             const contentHeight = iframeDoc.body.scrollHeight;
-            console.log("contentHeight", contentHeight)
-            iframe.style.height = "0px";
             iframe.style.height = `${contentHeight + 20}px`;
         });
 
