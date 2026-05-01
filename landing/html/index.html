@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<!-- 2026-04-30 Thu 23:26 -->
+<!-- 2026-05-01 Fri 00:12 -->
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Tracer</title>
@@ -62,11 +62,8 @@ instrumentation required.
     <pre><code>docker run --rm -p 8080:8080 git.naqerl.com/eco/tracer:latest</code></pre>
   </div>
 </div>
-</div>
-</div>
-<div id="outline-container-org553e041" class="outline-2">
-<h2 id="org553e041">Footer</h2>
-<div class="outline-text-2" id="text-org553e041">
+
+
 <div class="site-footer">
   <a href="https://git.naqerl.com/eco/tracer">Source code</a>
   <span class="sep">·</span>
@@ -74,6 +71,17 @@ instrumentation required.
   <span class="sep">·</span>
   <a href="mailto:me@naqerl.com">me@naqerl.com</a>
 </div>
+
+<script>
+(function() {
+  document.querySelectorAll('iframe').forEach(function(f) {
+    f.addEventListener('load', function() {
+      var d = this.contentDocument || this.contentWindow.document;
+      if (d) this.style.height = d.documentElement.scrollHeight + 'px';
+    });
+  });
+})();
+</script>
 </div>
 </div>
 </div>

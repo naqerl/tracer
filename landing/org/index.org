@@ -9,9 +9,9 @@
     <p class="slogan">the first and the last monitoring tool you need to install</p>
   </div>
   <div class="hero-demo">
-    <iframe src="http://devenv:18081/topology/graph"
-             loading="lazy" title="Tracer topology graph demo">
-    </iframe>
+     <iframe src="http://devenv:18081/topology/graph"
+              loading="lazy" title="Tracer topology graph demo">
+     </iframe>
   </div>
 </section>
 #+end_export
@@ -55,7 +55,6 @@ instrumentation required.
 </div>
 #+end_export
 
-* Footer
 
 #+begin_export html
 <div class="site-footer">
@@ -65,4 +64,38 @@ instrumentation required.
   <span class="sep">·</span>
   <a href="mailto:me@naqerl.com">me@naqerl.com</a>
 </div>
+#+end_export
+
+#+begin_export html
+<script>
+(function() {
+  function resize(iframe) {
+    var doc;
+    try { doc = iframe.contentDocument || iframe.contentWindow.document; } catch(e) {}
+    if (!doc) return;
+    iframe.style.height = doc.documentElement.scrollHeight + 'px';
+  }
+
+  document.querySelectorAll('iframe').forEach(function(iframe) {
+    function handleLoad() {
+      resize(iframe);
+
+      var doc;
+      try { doc = iframe.contentDocument || iframe.contentWindow.document; } catch(e) {}
+      if (!doc) return;
+
+      new MutationObserver(function() {
+        clearTimeout(iframe._rt);
+        iframe._rt = setTimeout(function() { resize(iframe); }, 50);
+      }).observe(doc.body, { childList: true, subtree: true });
+    }
+
+    iframe.addEventListener('load', handleLoad);
+
+    var doc;
+    try { doc = iframe.contentDocument || iframe.contentWindow.document; } catch(e) {}
+    if (doc && doc.readyState === 'complete') handleLoad();
+  });
+})();
+</script>
 #+end_export
