@@ -10,6 +10,9 @@ tracer-collector install
 tracer-collector set name demo
 tracer-panel install
 
+# Move panel to port 9090 so Caddy can serve on 8080
+sed -i 's/^port: .*/port: "9090"/' /etc/tracer/panel.yaml
+
 # Add no-auth and readonly flags for demo iframes
 mkdir -p /etc/systemd/system/tracer-panel.service.d
 cat > /etc/systemd/system/tracer-panel.service.d/demo-flags.conf <<'EOF'
@@ -19,6 +22,7 @@ ExecStart=/usr/local/bin/tracer-panel -config /etc/tracer/panel.yaml -no-auth -r
 EOF
 systemctl daemon-reload
 
+systemctl start caddy
 systemctl start demo-api demo-worker demo-cron
 systemctl start tracer-collector tracer-panel
 

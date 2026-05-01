@@ -1,0 +1,15 @@
+:8080 {
+	@panel {
+		path /panel /panel/*
+		path /topology /topology/*
+		path /auth /auth/*
+		path /settings /settings/*
+		path /llm
+		path /ingest /ingest/*
+	}
+
+	reverse_proxy @panel localhost:9090
+
+	root * /opt/tracer/landing/html
+	file_server
+}
