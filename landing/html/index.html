@@ -1,12 +1,13 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<!-- 2026-05-01 Fri 00:12 -->
+<!-- 2026-05-01 Fri 11:04 -->
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Tracer</title>
 <meta name="generator" content="Org Mode" />
 <link rel="stylesheet" type="text/css" href="/style.css" />
+<script src="/iframe-resize.js" defer></script>
 </head>
 <body>
 <div id="content" class="content">
@@ -16,35 +17,38 @@
     <p class="slogan">the first and the last monitoring tool you need to install</p>
   </div>
   <div class="hero-demo">
-    <iframe src="http://devenv:18081/topology/graph"
-             loading="lazy" title="Tracer topology graph demo">
-    </iframe>
+     <iframe src="http://devenv:18081/topology/graph"
+              loading="lazy"
+              title="Tracer topology graph demo"
+              data-skip-subtree="true">
+     </iframe>
   </div>
 </section>
-<div id="outline-container-orgcafa71b" class="outline-2">
-<h2 id="orgcafa71b">Data Collector</h2>
-<div class="outline-text-2" id="text-orgcafa71b">
-<iframe src="http://devenv:18081/panel/collectors/demo/resources" loading="lazy" title="Tracer collector demo" id="collector-view">
-</iframe>
-
+<div id="outline-container-org90fabf5" class="outline-2">
+<h2 id="org90fabf5">Resourse monitoring</h2>
+<div class="outline-text-2" id="text-org90fabf5">
 <p>
 The collector sits on each host and gathers metrics, logs, and traces
 with near-zero overhead.  It streams data back to the panel over a
 secure, lightweight protocol.
 </p>
-</div>
-</div>
-<div id="outline-container-org4439c61" class="outline-2">
-<h2 id="org4439c61">Application View</h2>
-<div class="outline-text-2" id="text-org4439c61">
-<iframe src="http://devenv:18081/panel/collectors/demo/apps/tracer-panel" loading="lazy" title="Tracer application view demo" id="application-view">
-</iframe>
 
+<iframe src="http://devenv:18081/panel/collectors/demo/resources" loading="lazy" title="Tracer collector demo" id="collector-view">
+</iframe>
+</div>
+</div>
+<div id="outline-container-org1a39dcb" class="outline-2">
+<h2 id="org1a39dcb">Uptime &amp; logs</h2>
+<div class="outline-text-2" id="text-org1a39dcb">
 <p>
 Drill into individual applications and services.  See request
 latencies, error rates, and dependency graphs per app — no extra
 instrumentation required.
 </p>
+
+
+<iframe src="http://devenv:18081/panel/collectors/demo/apps/tracer-panel" loading="lazy" title="Tracer application view demo" id="application-view">
+</iframe>
 </div>
 </div>
 <div id="outline-container-orge67a47f" class="outline-2">
@@ -71,17 +75,6 @@ instrumentation required.
   <span class="sep">·</span>
   <a href="mailto:me@naqerl.com">me@naqerl.com</a>
 </div>
-
-<script>
-(function() {
-  document.querySelectorAll('iframe').forEach(function(f) {
-    f.addEventListener('load', function() {
-      var d = this.contentDocument || this.contentWindow.document;
-      if (d) this.style.height = d.documentElement.scrollHeight + 'px';
-    });
-  });
-})();
-</script>
 </div>
 </div>
 </div>

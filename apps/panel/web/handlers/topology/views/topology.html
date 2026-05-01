@@ -31,28 +31,20 @@
 {{end}}
 
 {{define "topology-graph"}}
-<div id="topology-graph-shell" class="flex min-h-[60vh] flex-1 items-center justify-center lg:min-h-0">
-  <div class="w-full overflow-hidden">
-    <svg id="topology-graph" class="block w-full max-w-full mx-auto" role="img" aria-label="Live topology graph"></svg>
-  </div>
-</div>
-{{template "topology-script" .}}
-{{end}}
-
-{{define "topology-graph-page"}}
 <!DOCTYPE html>
 <html lang="en">
-<head>
+  <head>
     {{template "head"}}
     <title>{{.Title}}</title>
-    <style>
-        body { margin: 0; padding: 0; overflow: hidden; background: #0A0A0A; }
-        #topology-graph-shell { height: 100vh; display: flex; }
-    </style>
-</head>
-<body>
-{{template "topology-graph" .}}
-</body>
+  </head>
+  <body>
+    <div id="topology-graph-shell" class="flex min-h-[60vh] flex-1 items-center justify-center lg:min-h-0">
+      <div class="w-full overflow-hidden">
+        <svg id="topology-graph" class="block w-full max-w-full mx-auto" role="img" aria-label="Live topology graph"></svg>
+      </div>
+    </div>
+    {{template "topology-script" .}}
+  </body>
 </html>
 {{end}}
 

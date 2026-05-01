@@ -75,12 +75,7 @@ func (h *handler) getTopologyGraph(w http.ResponseWriter, r *http.Request) {
 		"Snapshot": snapshot,
 	}
 
-	if r.Header.Get("HX-Request") == "true" {
-		h.t.RenderHTTP(w, r, "topology-graph", data)
-		return
-	}
-
-	h.t.RenderHTTP(w, r, "topology-graph-page", data)
+	h.t.RenderHTTP(w, r, "topology-graph", data)
 }
 
 func (h *handler) streamTopologyEvents(w http.ResponseWriter, r *http.Request) {

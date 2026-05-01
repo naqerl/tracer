@@ -1,6 +1,7 @@
 #+title: Tracer
 #+options: toc:nil num:nil
 #+html_head: <link rel="stylesheet" type="text/css" href="/style.css" />
+#+html_head: <script src="/iframe-resize.js" defer></script>
 
 #+begin_export html
 <section class="hero">
@@ -10,33 +11,34 @@
   </div>
   <div class="hero-demo">
      <iframe src="http://devenv:18081/topology/graph"
-              loading="lazy" title="Tracer topology graph demo">
+              loading="lazy"
+              title="Tracer topology graph demo"
+              data-skip-subtree="true">
      </iframe>
   </div>
 </section>
 #+end_export
 
-* Data Collector
+* Resourse monitoring
+The collector sits on each host and gathers metrics, logs, and traces
+with near-zero overhead.  It streams data back to the panel over a
+secure, lightweight protocol.
 
 #+begin_export html
 <iframe src="http://devenv:18081/panel/collectors/demo/resources" loading="lazy" title="Tracer collector demo" id="collector-view">
 </iframe>
 #+end_export
 
-The collector sits on each host and gathers metrics, logs, and traces
-with near-zero overhead.  It streams data back to the panel over a
-secure, lightweight protocol.
+* Uptime & logs
+Drill into individual applications and services.  See request
+latencies, error rates, and dependency graphs per app — no extra
+instrumentation required.
 
-* Application View
 
 #+begin_export html
 <iframe src="http://devenv:18081/panel/collectors/demo/apps/tracer-panel" loading="lazy" title="Tracer application view demo" id="application-view">
 </iframe>
 #+end_export
-
-Drill into individual applications and services.  See request
-latencies, error rates, and dependency graphs per app — no extra
-instrumentation required.
 
 * Installation
 
@@ -64,38 +66,4 @@ instrumentation required.
   <span class="sep">·</span>
   <a href="mailto:me@naqerl.com">me@naqerl.com</a>
 </div>
-#+end_export
-
-#+begin_export html
-<script>
-(function() {
-  function resize(iframe) {
-    var doc;
-    try { doc = iframe.contentDocument || iframe.contentWindow.document; } catch(e) {}
-    if (!doc) return;
-    iframe.style.height = doc.documentElement.scrollHeight + 'px';
-  }
-
-  document.querySelectorAll('iframe').forEach(function(iframe) {
-    function handleLoad() {
-      resize(iframe);
-
-      var doc;
-      try { doc = iframe.contentDocument || iframe.contentWindow.document; } catch(e) {}
-      if (!doc) return;
-
-      new MutationObserver(function() {
-        clearTimeout(iframe._rt);
-        iframe._rt = setTimeout(function() { resize(iframe); }, 50);
-      }).observe(doc.body, { childList: true, subtree: true });
-    }
-
-    iframe.addEventListener('load', handleLoad);
-
-    var doc;
-    try { doc = iframe.contentDocument || iframe.contentWindow.document; } catch(e) {}
-    if (doc && doc.readyState === 'complete') handleLoad();
-  });
-})();
-</script>
 #+end_export

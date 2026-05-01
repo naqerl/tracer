@@ -59,9 +59,11 @@ p, li { color: var(--fg-secondary); }
 }
 .hero-demo { flex: 1; }
 .hero-demo iframe {
+  display: flex;
+  flex-grow: 3;
+  border: 0;
   width: 100%;
-  min-height: 200px;
-  border: 1px solid var(--bg-secondary);
+  min-height: 400px;
   background: var(--bg-secondary);
 }
 
