@@ -101,7 +101,8 @@ type User struct {
 type UserApiKey struct {
 	ID         int64
 	UserID     int64
-	ApiKey     string
+	KeyHash    string
+	KeySuffix  string
 	Name       string
 	CreatedAt  int64
 	LastUsedAt sql.NullInt64

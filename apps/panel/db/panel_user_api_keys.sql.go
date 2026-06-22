@@ -12,14 +12,15 @@ import (
 
 const createUserAPIKey = `-- name: CreateUserAPIKey :one
 
-INSERT INTO user_api_key (user_id, api_key, name, created_at)
-VALUES (?, ?, ?, ?)
-RETURNING id, user_id, api_key, name, created_at, last_used_at
+INSERT INTO user_api_key (user_id, key_hash, key_suffix, name, created_at)
+VALUES (?, ?, ?, ?, ?)
+RETURNING id, user_id, key_hash, key_suffix, name, created_at, last_used_at
 `
 
 type CreateUserAPIKeyParams struct {
 	UserID    int64
-	ApiKey    string
+	KeyHash   string
+	KeySuffix string
 	Name      string
 	CreatedAt int64
 }
@@ -28,7 +29,8 @@ type CreateUserAPIKeyParams struct {
 func (q *Queries) CreateUserAPIKey(ctx context.Context, arg CreateUserAPIKeyParams) (UserApiKey, error) {
 	row := q.db.QueryRowContext(ctx, createUserAPIKey,
 		arg.UserID,
-		arg.ApiKey,
+		arg.KeyHash,
+		arg.KeySuffix,
 		arg.Name,
 		arg.CreatedAt,
 	)
@@ -36,7 +38,8 @@ func (q *Queries) CreateUserAPIKey(ctx context.Context, arg CreateUserAPIKeyPara
 	err := row.Scan(
 		&i.ID,
 		&i.UserID,
-		&i.ApiKey,
+		&i.KeyHash,
+		&i.KeySuffix,
 		&i.Name,
 		&i.CreatedAt,
 		&i.LastUsedAt,
@@ -55,7 +58,7 @@ func (q *Queries) DeleteUserAPIKey(ctx context.Context, id int64) error {
 }
 
 const getUserAPIKeysByUser = `-- name: GetUserAPIKeysByUser :many
-SELECT id, user_id, api_key, name, last_used_at FROM user_api_key
+SELECT id, user_id, key_suffix, name, last_used_at FROM user_api_key
 WHERE user_id = ?
 ORDER BY created_at DESC
 `
@@ -63,7 +66,7 @@ ORDER BY created_at DESC
 type GetUserAPIKeysByUserRow struct {
 	ID         int64
 	UserID     int64
-	ApiKey     string
+	KeySuffix  string
 	Name       string
 	LastUsedAt sql.NullInt64
 }
@@ -80,7 +83,7 @@ func (q *Queries) GetUserAPIKeysByUser(ctx context.Context, userID int64) ([]Get
 		if err := rows.Scan(
 			&i.ID,
 			&i.UserID,
-			&i.ApiKey,
+			&i.KeySuffix,
 			&i.Name,
 			&i.LastUsedAt,
 		); err != nil {
@@ -100,17 +103,17 @@ func (q *Queries) GetUserAPIKeysByUser(ctx context.Context, userID int64) ([]Get
 const validateAndUpdateUserAPIKey = `-- name: ValidateAndUpdateUserAPIKey :one
 UPDATE user_api_key
 SET last_used_at = ?
-WHERE api_key = ?
+WHERE key_hash = ?
 RETURNING user_id
 `
 
 type ValidateAndUpdateUserAPIKeyParams struct {
 	LastUsedAt sql.NullInt64
-	ApiKey     string
+	KeyHash    string
 }
 
 func (q *Queries) ValidateAndUpdateUserAPIKey(ctx context.Context, arg ValidateAndUpdateUserAPIKeyParams) (int64, error) {
-	row := q.db.QueryRowContext(ctx, validateAndUpdateUserAPIKey, arg.LastUsedAt, arg.ApiKey)
+	row := q.db.QueryRowContext(ctx, validateAndUpdateUserAPIKey, arg.LastUsedAt, arg.KeyHash)
 	var user_id int64
 	err := row.Scan(&user_id)
 	return user_id, err

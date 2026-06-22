@@ -69,7 +69,7 @@
             {{range .UserAPIKeys}}
             <tr class="group opacity-60 hover:opacity-100 transition-opacity duration-700 hover:duration-150 border-b border-bg-secondary/50">
                 <td class="py-3">{{.Name}}</td>
-                <td class="py-3"><code class="text-sm font-mono">{{.ApiKey}}</code></td>
+                <td class="py-3"><code class="text-sm font-mono">****{{.KeySuffix}}</code></td>
                 <td class="py-3 text-sm text-fg-secondary">{{if .LastUsedAt.Valid}}{{formatDateTime .LastUsedAt}}{{else}}Never{{end}}</td>
                 <td class="py-3 text-right">
                     <button hx-delete="/settings/api-keys/{{.ID}}" hx-confirm="Delete API key {{.Name}}?" hx-target="body" hx-swap="outerHTML" class="text-sm text-fg-secondary hover:text-red-500 underline transition-colors">Delete</button>
@@ -88,6 +88,13 @@
 <div class="mb-10">
     <h2 class="text-xl font-medium mb-6">Collector API Keys</h2>
     <p class="text-base text-fg-secondary mb-6">Create separate collector credentials per host or environment. Plaintext is shown only once.</p>
+
+    {{if .NewUserAPIKey}}
+    <div class="bg-bg-secondary border border-fg/10 p-4 mb-6">
+        <p class="text-sm text-fg-secondary mb-2">New API key{{if .NewUserAPIKeyName}}: {{.NewUserAPIKeyName}}{{end}}</p>
+        <code class="text-base font-mono block break-all">{{.NewUserAPIKey}}</code>
+    </div>
+    {{end}}
 
     {{if .NewCollectorAPIKey}}
     <div class="bg-bg-secondary border border-fg/10 p-4 mb-6">

@@ -24,6 +24,7 @@ const (
 	sessionTokenSize  = 32
 	apiKeySize        = 32
 	maxUsernameLength = 32
+	minPasswordLength = 8
 	maxPasswordLength = 72
 	SessionDuration   = 24 * time.Hour
 )
@@ -56,6 +57,9 @@ func (r RegisterRequest) Validate() error {
 	}
 	if r.Password == "" {
 		return fmt.Errorf("password is required")
+	}
+	if len(r.Password) < minPasswordLength {
+		return fmt.Errorf("password must be at least %d characters", minPasswordLength)
 	}
 	if len(r.Password) > maxPasswordLength {
 		return fmt.Errorf("password must be <= %d characters", maxPasswordLength)
@@ -313,31 +317,32 @@ func (s *Service) GetCollectorAPIKeyDisplay(ctx context.Context) (string, error)
 
 // User API Key management (LLM compatibility)
 
-func (s *Service) GenerateUserAPIKey(ctx context.Context, req GenerateUserAPIKeyRequest) (*db.UserApiKey, error) {
+func (s *Service) GenerateUserAPIKey(ctx context.Context, req GenerateUserAPIKeyRequest) (string, *db.UserApiKey, error) {
 	key, err := generateToken(apiKeySize)
 	if err != nil {
-		return nil, fmt.Errorf("generate user API key: %w", err)
+		return "", nil, fmt.Errorf("generate user API key: %w", err)
 	}
 
 	userKey, err := db.New(s.db).CreateUserAPIKey(ctx, db.CreateUserAPIKeyParams{
 		UserID:    req.UserID,
-		ApiKey:    key,
+		KeyHash:   hashAPIKey(key),
+		KeySuffix: key[max(0, len(key)-6):],
 		Name:      req.Name,
 		CreatedAt: time.Now().UTC().Unix(),
 	})
 	if err != nil {
-		return nil, fmt.Errorf("create user API key: %w", err)
+		return "", nil, fmt.Errorf("create user API key: %w", err)
 	}
 
 	slog.Info("User API key created", "user_id", req.UserID, "name", req.Name)
-	return &userKey, nil
+	return key, &userKey, nil
 }
 
 func (s *Service) ValidateUserAPIKey(ctx context.Context, key string, userService *userpkg.Service) (int64, error) {
 	// Validate key and update last_used_at in one query
 	userID, err := db.New(s.db).ValidateAndUpdateUserAPIKey(ctx, db.ValidateAndUpdateUserAPIKeyParams{
 		LastUsedAt: sql.NullInt64{Int64: time.Now().UTC().Unix(), Valid: true},
-		ApiKey:     key,
+		KeyHash:    hashAPIKey(key),
 	})
 
 	if errors.Is(err, sql.ErrNoRows) {

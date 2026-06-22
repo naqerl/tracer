@@ -544,14 +544,21 @@ func (h *handler) createAPIKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err = h.authService.GenerateUserAPIKey(r.Context(), req)
+	newKey, _, err := h.authService.GenerateUserAPIKey(r.Context(), req)
 	if err != nil {
 		slog.Error("Failed to generate user API key", "error", err)
 		http.Error(w, "Failed to generate API key", http.StatusInternalServerError)
 		return
 	}
 
-	htmx.Redirect(w, r, "/settings/")
+	data, buildErr := h.buildSettingsPageData(w, r)
+	if buildErr != nil {
+		return
+	}
+	data["NewUserAPIKey"] = newKey
+	data["NewUserAPIKeyName"] = req.Name
+
+	h.t.RenderHTTP(w, r, "settings", data)
 }
 
 func (h *handler) deleteAPIKey(w http.ResponseWriter, r *http.Request) {
