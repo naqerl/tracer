@@ -10,6 +10,7 @@ import (
 	authsvc "tracer/apps/panel/internal/services/auth"
 	"tracer/apps/panel/internal/services/user"
 	authmw "tracer/apps/panel/web/middleware/auth"
+	"tracer/apps/panel/web/middleware/ratelimit"
 	"tracer/apps/panel/web/templates"
 )
 
@@ -34,15 +35,18 @@ func InitMux(authService *authsvc.Service, userService *user.Service) *http.Serv
 
 	// Login routes
 	m.HandleFunc("GET /login", h.loginPage)
-	m.HandleFunc("POST /login", h.login)
+	m.Handle("POST /login", rateLimitMiddleware(ratelimit.LimitOf("login"))(http.HandlerFunc(h.login)))
 	m.HandleFunc("POST /logout", h.logout)
 
 	// Setup routes
 	m.HandleFunc("GET /setup", h.setupPage)
-	m.HandleFunc("POST /setup", h.setup)
+	m.Handle("POST /setup", rateLimitMiddleware(ratelimit.LimitOf("setup"))(http.HandlerFunc(h.setup)))
 
 	return m
 }
+
+// rateLimitMiddleware creates a rate limiter: 10 requests per minute per IP.
+var rateLimitMiddleware = ratelimit.NewTokenBucket(10, 20, time.Minute).Middleware
 
 // renderFormError renders an error message for HTMX form submission
 func (h *handler) renderFormError(w http.ResponseWriter, msg string) {
