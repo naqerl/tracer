@@ -20,8 +20,10 @@ import (
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
+	// WebSocket connections originate from the collector process, not a browser.
+	// Origin validation is not applicable here; collectors connect from arbitrary hosts.
 	CheckOrigin: func(r *http.Request) bool {
-		return true // Configure for production
+		return true
 	},
 }
 
@@ -66,7 +68,8 @@ func (h *handler) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 
 	slog.Info("WebSocket connected", "remote", remoteAddr, "conn_id", connID)
 
-	// Configure connection with generous timeout
+	// Configure connection with generous timeout and max message size
+	conn.SetReadLimit(10 * 1024 * 1024) // 10 MB max message size
 	conn.SetReadDeadline(time.Now().Add(5 * time.Minute))
 	conn.SetPongHandler(func(string) error {
 		conn.SetReadDeadline(time.Now().Add(5 * time.Minute))
