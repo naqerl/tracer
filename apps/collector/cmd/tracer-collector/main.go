@@ -186,6 +186,7 @@ func serve(ctx context.Context, cfg config.Config) error {
 		}
 	})
 	for _, app := range apps {
+		app := app // capture
 		wg.Go(func() {
 			slog.Info("starting app producer", "app", app.Name)
 			defer slog.Info("app producer stopped", "app", app.Name)
@@ -200,6 +201,7 @@ func serve(ctx context.Context, cfg config.Config) error {
 		})
 	}
 	for appName, poller := range healthPollers {
+		poller := poller // capture
 		wg.Go(func() {
 			slog.Info("starting health poller", "app", appName)
 			defer slog.Info("health poller stopped", "app", appName)
