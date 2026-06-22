@@ -33,8 +33,17 @@ while [[ $# -gt 0 ]]; do
             CONFIGURE_FLAGS="$CONFIGURE_FLAGS --without-panel"
             shift
             ;;
+        --with-panel=no)
+            WITHOUT_PANEL=true
+            CONFIGURE_FLAGS="$CONFIGURE_FLAGS --with-panel=no"
+            shift
+            ;;
         --without-systemd)
             CONFIGURE_FLAGS="$CONFIGURE_FLAGS --without-systemd"
+            shift
+            ;;
+        --with-systemd=no)
+            CONFIGURE_FLAGS="$CONFIGURE_FLAGS --with-systemd=no"
             shift
             ;;
         --prefix=*|--bindir=*|--sysconfdir=*|--localstatedir=*)
@@ -182,14 +191,14 @@ install_tracer() {
     
     cd "$repo_dir"
     
-    # Run configure with all flags
+    # Run configure with all flags (in make-config mode for dev build)
     log_info "Configuring build..."
     if [[ -n "$CONFIGURE_FLAGS" ]]; then
         log_info "Configure flags: $CONFIGURE_FLAGS"
         # shellcheck disable=SC2086
-        ./configure $CONFIGURE_FLAGS
+        ./configure --make-config $CONFIGURE_FLAGS
     else
-        ./configure
+        ./configure --make-config
     fi
     
     # Build

@@ -13,7 +13,7 @@ DEMO_PANEL_URL ?= http://localhost:$(DEMO_PORT)
 DEMO_UNITS := demo-api.service demo-worker.service demo-cron.service
 
 build:
-	cd .. && ./configure --with-systemd=yes
+	cd .. && ./configure --make-config --with-systemd=yes
 	podman build -t $(DEMO_IMAGE) -f $(DEMO_DIR)/Containerfile $(ROOT_DIR)
 
 up: down build
