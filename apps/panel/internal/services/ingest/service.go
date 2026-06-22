@@ -184,6 +184,15 @@ func (s *Service) RegisterCollector(ctx context.Context, req RegisterCollectorRe
 	return nil
 }
 
+const (
+	maxMessageLength     = 10000
+	maxTraceIDLength     = 128
+	maxExtraEntries      = 100
+	maxExtraKeyLength    = 256
+	maxExtraValueLength  = 4096
+	maxContextJSONLength = 100000
+)
+
 type StoreLogRequest struct {
 	CollectorName string
 	AppName       string
@@ -197,6 +206,42 @@ func (r StoreLogRequest) Validate() error {
 	if err := domain.ValidateAppName(r.AppName); err != nil {
 		return err
 	}
+
+	// Validate log entry fields
+	switch r.Entry.Level {
+	case types.LevelDebug, types.LevelInfo, types.LevelWarn, types.LevelError:
+		// valid
+	default:
+		return fmt.Errorf("invalid log level: %q", r.Entry.Level)
+	}
+
+	if r.Entry.Timestamp.IsZero() {
+		return fmt.Errorf("log timestamp is required")
+	}
+
+	if r.Entry.Message == "" {
+		return fmt.Errorf("log message is required")
+	}
+	if len(r.Entry.Message) > maxMessageLength {
+		return fmt.Errorf("log message too long (max %d characters)", maxMessageLength)
+	}
+
+	if len(r.Entry.TraceID) > maxTraceIDLength {
+		return fmt.Errorf("trace ID too long (max %d characters)", maxTraceIDLength)
+	}
+
+	if len(r.Entry.Extra) > maxExtraEntries {
+		return fmt.Errorf("too many extra context entries (max %d)", maxExtraEntries)
+	}
+	for k, v := range r.Entry.Extra {
+		if len(k) > maxExtraKeyLength {
+			return fmt.Errorf("extra context key too long: %q", k)
+		}
+		if len(v) > maxExtraValueLength {
+			return fmt.Errorf("extra context value too long for key: %q", k)
+		}
+	}
+
 	return nil
 }
 
