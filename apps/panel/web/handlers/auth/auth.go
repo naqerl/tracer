@@ -1,36 +1,30 @@
 package auth
 
 import (
-	"embed"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"time"
 
-	authsvc "tracer/apps/panel/internal/services/auth"
+	"tracer/apps/panel/internal/services/auth"
 	"tracer/apps/panel/internal/services/user"
 	authmw "tracer/apps/panel/web/middleware/auth"
 	"tracer/apps/panel/web/middleware/ratelimit"
 	"tracer/apps/panel/web/templates"
 )
 
-//go:embed views/*.html
-var views embed.FS
-
 type handler struct {
-	t           templates.Templates
-	authService *authsvc.Service
+	authService *auth.Service
 	userService *user.Service
 	sessionMax  time.Duration
 }
 
-func InitMux(authService *authsvc.Service, userService *user.Service) *http.ServeMux {
+func InitMux(authService *auth.Service, userService *user.Service) *http.ServeMux {
 	m := http.NewServeMux()
 	h := handler{
-		t:           templates.New(views),
 		authService: authService,
 		userService: userService,
-		sessionMax:  authsvc.SessionDuration,
+		sessionMax:  auth.SessionDuration,
 	}
 
 	// Login routes
@@ -56,11 +50,8 @@ func (h *handler) renderFormError(w http.ResponseWriter, msg string) {
 }
 
 func (h *handler) renderSetupPage(w http.ResponseWriter, r *http.Request, errorMessage string) {
-	data := map[string]any{
-		"Title": "Setup - Tracer",
-		"Error": errorMessage,
-	}
-	h.t.RenderHTTP(w, r, "setup", data)
+	component := SetupPage("Setup - Tracer", errorMessage)
+	component.Render(r.Context(), w)
 }
 
 // Login handlers
@@ -71,10 +62,7 @@ func (h *handler) loginPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	data := map[string]any{
-		"Title": "Login - Tracer",
-	}
-	h.t.RenderHTTP(w, r, "login", data)
+	LoginPage("Login - Tracer").Render(r.Context(), w)
 }
 
 func (h *handler) login(w http.ResponseWriter, r *http.Request) {
@@ -115,7 +103,8 @@ func (h *handler) setupPage(w http.ResponseWriter, r *http.Request) {
 	hasUsers, err := h.authService.HasAnyUsers(r.Context())
 	if err != nil {
 		slog.Error("Failed to check users", "error", err)
-		h.t.RenderError(w, r, "Error", "Failed to check users", http.StatusInternalServerError)
+		w.WriteHeader(http.StatusInternalServerError)
+		templates.ErrorPage("Error", "Failed to check users", http.StatusInternalServerError, templates.NavData{Since: "24h"}).Render(r.Context(), w)
 		return
 	}
 
@@ -155,7 +144,7 @@ func (h *handler) setup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	registerReq := authsvc.RegisterRequest{
+	registerReq := auth.RegisterRequest{
 		Username: username,
 		Password: password,
 		IsAdmin:  true,
@@ -174,7 +163,7 @@ func (h *handler) setup(w http.ResponseWriter, r *http.Request) {
 
 	slog.Info("Admin user created", "user_id", user.ID, "username", username)
 
-	apiKeyReq := authsvc.GenerateCollectorAPIKeyRequest{
+	apiKeyReq := auth.GenerateCollectorAPIKeyRequest{
 		Name: "default",
 	}
 	if err := apiKeyReq.Validate(); err != nil {
@@ -199,9 +188,6 @@ func (h *handler) setup(w http.ResponseWriter, r *http.Request) {
 	authmw.SetSessionCookie(w, r, token, int(h.sessionMax.Seconds()))
 	slog.Info("Admin user created and logged in", "username", username)
 
-	h.t.RenderHTTP(w, r, "setup-success", map[string]any{
-		"Title":           "Setup Complete - Tracer",
-		"Username":        username,
-		"CollectorAPIKey": collectorAPIKey,
-	})
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	SetupSuccessPage("Setup Complete - Tracer", username, collectorAPIKey).Render(r.Context(), w)
 }

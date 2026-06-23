@@ -1,0 +1,117 @@
+package auth
+
+import (
+	"tracer/apps/panel/web/templates"
+)
+
+// LoginPage renders the login page
+templ LoginPage(title string) {
+	<!DOCTYPE html>
+	<html lang="en">
+		<head>
+			@templates.Head()
+			<title>{ title }</title>
+		</head>
+		<body class="min-h-screen flex items-center justify-center p-4">
+			<div class="bg-bg-secondary p-8 w-full max-w-sm">
+				<div class="text-center mb-6">
+					<h1 class="text-2xl font-semibold mb-1">Tracer</h1>
+					<p class="text-fg-secondary text-sm">Sign in to continue</p>
+				</div>
+				<div id="form-error" class="empty:hidden bg-red-900/50 text-red-300 p-3 mb-4 text-sm"></div>
+				<form hx-post="/auth/login" hx-target="#form-error" hx-swap="innerHTML" hx-on::after-request="if (event.detail.xhr.status >= 400) { document.getElementById('form-error').innerHTML = event.detail.xhr.responseText; }">
+					<div class="mb-4">
+						<label for="username" class="block text-fg-secondary text-sm mb-1.5">Username</label>
+						<input type="text" id="username" name="username" required autofocus
+							class="w-full px-3 py-2 bg-bg border border-bg-secondary focus:border-accent focus:outline-none text-fg"/>
+					</div>
+					<div class="mb-6">
+						<label for="password" class="block text-fg-secondary text-sm mb-1.5">Password</label>
+						<input type="password" id="password" name="password" required
+							class="w-full px-3 py-2 bg-bg border border-bg-secondary focus:border-accent focus:outline-none text-fg"/>
+					</div>
+					<button type="submit" class="w-full py-2.5 bg-accent hover:bg-accent/80 text-fg font-medium transition-colors">
+						Sign in
+					</button>
+				</form>
+			</div>
+		</body>
+	</html>
+}
+
+// SetupPage renders the setup page
+templ SetupPage(title string, errorMessage string) {
+	<!DOCTYPE html>
+	<html lang="en">
+		<head>
+			@templates.Head()
+			<title>{ title }</title>
+		</head>
+		<body class="min-h-screen flex items-center justify-center p-4">
+			<div class="bg-bg-secondary p-8 w-full max-w-md">
+				<div class="text-center mb-6">
+					<h1 class="text-2xl font-semibold mb-1">Tracer</h1>
+					<p class="text-fg-secondary text-sm">Create your admin account to get started</p>
+				</div>
+
+				if errorMessage != "" {
+					<div class="bg-red-900/50 text-red-300 p-3 mb-4 text-sm">{ errorMessage }</div>
+				}
+
+				<form action="/auth/setup" method="POST">
+					<div class="mb-4">
+						<label for="username" class="block text-fg-secondary text-sm mb-1.5">Admin Username</label>
+						<input type="text" id="username" name="username" required autofocus
+							class="w-full px-3 py-2 bg-bg border border-bg-secondary focus:border-accent focus:outline-none text-fg"/>
+					</div>
+					<div class="mb-4">
+						<label for="password" class="block text-fg-secondary text-sm mb-1.5">Password</label>
+						<input type="password" id="password" name="password" required minlength="8"
+							class="w-full px-3 py-2 bg-bg border border-bg-secondary focus:border-accent focus:outline-none text-fg"/>
+					</div>
+					<div class="mb-6">
+						<label for="confirm_password" class="block text-fg-secondary text-sm mb-1.5">Confirm Password</label>
+						<input type="password" id="confirm_password" name="confirm_password" required
+							class="w-full px-3 py-2 bg-bg border border-bg-secondary focus:border-accent focus:outline-none text-fg"/>
+					</div>
+					<button type="submit" class="w-full py-2.5 bg-accent hover:bg-accent/80 text-fg font-medium transition-colors">
+						Create Admin Account
+					</button>
+				</form>
+			</div>
+		</body>
+	</html>
+}
+
+// SetupSuccessPage renders the setup success page
+templ SetupSuccessPage(title string, username string, collectorAPIKey string) {
+	<!DOCTYPE html>
+	<html lang="en">
+		<head>
+			@templates.Head()
+			<title>{ title }</title>
+		</head>
+		<body class="min-h-screen flex items-center justify-center p-4">
+			<div class="bg-bg-secondary p-8 w-full max-w-lg">
+				<div class="text-center mb-6">
+					<h1 class="text-2xl font-semibold mb-1">Setup Complete</h1>
+					<p class="text-fg-secondary text-sm">Your admin account is ready and this collector key is shown only once.</p>
+				</div>
+
+				<div class="bg-bg border border-bg-secondary p-4 mb-6">
+					<h3 class="text-fg-secondary text-sm mb-2">Collector API Key</h3>
+					<div class="font-mono text-green-400 break-all text-sm mb-2">{ collectorAPIKey }</div>
+					<p class="text-xs text-fg-secondary">Save this key now and put it into your collector configuration.</p>
+				</div>
+
+				<div class="text-sm text-fg-secondary mb-6">
+					Admin username: <span class="text-fg">{ username }</span>
+				</div>
+
+				<a href="/panel/" class="block w-full text-center py-2.5 bg-accent hover:bg-accent/80 text-fg font-medium transition-colors">
+					Continue To Panel
+				</a>
+			</div>
+		</body>
+	</html>
+}
