@@ -1,7 +1,6 @@
 package topology
 
 import (
-	"embed"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -12,13 +11,11 @@ import (
 	authmw "tracer/apps/panel/web/middleware/auth"
 	"tracer/apps/panel/web/templates"
 	"tracer/libs/types"
+
+	"tracer/apps/panel/web/handlers/topology/view"
 )
 
-//go:embed views/*.html
-var views embed.FS
-
 type handler struct {
-	t       templates.Templates
 	svc     *topologysvc.Service
 	userSvc *usersvc.Service
 }
@@ -26,7 +23,6 @@ type handler struct {
 func InitMux(svc *topologysvc.Service, userSvc *usersvc.Service) *http.ServeMux {
 	m := http.NewServeMux()
 	h := handler{
-		t:       templates.New(views),
 		svc:     svc,
 		userSvc: userSvc,
 	}
@@ -44,18 +40,17 @@ func (h *handler) getTopologyPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	snapshot, err := h.svc.GetSnapshot(r.Context(), userID)
+	_, err = h.svc.GetSnapshot(r.Context(), userID)
 	if err != nil {
-		h.t.RenderError(w, r, "Error", "Failed to load topology", http.StatusInternalServerError)
+		templates.ErrorPage("Error", "Failed to load topology", http.StatusInternalServerError, templates.NavData{Since: "24h"}).Render(r.Context(), w)
 		return
 	}
 
-	data := map[string]any{
-		"Title":    "Topology",
-		"Snapshot": snapshot,
-	}
-
-	h.t.RenderHTTP(w, r, "topology", data)
+	nav := templates.NavData{Since: "24h"} // TODO: read from cookie
+	view.TopologyPage(view.TopologyPageProps{
+		Title: "Topology - Tracer",
+		Nav:   nav,
+	}).Render(r.Context(), w)
 }
 
 func (h *handler) getTopologyGraph(w http.ResponseWriter, r *http.Request) {
@@ -66,16 +61,20 @@ func (h *handler) getTopologyGraph(w http.ResponseWriter, r *http.Request) {
 
 	snapshot, err := h.svc.GetSnapshot(r.Context(), userID)
 	if err != nil {
-		h.t.RenderError(w, r, "Error", "Failed to load topology", http.StatusInternalServerError)
+		templates.ErrorPage("Error", "Failed to load topology", http.StatusInternalServerError, templates.NavData{Since: "24h"}).Render(r.Context(), w)
 		return
 	}
 
-	data := map[string]any{
-		"Title":    "Topology",
-		"Snapshot": snapshot,
+	snapshotJSON, err := json.Marshal(snapshot)
+	if err != nil {
+		templates.ErrorPage("Error", "Failed to serialize topology", http.StatusInternalServerError, templates.NavData{Since: "24h"}).Render(r.Context(), w)
+		return
 	}
 
-	h.t.RenderHTTP(w, r, "topology-graph", data)
+	view.TopologyGraph(view.TopologyGraphProps{
+		Title:    "Topology - Tracer",
+		Snapshot: string(snapshotJSON),
+	}).Render(r.Context(), w)
 }
 
 func (h *handler) streamTopologyEvents(w http.ResponseWriter, r *http.Request) {
