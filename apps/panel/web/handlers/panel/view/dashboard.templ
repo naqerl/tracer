@@ -1,0 +1,148 @@
+package view
+
+import (
+	"strconv"
+	"time"
+	"tracer/apps/panel/web/templates"
+)
+
+// CollectorView represents a collector on the dashboard.
+type CollectorView struct {
+	Name        string
+	RemoteAddr  string
+	IsConnected bool
+	ConnectedAt time.Time
+	LastSeenAt  time.Time
+	Stats       *CollectorStatsView
+}
+
+// CollectorStatsView represents collector resource stats.
+type CollectorStatsView struct {
+	CPUUsagePercent float64
+	MemTotalMB      int64
+	MemUsedMB       int64
+	DiskTotalGB     int64
+	DiskUsedGB      int64
+}
+
+// DashboardProps holds data for the dashboard page.
+type DashboardProps struct {
+	Title     string
+	Nav       templates.NavData
+	Collectors []CollectorView
+}
+
+// cpuClass returns a CSS class based on CPU usage.
+func cpuClass(percent float64) string {
+	if percent > 80.0 {
+		return "text-red-400"
+	} else if percent > 60.0 {
+		return "text-yellow-400"
+	}
+	return "text-fg-secondary"
+}
+
+// memPercent calculates memory usage percentage.
+func memPercent(memUsed, memTotal int64) float64 {
+	if memTotal <= 0 {
+		return 0
+	}
+	return float64(memUsed) / float64(memTotal) * 100.0
+}
+
+// memClass returns a CSS class based on memory usage.
+func memClass(percent float64) string {
+	if percent > 80.0 {
+		return "text-red-400"
+	} else if percent > 60.0 {
+		return "text-yellow-400"
+	}
+	return "text-fg-secondary"
+}
+
+// diskPercent calculates disk usage percentage.
+func diskPercent(diskUsed, diskTotal int64) float64 {
+	if diskTotal <= 0 {
+		return 0
+	}
+	return float64(diskUsed) / float64(diskTotal) * 100.0
+}
+
+// diskClass returns a CSS class based on disk usage.
+func diskClass(percent float64) string {
+	if percent > 80.0 {
+		return "text-red-400"
+	} else if percent > 60.0 {
+		return "text-yellow-400"
+	}
+	return "text-fg-secondary"
+}
+
+// Dashboard renders the dashboard page.
+templ Dashboard(p DashboardProps) {
+	@templates.Layout(p.Title, p.Nav) {
+		<div class="max-w-5xl mx-auto p-2 md:p-6">
+			<div>
+				if len(p.Collectors) == 0 {
+					<div class="text-center text-fg-secondary py-12">
+						<p>No collectors connected. Start a collector to begin receiving logs.</p>
+					</div>
+				}
+				for _, c := range p.Collectors {
+					<div class="mb-10">
+						<!-- Collector Header -->
+						<div class="mb-2">
+							<a href={ "/panel/collectors/" + c.Name } class="text-xl font-semibold hover:opacity-80 transition-opacity">
+								{ c.Name }
+							</a>
+						</div>
+
+						if c.Stats != nil {
+							<div class="flex flex-wrap items-center gap-4 mb-4 text-xs">
+								<div class="flex items-center gap-1">
+									<span class="text-fg-secondary">CPU:</span>
+									<span class={ cpuClass(c.Stats.CPUUsagePercent) }>{ strconv.FormatFloat(c.Stats.CPUUsagePercent, 'f', 0, 64) }%</span>
+								</div>
+								<div class="flex items-center gap-1">
+									<span class="text-fg-secondary">RAM:</span>
+									<span class={ memClass(memPercent(c.Stats.MemUsedMB, c.Stats.MemTotalMB)) }>{ strconv.FormatFloat(memPercent(c.Stats.MemUsedMB, c.Stats.MemTotalMB), 'f', 0, 64) }%</span>
+								</div>
+								<div class="flex items-center gap-1">
+									<span class="text-fg-secondary">Disk:</span>
+									<span class={ diskClass(diskPercent(c.Stats.DiskUsedGB, c.Stats.DiskTotalGB)) }>{ strconv.FormatFloat(diskPercent(c.Stats.DiskUsedGB, c.Stats.DiskTotalGB), 'f', 0, 64) }%</span>
+								</div>
+								<a hx-get={ "/panel/collectors/" + c.Name + "/resources" }
+								   hx-target="body"
+								   hx-push-url="true"
+								   class="text-fg-secondary hover:text-fg cursor-pointer ml-auto"
+								   title="View metrics history">
+									Metrics <span class="text-fg-secondary">&rarr;</span>
+								</a>
+							</div>
+						} else {
+							<div class="flex items-center justify-between mb-4">
+								<span class="text-fg-secondary text-xs">No stats available</span>
+								<a hx-get={ "/panel/collectors/" + c.Name + "/resources" }
+								   hx-target="body"
+								   hx-push-url="true"
+								   class="text-xs text-fg-secondary hover:text-fg cursor-pointer"
+								   title="View metrics history">
+									Metrics <span class="text-fg-secondary">&rarr;</span>
+								</a>
+							</div>
+						}
+
+						<!-- Apps Grid -->
+						<div
+							hx-get={ "/panel/collectors/" + c.Name + "/apps" }
+							hx-trigger="load"
+							hx-swap="outerHTML"
+						>
+							<div class="text-fg-secondary text-sm">Loading apps...</div>
+						</div>
+					</div>
+				}
+			</div>
+		</div>
+	}
+}

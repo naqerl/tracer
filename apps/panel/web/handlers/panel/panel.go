@@ -478,11 +478,6 @@ type logPageView struct {
 	GroupID        int64
 }
 
-type appView struct {
-	Name   string
-	Health appHealthView
-}
-
 type collectorView struct {
 	Name        string
 	RemoteAddr  string
@@ -490,6 +485,11 @@ type collectorView struct {
 	ConnectedAt time.Time
 	LastSeenAt  time.Time
 	Stats       *panelsvc.CollectorStats
+}
+
+type appView struct {
+	Name   string
+	Health appHealthView
 }
 
 func dashboardCollectorsView(collectors []panelsvc.Collector) []collectorView {

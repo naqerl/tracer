@@ -627,7 +627,11 @@ func (h *handler) notifierForm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.t.RenderHTTP(w, r, "notifier-form", data)
+	h.t.RenderHTTP(w, r, "notifier-form", map[string]any{
+		"ActiveType": data.ActiveType,
+		"NtfyURL":    data.NtfyURL,
+		"NtfyTopic":  data.NtfyTopic,
+	})
 }
 
 func (h *handler) createNotifier(w http.ResponseWriter, r *http.Request) {
