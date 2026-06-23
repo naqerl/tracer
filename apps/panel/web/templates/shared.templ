@@ -1,0 +1,240 @@
+package templates
+
+import "strconv"
+
+// Head component renders the HTML head section
+templ Head() {
+	<meta charset="UTF-8"/>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+	<link rel="preconnect" href="https://unpkg.com" crossorigin="crossorigin"/>
+	<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin="crossorigin"/>
+	<link rel="preconnect" href="https://cdn.tailwindcss.com" crossorigin="crossorigin"/>
+	<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/uplot@1.6.30/dist/uPlot.min.css"/>
+	<script src="https://cdn.tailwindcss.com?plugins=forms"></script>
+	<script src="https://unpkg.com/htmx.org@2.0.0" defer="defer"></script>
+	<script src="https://cdn.jsdelivr.net/npm/animejs/dist/bundles/anime.umd.min.js" defer="defer"></script>
+	<script src="https://cdn.jsdelivr.net/npm/uplot@1.6.30/dist/uPlot.iife.min.js" async="async"></script>
+	<script type="text/javascript">
+		tailwind.config = {
+			theme: {
+				extend: {
+					colors: {
+						bg: {
+							DEFAULT: '#0A0A0A',
+							secondary: '#1E1E1E',
+						},
+						fg: {
+							DEFAULT: '#EEEEEE',
+							secondary: '#808080',
+						},
+						accent: '#5C9CF5',
+						secondary: '#F5A742',
+					}
+				}
+			}
+		}
+	</script>
+	<style type="text/tailwindcss">
+		@layer base {
+			body {
+				@apply bg-bg text-fg font-sans antialiased;
+			}
+		}
+	</style>
+}
+
+// Navbar renders the top navigation bar
+templ Navbar(nav NavData) {
+	<nav class="flex items-center justify-between px-4 py-3 border-b border-bg-secondary" aria-label="Main navigation">
+		<div class="flex gap-3 sm:gap-6" id="nav-links">
+			<a href="/panel/" class="text-sm font-medium hover:text-fg transition-colors" data-nav="panel">/panel</a>
+			<a href="/topology/" class="text-sm font-medium hover:text-fg transition-colors" data-nav="topology">/topology</a>
+			<a href="/settings/" class="text-sm font-medium hover:text-fg transition-colors" data-nav="settings">/settings</a>
+		</div>
+		<form class="flex items-center gap-1 text-sm" onsubmit="return false;">
+			<div class="relative group" id="since-dropdown">
+				<div class="flex items-center justify-between gap-1 px-2 py-1 border border-transparent group-hover:border-bg-secondary text-fg-secondary group-hover:text-fg transition-colors cursor-pointer w-[5.5rem]">
+					<span class="flex items-center gap-1">
+						<span>since</span>
+						<span id="since-label">{ nav.Since }</span>
+					</span>
+					<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+				</div>
+				<div id="since-options" class="hidden group-hover:block absolute left-0 right-0 top-full mt-0 bg-bg border-x border-b border-bg-secondary shadow-lg z-50">
+					<button type="button" class="block w-full text-left px-2 py-1.5 text-sm hover:bg-bg-secondary transition-colors" onclick="navbarSelectSince('1h')">1h</button>
+					<button type="button" class="block w-full text-left px-2 py-1.5 text-sm hover:bg-bg-secondary transition-colors" onclick="navbarSelectSince('6h')">6h</button>
+					<button type="button" class="block w-full text-left px-2 py-1.5 text-sm hover:bg-bg-secondary transition-colors" onclick="navbarSelectSince('24h')">24h</button>
+					<button type="button" class="block w-full text-left px-2 py-1.5 text-sm hover:bg-bg-secondary transition-colors" onclick="navbarSelectSince('7d')">7d</button>
+					<button type="button" class="block w-full text-left px-2 py-1.5 text-sm hover:bg-bg-secondary transition-colors" onclick="navbarSelectSince('30d')">30d</button>
+				</div>
+			</div>
+		</form>
+		<script type="text/javascript">
+			(function() {
+				const cookieName = 'tracer_panel_since';
+				const defaultSince = '24h';
+				const allowedSince = new Set(['1h', '6h', '24h', '7d', '30d']);
+
+				function readCookie(name) {
+					const prefix = name + '=';
+					const parts = document.cookie.split(';');
+					for (let i = 0; i < parts.length; i++) {
+						const cookie = parts[i].trim();
+						if (cookie.startsWith(prefix)) {
+							return decodeURIComponent(cookie.slice(prefix.length));
+						}
+					}
+					return '';
+				}
+
+				function writeCookie(name, value) {
+					let cookie = name + '=' + encodeURIComponent(value) + '; path=/; max-age=31536000; SameSite=Lax';
+					if (window.location.protocol === 'https:') {
+						cookie += '; Secure';
+					}
+					document.cookie = cookie;
+				}
+
+				const currentSince = readCookie(cookieName);
+				const since = allowedSince.has(currentSince) ? currentSince : defaultSince;
+				if (currentSince !== since) {
+					writeCookie(cookieName, since);
+				}
+				const sinceLabel = document.getElementById('since-label');
+				sinceLabel.textContent = since;
+				document.documentElement.dataset.since = since;
+
+				const path = window.location.pathname;
+				document.querySelectorAll('#nav-links a').forEach(function(link) {
+					const nav = link.getAttribute('data-nav');
+					const isActive =
+						(nav === 'panel' && path === '/panel/') ||
+						(nav === 'topology' && path === '/topology/') ||
+						(nav === 'settings' && path === '/settings/');
+					if (isActive) {
+						link.classList.remove('text-fg-secondary');
+					} else {
+						link.classList.add('text-fg-secondary');
+					}
+				});
+
+				window.navbarSelectSince = function(val) {
+					if (!allowedSince.has(val)) {
+						return;
+					}
+					writeCookie(cookieName, val);
+					sinceLabel.textContent = val;
+					document.documentElement.dataset.since = val;
+					window.location.reload();
+				};
+
+				function reloadIfSinceChanged() {
+					const activeSince = allowedSince.has(readCookie(cookieName)) ? readCookie(cookieName) : defaultSince;
+					const pageSince = document.documentElement.dataset.since || sinceLabel.textContent || defaultSince;
+					if (activeSince !== pageSince) {
+						window.location.reload();
+					}
+				}
+
+				window.addEventListener('pageshow', function(event) {
+					if (event.persisted) {
+						reloadIfSinceChanged();
+					}
+				});
+
+				window.addEventListener('popstate', function() {
+					reloadIfSinceChanged();
+				});
+
+				document.body.addEventListener('htmx:historyRestore', function() {
+					reloadIfSinceChanged();
+				});
+			})();
+		</script>
+	</nav>
+}
+
+// Layout wraps page content with HTML head, navbar, and scripts.
+// Use as: @Layout(title, nav) { ... content ... }
+templ Layout(title string, nav NavData) {
+	<!DOCTYPE html>
+	<html lang="en">
+		<head>
+			@Head()
+			<title>{ title } - Tracer</title>
+		</head>
+		<body>
+			@Navbar(nav)
+			<main>
+				{ children... }
+			</main>
+		</body>
+	</html>
+}
+
+// ErrorPage renders an error page
+templ ErrorPage(title string, message string, status int, nav NavData) {
+	<!DOCTYPE html>
+	<html lang="en">
+		<head>
+			@Head()
+			<title>{ title } - Tracer</title>
+		</head>
+		<body>
+			@Navbar(nav)
+			<div class="max-w-5xl mx-auto p-6">
+				<div class="mb-6">
+					<h2 class="text-xl font-medium text-red-500">{ title }</h2>
+				</div>
+				<p class="text-fg-secondary">{ message }</p>
+			</div>
+		</body>
+	</html>
+}
+
+// MarkdownCheckbox renders an interactive markdown-style checkbox
+templ MarkdownCheckbox(id string, name string, label string, value string, checked bool, indent int) {
+	<div style={ "padding-left: " + strconv.Itoa(indent*24) + "px" }>
+		<input type="hidden" name={ name } id={ id + "_value" } value={ value } data-checked-value={ value }/>
+		<button type="button" id={ id + "_toggle" } class={ "text-base transition-colors font-mono " + tern(checked, "text-fg", "text-fg-secondary hover:text-fg") } data-id={ id } data-action="toggle-checkbox" data-label={ label }>
+			{ tern(checked, "[x] ", "[ ] ") + label }
+		</button>
+	</div>
+}
+
+// MarkdownCheckboxScript renders the JavaScript for markdown checkboxes
+templ MarkdownCheckboxScript() {
+	<script type="text/javascript">
+		document.addEventListener('click', function(e) {
+			const btn = e.target.closest('[data-action="toggle-checkbox"]');
+			if (!btn) return;
+			const id = btn.dataset.id;
+			const valueInput = document.getElementById(id + '_value');
+			const toggleBtn = document.getElementById(id + '_toggle');
+			const checkedValue = valueInput.dataset.checkedValue || 'on';
+			const isChecked = valueInput.value === checkedValue;
+			const labelText = toggleBtn.dataset.label;
+			if (isChecked) {
+				valueInput.value = '';
+				toggleBtn.textContent = '[ ] ' + labelText;
+				toggleBtn.classList.remove('text-fg');
+				toggleBtn.classList.add('text-fg-secondary');
+			} else {
+				valueInput.value = checkedValue;
+				toggleBtn.textContent = '[x] ' + labelText;
+				toggleBtn.classList.remove('text-fg-secondary');
+				toggleBtn.classList.add('text-fg');
+			}
+		});
+	</script>
+}
+
+// JSONViewer renders a JSON object as a key-value grid
+templ JSONViewer(data string, valid bool) {
+	<span>{ jsonViewerHTML(data, valid) }</span>
+}
+
+// JSONViewerFull renders a full JSON object as a key-value grid
+templ JSONViewerFull(data string, valid bool) {
+	<span>{ jsonViewerFullHTML(data, valid) }</span>
+}

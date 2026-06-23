@@ -14,7 +14,7 @@ LDFLAGS := -s -w \
 	-X tracer/pkg/setup.CollectorUser=$(COLLECTOR_USER) \
 	-X tracer/pkg/setup.TracerGroup=$(TRACER_GROUP)
 
-.PHONY: build build-collector build-panel clean test vet dev-setup sqlc install
+.PHONY: build build-collector build-panel clean test vet dev-setup generate sqlc install
 
 build: build-collector build-panel
 
@@ -39,7 +39,11 @@ vet:
 dev-setup:
 	go install github.com/sqlc-dev/sqlc/cmd/sqlc@v1.30.0
 	go install honnef.co/go/tools/cmd/staticcheck@v0.7.0
+	go install github.com/a-h/templ/cmd/templ@latest
 	go mod download
+
+generate:
+	templ generate
 
 sqlc:
 	cd apps/panel && sqlc generate
