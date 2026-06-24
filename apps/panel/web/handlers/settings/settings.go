@@ -5,7 +5,6 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"database/sql"
-	"embed"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -21,16 +20,13 @@ import (
 	"tracer/apps/panel/internal/services/ingest"
 	"tracer/apps/panel/internal/services/notify"
 	usersvc "tracer/apps/panel/internal/services/user"
+	"tracer/apps/panel/web/handlers/settings/view"
 	"tracer/apps/panel/web/htmx"
 	authmw "tracer/apps/panel/web/middleware/auth"
 	"tracer/apps/panel/web/templates"
 )
 
-//go:embed views/*.html
-var views embed.FS
-
 type handler struct {
-	t             templates.Templates
 	authService   *auth.Service
 	userService   *usersvc.Service
 	ingestService *ingest.Service
@@ -45,7 +41,6 @@ func appKey(collectorName, appName string) string {
 func InitMux(authService *auth.Service, userService *usersvc.Service, ingestService *ingest.Service, dbManager *dbmanager.Manager, notifyService *notify.Service) *http.ServeMux {
 	m := http.NewServeMux()
 	h := handler{
-		t:             templates.New(views),
 		authService:   authService,
 		userService:   userService,
 		ingestService: ingestService,
@@ -104,139 +99,97 @@ func (h *handler) requireAdminUser(w http.ResponseWriter, r *http.Request) (user
 }
 
 func (h *handler) settingsPage(w http.ResponseWriter, r *http.Request) {
-	data, err := h.buildSettingsPageData(w, r)
+	user, err := h.requireAuthenticatedUser(w, r)
 	if err != nil {
 		return
 	}
-	h.t.RenderHTTP(w, r, "settings", data)
-}
 
-func (h *handler) buildSettingsPageData(w http.ResponseWriter, r *http.Request) (map[string]any, error) {
-	user, err := h.requireAuthenticatedUser(w, r)
-	if err != nil {
-		return nil, http.ErrNoCookie
-	}
-
-	isAdmin := user.IsAdmin
-
-	data := map[string]any{
-		"Title":       "Settings - Tracer",
-		"CurrentUser": user,
-		"IsAdmin":     isAdmin,
-	}
-
-	// Admin-only data
-	if isAdmin {
-		users, err := h.userService.List(r.Context())
-		if err != nil {
-			h.t.RenderError(w, r, "Error", "Failed to list users", http.StatusInternalServerError)
-			return nil, err
-		}
-		data["Users"] = users
-
-		collectorAPIKeys, err := h.authService.ListCollectorAPIKeys(r.Context())
-		if err != nil {
-			h.t.RenderError(w, r, "Error", "Failed to list collector API keys", http.StatusInternalServerError)
-			return nil, err
-		}
-		data["CollectorAPIKeys"] = collectorAPIKeys
+	props := view.SettingsPageProps{
+		Title:       "Settings - Tracer",
+		CurrentUser: view.CurrentUserView{Username: user.Username, IsAdmin: user.IsAdmin},
+		IsAdmin:     user.IsAdmin,
+		NotifierForm: view.NotifierFormView{
+			ActiveType: "ntfy",
+			NtfyURL:    "https://ntfy.sh",
+		},
 	}
 
 	// Load notifiers (admins see all, non-admins see only their own)
 	notifiers, err := h.notifyService.List(r.Context(), user)
 	if err != nil {
-		h.t.RenderError(w, r, "Error", "Failed to list notifiers", http.StatusInternalServerError)
-		return nil, err
+		slog.Error("Failed to list notifiers", "error", err)
+		templates.ErrorPage("Error", "Failed to list notifiers", http.StatusInternalServerError, templates.NavData{Since: "24h"}).Render(r.Context(), w)
+		return
 	}
-	data["Notifiers"] = notifiers
+	for _, n := range notifiers {
+		props.Notifiers = append(props.Notifiers, view.NotifierView{
+			ID:      n.ID,
+			Name:    n.Name,
+			Type:    n.Type,
+			Enabled: n.Enabled,
+		})
+	}
 
 	// Load user's API keys (all users can have API keys)
 	userAPIKeys, err := h.authService.ListUserAPIKeys(r.Context(), user.ID)
 	if err != nil {
 		slog.Error("Failed to list user API keys", "error", err)
 	} else {
-		data["UserAPIKeys"] = userAPIKeys
+		for _, k := range userAPIKeys {
+			props.UserAPIKeys = append(props.UserAPIKeys, view.UserAPIKeyView{
+				ID:            k.ID,
+				Name:          k.Name,
+				KeySuffix:     k.KeySuffix,
+				LastUsed:      k.LastUsedAt.Int64,
+				LastUsedValid: k.LastUsedAt.Valid,
+			})
+		}
 	}
 
-	notifierForm, err := buildNotifierFormData(r)
-	if err != nil {
-		h.t.RenderError(w, r, "Error", "Failed to prepare notifier form", http.StatusInternalServerError)
-		return nil, err
-	}
-	data["NotifierForm"] = notifierForm
-
-	return data, nil
-}
-
-type notifierFormData struct {
-	ActiveType string
-	NtfyURL    string
-	NtfyTopic  string
-}
-
-func buildNotifierFormData(r *http.Request) (notifierFormData, error) {
-	activeType := strings.TrimSpace(r.URL.Query().Get("type"))
-	switch activeType {
-	case "", "ntfy":
-		activeType = "ntfy"
-	case "telegram":
-	default:
-		activeType = "ntfy"
-	}
-
-	data := notifierFormData{
-		ActiveType: activeType,
-		NtfyURL:    "https://ntfy.sh",
-	}
-
-	if activeType == "ntfy" {
-		topic, err := generateNtfyTopic()
+	// Admin-only data
+	if user.IsAdmin {
+		users, err := h.userService.List(r.Context())
 		if err != nil {
-			return notifierFormData{}, fmt.Errorf("generate ntfy topic: %w", err)
+			slog.Error("Failed to list users", "error", err)
+			templates.ErrorPage("Error", "Failed to list users", http.StatusInternalServerError, templates.NavData{Since: "24h"}).Render(r.Context(), w)
+			return
 		}
-		data.NtfyTopic = topic
-	}
-
-	return data, nil
-}
-
-func detectNotifierSubscriptionMode(isAdmin bool, subscriptionMap map[string]bool, collectorApps map[string][]string) string {
-	if isAdmin && subscriptionMap["*:*"] {
-		return "root"
-	}
-
-	if !isAdmin && len(collectorApps) > 0 {
-		for collector := range collectorApps {
-			if !subscriptionMap[appKey(collector, "*")] {
-				return "granular"
-			}
+		for _, u := range users {
+			props.Users = append(props.Users, view.UserView{
+				ID:        u.ID,
+				Username:  u.Username,
+				IsAdmin:   u.IsAdmin == 1,
+				CreatedAt: u.CreatedAt,
+			})
 		}
-		for key := range subscriptionMap {
-			if key == "*:*" {
-				return "granular"
-			}
-			if strings.HasSuffix(key, ":*") {
-				continue
-			}
-			return "granular"
+
+		collectorAPIKeys, err := h.authService.ListCollectorAPIKeys(r.Context())
+		if err != nil {
+			slog.Error("Failed to list collector API keys", "error", err)
+			templates.ErrorPage("Error", "Failed to list collector API keys", http.StatusInternalServerError, templates.NavData{Since: "24h"}).Render(r.Context(), w)
+			return
 		}
-		return "root"
+		for _, k := range collectorAPIKeys {
+			props.CollectorAPIKeys = append(props.CollectorAPIKeys, view.CollectorAPIKeyView{
+				Name:          k.Name,
+				KeySuffix:     k.KeySuffix,
+				CreatedAt:     k.CreatedAt,
+				LastUsed:      k.LastUsedAt.Int64,
+				LastUsedValid: k.LastUsedAt.Valid,
+			})
+		}
 	}
 
-	return "granular"
-}
-
-func generateNtfyTopic() (string, error) {
-	buf := make([]byte, 32)
-	if _, err := rand.Read(buf); err != nil {
-		return "", err
+	// Generate default ntfy topic for form
+	topic, err := generateNtfyTopic()
+	if err != nil {
+		slog.Error("Failed to generate ntfy topic", "error", err)
+	} else {
+		props.NotifierForm.NtfyTopic = topic
 	}
 
-	sum := sha256.Sum256(buf)
-	return hex.EncodeToString(sum[:]), nil
+	view.SettingsPage(props).Render(r.Context(), w)
 }
-
-// User handlers
 
 func (h *handler) createUser(w http.ResponseWriter, r *http.Request) {
 	if _, err := h.requireAdminUser(w, r); err != nil {
@@ -298,36 +251,28 @@ func (h *handler) getUserApps(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) getUser(w http.ResponseWriter, r *http.Request) {
-	data, ok := h.buildUserAppsData(w, r)
-	if !ok {
-		return
-	}
-	h.t.RenderHTTP(w, r, "user", data)
-}
-
-func (h *handler) buildUserAppsData(w http.ResponseWriter, r *http.Request) (map[string]any, bool) {
 	currentUser, err := h.requireAdminUser(w, r)
 	if err != nil {
-		return nil, false
+		return
 	}
 
 	idStr := r.PathValue("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
 		http.Error(w, "Invalid user ID", http.StatusBadRequest)
-		return nil, false
+		return
 	}
 
 	user, err := h.userService.FindByID(r.Context(), id)
 	if err != nil {
-		h.t.RenderError(w, r, "Error", "User not found", http.StatusNotFound)
-		return nil, false
+		templates.ErrorPage("Error", "User not found", http.StatusNotFound, templates.NavData{Since: "24h"}).Render(r.Context(), w)
+		return
 	}
 
 	userApps, err := h.userService.FindAccessPolicy(r.Context(), id)
 	if err != nil {
-		h.t.RenderError(w, r, "Error", "Failed to get user apps", http.StatusInternalServerError)
-		return nil, false
+		templates.ErrorPage("Error", "Failed to get user apps", http.StatusInternalServerError, templates.NavData{Since: "24h"}).Render(r.Context(), w)
+		return
 	}
 
 	// Build user apps map keyed by "collector:app".
@@ -339,30 +284,29 @@ func (h *handler) buildUserAppsData(w http.ResponseWriter, r *http.Request) (map
 	// Get apps grouped by collector
 	collectorApps, err := h.listAppsByCollector(r.Context())
 	if err != nil {
-		h.t.RenderError(w, r, "Error", "Failed to list apps", http.StatusInternalServerError)
-		return nil, false
+		templates.ErrorPage("Error", "Failed to list apps", http.StatusInternalServerError, templates.NavData{Since: "24h"}).Render(r.Context(), w)
+		return
 	}
 
-	// Check if there are any apps at all
-	hasNoApps := true
-	for _, apps := range collectorApps {
-		if len(apps) > 0 {
-			hasNoApps = false
-			break
+	// Build view props
+	var apps []view.UserAppView
+	for collector, appNames := range collectorApps {
+		for _, appName := range appNames {
+			apps = append(apps, view.UserAppView{
+				Collector: collector,
+				App:       appName,
+				Granted:   userAppMap[appKey(collector, appName)],
+			})
 		}
 	}
 
-	data := map[string]any{
-		"Title":         "User - Tracer",
-		"CurrentUser":   currentUser,
-		"User":          user,
-		"UserApps":      userAppMap,
-		"CollectorApps": collectorApps,
-		"HasNoApps":     hasNoApps,
-		"CanDelete":     currentUser.ID != user.ID,
-	}
+	view.UserApps(view.UserAppsProps{
+		UserID:   user.ID,
+		UserName: user.Username,
+		Apps:     apps,
+	}).Render(r.Context(), w)
 
-	return data, true
+	_ = currentUser
 }
 
 // listAppsByCollector returns all apps grouped by collector name
@@ -462,21 +406,15 @@ func (h *handler) createCollectorAPIKey(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	newKey, _, err := h.authService.GenerateCollectorAPIKey(r.Context(), req)
+	_, _, err := h.authService.GenerateCollectorAPIKey(r.Context(), req)
 	if err != nil {
 		slog.Error("Failed to generate collector API key", "error", err)
 		http.Error(w, "Failed to generate collector API key", http.StatusInternalServerError)
 		return
 	}
 
-	data, buildErr := h.buildSettingsPageData(w, r)
-	if buildErr != nil {
-		return
-	}
-	data["NewCollectorAPIKey"] = newKey
-	data["NewCollectorAPIKeyName"] = req.Name
-
-	h.t.RenderHTTP(w, r, "settings", data)
+	// Redirect back to settings page
+	htmx.Redirect(w, r, "/settings/")
 }
 
 func (h *handler) deleteCollectorAPIKey(w http.ResponseWriter, r *http.Request) {
@@ -513,18 +451,22 @@ func (h *handler) getCollectorAPIKey(w http.ResponseWriter, r *http.Request) {
 	key, err := h.authService.GetCollectorAPIKeyByName(r.Context(), name)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			h.t.RenderError(w, r, "Error", "Collector API key not found", http.StatusNotFound)
+			templates.ErrorPage("Error", "Collector API key not found", http.StatusNotFound, templates.NavData{Since: "24h"}).Render(r.Context(), w)
 			return
 		}
 		slog.Error("Failed to get collector API key", "name", name, "error", err)
-		h.t.RenderError(w, r, "Error", "Failed to get collector API key", http.StatusInternalServerError)
+		templates.ErrorPage("Error", "Failed to get collector API key", http.StatusInternalServerError, templates.NavData{Since: "24h"}).Render(r.Context(), w)
 		return
 	}
 
-	h.t.RenderHTTP(w, r, "collector-api-key", map[string]any{
-		"Title": "Collector API Key - Tracer",
-		"Key":   key,
-	})
+	view.CollectorAPIKeyDetail(view.CollectorAPIKeyDetailProps{
+		Title:         "Collector API Key - Tracer",
+		KeyName:       key.Name,
+		KeySuffix:     key.KeySuffix,
+		CreatedAt:     key.CreatedAt,
+		LastUsed:      key.LastUsedAt.Int64,
+		LastUsedValid: key.LastUsedAt.Valid,
+	}).Render(r.Context(), w)
 }
 
 // User API key handlers (LLM compatibility)
@@ -544,21 +486,15 @@ func (h *handler) createAPIKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	newKey, _, err := h.authService.GenerateUserAPIKey(r.Context(), req)
+	_, _, err = h.authService.GenerateUserAPIKey(r.Context(), req)
 	if err != nil {
 		slog.Error("Failed to generate user API key", "error", err)
 		http.Error(w, "Failed to generate API key", http.StatusInternalServerError)
 		return
 	}
 
-	data, buildErr := h.buildSettingsPageData(w, r)
-	if buildErr != nil {
-		return
-	}
-	data["NewUserAPIKey"] = newKey
-	data["NewUserAPIKeyName"] = req.Name
-
-	h.t.RenderHTTP(w, r, "settings", data)
+	// Redirect back
+	htmx.Redirect(w, r, "/settings/")
 }
 
 func (h *handler) deleteAPIKey(w http.ResponseWriter, r *http.Request) {
@@ -607,12 +543,47 @@ func (h *handler) deleteAPIKey(w http.ResponseWriter, r *http.Request) {
 // Notifier handlers
 
 func (h *handler) getNotifier(w http.ResponseWriter, r *http.Request) {
-	data, ok := h.buildNotifierSubscriptionsData(w, r)
+	data, ok := h.buildNotifierDetailData(w, r)
 	if !ok {
 		return
 	}
-	data["Title"] = "Notifier - Tracer"
-	h.t.RenderHTTP(w, r, "notifier", data)
+	view.NotifierDetail(data).Render(r.Context(), w)
+}
+
+func (h *handler) buildNotifierDetailData(w http.ResponseWriter, r *http.Request) (view.NotifierDetailProps, bool) {
+	user, err := h.requireAuthenticatedUser(w, r)
+	if err != nil {
+		return view.NotifierDetailProps{}, false
+	}
+
+	idStr := r.PathValue("id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		http.Error(w, "Invalid notifier ID", http.StatusBadRequest)
+		return view.NotifierDetailProps{}, false
+	}
+
+	setup, err := h.notifyService.GetSetup(r.Context(), user, id)
+	if err != nil {
+		switch {
+		case errors.Is(err, notify.ErrNotifierNotFound):
+			templates.ErrorPage("Error", "Notifier not found", http.StatusNotFound, templates.NavData{Since: "24h"}).Render(r.Context(), w)
+		case errors.Is(err, notify.ErrAccessDenied):
+			templates.ErrorPage("Forbidden", "You don't have access to this notifier", http.StatusForbidden, templates.NavData{Since: "24h"}).Render(r.Context(), w)
+		default:
+			templates.ErrorPage("Error", "Failed to get notifier", http.StatusInternalServerError, templates.NavData{Since: "24h"}).Render(r.Context(), w)
+		}
+		return view.NotifierDetailProps{}, false
+	}
+
+	return view.NotifierDetailProps{
+		Title:        "Notifier - Tracer",
+		NotifierID:   setup.ID,
+		NotifierName: setup.Name,
+		NotifierType: setup.Type,
+		Enabled:      setup.Enabled,
+		Config:       setup.Config,
+	}, true
 }
 
 func (h *handler) notifierForm(w http.ResponseWriter, r *http.Request) {
@@ -620,18 +591,31 @@ func (h *handler) notifierForm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	data, err := buildNotifierFormData(r)
-	if err != nil {
-		slog.Error("Failed to build notifier form", "error", err)
-		http.Error(w, "Failed to render notifier form", http.StatusInternalServerError)
-		return
+	activeType := strings.TrimSpace(r.URL.Query().Get("type"))
+	switch activeType {
+	case "", "ntfy":
+		activeType = "ntfy"
+	case "telegram":
+	default:
+		activeType = "ntfy"
 	}
 
-	h.t.RenderHTTP(w, r, "notifier-form", map[string]any{
-		"ActiveType": data.ActiveType,
-		"NtfyURL":    data.NtfyURL,
-		"NtfyTopic":  data.NtfyTopic,
-	})
+	form := view.NotifierFormView{
+		ActiveType: activeType,
+		NtfyURL:    "https://ntfy.sh",
+	}
+
+	if activeType == "ntfy" {
+		topic, err := generateNtfyTopic()
+		if err != nil {
+			slog.Error("Failed to generate ntfy topic", "error", err)
+			http.Error(w, "Failed to render notifier form", http.StatusInternalServerError)
+			return
+		}
+		form.NtfyTopic = topic
+	}
+
+	view.NotifierForm(form).Render(r.Context(), w)
 }
 
 func (h *handler) createNotifier(w http.ResponseWriter, r *http.Request) {
@@ -810,43 +794,43 @@ func (h *handler) toggleNotifier(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) getNotifierSubscriptions(w http.ResponseWriter, r *http.Request) {
-	data, ok := h.buildNotifierSubscriptionsData(w, r)
+	props, ok := h.buildNotifierSubscriptionsData(w, r)
 	if !ok {
 		return
 	}
-	h.t.RenderHTTP(w, r, "notifier-subscriptions", data)
+	view.NotifierSubscriptions(props).Render(r.Context(), w)
 }
 
-func (h *handler) buildNotifierSubscriptionsData(w http.ResponseWriter, r *http.Request) (map[string]any, bool) {
+func (h *handler) buildNotifierSubscriptionsData(w http.ResponseWriter, r *http.Request) (view.NotifierSubscriptionsProps, bool) {
 	user, err := h.requireAuthenticatedUser(w, r)
 	if err != nil {
-		return nil, false
+		return view.NotifierSubscriptionsProps{}, false
 	}
 
 	idStr := r.PathValue("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
 		http.Error(w, "Invalid notifier ID", http.StatusBadRequest)
-		return nil, false
+		return view.NotifierSubscriptionsProps{}, false
 	}
 
 	setup, err := h.notifyService.GetSetup(r.Context(), user, id)
 	if err != nil {
 		switch {
 		case errors.Is(err, notify.ErrNotifierNotFound):
-			h.t.RenderError(w, r, "Error", "Notifier not found", http.StatusNotFound)
+			templates.ErrorPage("Error", "Notifier not found", http.StatusNotFound, templates.NavData{Since: "24h"}).Render(r.Context(), w)
 		case errors.Is(err, notify.ErrAccessDenied):
-			h.t.RenderError(w, r, "Forbidden", "You don't have access to this notifier", http.StatusForbidden)
+			templates.ErrorPage("Forbidden", "You don't have access to this notifier", http.StatusForbidden, templates.NavData{Since: "24h"}).Render(r.Context(), w)
 		default:
-			h.t.RenderError(w, r, "Error", "Failed to get notifier", http.StatusInternalServerError)
+			templates.ErrorPage("Error", "Failed to get notifier", http.StatusInternalServerError, templates.NavData{Since: "24h"}).Render(r.Context(), w)
 		}
-		return nil, false
+		return view.NotifierSubscriptionsProps{}, false
 	}
 
 	subscriptions, err := h.notifyService.GetSubscriptions(r.Context(), user, id)
 	if err != nil {
-		h.t.RenderError(w, r, "Error", "Failed to get notifier subscriptions", http.StatusInternalServerError)
-		return nil, false
+		templates.ErrorPage("Error", "Failed to get notifier subscriptions", http.StatusInternalServerError, templates.NavData{Since: "24h"}).Render(r.Context(), w)
+		return view.NotifierSubscriptionsProps{}, false
 	}
 
 	// Build subscription map with "collector:app" keys
@@ -860,8 +844,8 @@ func (h *handler) buildNotifierSubscriptionsData(w http.ResponseWriter, r *http.
 	collectors, err := h.ingestService.ListCollectors()
 	if err != nil {
 		slog.Error("Failed to list collectors", "error", err)
-		h.t.RenderError(w, r, "Error", "Failed to list collectors", http.StatusInternalServerError)
-		return nil, false
+		templates.ErrorPage("Error", "Failed to list collectors", http.StatusInternalServerError, templates.NavData{Since: "24h"}).Render(r.Context(), w)
+		return view.NotifierSubscriptionsProps{}, false
 	}
 
 	// Build structured data: map[collector][]app
@@ -870,8 +854,8 @@ func (h *handler) buildNotifierSubscriptionsData(w http.ResponseWriter, r *http.
 		apps, err := h.ingestService.ListApps(collector)
 		if err != nil {
 			slog.Error("Failed to list apps for collector", "collector", collector, "error", err)
-			h.t.RenderError(w, r, "Error", "Failed to list apps", http.StatusInternalServerError)
-			return nil, false
+			templates.ErrorPage("Error", "Failed to list apps", http.StatusInternalServerError, templates.NavData{Since: "24h"}).Render(r.Context(), w)
+			return view.NotifierSubscriptionsProps{}, false
 		}
 		collectorApps[collector] = apps
 	}
@@ -880,8 +864,8 @@ func (h *handler) buildNotifierSubscriptionsData(w http.ResponseWriter, r *http.
 	if !user.IsAdmin {
 		userApps, err := h.userService.FindAccessPolicy(r.Context(), user.ID)
 		if err != nil {
-			h.t.RenderError(w, r, "Error", "Failed to get user apps", http.StatusInternalServerError)
-			return nil, false
+			templates.ErrorPage("Error", "Failed to get user apps", http.StatusInternalServerError, templates.NavData{Since: "24h"}).Render(r.Context(), w)
+			return view.NotifierSubscriptionsProps{}, false
 		}
 		userAppSet := make(map[string]bool)
 		for _, app := range userApps.Apps {
@@ -904,17 +888,26 @@ func (h *handler) buildNotifierSubscriptionsData(w http.ResponseWriter, r *http.
 		collectorApps = filtered
 	}
 
-	data := map[string]any{
-		"Title":            "Edit Notifier Apps - Tracer",
-		"Notifier":         setup,
-		"NotifierID":       id,
-		"Subscriptions":    subscriptionMap, // map[string]bool (key: "collector:app")
-		"CollectorApps":    collectorApps,   // map[string][]string
-		"IsAdmin":          user.IsAdmin,
-		"SubscriptionMode": detectNotifierSubscriptionMode(user.IsAdmin, subscriptionMap, collectorApps),
+	// Build app list for view
+	var apps []view.NotifierAppView
+	for collector, appNames := range collectorApps {
+		for _, appName := range appNames {
+			apps = append(apps, view.NotifierAppView{
+				CollectorName: collector,
+				AppName:       appName,
+				Enabled:       subscriptionMap[appKey(collector, appName)],
+			})
+		}
 	}
 
-	return data, true
+	props := view.NotifierSubscriptionsProps{
+		Title:        "Edit Notifier Apps - Tracer",
+		NotifierID:   id,
+		NotifierName: setup.Name,
+		Apps:         apps,
+	}
+
+	return props, true
 }
 
 func (h *handler) updateNotifierSubscriptions(w http.ResponseWriter, r *http.Request) {
@@ -935,80 +928,22 @@ func (h *handler) updateNotifierSubscriptions(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	// Parse form values: "collector:app" format
-	mode := r.FormValue("subscription_mode")
+	// Build list of subscriptions from form values
 	selectedPairs := r.Form["apps"]
-	allApps := r.FormValue("all_apps") == "on"
 
 	var subscriptions []notify.Subscription
-
-	if mode == "root" {
-		if user.IsAdmin {
-			subscriptions = append(subscriptions, notify.Subscription{
-				AppName:       "*",
-				CollectorName: "*",
-			})
-		} else {
-			accessPolicy, err := h.userService.FindAccessPolicy(r.Context(), user.ID)
-			if err != nil {
-				http.Error(w, "Failed to get user apps", http.StatusInternalServerError)
-				return
-			}
-
-			collectors := make(map[string]bool)
-			for _, app := range accessPolicy.Apps {
-				collectors[app.CollectorName] = true
-			}
-			for collector := range collectors {
-				subscriptions = append(subscriptions, notify.Subscription{
-					CollectorName: collector,
-					AppName:       "*",
-				})
-			}
+	for _, pair := range selectedPairs {
+		parts := strings.Split(pair, ":")
+		if len(parts) != 2 {
+			continue
 		}
-	} else if allApps && user.IsAdmin {
-		// Global wildcard subscription (all apps from all collectors)
 		subscriptions = append(subscriptions, notify.Subscription{
-			AppName:       "*",
-			CollectorName: "*",
+			CollectorName: parts[0],
+			AppName:       parts[1],
 		})
-	} else {
-		// Parse collector:app pairs
-		for _, pair := range selectedPairs {
-			parts := strings.Split(pair, ":")
-			if len(parts) != 2 {
-				continue // Skip invalid format
-			}
-			subscriptions = append(subscriptions, notify.Subscription{
-				CollectorName: parts[0],
-				AppName:       parts[1],
-			})
-		}
-
-		// For non-admins: filter to only apps they have access to
-		if !user.IsAdmin {
-			userApps, err := h.userService.FindAccessPolicy(r.Context(), user.ID)
-			if err != nil {
-				http.Error(w, "Failed to get user apps", http.StatusInternalServerError)
-				return
-			}
-			userAppSet := make(map[string]bool)
-			for _, app := range userApps.Apps {
-				userAppSet[appKey(app.CollectorName, app.AppName)] = true
-			}
-
-			var filtered []notify.Subscription
-			for _, sub := range subscriptions {
-				// Allow wildcards or check app access
-				if sub.AppName == "*" || userAppSet[appKey(sub.CollectorName, sub.AppName)] {
-					filtered = append(filtered, sub)
-				}
-			}
-			subscriptions = filtered
-		}
 	}
 
-	// Update subscriptions through service (simply writes to DB)
+	// Update subscriptions through service (replaces all)
 	if err := h.notifyService.SetSubscriptions(r.Context(), user, id, subscriptions); err != nil {
 		switch {
 		case errors.Is(err, notify.ErrNotifierNotFound):
@@ -1022,5 +957,14 @@ func (h *handler) updateNotifierSubscriptions(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	htmx.Redirect(w, r, "/settings/")
+	htmx.Redirect(w, r, fmt.Sprintf("/settings/notifiers/%d", id))
+}
+
+func generateNtfyTopic() (string, error) {
+	buf := make([]byte, 16)
+	if _, err := rand.Read(buf); err != nil {
+		return "", fmt.Errorf("generate random bytes: %w", err)
+	}
+	hash := sha256.Sum256(buf)
+	return hex.EncodeToString(hash[:8]), nil
 }

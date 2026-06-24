@@ -28,7 +28,7 @@ systemctl start tracer-collector tracer-panel
 
 sleep 3
 
-api_key=$(tracer-panel -init -username demo -password demo123 2>/dev/null | grep '^collector_api_key=' | cut -d= -f2)
+api_key=$(tracer-panel -init -username demo -password demodemo123 2>/dev/null | grep '^collector_api_key=' | cut -d= -f2) || true
 if [ -n "$api_key" ]; then
     tracer-collector set api-key "$api_key"
 fi

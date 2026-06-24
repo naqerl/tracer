@@ -18,17 +18,19 @@ type CollectorView struct {
 
 // CollectorStatsView represents collector resource stats.
 type CollectorStatsView struct {
-	CPUUsagePercent float64
-	MemTotalMB      int64
-	MemUsedMB       int64
-	DiskTotalGB     int64
-	DiskUsedGB      int64
+	CPUUsagePercent    float64
+	MemTotalMB         int64
+	MemUsedMB          int64
+	DiskTotalGB        int64
+	DiskUsedGB         int64
+	TimestampFormatted string
+	Staleness          string
 }
 
 // DashboardProps holds data for the dashboard page.
 type DashboardProps struct {
 	Title     string
-	Nav       templates.NavData
+	Since     string
 	Collectors []CollectorView
 }
 
@@ -80,7 +82,7 @@ func diskClass(percent float64) string {
 
 // Dashboard renders the dashboard page.
 templ Dashboard(p DashboardProps) {
-	@templates.Layout(p.Title, p.Nav) {
+	@templates.Layout(p.Title, templates.NavData{Since: p.Since}) {
 		<div class="max-w-5xl mx-auto p-2 md:p-6">
 			<div>
 				if len(p.Collectors) == 0 {

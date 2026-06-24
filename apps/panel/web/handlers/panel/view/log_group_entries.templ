@@ -1,0 +1,88 @@
+package view
+
+import (
+	"strconv"
+	"time"
+	"tracer/apps/panel/web/templates"
+)
+
+// LogGroupEntriesProps holds data for the log group entries fragment.
+type LogGroupEntriesProps struct {
+	Entries       []LogEntryItem
+	CollectorName string
+	AppName       string
+	GroupID       int64
+	HasMore       bool
+	NextOffset    int
+	Offset        int
+	Level         string
+}
+
+type LogEntryItem struct {
+	ID        int64
+	CreatedAt time.Time
+	Context   struct {
+		Valid  bool
+		String string
+	}
+}
+
+// LogGroupEntries renders the log group entries fragment (for infinite scroll).
+templ LogGroupEntries(props LogGroupEntriesProps) {
+	if len(props.Entries) > 0 {
+		if props.Offset == 0 {
+			<!-- Chart Container (only on first load) -->
+			<div id="log-chart-container" data-level={ props.Level }>
+				<div id="log-chart"></div>
+			</div>
+		}
+
+		<!-- Log Entries -->
+		for _, entry := range props.Entries {
+			<a href={ "/panel/collectors/" + props.CollectorName + "/apps/" + props.AppName + "/logs/" + strconv.FormatInt(entry.ID, 10) } class="group block cursor-pointer" data-timestamp={ strconv.FormatInt(entry.CreatedAt.Unix(), 10) }>
+				<div class="border border-bg-secondary hover:border-fg-secondary/30 transition-colors">
+					<!-- Card Header with Timestamp -->
+					<div class="px-3 py-2 border-b border-bg-secondary/50 bg-bg-secondary/30 flex items-center justify-between">
+						<span class="text-xs font-mono text-fg-secondary">{ entry.CreatedAt.Format("2006-01-02 15:04:05") }</span>
+						<span class="text-xs text-fg-secondary/60 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">View details &rarr;</span>
+					</div>
+					<!-- Card Body with Context -->
+					<div class="p-3 overflow-x-auto">
+						if entry.Context.Valid {
+							<div class="min-w-max">
+								@templates.JSONViewer(entry.Context.String, entry.Context.Valid)
+							</div>
+						} else {
+							<span class="text-sm text-fg-secondary/60 italic">No context data</span>
+						}
+					</div>
+				</div>
+			</a>
+		}
+
+		if props.HasMore {
+			<!-- Infinite scroll sentinel -->
+			<div class="mt-2 h-4"
+				 hx-get={ "/panel/collectors/" + props.CollectorName + "/apps/" + props.AppName + "/logs/groups/" + strconv.FormatInt(props.GroupID, 10) + "/entries?offset=" + strconv.Itoa(props.NextOffset) + "&level=" + props.Level }
+				 hx-trigger="revealed"
+				 hx-swap="outerHTML">
+				<div class="text-center text-sm text-fg-secondary/40 py-2">
+					<span>...</span>
+				</div>
+			</div>
+		}
+
+		if props.Offset == 0 {
+			<!-- Chart Rendering Script (only on first load) -->
+			<script src="/panel/logs/groups/plot"></script>
+		}
+	} else {
+		if props.Offset == 0 {
+			<div class="text-center text-sm text-fg-secondary/60 py-12">
+				<p>No logs found for this group.</p>
+			</div>
+		}
+	}
+}
+
+

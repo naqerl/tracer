@@ -1,0 +1,90 @@
+package view
+
+import (
+	"tracer/apps/panel/web/templates"
+)
+
+type AppProps struct {
+	Title     string
+	App       string
+	Collector string
+	Since     string
+	Uptime    AppHealthView
+	Level     string
+}
+
+// App renders the app detail page.
+templ App(props AppProps) {
+	<!DOCTYPE html>
+	<html lang="en">
+		<head>
+			@templates.Head()
+			<title>{ props.App } - Tracer</title>
+			<style>
+				.uplot { margin: 1.5rem 0; touch-action: pan-y pinch-zoom; }
+				.range-tabs { display: flex; gap: 0.5rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
+				.range-tab {
+					padding: 0.5rem 1rem;
+					background: #1E1E1E;
+					color: #EEEEEE;
+					cursor: pointer;
+					transition: all 0.2s;
+					text-decoration: none;
+					display: inline-block;
+					font-size: 0.875rem;
+				}
+				.range-tab:hover { background: #2A2A2A; }
+				.range-tab.active { background: #5C9CF5; color: #0A0A0A; font-weight: 600; }
+				@media (max-width: 640px) {
+					.range-tab { padding: 0.4rem 0.75rem; font-size: 0.8rem; }
+				}
+			</style>
+		</head>
+		<body>
+			@templates.Navbar(templates.NavData{Since: props.Since})
+			<div class="max-w-5xl mx-auto p-6">
+				<h1 class="text-3xl font-semibold mb-6">{ props.App }</h1>
+
+				<h2 class="text-lg font-medium mb-4">Uptime { props.Uptime.UptimeText }</h2>
+				<div class="mb-6">
+					@UptimeBars(props.Uptime.Bars, "lg")
+				</div>
+
+				<div
+				  hx-get={ "/panel/collectors/" + props.Collector + "/apps/" + props.App + "/stats" }
+				  hx-trigger="load"
+				></div>
+
+				<div
+				  hx-get={ "/panel/collectors/" + props.Collector + "/apps/" + props.App + "/logs/groups?level=" + props.Level }
+				  hx-trigger="load"
+				></div>
+			</div>
+		</body>
+	</html>
+}
+
+// UptimeBars renders uptime bar visualizations.
+templ UptimeBars(bars []UptimeBarView, size string) {
+	if len(bars) > 0 {
+		if size == "sm" {
+			<div class="flex items-end gap-1">
+				for _, bar := range bars {
+					<div class={ bar.Class + " box-border rounded-sm h-6 w-2" }
+						 title={ bar.Title }
+						 aria-label={ bar.Title }></div>
+				}
+			</div>
+		} else {
+			<div class="flex items-end gap-px sm:gap-1">
+				for _, bar := range bars {
+					<div class={ bar.Class + " box-border rounded-sm h-8 sm:h-12 flex-1 min-w-1 sm:min-w-2" }
+						 title={ bar.Title }
+						 aria-label={ bar.Title }></div>
+				}
+			</div>
+		}
+	} else {
+		<div class="text-xs text-fg-secondary">No uptime samples in range</div>
+	}
+}

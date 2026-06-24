@@ -1,0 +1,422 @@
+package view
+
+import (
+	"strconv"
+	"tracer/apps/panel/web/templates"
+)
+
+// SettingsPageProps holds data for the settings page.
+type SettingsPageProps struct {
+	Title                 string
+	CurrentUser           CurrentUserView
+	IsAdmin              bool
+	Users                []UserView
+	CollectorAPIKeys     []CollectorAPIKeyView
+	NewUserAPIKey        string
+	NewUserAPIKeyName    string
+	NewCollectorAPIKey   string
+	NewCollectorAPIKeyName string
+	UserAPIKeys          []UserAPIKeyView
+	Notifiers            []NotifierView
+	NotifierForm         NotifierFormView
+}
+
+type CurrentUserView struct {
+	Username string
+	IsAdmin  bool
+}
+
+type UserView struct {
+	ID        int64
+	Username  string
+	IsAdmin   bool
+	CreatedAt int64
+}
+
+type CollectorAPIKeyView struct {
+	Name          string
+	KeySuffix     string
+	CreatedAt     int64
+	LastUsed      int64 // 0 = never
+	LastUsedValid bool
+}
+
+type UserAPIKeyView struct {
+	ID            int64
+	Name          string
+	KeySuffix     string
+	LastUsed      int64
+	LastUsedValid bool
+}
+
+type NotifierView struct {
+	ID      int64
+	Name    string
+	Type    string
+	Enabled int64
+}
+
+type NotifierFormView struct {
+	ActiveType      string
+	NtfyURL         string
+	NtfyTopic       string
+	TelegramToken   string
+	TelegramChatID  string
+}
+
+// SettingsPage renders the main settings page.
+templ SettingsPage(props SettingsPageProps) {
+	<!DOCTYPE html>
+	<html lang="en">
+		<head>
+			@templates.Head()
+			<title>{ props.Title } - Tracer</title>
+		</head>
+		<body>
+			@templates.Navbar(templates.NavData{Since: "24h"})
+			<div class="max-w-5xl mx-auto p-2 md:p-6">
+				<!-- Account Section -->
+				<div class="mb-10">
+					<h2 class="text-xl font-medium mb-6">Account</h2>
+					<div class="flex items-center justify-between border border-bg-secondary/70 p-4">
+						<div>
+							<p class="text-lg text-fg">{ props.CurrentUser.Username }</p>
+							<p class="text-sm text-fg-secondary mt-1">
+								if props.CurrentUser.IsAdmin {
+									Administrator
+								} else {
+									User
+								}
+							</p>
+						</div>
+						<form action="/auth/logout" method="POST">
+							<button type="submit" class="text-sm text-fg-secondary hover:text-red-500 underline transition-colors">Logout</button>
+						</form>
+					</div>
+				</div>
+
+				<!-- API Keys Section -->
+				<div class="mb-10">
+					<h2 class="text-xl font-medium mb-6">API Keys</h2>
+					<p class="text-base text-fg-secondary mb-6">Generate API keys to access logs programmatically.</p>
+
+					<div class="mb-8 w-full border border-bg-secondary/70 p-4">
+						<form action="/settings/api-keys" method="POST">
+							<div class="mb-4 w-full">
+								<input type="text" id="key_name" name="name" placeholder="Key name" required="required" maxlength="64"
+									   class="w-full max-w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg placeholder:text-fg-secondary/50 md:w-[40ch]"/>
+							</div>
+							<button type="submit" class="text-sm text-fg border border-fg px-4 py-2 hover:bg-fg hover:text-bg transition-colors">Generate Key</button>
+						</form>
+					</div>
+
+					if props.NewUserAPIKey != "" {
+						<div class="bg-bg-secondary border border-fg/10 p-4 mb-6">
+							<p class="text-sm text-fg-secondary mb-2">
+								New API key
+								if props.NewUserAPIKeyName != "" {
+									{ ": " + props.NewUserAPIKeyName }
+								}
+							</p>
+							<code class="text-base font-mono block break-all">{ props.NewUserAPIKey }</code>
+						</div>
+					}
+
+					if len(props.UserAPIKeys) > 0 {
+						<table class="w-full">
+							<thead class="border-b border-bg-secondary">
+								<tr class="text-left text-sm text-fg-secondary">
+									<th class="pb-2 font-medium">Name</th>
+									<th class="pb-2 font-medium">Key</th>
+									<th class="pb-2 font-medium">Last Used</th>
+									<th class="pb-2 font-medium"></th>
+								</tr>
+							</thead>
+							<tbody class="text-base">
+								for _, k := range props.UserAPIKeys {
+									<tr class="group opacity-60 hover:opacity-100 transition-opacity duration-700 hover:duration-150 border-b border-bg-secondary/50">
+										<td class="py-3">{ k.Name }</td>
+										<td class="py-3"><code class="text-sm font-mono">****{ k.KeySuffix }</code></td>
+										<td class="py-3 text-sm text-fg-secondary">
+											if k.LastUsedValid {
+												{ formatTimestamp(k.LastUsed) }
+											} else {
+												Never
+											}
+										</td>
+										<td class="py-3 text-right">
+											<button hx-delete={ "/settings/api-keys/" + strconv.FormatInt(k.ID, 10) }
+													hx-confirm={ "Delete API key " + k.Name + "?" }
+													hx-target="body" hx-swap="outerHTML"
+													class="text-sm text-fg-secondary hover:text-red-500 underline transition-colors">Delete</button>
+										</td>
+									</tr>
+								}
+							</tbody>
+						</table>
+					} else {
+						<p class="text-sm text-fg-secondary/60 py-6 text-center">No API keys generated yet.</p>
+					}
+				</div>
+
+				if props.IsAdmin {
+					<!-- Collector API Keys Section -->
+					<div class="mb-10">
+						<h2 class="text-xl font-medium mb-6">Collector API Keys</h2>
+						<p class="text-base text-fg-secondary mb-6">Create separate collector credentials per host or environment. Plaintext is shown only once.</p>
+
+						if props.NewCollectorAPIKey != "" {
+							<div class="bg-bg-secondary border border-fg/10 p-4 mb-6">
+								<p class="text-sm text-fg-secondary mb-2">
+									New collector key
+									if props.NewCollectorAPIKeyName != "" {
+										{ ": " + props.NewCollectorAPIKeyName }
+									}
+								</p>
+								<code class="text-base font-mono block break-all">{ props.NewCollectorAPIKey }</code>
+							</div>
+						}
+
+						<div class="mb-8 w-full border border-bg-secondary/70 p-4">
+							<form action="/settings/admin/collector-api-keys" method="POST">
+								<div class="mb-4 w-full">
+									<input type="text" id="collector_key_name" name="name" placeholder="Collector key name" required="required" maxlength="64"
+										   class="w-full max-w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg placeholder:text-fg-secondary/50 md:w-[40ch]"/>
+								</div>
+								<button type="submit" class="text-sm text-fg border border-fg px-4 py-2 hover:bg-fg hover:text-bg transition-colors">Create Collector Key</button>
+							</form>
+						</div>
+
+						@CollectorAPIKeyTable(props.CollectorAPIKeys)
+					</div>
+
+					<!-- Users Section -->
+					<div class="mb-10">
+						<h2 class="text-xl font-medium mb-6">Users</h2>
+						<div class="mb-8 w-full border border-bg-secondary/70 p-4">
+							<form action="/settings/users" method="POST">
+								<div class="mb-4 w-full space-y-4">
+									<div class="w-full">
+										<input type="text" id="username" name="username" placeholder="Username" required="required" maxlength="32"
+											   class="w-full max-w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg placeholder:text-fg-secondary/50 md:w-[24ch]"/>
+									</div>
+									<div class="w-full">
+										<input type="password" id="password" name="password" placeholder="Password" required="required" maxlength="72"
+											   class="w-full max-w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg placeholder:text-fg-secondary/50 md:w-[32ch]"/>
+									</div>
+								</div>
+								@templates.MarkdownCheckbox("is_admin", "is_admin", "Admin", "on", false, 0)
+								<div class="mt-4">
+									<button type="submit" class="text-sm text-fg border border-fg px-4 py-2 hover:bg-fg hover:text-bg transition-colors">Add User</button>
+								</div>
+							</form>
+						</div>
+
+						if len(props.Users) > 0 {
+							<table class="w-full">
+								<thead class="border-b border-bg-secondary">
+									<tr class="text-left text-sm text-fg-secondary">
+										<th class="pb-2 font-medium">Username</th>
+										<th class="pb-2 font-medium">Role</th>
+										<th class="pb-2 font-medium">Created</th>
+									</tr>
+								</thead>
+								<tbody class="text-base">
+									for _, user := range props.Users {
+										<tr class="group opacity-60 hover:opacity-100 transition-opacity duration-700 hover:duration-150 border-b border-bg-secondary/50">
+											<td class="py-0"><a href={ "/settings/users/" + strconv.FormatInt(user.ID, 10) } class="block py-3">{ user.Username }</a></td>
+											<td class="py-0 text-sm text-fg"><a href={ "/settings/users/" + strconv.FormatInt(user.ID, 10) } class="block py-3">
+												if user.IsAdmin {
+													Admin
+												} else {
+													User
+												}
+											</a></td>
+											<td class="py-0 text-sm text-fg-secondary"><a href={ "/settings/users/" + strconv.FormatInt(user.ID, 10) } class="block py-3">{ formatTimestamp(user.CreatedAt) }</a></td>
+										</tr>
+									}
+								</tbody>
+							</table>
+						} else {
+							<p class="text-sm text-fg-secondary/60 py-6 text-center">No users yet.</p>
+						}
+					</div>
+				}
+
+				<!-- Notifiers Section -->
+				<div class="mb-10">
+					<h2 class="text-xl font-medium mb-6">Notifications</h2>
+					<p class="text-base text-fg-secondary mb-6">
+						if props.IsAdmin {
+							Configure notifier endpoints for error alerts.
+						} else {
+							Configure notifier endpoints for your assigned apps.
+						}
+					</p>
+
+					@NotifierForm(props.NotifierForm)
+
+					if len(props.Notifiers) > 0 {
+						<table class="w-full">
+							<thead class="border-b border-bg-secondary">
+								<tr class="text-left text-sm text-fg-secondary">
+									<th class="pb-2 font-medium">Name</th>
+									<th class="pb-2 font-medium">Type</th>
+									<th class="pb-2 font-medium">Status</th>
+								</tr>
+							</thead>
+							<tbody class="text-base">
+								for _, n := range props.Notifiers {
+									<tr class="group opacity-60 hover:opacity-100 transition-opacity duration-700 hover:duration-150 border-b border-bg-secondary/50">
+										<td class="py-0">
+											<a href={ "/settings/notifiers/" + strconv.FormatInt(n.ID, 10) } class="block py-3">{ n.Name }</a>
+										</td>
+										<td class="py-0 text-sm text-fg-secondary">
+											<a href={ "/settings/notifiers/" + strconv.FormatInt(n.ID, 10) } class="block py-3">{ n.Type }</a>
+										</td>
+										<td class="py-0 text-sm text-fg-secondary">
+											<a href={ "/settings/notifiers/" + strconv.FormatInt(n.ID, 10) } class="block py-3">
+												if n.Enabled == 1 {
+													Enabled
+												} else {
+													Disabled
+												}
+											</a>
+										</td>
+									</tr>
+								}
+							</tbody>
+						</table>
+					} else {
+						<p class="text-sm text-fg-secondary/60 py-6 text-center">No notifiers configured.</p>
+					}
+				</div>
+			</div>
+			@templates.MarkdownCheckboxScript()
+		</body>
+	</html>
+}
+
+// NotifierForm renders the notifier creation form.
+templ NotifierForm(form NotifierFormView) {
+	<div id="notifier-form-panel" class="mb-8 w-full border border-bg-secondary/70">
+		<div class="flex border-b border-bg-secondary/70 text-sm">
+			<a href="/settings/notifiers/new?type=ntfy"
+			   hx-get="/settings/notifiers/new?type=ntfy"
+			   hx-target="#notifier-form-panel"
+			   hx-swap="outerHTML"
+			   class={ "px-4 py-3 transition-colors " + tern(form.ActiveType == "ntfy", "text-fg", "text-fg-secondary hover:text-fg") }>
+				ntfy.sh
+			</a>
+			<a href="/settings/notifiers/new?type=telegram"
+			   hx-get="/settings/notifiers/new?type=telegram"
+			   hx-target="#notifier-form-panel"
+			   hx-swap="outerHTML"
+			   class={ "px-4 py-3 border-l border-bg-secondary/70 transition-colors " + tern(form.ActiveType == "telegram", "text-fg", "text-fg-secondary hover:text-fg") }>
+				Telegram
+			</a>
+		</div>
+
+		<form action="/settings/notifiers" method="POST" class="p-4">
+			<input type="hidden" name="type" value={ form.ActiveType }/>
+			<div class="mb-4 space-y-4">
+				<div class="w-full">
+					<input type="text" id="notifier_name" name="name" placeholder="Name" required="required" maxlength="64"
+						   class="w-full max-w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg placeholder:text-fg-secondary/50 md:w-[40ch]"/>
+				</div>
+
+				if form.ActiveType == "telegram" {
+					<div class="w-full">
+						<input type="text" id="telegram_token" name="telegram_token" placeholder="Bot token" required="required"
+							   class="w-full max-w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg placeholder:text-fg-secondary/50 md:w-[40ch]"/>
+					</div>
+					<div class="w-full">
+						<input type="text" id="telegram_chat_id" name="telegram_chat_id" placeholder="Chat ID" required="required"
+							   class="w-full max-w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg placeholder:text-fg-secondary/50 md:w-[20ch]"/>
+					</div>
+				} else if form.ActiveType == "ntfy" {
+					<div class="w-full">
+						<input type="url" id="ntfy_url" name="ntfy_url" value={ form.NtfyURL } required="required"
+							   placeholder="Server URL"
+							   class="w-full max-w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg placeholder:text-fg-secondary/50 md:w-[48ch]"/>
+					</div>
+					<div class="w-full">
+						<input type="text" id="ntfy_topic" name="ntfy_topic" value={ form.NtfyTopic } required="required"
+							   placeholder="Topic" maxlength="64"
+							   class="w-full max-w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg placeholder:text-fg-secondary/50 md:w-[64ch]"/>
+					</div>
+				}
+			</div>
+			<button type="submit" class="text-sm text-fg border border-fg px-4 py-2 hover:bg-fg hover:text-bg transition-colors">Add Notifier</button>
+		</form>
+	</div>
+}
+
+// NotifierListView renders the notifier list.
+templ NotifierListView(notifiers []NotifierView) {
+	if len(notifiers) == 0 {
+		<div class="text-sm text-fg-secondary/60 py-4">No notifiers configured.</div>
+	} else {
+		<div class="grid gap-3">
+			for _, n := range notifiers {
+				<div class="bg-bg-secondary p-4 flex items-center justify-between">
+					<div>
+						<div class="font-medium">{ n.Name }</div>
+						<div class="text-xs text-fg-secondary">{ n.Type }</div>
+					</div>
+					<div class="flex items-center gap-3">
+						<label class="relative inline-flex items-center cursor-pointer">
+							<input type="checkbox" class="sr-only peer" checked={ n.Enabled == 1 }
+								   hx-put={ "/settings/notifiers/" + strconv.FormatInt(n.ID, 10) + "/toggle" }
+								   hx-swap="outerHTML"
+								   hx-target="closest .bg-bg-secondary"/>
+							<div class="w-9 h-5 bg-fg-secondary/30 peer-checked:bg-accent rounded-full after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-bg after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:after:translate-x-full"></div>
+						</label>
+						<a href={ "/settings/notifiers/" + strconv.FormatInt(n.ID, 10) + "/subscriptions" } class="text-xs text-accent hover:underline">Subscriptions</a>
+						<button hx-delete={ "/settings/notifiers/" + strconv.FormatInt(n.ID, 10) }
+								hx-confirm="Delete notifier?" class="text-xs text-fg-secondary hover:text-red-500 transition-colors">Delete</button>
+					</div>
+				</div>
+			}
+		</div>
+	}
+}
+
+// CollectorAPIKeyTable renders the collector API key table.
+templ CollectorAPIKeyTable(keys []CollectorAPIKeyView) {
+	<table id="collector-api-keys-table" class="w-full text-sm">
+		<thead class="border-b border-bg-secondary">
+			<tr class="text-left text-fg-secondary">
+				<th class="pb-2 font-medium">Name</th>
+				<th class="pb-2 font-medium">Key</th>
+				<th class="pb-2 font-medium">Last Used</th>
+			</tr>
+		</thead>
+		<tbody>
+			if len(keys) == 0 {
+				<tr>
+					<td colspan="3" class="text-sm text-fg-secondary/60 py-4">No API keys configured.</td>
+				</tr>
+			}
+			for _, k := range keys {
+				<tr class="border-b border-bg-secondary/50">
+					<td class="py-0">
+						<a href={ "/settings/admin/collector-api-keys/" + k.Name } class="block py-3">{ k.Name }</a>
+					</td>
+					<td class="py-0">
+						<a href={ "/settings/admin/collector-api-keys/" + k.Name } class="block py-3"><code class="text-sm font-mono">****{ k.KeySuffix }</code></a>
+					</td>
+					<td class="py-0 text-sm text-fg-secondary">
+						<a href={ "/settings/admin/collector-api-keys/" + k.Name } class="block py-3">
+							if k.LastUsedValid {
+								{ formatTimestamp(k.LastUsed) }
+							} else {
+								Never
+							}
+						</a>
+					</td>
+				</tr>
+			}
+		</tbody>
+	</table>
+}

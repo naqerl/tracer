@@ -1,0 +1,39 @@
+package view
+
+// CollectorAppsProps holds data for the collector apps view (HTMX fragment).
+type CollectorAppsProps struct {
+	CollectorName string
+	Apps          []AppView
+}
+
+type AppView struct {
+	Name string
+}
+
+// CollectorApps renders the apps grid for a collector.
+templ CollectorApps(props CollectorAppsProps) {
+	if len(props.Apps) > 0 {
+		<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+			for _, app := range props.Apps {
+				<a href={ "/panel/collectors/" + props.CollectorName + "/apps/" + app.Name } class="block bg-bg-secondary hover:bg-bg-secondary/80 p-4 transition-all hover:-translate-y-0.5">
+					<div class="font-medium">{ app.Name }</div>
+					<div class="mt-2 text-xs text-fg-secondary">
+						<span
+							hx-get={ "/panel/collectors/" + props.CollectorName + "/apps/" + app.Name + "/uptime/percentage" }
+							hx-trigger="load"
+							hx-swap="outerHTML"
+						>uptime: <span class="inline-block w-[3ch] tabular-nums text-right whitespace-nowrap">N/A</span></span>
+						<span class="text-fg-secondary"> | </span>
+						<span
+							hx-get={ "/panel/collectors/" + props.CollectorName + "/apps/" + app.Name + "/errors/count" }
+							hx-trigger="load"
+							hx-swap="outerHTML"
+						>errors: <span class="inline-block w-[3ch] tabular-nums text-left whitespace-nowrap">0</span></span>
+					</div>
+				</a>
+			}
+		</div>
+	} else {
+		<div class="text-fg-secondary text-sm">No apps registered</div>
+	}
+}

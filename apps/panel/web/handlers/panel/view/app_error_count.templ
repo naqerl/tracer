@@ -1,0 +1,21 @@
+package view
+
+import "strconv"
+
+// AppErrorCountProps holds data for the app error count fragment.
+type AppErrorCountProps struct {
+	Errors AppErrorCountView
+}
+
+type AppErrorCountView struct {
+	Count int64
+	Class string
+}
+
+// AppErrorCount renders the error count fragment.
+templ AppErrorCount(props AppErrorCountProps) {
+	<span>errors: </span>
+	<span class={ "inline-block w-[3ch] tabular-nums text-left whitespace-nowrap " + props.Errors.Class }>
+		{ strconv.FormatInt(props.Errors.Count, 10) }
+	</span>
+}

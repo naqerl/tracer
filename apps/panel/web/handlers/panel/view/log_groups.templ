@@ -1,0 +1,133 @@
+package view
+
+import (
+	"fmt"
+	"strconv"
+	"tracer/apps/panel/web/templates"
+)
+
+// LogGroupsProps holds data for the log groups page.
+type LogGroupsProps struct {
+	Groups       []LogGroupItem
+	Level        string
+	Collector    string
+	App          string
+	LevelFilters []LevelFilterItem
+}
+
+type LogGroupItem struct {
+	ID      int64
+	Message string
+	Level   string
+	Count   int64
+}
+
+type LevelFilterItem struct {
+	Val   string
+	Label string
+	Color string
+}
+
+// LogGroups renders the log groups page.
+templ LogGroups(props LogGroupsProps) {
+	<!DOCTYPE html>
+	<html lang="en">
+		<head>
+			@templates.Head()
+			<title>Log Groups - Tracer</title>
+		</head>
+		<body>
+			<div id="log-groups">
+				<h2 class="text-lg font-medium mb-4">Log Groups</h2>
+				<div class="flex flex-col gap-2 mb-6">
+					@LevelFilter(props)
+				</div>
+				@LogGroupsTable(props)
+			</div>
+		</body>
+	</html>
+}
+
+// LevelFilter renders the log level filter tabs.
+templ LevelFilter(props LogGroupsProps) {
+	<div class="flex flex-wrap gap-6">
+		for _, f := range props.LevelFilters {
+			<a hx-get={ fmt.Sprintf("/panel/collectors/%s/apps/%s/logs/groups?level=%s", props.Collector, props.App, f.Val) }
+			   hx-push-url="false"
+			   hx-target="#log-groups"
+			   class={ levelFilterLinkClass(f.Val, props.Level == f.Val) }>
+				<span class="text-sm">{ f.Label }</span>
+				<span class={ levelFilterDotClass(f.Color, props.Level == f.Val) }></span>
+			</a>
+		}
+	</div>
+}
+
+// levelFilterLinkClass computes the link class for a level filter.
+func levelFilterLinkClass(val string, active bool) string {
+	cls := "flex flex-col items-center gap-1 cursor-pointer"
+	if active {
+		cls += " text-fg"
+	} else {
+		cls += " text-fg-secondary"
+		switch val {
+		case "error":
+			cls += " hover:text-red-500"
+		case "warn":
+			cls += " hover:text-yellow-500"
+		case "info":
+			cls += " hover:text-blue-500"
+		default:
+			cls += " hover:text-fg"
+		}
+	}
+	return cls
+}
+
+// levelFilterDotClass computes the dot class for a level filter.
+func levelFilterDotClass(color string, active bool) string {
+	cls := "w-1.5 h-1.5 rounded-full"
+	if active {
+		cls += " bg-" + color
+	} else {
+		cls += " bg-transparent"
+	}
+	return cls
+}
+
+// LogGroupsTable renders the log groups table.
+templ LogGroupsTable(props LogGroupsProps) {
+	<table id="logs-table" class="w-full">
+		<thead class="border-b border-bg-secondary">
+			<tr class="text-left text-fg text-sm">
+				<th class="hidden">Group ID</th>
+				<th class="pb-2 font-medium">Message</th>
+				<th class="pb-2 font-medium w-[1%] pr-2"></th>
+				<th class="pb-2 font-medium w-[1%] whitespace-nowrap text-right">Count</th>
+			</tr>
+		</thead>
+		<tbody>
+			if len(props.Groups) == 0 {
+				<tr>
+					<td colspan="4" class="text-sm text-fg-secondary/60 py-6 text-center">No logs available</td>
+				</tr>
+			}
+			for _, g := range props.Groups {
+				<tr class="group opacity-60 hover:opacity-100 transition-opacity duration-700 hover:duration-150">
+					<td class="hidden">{ strconv.FormatInt(g.ID, 10) }</td>
+					<td class="w-full align-top">
+						<a href={ "/panel/collectors/" + props.Collector + "/apps/" + props.App + "/logs/groups/" + strconv.FormatInt(g.ID, 10) } class="block py-2 sm:py-1 capitalize break-all">{ g.Message }</a>
+					</td>
+					<td class="w-[1%] whitespace-nowrap align-top pr-2 pt-2 sm:pt-1">
+						if props.Level == "all" {
+							<span class={ "inline-block w-1.5 h-1.5 mt-1.5 rounded-full " + levelDotClass(g.Level) }></span>
+						}
+					</td>
+					<td class="w-[1%] whitespace-nowrap align-top text-fg-secondary text-right pt-2 sm:pt-1">
+						<span class="text-xs sm:text-sm">{ strconv.FormatInt(g.Count, 10) }</span>
+					</td>
+				</tr>
+			}
+		</tbody>
+	</table>
+}

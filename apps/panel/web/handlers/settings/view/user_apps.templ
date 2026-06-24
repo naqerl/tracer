@@ -1,0 +1,47 @@
+package view
+
+import (
+	"strconv"
+)
+
+// UserAppsProps holds data for the user apps fragment.
+type UserAppsProps struct {
+	UserID int64
+	UserName string
+	Apps   []UserAppView
+}
+
+type UserAppView struct {
+	Collector string
+	App       string
+	Granted   bool
+}
+
+// UserApps renders the user apps management fragment.
+templ UserApps(props UserAppsProps) {
+	<div class="mb-4">
+		<h3 class="text-base font-medium mb-2">Apps for { props.UserName }</h3>
+		<form hx-put={ "/settings/users/" + strconv.FormatInt(props.UserID, 10) + "/apps" }
+			  hx-target="closest div"
+			  hx-swap="outerHTML"
+			  class="space-y-2">
+			if len(props.Apps) == 0 {
+				<p class="text-sm text-fg-secondary/60">No apps available.</p>
+			} else {
+				<div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
+					for _, app := range props.Apps {
+						<label class="flex items-center gap-2 cursor-pointer hover:bg-bg-secondary/50 p-2 transition-colors">
+							<input type="checkbox" name="apps" value={ app.Collector + ":" + app.App }
+								   checked={ app.Granted }
+								   class="accent-accent"/>
+							<span class="text-sm">{ app.Collector }/<span class="font-medium">{ app.App }</span></span>
+						</label>
+					}
+				</div>
+			}
+			if len(props.Apps) > 0 {
+				<button type="submit" class="text-sm text-accent hover:underline">Save</button>
+			}
+		</form>
+	</div>
+}

@@ -1,0 +1,104 @@
+package view
+
+import (
+	"strconv"
+	"time"
+	"tracer/apps/panel/web/templates"
+)
+
+// LogGroupProps holds data for the log group detail page.
+type LogGroupProps struct {
+	Title         string
+	AppName       string
+	CollectorName string
+	Since         string
+	SinceStart    int64
+	SinceEnd      int64
+	LogGroup      LogGroupData
+}
+
+type LogGroupData struct {
+	ID      int64
+	Message string
+	Level   string
+	Count   int64
+	CreatedAt int64
+	LastLogAt int64
+}
+
+// LogGroup renders the log group detail page.
+templ LogGroup(props LogGroupProps) {
+	<!DOCTYPE html>
+	<html lang="en">
+		<head>
+			@templates.Head()
+			<title>{ props.Title } - Tracer</title>
+			<style>
+				.uplot { margin: 1.5rem 0; touch-action: pan-y pinch-zoom; }
+				@media (max-width: 640px) {
+					.uplot { margin: 1rem 0; }
+				}
+			</style>
+		</head>
+		<body>
+			@templates.Navbar(templates.NavData{Since: props.Since})
+			<div class="max-w-5xl mx-auto p-6">
+				@LogGroupContent(props)
+			</div>
+		</body>
+	</html>
+}
+
+// LogGroupContent renders the log group content.
+templ LogGroupContent(props LogGroupProps) {
+	<!-- Breadcrumb with Delete -->
+	<div class="mb-6 flex items-center justify-between gap-4">
+		<a href={ "/panel/collectors/" + props.CollectorName + "/apps/" + props.AppName } class="text-sm text-fg-secondary hover:text-fg transition-colors">&larr; Back to app</a>
+		<button hx-delete={ "/panel/collectors/" + props.CollectorName + "/apps/" + props.AppName + "/logs/groups/" + strconv.FormatInt(props.LogGroup.ID, 10) }
+				hx-confirm={ "Delete log group '" + props.LogGroup.Message + "'?" }
+				class="text-sm text-fg-secondary hover:text-red-500 underline transition-colors">Delete</button>
+	</div>
+
+	<!-- Group Header -->
+	<div class="mb-6">
+		@LogMessage(props.LogGroup.Message, props.LogGroup.Level)
+		<div class="flex flex-wrap gap-4 text-sm text-fg-secondary">
+			<span>Level: <span class="text-fg uppercase">{ props.LogGroup.Level }</span></span>
+			<span>Count: <span class="text-fg">{ strconv.FormatInt(props.LogGroup.Count, 10) }</span></span>
+			<span>First: <span class="text-fg">{ time.Unix(props.LogGroup.CreatedAt, 0).Format("2006-01-02 15:04:05") }</span></span>
+			<span>Latest: <span class="text-fg">{ time.Unix(props.LogGroup.LastLogAt, 0).Format("2006-01-02 15:04:05") }</span></span>
+		</div>
+	</div>
+
+	<!-- Log Entries Container (loaded via HTMX) -->
+	<div id="log-entries-container" class="mt-6 space-y-3"
+		 hx-get={ "/panel/collectors/" + props.CollectorName + "/apps/" + props.AppName + "/logs/groups/" + strconv.FormatInt(props.LogGroup.ID, 10) + "/entries?level=" + props.LogGroup.Level }
+		 hx-trigger="load"
+		 hx-swap="innerHTML">
+		<div class="text-center text-sm text-fg-secondary/60 py-12">
+			<p>Loading log entries...</p>
+		</div>
+	</div>
+}
+
+// levelDotClass returns the CSS class for a log level dot.
+func levelDotClass(level string) string {
+	switch level {
+	case "error":
+		return "bg-red-500"
+	case "warn":
+		return "bg-yellow-500"
+	case "info":
+		return "bg-blue-500"
+	default:
+		return "bg-fg-secondary"
+	}
+}
+
+// LogMessage renders a log message with level indicator.
+templ LogMessage(message string, level string) {
+	<div class="mb-2">
+		<span class={ "inline-block w-2 h-2 rounded-full mr-3 mt-2 " + levelDotClass(level) }></span>
+		<span class="text-xl font-medium break-all">{ message }</span>
+	</div>
+}
