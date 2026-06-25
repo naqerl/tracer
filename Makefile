@@ -38,13 +38,11 @@ test: vet
 vet:
 	go fmt ./...
 	go vet ./...
-	staticcheck ./...
+	go tool staticcheck ./...
 
 dev-setup:
-	go install github.com/sqlc-dev/sqlc/cmd/sqlc@v1.30.0
-	go install honnef.co/go/tools/cmd/staticcheck@v0.7.0
-	go install github.com/a-h/templ/cmd/templ@latest
 	go mod download
+	go mod tidy
 
 generate:
 	templ generate
