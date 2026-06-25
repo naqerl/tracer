@@ -6,9 +6,10 @@ COLLECTOR_USER ?= tracer-collector
 TRACER_GROUP ?= tracer
 CGO_ENABLED ?= 0
 
-# Container registry (Forgejo)
+# Container registry (Forgejo) — format: {registry}/{owner}/{image}
 REGISTRY ?= git.naqerl.com
-IMAGE_PANEL  ?= $(REGISTRY)/tracer/panel
+OWNER   ?= naqerl
+IMAGE_PANEL  ?= $(REGISTRY)/$(OWNER)/panel
 
 # Build version (set VERSION env var to inject, e.g. `make build VERSION=v1.2.3`)
 # Defaults to "unknown" when not set (CI passes github.ref_name via VERSION).

@@ -128,10 +128,10 @@ jobs:
 
           | Image | Pull |
           |-------|------|
-          | tracer-panel | `%SERVER%/tracer/panel:%TAG%` |
+          | tracer-panel | `git.naqerl.com/naqerl/panel:%TAG%` |
 
           \`\`\`bash
-          docker pull %SERVER%/tracer/panel:%TAG%
+          docker pull git.naqerl.com/naqerl/panel:%TAG%
           \`\`\`
 
           ### Usage
@@ -159,12 +159,12 @@ jobs:
           ### Docker
 
           \`\`\`bash
-          docker pull %SERVER%/tracer/panel:%TAG%
+          docker pull git.naqerl.com/naqerl/panel:%TAG%
           docker run -d \
             --name tracer-panel \
             -p 8080:8080 \
             -v /host/data:/var/lib/tracer \
-            %SERVER%/tracer/panel:%TAG%
+            git.naqerl.com/naqerl/panel:%TAG%
           \`\`\`
 
           ### Verify
@@ -241,8 +241,8 @@ jobs:
         if: steps.check_tag.outputs.is_tag == 'true'
         run: |
           docker build \
-            -t git.naqerl.com/tracer/panel:${{ github.ref_name }} \
-            -t git.naqerl.com/tracer/panel:latest \
+            -t git.naqerl.com/naqerl/panel:${{ github.ref_name }} \
+            -t git.naqerl.com/naqerl/panel:latest \
             -f apps/panel/Dockerfile \
             .
 
@@ -255,5 +255,5 @@ jobs:
       - name: Push panel image
         if: steps.check_tag.outputs.is_tag == 'true'
         run: |
-          docker push git.naqerl.com/tracer/panel:${{ github.ref_name }}
-          docker push git.naqerl.com/tracer/panel:latest
+          docker push git.naqerl.com/naqerl/panel:${{ github.ref_name }}
+          docker push git.naqerl.com/naqerl/panel:latest

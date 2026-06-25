@@ -225,12 +225,12 @@ sudo make uninstall
 ### Container Images
 
 The panel is published as a minimal Docker image (~15 MB) on the Forgejo
-container registry at `git.naqerl.com/tracer/panel`.
+container registry at `git.naqerl.com/naqerl/panel`.
 
 **Pull the latest image:**
 
 ```bash
-docker pull git.naqerl.com/tracer/panel:latest
+docker pull git.naqerl.com/naqerl/panel:latest
 ```
 
 **Run the panel:**
@@ -240,7 +240,7 @@ docker run -d \
   --name tracer-panel \
   -p 8080:8080 \
   -v /path/to/data:/var/lib/tracer \
-  git.naqerl.com/tracer/panel:latest
+  git.naqerl.com/naqerl/panel:latest
 ```
 
 The panel expects a config file at `/etc/tracer/panel.yaml`. You can provide
@@ -249,7 +249,7 @@ one via bind mount or set environment variables (see [Configuration](#configurat
 **Build locally:**
 
 ```bash
-make docker-build-panel   # Creates git.naqerl.com/tracer/panel:latest
+make docker-build-panel   # Creates git.naqerl.com/naqerl/panel:latest
 ```
 
 **Tag and push to the registry:**
