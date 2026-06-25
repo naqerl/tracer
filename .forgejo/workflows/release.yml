@@ -31,12 +31,25 @@ jobs:
     steps:
       - name: Checkout repository
         run: |
+          set -e
           echo "Checking out ${GITHUB_REPOSITORY} at ref ${GITHUB_REF_NAME}"
-          git clone --depth 1 --branch "${GITHUB_REF_NAME}" \
+          # Try git clone first; fall back to API archive download if that fails
+          if ! git clone --depth 1 --branch "${GITHUB_REF_NAME}" \
             "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git" \
-            /tmp/checkout
-          cp -a /tmp/checkout/. "${GITHUB_WORKSPACE}/"
-          rm -rf /tmp/checkout
+            /tmp/checkout 2>&1; then
+            echo "git clone via GITHUB_SERVER_URL failed, trying API archive..."
+            # Derive base URL by stripping /api/v1 from GITHUB_API_URL
+            BASE="${GITHUB_API_URL%/api/v1}"
+            curl -sL "${BASE}/api/v1/repos/${GITHUB_REPOSITORY}/archive/${GITHUB_REF_NAME}.tar.gz" \
+              -o /tmp/repo.tar.gz
+            mkdir -p /tmp/checkout
+            tar -C /tmp/checkout -xzf /tmp/repo.tar.gz
+            # Archive creates a single top-level directory; move contents to GITHUB_WORKSPACE
+            mv /tmp/checkout/*/* "${GITHUB_WORKSPACE}/"
+          else
+            cp -a /tmp/checkout/. "${GITHUB_WORKSPACE}/"
+            rm -rf /tmp/checkout
+          fi
           cd "${GITHUB_WORKSPACE}"
           ls -la
 
@@ -58,7 +71,7 @@ jobs:
         run: |
           cd "${GITHUB_WORKSPACE}"
           GIT_HASH="$(git rev-parse --short HEAD)"
-          CGO_ENABLED=0 go build \
+          CGO_ENABLED=0 go build -mod=vendor \
             -ldflags="-s -w \
               -X tracer/build.Commit=${GIT_HASH} \
               -X tracer/build.Ref=${GITHUB_REF_NAME} \
@@ -75,7 +88,7 @@ jobs:
         run: |
           cd "${GITHUB_WORKSPACE}"
           GIT_HASH="$(git rev-parse --short HEAD)"
-          CGO_ENABLED=0 go build \
+          CGO_ENABLED=0 go build -mod=vendor \
             -ldflags="-s -w \
               -X tracer/build.Commit=${GIT_HASH} \
               -X tracer/build.Ref=${GITHUB_REF_NAME} \
