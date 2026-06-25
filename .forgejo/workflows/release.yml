@@ -71,7 +71,7 @@ jobs:
         run: |
           cd "${GITHUB_WORKSPACE}"
           GIT_HASH="$(git rev-parse --short HEAD)"
-          CGO_ENABLED=0 go build -mod=vendor \
+          CGO_ENABLED=0 go build \
             -ldflags="-s -w \
               -X tracer/build.Commit=${GIT_HASH} \
               -X tracer/build.Ref=${GITHUB_REF_NAME} \
@@ -88,7 +88,7 @@ jobs:
         run: |
           cd "${GITHUB_WORKSPACE}"
           GIT_HASH="$(git rev-parse --short HEAD)"
-          CGO_ENABLED=0 go build -mod=vendor \
+          CGO_ENABLED=0 go build \
             -ldflags="-s -w \
               -X tracer/build.Commit=${GIT_HASH} \
               -X tracer/build.Ref=${GITHUB_REF_NAME} \
