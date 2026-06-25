@@ -1,5 +1,10 @@
-include build/config.mk
-export
+# Build configuration (overridable via environment)
+WITH_SYSTEMD ?= auto
+BINDIR ?= /usr/local/bin
+PANEL_USER ?= tracer-panel
+COLLECTOR_USER ?= tracer-collector
+TRACER_GROUP ?= tracer
+CGO_ENABLED ?= 0
 
 # Git version info for embedding
 GIT_COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
@@ -19,14 +24,13 @@ LDFLAGS := -s -w \
 build: build-collector build-panel
 
 build-collector:
-	CGO_ENABLED=0 go build -ldflags="$(LDFLAGS)" -o bin/tracer-collector ./apps/collector/cmd/tracer-collector
+	CGO_ENABLED=$(CGO_ENABLED) go build -ldflags="$(LDFLAGS)" -o bin/tracer-collector ./apps/collector/cmd/tracer-collector
 
 build-panel:
-	CGO_ENABLED=0 go build -ldflags="$(LDFLAGS)" -o bin/tracer-panel ./apps/panel/cmd/tracer-panel
+	CGO_ENABLED=$(CGO_ENABLED) go build -ldflags="$(LDFLAGS)" -o bin/tracer-panel ./apps/panel/cmd/tracer-panel
 
 clean:
 	rm -rf bin/
-	rm -f build/config.mk
 
 test: vet
 	go test ./...

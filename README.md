@@ -47,14 +47,9 @@ curl -fsSL https://git.naqerl.com/eco/tracer/plain/install.sh | sudo bash
 
 ### Build from Source
 
-Tracer uses GNU Build System (configure + make) for flexible installation:
-
 ```bash
 git clone https://git.naqerl.com/eco/tracer.git
 cd tracer
-
-# Configure with your preferred options
-./configure --prefix=/usr/local
 
 # Build
 make build
@@ -63,39 +58,23 @@ make build
 sudo make install
 ```
 
-#### Configure Options
+#### Build Configuration
 
-The `./configure` script selects which init system files to install:
+The build is configured via environment variables (set via Makefile defaults or overridden):
 
 ```bash
-# Auto-detect init system (default)
-./configure
+# Override defaults when building
+make WITH_SYSTEMD=no BINDIR=/opt/tracer/bin build
 
-# Explicit systemd service files
-./configure --with-systemd
-
-# No init system - manual service management only
-./configure --without-init
-
-# Podman Quadlet files (systemd-managed containers)
-./configure --with-podman
-
-# Docker service helpers
-./configure --with-docker
-
-# Guix Shepherd service definitions
-./configure --with-shepherd
-
-# Multiple init systems (e.g., systemd + podman)
-./configure --with-systemd --with-podman
-
-# Custom paths
-./configure --prefix=/usr --sysconfdir=/etc --localstatedir=/var
+# Key variables:
+#   WITH_SYSTEMD   - "yes", "no", or "auto" (default: auto, detects at runtime)
+#   BINDIR         - binary installation directory (default: /usr/local/bin)
+#   PANEL_USER     - system user for panel (default: tracer-panel)
+#   COLLECTOR_USER - system user for collector (default: tracer-collector)
+#   TRACER_GROUP   - system group for both services (default: tracer)
 ```
 
-**Note:** `--with-podman` and `--with-docker` install **service files**, not images. To build images, use `make podman-build` or `make docker-build` (see Container Images section below).
-
-After installation with `--without-init`, start services manually:
+After installation, start services manually if systemd is not used:
 
 ```bash
 sudo -u tracer-collector /usr/local/bin/tracer-collector -config /etc/tracer/collector.yaml
@@ -220,9 +199,6 @@ Access the panel at http://localhost:8080
 ### Build from Source
 
 ```bash
-# Configure (optional, uses sensible defaults)
-./configure
-
 # Build binaries
 make build
 
@@ -236,10 +212,8 @@ make vet
 ### Manual Installation (without curl script)
 
 ```bash
-./configure --prefix=/usr/local
 make build
 sudo make install
-sudo make install-systemd  # If using systemd
 ```
 
 ### Uninstall
@@ -264,9 +238,8 @@ make podman-build   # Creates tracer:latest Podman image
 For systemd to manage your containers (auto-start, restart, logging):
 
 ```bash
-./configure --with-podman
 make build
-sudo make install   # Installs to /etc/containers/systemd/
+sudo make install   # Installs binaries and systemd units
 systemctl --user enable --now tracer-panel
 systemctl --user enable --now tracer-collector
 ```

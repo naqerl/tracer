@@ -1,7 +1,7 @@
 # E2E Demo
 
 This demo runs a full end-to-end test that mirrors the actual user installation flow:
-`./configure && make build && make install`
+`make build && make install`
 
 The container starts with the source code and runs the standard installation at boot,
 ensuring the actual installation process works correctly on end-user systems.

@@ -52,29 +52,6 @@ func Update(opts Options) error {
 		return fmt.Errorf("download source: %w", err)
 	}
 
-	// Write embedded config.mk to restore original configure options
-	if build.ConfigMK != "" {
-		fmt.Println("Restoring original build configuration...")
-		configPath := filepath.Join(srcDir, "build", "configure.mk")
-
-		// Ensure build directory exists
-		if err := os.MkdirAll(filepath.Dir(configPath), 0755); err != nil {
-			return fmt.Errorf("create build directory: %w", err)
-		}
-
-		if err := os.WriteFile(configPath, []byte(build.ConfigMK), 0644); err != nil {
-			return fmt.Errorf("write configure.mk: %w", err)
-		}
-
-		// Also create symlink at root for backwards compatibility
-		configMkPath := filepath.Join(srcDir, "config.mk")
-		os.Remove(configMkPath) // Remove if exists
-		if err := os.Symlink("build/configure.mk", configMkPath); err != nil {
-			// If symlink fails, just copy the file
-			os.WriteFile(configMkPath, []byte(build.ConfigMK), 0644)
-		}
-	}
-
 	// Change to source directory
 	os.Chdir(srcDir)
 
@@ -217,52 +194,4 @@ func DetectArchitecture() string {
 	default:
 		return arch
 	}
-}
-
-// ParseConfigFlags extracts configure flags from embedded config.mk
-func ParseConfigFlags() string {
-	if build.ConfigMK == "" {
-		return ""
-	}
-
-	var flags []string
-	lines := strings.Split(build.ConfigMK, "\n")
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		// Skip comments and empty lines
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-
-		// Parse key = value pairs
-		parts := strings.SplitN(line, "=", 2)
-		if len(parts) != 2 {
-			continue
-		}
-
-		key := strings.TrimSpace(parts[0])
-		value := strings.TrimSpace(parts[1])
-
-		// Map config.mk variables to configure flags
-		switch key {
-		case "PREFIX":
-			flags = append(flags, fmt.Sprintf("--prefix=%s", value))
-		case "BINDIR":
-			flags = append(flags, fmt.Sprintf("--bindir=%s", value))
-		case "SYSCONFDIR":
-			flags = append(flags, fmt.Sprintf("--sysconfdir=%s", value))
-		case "LOCALSTATEDIR":
-			flags = append(flags, fmt.Sprintf("--localstatedir=%s", value))
-		case "WITH_SYSTEMD":
-			if value == "no" {
-				flags = append(flags, "--without-systemd")
-			}
-		case "WITH_PANEL":
-			if value == "no" {
-				flags = append(flags, "--without-panel")
-			}
-		}
-	}
-
-	return strings.Join(flags, " ")
 }

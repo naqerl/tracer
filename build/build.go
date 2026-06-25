@@ -1,13 +1,6 @@
 // Package build provides build-time configuration and utilities.
 package build
 
-import (
-	_ "embed"
-)
-
-//go:embed config.mk
-var ConfigMK string
-
 // Commit is the git commit hash at build time (set via ldflags).
 var Commit = "unknown"
 

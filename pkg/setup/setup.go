@@ -9,6 +9,17 @@ import (
 	"strconv"
 )
 
+// systemdDetected returns true if systemd appears to be the init system.
+func systemdDetected() bool {
+	if _, err := exec.LookPath("systemctl"); err != nil {
+		return false
+	}
+	if _, err := os.Stat("/run/systemd"); err != nil {
+		return false
+	}
+	return true
+}
+
 func CreateGroup(name string) error {
 	fmt.Fprintf(os.Stderr, "Creating group %s...\n", name)
 	if out, err := exec.Command("groupadd", "-r", name).CombinedOutput(); err != nil {
@@ -73,7 +84,15 @@ func ChownFile(path, owner, group string) error {
 }
 
 func InstallService(unitPath string, content []byte) error {
-	if WithSystemd != "yes" {
+	switch WithSystemd {
+	case "yes":
+		// proceed
+	case "auto":
+		if !systemdDetected() {
+			fmt.Fprintln(os.Stderr, "Systemd not detected, skipping service installation")
+			return nil
+		}
+	default: // "no" or any other value
 		fmt.Fprintln(os.Stderr, "Systemd support disabled, skipping service installation")
 		return nil
 	}

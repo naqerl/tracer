@@ -25,8 +25,6 @@ jobs:
   release:
     name: Build and Publish Release
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
 
     steps:
       - name: Checkout repository
@@ -67,56 +65,28 @@ jobs:
           export PATH="/usr/local/go/bin:$PATH"
           go version
 
-      - name: Build tracer-collector
+      - name: Build binaries
         run: |
           cd "${GITHUB_WORKSPACE}"
-          GIT_HASH="$(git rev-parse --short HEAD)"
-          CGO_ENABLED=0 go build \
-            -ldflags="-s -w \
-              -X tracer/build.Commit=${GIT_HASH} \
-              -X tracer/build.Ref=${GITHUB_REF_NAME} \
-              -X tracer/pkg/setup.WithSystemd=yes \
-              -X tracer/pkg/setup.Bindir=/usr/local/bin \
-              -X tracer/pkg/setup.PanelUser=tracer-panel \
-              -X tracer/pkg/setup.CollectorUser=tracer-collector \
-              -X tracer/pkg/setup.TracerGroup=tracer" \
-            -o "/tmp/${BINARY_COLLECTOR}" \
-            ./apps/collector/cmd/tracer-collector
-          ls -lh "/tmp/${BINARY_COLLECTOR}"
-
-      - name: Build tracer-panel
-        run: |
-          cd "${GITHUB_WORKSPACE}"
-          GIT_HASH="$(git rev-parse --short HEAD)"
-          CGO_ENABLED=0 go build \
-            -ldflags="-s -w \
-              -X tracer/build.Commit=${GIT_HASH} \
-              -X tracer/build.Ref=${GITHUB_REF_NAME} \
-              -X tracer/pkg/setup.WithSystemd=yes \
-              -X tracer/pkg/setup.Bindir=/usr/local/bin \
-              -X tracer/pkg/setup.PanelUser=tracer-panel \
-              -X tracer/pkg/setup.CollectorUser=tracer-collector \
-              -X tracer/pkg/setup.TracerGroup=tracer" \
-            -o "/tmp/${BINARY_PANEL}" \
-            ./apps/panel/cmd/tracer-panel
-          ls -lh "/tmp/${BINARY_PANEL}"
+          make build
+          ls -lh bin/
 
       - name: Package binaries
         run: |
-          cd /tmp
-          chmod +x "${BINARY_COLLECTOR}" "${BINARY_PANEL}"
+          cd "${GITHUB_WORKSPACE}"
+          chmod +x bin/tracer-collector bin/tracer-panel
 
           # Create archives
-          COLLECTOR_ARCHIVE="${BINARY_COLLECTOR}-linux-amd64.tar.gz"
-          PANEL_ARCHIVE="${BINARY_PANEL}-linux-amd64.tar.gz"
+          COLLECTOR_ARCHIVE="tracer-collector-linux-amd64.tar.gz"
+          PANEL_ARCHIVE="tracer-panel-linux-amd64.tar.gz"
 
-          tar -czf "${COLLECTOR_ARCHIVE}" "${BINARY_COLLECTOR}"
-          tar -czf "${PANEL_ARCHIVE}" "${BINARY_PANEL}"
+          tar -czf "/tmp/${COLLECTOR_ARCHIVE}" -C bin tracer-collector
+          tar -czf "/tmp/${PANEL_ARCHIVE}" -C bin tracer-panel
 
-          ls -lh "${COLLECTOR_ARCHIVE}" "${PANEL_ARCHIVE}"
+          ls -lh "/tmp/${COLLECTOR_ARCHIVE}" "/tmp/${PANEL_ARCHIVE}"
 
-          sha256sum "${COLLECTOR_ARCHIVE}" >> /tmp/checksums.txt
-          sha256sum "${PANEL_ARCHIVE}" >> /tmp/checksums.txt
+          sha256sum "/tmp/${COLLECTOR_ARCHIVE}" >> /tmp/checksums.txt
+          sha256sum "/tmp/${PANEL_ARCHIVE}" >> /tmp/checksums.txt
 
           echo "COLLECTOR_ARCHIVE=/tmp/${COLLECTOR_ARCHIVE}" >> "$GITHUB_ENV"
           echo "PANEL_ARCHIVE=/tmp/${PANEL_ARCHIVE}" >> "$GITHUB_ENV"
@@ -162,7 +132,7 @@ jobs:
           sudo mv tracer-panel /usr/local/bin/
           ```
 
-          ### Install via `configure` script
+          ### Quick install
 
           ```bash
           curl -fsSL %SERVER%/%REPO%/raw/%TAG%/install.sh | sudo bash

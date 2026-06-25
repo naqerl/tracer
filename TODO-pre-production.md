@@ -18,7 +18,7 @@
 - [ ] **H4: No server-side rate limiting on any API** - ✅ **Covered by C3** - Rate limiting applied to auth endpoints. Additional rate limiting for other endpoints can be added as needed.
 
 ### Medium
-- [x] **M1: `config.mk` not versioned** - Fixed. Created `build/config.mk` with default values (WITH_SYSTEMD=true, BINDIR=/usr/local/bin, etc.).
+- [x] **M1: `config.mk` not versioned** - Resolved. `config.mk` and `configure` script were removed entirely. Build configuration is now handled via Makefile variables and environment overrides.
 - [x] **M2: Producer blocks when channel is full** - ✅ **Deferred** - Channel buffers (100 per app + 1000 mpsc) are adequate for typical throughput. Non-blocking emit for error events would require design trade-offs.
 - [x] **M3: No tests for core panel service** - ✅ **Done** - `apps/panel/internal/services/panel/service_test.go` exists with 65+ tests covering collectors, apps, log groups, health, stats, and edge cases.
 - [x] **M4: Typo in error message** - ✅ **Not found** - Reviewed codebase; no instance of "occured" or "occurred" typo exists. May have been fixed in a prior commit.
