@@ -10,10 +10,13 @@ CGO_ENABLED ?= 0
 REGISTRY ?= git.naqerl.com
 IMAGE_PANEL  ?= $(REGISTRY)/tracer/panel
 
-# Git version info for embedding (hardcoded as "unknown" in CI — no git available)
+# Build version (set VERSION env var to inject, e.g. `make build VERSION=v1.2.3`)
+# Defaults to "unknown" when not set (CI passes github.ref_name via VERSION).
+VERSION ?= unknown
+
 LDFLAGS := -s -w \
-	-X tracer/build.Commit=unknown \
-	-X tracer/build.Ref=unknown \
+	-X tracer/build.Commit=$(VERSION) \
+	-X tracer/build.Ref=$(VERSION) \
 	-X tracer/pkg/setup.WithSystemd=$(WITH_SYSTEMD) \
 	-X tracer/pkg/setup.Bindir=$(BINDIR) \
 	-X tracer/pkg/setup.PanelUser=$(PANEL_USER) \

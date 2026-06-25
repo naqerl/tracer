@@ -59,6 +59,8 @@ jobs:
 
       # ── Build ───────────────────────────────────────────────────
       - name: Build binaries
+        env:
+          VERSION: ${{ github.ref_name }}
         run: |
           make build
           ls -lh bin/
