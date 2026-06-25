@@ -102,64 +102,12 @@ jobs:
           REPO="${GITHUB_REPOSITORY}"
           SERVER_URL="${GITHUB_SERVER_URL}"
 
-          cat > /tmp/release_notes.md << 'NOTESEOF'
-          ## Release %TAG%
+          cat > /tmp/release_notes.md << NOTESEOF
+          Release %TAG%
 
-          ### Pre-built binaries (Linux amd64)
-
-          | Binary | Download |
-          |--------|----------|
-          | tracer-collector | [tracer-collector-linux-amd64.tar.gz](%SERVER%/%REPO%/releases/download/%TAG%/tracer-collector-linux-amd64.tar.gz) |
-          | tracer-panel | [tracer-panel-linux-amd64.tar.gz](%SERVER%/%REPO%/releases/download/%TAG%/tracer-panel-linux-amd64.tar.gz) |
-
-          ### Docker image
-
-          | Image | Pull |
-          |-------|------|
-          | tracer-panel | `git.naqerl.com/naqerl/panel:%TAG%` |
-
-          \`\`\`bash
-          docker pull git.naqerl.com/naqerl/panel:%TAG%
-          \`\`\`
-
-          ### Usage
-
-          \`\`\`bash
-          # Download both binaries
-          curl -L -o tracer-collector.tar.gz "%SERVER%/%REPO%/releases/download/%TAG%/tracer-collector-linux-amd64.tar.gz"
-          curl -L -o tracer-panel.tar.gz "%SERVER%/%REPO%/releases/download/%TAG%/tracer-panel-linux-amd64.tar.gz"
-
-          # Extract
-          tar -xzf tracer-collector.tar.gz
-          tar -xzf tracer-panel.tar.gz
-
-          # Install
-          sudo mv tracer-collector /usr/local/bin/
-          sudo mv tracer-panel /usr/local/bin/
-          \`\`\`
-
-          ### Quick install
-
-          \`\`\`bash
-          curl -fsSL %SERVER%/%REPO%/raw/%TAG%/install.sh | sudo bash
-          \`\`\`
-
-          ### Docker
-
-          \`\`\`bash
-          docker pull git.naqerl.com/naqerl/panel:%TAG%
-          docker run -d \
-            --name tracer-panel \
-            -p 8080:8080 \
-            -v /host/data:/var/lib/tracer \
-            git.naqerl.com/naqerl/panel:%TAG%
-          \`\`\`
-
-          ### Verify
-
-          \`\`\`bash
-          sha256sum -c <(curl -sL %SERVER%/%REPO%/releases/download/%TAG%/checksums.txt)
-          \`\`\`
+          - **tracer-collector**: %SERVER%/%REPO%/releases/download/%TAG%/tracer-collector-linux-amd64.tar.gz
+          - **tracer-panel**: %SERVER%/%REPO%/releases/download/%TAG%/tracer-panel-linux-amd64.tar.gz
+          - **Docker**: docker pull git.naqerl.com/naqerl/panel:%TAG%
           NOTESEOF
 
           sed -i 's/^          //' /tmp/release_notes.md
