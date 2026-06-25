@@ -55,7 +55,16 @@ jobs:
           export PATH="/usr/local/go/bin:$PATH"
           go version
 
-      - name: Vet
+      - name: Download dependencies
+        run: |
+          cd "${GITHUB_WORKSPACE}"
+          go mod download
+
+      - name: Install lint tools
+        run: |
+          go install honnef.co/go/tools/cmd/staticcheck@v0.7.0
+
+      - name: Vet (fmt + vet + staticcheck)
         run: |
           cd "${GITHUB_WORKSPACE}"
           make vet
@@ -69,7 +78,8 @@ jobs:
       - name: Test
         run: |
           cd "${GITHUB_WORKSPACE}"
-          make test
+          # test target depends on vet, but we already ran vet
+          go test ./...
 
       - name: Package binaries
         run: |
