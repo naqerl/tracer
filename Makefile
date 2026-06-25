@@ -10,13 +10,10 @@ CGO_ENABLED ?= 0
 REGISTRY ?= git.naqerl.com
 IMAGE_PANEL  ?= $(REGISTRY)/tracer/panel
 
-# Git version info for embedding
-GIT_COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
-GIT_REF := $(shell git symbolic-ref --short HEAD 2>/dev/null || git describe --tags --exact-match 2>/dev/null || echo "unknown")
-
+# Git version info for embedding (hardcoded as "unknown" in CI — no git available)
 LDFLAGS := -s -w \
-	-X tracer/build.Commit=$(GIT_COMMIT) \
-	-X tracer/build.Ref=$(GIT_REF) \
+	-X tracer/build.Commit=unknown \
+	-X tracer/build.Ref=unknown \
 	-X tracer/pkg/setup.WithSystemd=$(WITH_SYSTEMD) \
 	-X tracer/pkg/setup.Bindir=$(BINDIR) \
 	-X tracer/pkg/setup.PanelUser=$(PANEL_USER) \
