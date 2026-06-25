@@ -23,21 +23,21 @@ jobs:
       - name: Checkout repository
         run: |
           set -e
-          echo "Checking out ${GITHUB_REPOSITORY} at ref ${GITHUB_REF_NAME}"
-          if ! git clone --depth 1 --branch "${GITHUB_REF_NAME}" \
-            "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git" \
-            /tmp/checkout 2>&1; then
-            echo "git clone via GITHUB_SERVER_URL failed, trying API archive..."
-            BASE="${GITHUB_API_URL%/api/v1}"
-            curl -sL "${BASE}/api/v1/repos/${GITHUB_REPOSITORY}/archive/${GITHUB_REF_NAME}.tar.gz" \
-              -o /tmp/repo.tar.gz
-            mkdir -p /tmp/checkout
-            tar -C /tmp/checkout -xzf /tmp/repo.tar.gz
-            mv /tmp/checkout/*/* "${GITHUB_WORKSPACE}/"
-          else
-            cp -a /tmp/checkout/. "${GITHUB_WORKSPACE}/"
-            rm -rf /tmp/checkout
-          fi
+          SERVER="https://git.naqerl.com"
+          API="${SERVER}/api/v1"
+          REPO="naqerl/eco_tracer"
+          REF="${GITHUB_REF_NAME:-main}"
+
+          echo "Checking out ${REPO} at ref ${REF}"
+
+          # Download archive using the API (avoids needing git on the runner)
+          curl -sL "${API}/repos/${REPO}/archive/${REF}.tar.gz" -o /tmp/repo.tar.gz
+          mkdir -p /tmp/checkout
+          tar -C /tmp/checkout -xzf /tmp/repo.tar.gz
+
+          # The archive creates a single top-level directory; move contents to workspace
+          mv /tmp/checkout/*/* "${GITHUB_WORKSPACE}/"
+
           cd "${GITHUB_WORKSPACE}"
           ls -la
 
@@ -57,7 +57,6 @@ jobs:
 
       - name: Download dependencies
         run: |
-          cd "${GITHUB_WORKSPACE}"
           go mod download
 
       - name: Install lint tools
@@ -66,24 +65,19 @@ jobs:
 
       - name: Vet (fmt + vet + staticcheck)
         run: |
-          cd "${GITHUB_WORKSPACE}"
           make vet
 
       - name: Build binaries
         run: |
-          cd "${GITHUB_WORKSPACE}"
           make build
           ls -lh bin/
 
       - name: Test
         run: |
-          cd "${GITHUB_WORKSPACE}"
-          # test target depends on vet, but we already ran vet
           go test ./...
 
       - name: Package binaries
         run: |
-          cd "${GITHUB_WORKSPACE}"
           chmod +x bin/tracer-collector bin/tracer-panel
 
           COLLECTOR_ARCHIVE="tracer-collector-linux-amd64.tar.gz"
