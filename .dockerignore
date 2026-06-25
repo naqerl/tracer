@@ -1,0 +1,11 @@
+.git
+bin
+.tasks
+tasks
+.agent-shell
+.cptr
+/.opencode/
+*.md
+docs/
+e2e/
+landing/

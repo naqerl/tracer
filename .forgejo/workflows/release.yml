@@ -122,6 +122,16 @@ jobs:
           | tracer-collector | [tracer-collector-linux-amd64.tar.gz](%SERVER%/%REPO%/releases/download/%TAG%/tracer-collector-linux-amd64.tar.gz) |
           | tracer-panel | [tracer-panel-linux-amd64.tar.gz](%SERVER%/%REPO%/releases/download/%TAG%/tracer-panel-linux-amd64.tar.gz) |
 
+          ### Docker image
+
+          | Image | Pull |
+          |-------|------|
+          | tracer-panel | `%SERVER%/tracer/panel:%TAG%` |
+
+          \`\`\`bash
+          docker pull %SERVER%/tracer/panel:%TAG%
+          \`\`\`
+
           ### Usage
 
           \`\`\`bash
@@ -142,6 +152,17 @@ jobs:
 
           \`\`\`bash
           curl -fsSL %SERVER%/%REPO%/raw/%TAG%/install.sh | sudo bash
+          \`\`\`
+
+          ### Docker
+
+          \`\`\`bash
+          docker pull %SERVER%/tracer/panel:%TAG%
+          docker run -d \
+            --name tracer-panel \
+            -p 8080:8080 \
+            -v /host/data:/var/lib/tracer \
+            %SERVER%/tracer/panel:%TAG%
           \`\`\`
 
           ### Verify
@@ -211,3 +232,26 @@ jobs:
             -F "attachment=@/tmp/checksums.txt" \
             -F "name=checksums.txt"
           echo "Uploaded checksums"
+
+      # ── Docker image (only on tag) ───────────────────────────────
+      # Uses plain docker CLI for maximum Forgejo compatibility.
+      - name: Build panel image
+        if: steps.check_tag.outputs.is_tag == 'true'
+        run: |
+          docker build \
+            -t git.naqerl.com/tracer/panel:${{ github.ref_name }} \
+            -t git.naqerl.com/tracer/panel:latest \
+            -f apps/panel/Containerfile \
+            .
+
+      - name: Log in to Forgejo Container Registry
+        if: steps.check_tag.outputs.is_tag == 'true'
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | \
+            docker login git.naqerl.com -u "${{ github.repository_owner }}" --password-stdin
+
+      - name: Push panel image
+        if: steps.check_tag.outputs.is_tag == 'true'
+        run: |
+          docker push git.naqerl.com/tracer/panel:${{ github.ref_name }}
+          docker push git.naqerl.com/tracer/panel:latest

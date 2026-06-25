@@ -6,6 +6,10 @@ COLLECTOR_USER ?= tracer-collector
 TRACER_GROUP ?= tracer
 CGO_ENABLED ?= 0
 
+# Container registry (Forgejo)
+REGISTRY ?= git.naqerl.com
+IMAGE_PANEL  ?= $(REGISTRY)/tracer/panel
+
 # Git version info for embedding
 GIT_COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 GIT_REF := $(shell git symbolic-ref --short HEAD 2>/dev/null || git describe --tags --exact-match 2>/dev/null || echo "unknown")
@@ -19,7 +23,8 @@ LDFLAGS := -s -w \
 	-X tracer/pkg/setup.CollectorUser=$(COLLECTOR_USER) \
 	-X tracer/pkg/setup.TracerGroup=$(TRACER_GROUP)
 
-.PHONY: build build-collector build-panel clean test vet dev-setup generate sqlc install
+.PHONY: build build-collector build-panel clean test vet dev-setup generate sqlc install \
+        docker-build-panel docker-tag-panel docker-push-panel
 
 build: build-collector build-panel
 
@@ -81,3 +86,25 @@ install: build
 	@echo "Start services with:"
 	@echo "  sudo systemctl start tracer-collector"
 	@echo "  sudo systemctl start tracer-panel"
+
+# ── Container images ──────────────────────────────────────────────────────────
+# Build the panel image using the multi-stage Containerfile.
+docker-build-panel:
+	docker build \
+		-t $(IMAGE_PANEL):latest \
+		-f apps/panel/Containerfile \
+		.
+
+# Tag the panel image with a specific version (usage: make docker-tag-panel TAG=v1.2.3).
+docker-tag-panel:
+ifndef TAG
+	$(error TAG is required. Usage: make docker-tag-panel TAG=v1.2.3)
+endif
+	docker tag $(IMAGE_PANEL):latest $(IMAGE_PANEL):$(TAG)
+
+# Push all tags of the panel image to the registry.
+docker-push-panel:
+	docker push $(IMAGE_PANEL):latest
+ifneq ($(TAG),)
+	docker push $(IMAGE_PANEL):$(TAG)
+endif

@@ -224,27 +224,40 @@ sudo make uninstall
 
 ### Container Images
 
-**Build standalone container image (no root needed):**
+The panel is published as a minimal Docker image (~15 MB) on the Forgejo
+container registry at `git.naqerl.com/tracer/panel`.
+
+**Pull the latest image:**
 
 ```bash
-make build
-make docker-build   # Creates tracer:latest Docker image
-# OR
-make podman-build   # Creates tracer:latest Podman image
+docker pull git.naqerl.com/tracer/panel:latest
 ```
 
-**Systemd-managed containers (root needed for Quadlet files):**
-
-For systemd to manage your containers (auto-start, restart, logging):
+**Run the panel:**
 
 ```bash
-make build
-sudo make install   # Installs binaries and systemd units
-systemctl --user enable --now tracer-panel
-systemctl --user enable --now tracer-collector
+docker run -d \
+  --name tracer-panel \
+  -p 8080:8080 \
+  -v /path/to/data:/var/lib/tracer \
+  git.naqerl.com/tracer/panel:latest
 ```
 
-This creates [Podman Quadlet](https://docs.podman.io/en/latest/markdown/podman-systemd.unit.5.html) files - systemd units that run containers instead of binaries.
+The panel expects a config file at `/etc/tracer/panel.yaml`. You can provide
+one via bind mount or set environment variables (see [Configuration](#configuration)).
+
+**Build locally:**
+
+```bash
+make docker-build-panel   # Creates git.naqerl.com/tracer/panel:latest
+```
+
+**Tag and push to the registry:**
+
+```bash
+make docker-tag-panel TAG=v1.2.3
+make docker-push-panel TAG=v1.2.3
+```
 
 ### Deployment
 
