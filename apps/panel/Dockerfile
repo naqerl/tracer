@@ -6,7 +6,7 @@
 # (Telegram, ntfy, etc.).
 #
 # Build:
-#   docker build -t tracer-panel -f apps/panel/Containerfile .
+#   docker build -t tracer-panel -f apps/panel/Dockerfile .
 #
 # Run:
 #   docker run -v /host/data:/var/lib/tracer tracer-panel [flags]

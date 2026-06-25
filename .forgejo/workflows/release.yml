@@ -241,7 +241,7 @@ jobs:
           docker build \
             -t git.naqerl.com/tracer/panel:${{ github.ref_name }} \
             -t git.naqerl.com/tracer/panel:latest \
-            -f apps/panel/Containerfile \
+            -f apps/panel/Dockerfile \
             .
 
       - name: Log in to Forgejo Container Registry

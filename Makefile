@@ -88,11 +88,11 @@ install: build
 	@echo "  sudo systemctl start tracer-panel"
 
 # ── Container images ──────────────────────────────────────────────────────────
-# Build the panel image using the multi-stage Containerfile.
+# Build the panel image using the multi-stage Dockerfile.
 docker-build-panel:
 	docker build \
 		-t $(IMAGE_PANEL):latest \
-		-f apps/panel/Containerfile \
+		-f apps/panel/Dockerfile \
 		.
 
 # Tag the panel image with a specific version (usage: make docker-tag-panel TAG=v1.2.3).
