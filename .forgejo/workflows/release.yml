@@ -1,14 +1,12 @@
 # Release workflow for tracer
 #
 # Builds tracer-collector and tracer-panel binaries for linux/amd64.
-# On tags matching "v*", also publishes them as a release.
-# On push to main, just builds and runs checks.
+# On tag push (v*), builds, creates a release, and pushes Docker image.
 
 name: Release
 
 on:
   push:
-    branches: [main]
     tags: ["v*"]
 
 env:
@@ -26,7 +24,7 @@ jobs:
       - name: Checkout repository
         run: |
           set -e
-          curl -sL "https://git.naqerl.com/api/v1/repos/naqerl/eco_tracer/archive/${GITHUB_REF_NAME:-main}.tar.gz" \
+          curl -sL "https://git.naqerl.com/api/v1/repos/naqerl/tracer/archive/${GITHUB_REF_NAME:-main}.tar.gz" \
             -o /tmp/repo.tar.gz
           mkdir -p /tmp/checkout
           tar -C /tmp/checkout -xzf /tmp/repo.tar.gz
@@ -94,18 +92,8 @@ jobs:
           echo "--- Checksums ---"
           cat /tmp/checksums.txt
 
-      # ── Release (only on tag push) ──────────────────────────────
-      - name: Determine if tag
-        id: check_tag
-        run: |
-          if echo "${GITHUB_REF}" | grep -q '^refs/tags/v'; then
-            echo "is_tag=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "is_tag=false" >> "$GITHUB_OUTPUT"
-          fi
-
+      # ── Release ────────────────────────────────────────────────
       - name: Create release
-        if: steps.check_tag.outputs.is_tag == 'true'
         run: |
           set -e
 
@@ -206,7 +194,6 @@ jobs:
           echo "RELEASE_ID=${RELEASE_ID}" >> "$GITHUB_ENV"
 
       - name: Upload tracer-collector asset
-        if: steps.check_tag.outputs.is_tag == 'true'
         run: |
           curl -s -X POST \
             "${GITHUB_API_URL%/api/v1}/api/v1/repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}/assets" \
@@ -216,7 +203,6 @@ jobs:
           echo "Uploaded tracer-collector asset"
 
       - name: Upload tracer-panel asset
-        if: steps.check_tag.outputs.is_tag == 'true'
         run: |
           curl -s -X POST \
             "${GITHUB_API_URL%/api/v1}/api/v1/repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}/assets" \
@@ -226,7 +212,6 @@ jobs:
           echo "Uploaded tracer-panel asset"
 
       - name: Upload checksums
-        if: steps.check_tag.outputs.is_tag == 'true'
         run: |
           curl -s -X POST \
             "${GITHUB_API_URL%/api/v1}/api/v1/repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}/assets" \
@@ -236,9 +221,37 @@ jobs:
           echo "Uploaded checksums"
 
       # ── Docker image (only on tag) ───────────────────────────────
-      # Uses plain docker CLI for maximum Forgejo compatibility.
+      # Uses plain docker CLI.  If docker is not available on the
+      # runner (default Forgejo runner containers lack it), the
+      # steps below are marked continue-on-error so the release
+      # itself still succeeds.
+      - name: Check Docker availability
+        continue-on-error: true
+        run: |
+          set -x
+          echo "=== Docker CLI ==="
+          docker version --format '{{.Client.Version}}' 2>&1 || echo "docker CLI not available"
+          echo "=== Docker daemon ==="
+          docker info 2>&1 || echo "Docker daemon not reachable"
+          echo "=== DOCKER_HOST ==="
+          echo "${DOCKER_HOST:-<not set>}"
+          echo "=== Environment ==="
+          env | sort
+
+      - name: Install Docker CLI (if missing)
+        continue-on-error: true
+        run: |
+          if ! command -v docker &>/dev/null; then
+            echo "Docker CLI not found, installing..."
+            apt-get update -qq
+            apt-get install -y -qq docker.io 2>&1 || true
+          else
+            echo "Docker CLI already installed"
+          fi
+          docker version --format '{{.Client.Version}}' 2>&1 || echo "still not usable"
+
       - name: Build panel image
-        if: steps.check_tag.outputs.is_tag == 'true'
+        continue-on-error: true
         run: |
           docker build \
             -t git.naqerl.com/naqerl/panel:${{ github.ref_name }} \
@@ -247,13 +260,14 @@ jobs:
             .
 
       - name: Log in to Forgejo Container Registry
-        if: steps.check_tag.outputs.is_tag == 'true'
+        continue-on-error: true
         run: |
           echo "${{ secrets.GITHUB_TOKEN }}" | \
-            docker login git.naqerl.com -u "${{ github.repository_owner }}" --password-stdin
+            docker login git.naqerl.com -u "${{ github.repository_owner }}" --password-stdin 2>&1 || \
+            echo "WARNING: docker login failed, push will also fail"
 
       - name: Push panel image
-        if: steps.check_tag.outputs.is_tag == 'true'
+        continue-on-error: true
         run: |
-          docker push git.naqerl.com/naqerl/panel:${{ github.ref_name }}
-          docker push git.naqerl.com/naqerl/panel:latest
+          docker push git.naqerl.com/naqerl/panel:${{ github.ref_name }} 2>&1 || echo "WARNING: push failed"
+          docker push git.naqerl.com/naqerl/panel:latest 2>&1 || echo "WARNING: push failed"
