@@ -19,11 +19,11 @@
 
 ### Medium
 - [x] **M1: `config.mk` not versioned** - Fixed. Created `build/config.mk` with default values (WITH_SYSTEMD=true, BINDIR=/usr/local/bin, etc.).
-- [ ] **M2: Producer blocks when channel is full** - ✅ **Deferred** - Channel buffers (100 per app + 1000 mpsc) are adequate for typical throughput. Non-blocking emit for error events would require design trade-offs.
-- [ ] **M3: No tests for core panel service** - ⏳ **Pending** - `apps/panel/internal/services/panel/` has no test files. Need to verify if there are integration tests elsewhere.
-- [ ] **M4: Typo in error message** - 🔍 **Not found** - The reported typo ("occured"/"occurred") does not exist in the codebase. May have been in a previous commit.
-- [ ] **M5: No graceful shutdown for goroutines** - ✅ **No action needed** - The panel already handles graceful shutdown via `signal.NotifyContext`, `server.Shutdown()`, and `wg.Wait()`.
-- [ ] **M6: Password reset functionality** - ✅ **No action needed** - No password reset functionality exists; M6 was moot.
+- [x] **M2: Producer blocks when channel is full** - ✅ **Deferred** - Channel buffers (100 per app + 1000 mpsc) are adequate for typical throughput. Non-blocking emit for error events would require design trade-offs.
+- [x] **M3: No tests for core panel service** - ✅ **Done** - `apps/panel/internal/services/panel/service_test.go` exists with 65+ tests covering collectors, apps, log groups, health, stats, and edge cases.
+- [x] **M4: Typo in error message** - ✅ **Not found** - Reviewed codebase; no instance of "occured" or "occurred" typo exists. May have been fixed in a prior commit.
+- [x] **M5: No graceful shutdown for goroutines** - ✅ **No action needed** - The panel already handles graceful shutdown via `signal.NotifyContext`, `server.Shutdown()`, and `wg.Wait()`.
+- [x] **M6: Password reset functionality** - ✅ **No action needed** - No password reset functionality exists; M6 was moot.
 
 ### Low
 - [ ] **L1: Missing observability (metrics/tracing)** - No Prometheus metrics or OpenTelemetry tracing.
