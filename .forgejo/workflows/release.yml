@@ -1,0 +1,226 @@
+# Release workflow for tracer
+#
+# Builds tracer-collector and tracer-panel binaries for linux/amd64
+# and publishes them as a release when a version tag is pushed.
+#
+# Triggers on tags matching "v*" (e.g. v0.1.0, v1.0.0).
+#
+# Notes:
+#   - Uses `runs-on: ubuntu-latest` (matches this instance's runner).
+#   - No external actions – all steps use bare `run` commands.
+#   - Uses the Forgejo API to create releases and upload assets.
+
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+env:
+  BINARY_COLLECTOR: tracer-collector
+  BINARY_PANEL: tracer-panel
+
+jobs:
+  release:
+    name: Build and Publish Release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        run: |
+          echo "Checking out ${GITHUB_REPOSITORY} at ref ${GITHUB_REF_NAME}"
+          git clone --depth 1 --branch "${GITHUB_REF_NAME}" \
+            "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git" \
+            /tmp/checkout
+          cp -a /tmp/checkout/. "${GITHUB_WORKSPACE}/"
+          rm -rf /tmp/checkout
+          cd "${GITHUB_WORKSPACE}"
+          ls -la
+
+      - name: Install Go
+        run: |
+          if ! command -v go &>/dev/null; then
+            echo "Installing Go..."
+            curl -fsSL "https://go.dev/dl/go1.23.0.linux-amd64.tar.gz" -o /tmp/go.tar.gz
+            rm -rf /usr/local/go
+            tar -C /usr/local -xzf /tmp/go.tar.gz
+            echo "/usr/local/go/bin" >> "$GITHUB_PATH"
+          fi
+          go version
+
+      - name: Build tracer-collector
+        run: |
+          cd "${GITHUB_WORKSPACE}"
+          CGO_ENABLED=0 \
+          GIT_COMMIT="$(git rev-parse --short HEAD)" \
+          GIT_REF="${GITHUB_REF_NAME}" \
+          go build \
+            -ldflags="-s -w \
+              -X tracer/build.Commit=${GIT_COMMIT} \
+              -X tracer/build.Ref=${GIT_REF} \
+              -X tracer/pkg/setup.WithSystemd=yes \
+              -X tracer/pkg/setup.Bindir=/usr/local/bin \
+              -X tracer/pkg/setup.PanelUser=tracer-panel \
+              -X tracer/pkg/setup.CollectorUser=tracer-collector \
+              -X tracer/pkg/setup.TracerGroup=tracer" \
+            -o "/tmp/${BINARY_COLLECTOR}" \
+            ./apps/collector/cmd/tracer-collector
+          ls -lh "/tmp/${BINARY_COLLECTOR}"
+
+      - name: Build tracer-panel
+        run: |
+          cd "${GITHUB_WORKSPACE}"
+          CGO_ENABLED=0 \
+          GIT_COMMIT="$(git rev-parse --short HEAD)" \
+          GIT_REF="${GITHUB_REF_NAME}" \
+          go build \
+            -ldflags="-s -w \
+              -X tracer/build.Commit=${GIT_COMMIT} \
+              -X tracer/build.Ref=${GIT_REF} \
+              -X tracer/pkg/setup.WithSystemd=yes \
+              -X tracer/pkg/setup.Bindir=/usr/local/bin \
+              -X tracer/pkg/setup.PanelUser=tracer-panel \
+              -X tracer/pkg/setup.CollectorUser=tracer-collector \
+              -X tracer/pkg/setup.TracerGroup=tracer" \
+            -o "/tmp/${BINARY_PANEL}" \
+            ./apps/panel/cmd/tracer-panel
+          ls -lh "/tmp/${BINARY_PANEL}"
+
+      - name: Package binaries
+        run: |
+          cd /tmp
+          chmod +x "${BINARY_COLLECTOR}" "${BINARY_PANEL}"
+
+          # Create archives
+          COLLECTOR_ARCHIVE="${BINARY_COLLECTOR}-linux-amd64.tar.gz"
+          PANEL_ARCHIVE="${BINARY_PANEL}-linux-amd64.tar.gz"
+
+          tar -czf "${COLLECTOR_ARCHIVE}" "${BINARY_COLLECTOR}"
+          tar -czf "${PANEL_ARCHIVE}" "${BINARY_PANEL}"
+
+          ls -lh "${COLLECTOR_ARCHIVE}" "${PANEL_ARCHIVE}"
+
+          sha256sum "${COLLECTOR_ARCHIVE}" >> /tmp/checksums.txt
+          sha256sum "${PANEL_ARCHIVE}" >> /tmp/checksums.txt
+
+          echo "COLLECTOR_ARCHIVE=/tmp/${COLLECTOR_ARCHIVE}" >> "$GITHUB_ENV"
+          echo "PANEL_ARCHIVE=/tmp/${PANEL_ARCHIVE}" >> "$GITHUB_ENV"
+
+      - name: Show checksums
+        run: |
+          echo "--- Checksums ---"
+          cat /tmp/checksums.txt
+
+      - name: Create release
+        run: |
+          set -e
+
+          TAG="${GITHUB_REF_NAME}"
+          API="${GITHUB_API_URL%/api/v1}/api/v1"
+          REPO="${GITHUB_REPOSITORY}"
+          SERVER_URL="${GITHUB_SERVER_URL}"
+
+          # Build release notes template with placeholders
+          cat > /tmp/release_notes.md << 'NOTESEOF'
+          ## Release %TAG%
+
+          ### Pre-built binaries (Linux amd64)
+
+          | Binary | Download |
+          |--------|----------|
+          | tracer-collector | [tracer-collector-linux-amd64.tar.gz](%SERVER%/%REPO%/releases/download/%TAG%/tracer-collector-linux-amd64.tar.gz) |
+          | tracer-panel | [tracer-panel-linux-amd64.tar.gz](%SERVER%/%REPO%/releases/download/%TAG%/tracer-panel-linux-amd64.tar.gz) |
+
+          ### Usage
+
+          ```bash
+          # Download both binaries
+          curl -L -o tracer-collector.tar.gz "%SERVER%/%REPO%/releases/download/%TAG%/tracer-collector-linux-amd64.tar.gz"
+          curl -L -o tracer-panel.tar.gz "%SERVER%/%REPO%/releases/download/%TAG%/tracer-panel-linux-amd64.tar.gz"
+
+          # Extract
+          tar -xzf tracer-collector.tar.gz
+          tar -xzf tracer-panel.tar.gz
+
+          # Install
+          sudo mv tracer-collector /usr/local/bin/
+          sudo mv tracer-panel /usr/local/bin/
+          ```
+
+          ### Install via `configure` script
+
+          ```bash
+          curl -fsSL %SERVER%/%REPO%/raw/%TAG%/install.sh | sudo bash
+          ```
+
+          ### Verify
+
+          ```bash
+          sha256sum -c <(curl -sL %SERVER%/%REPO%/releases/download/%TAG%/checksums.txt)
+          ```
+          NOTESEOF
+
+          # Strip 10 leading spaces (YAML indentation)
+          sed -i 's/^          //' /tmp/release_notes.md
+
+          # Replace placeholders
+          sed -i "s|%TAG%|${TAG}|g; s|%SERVER%|${SERVER_URL}|g; s|%REPO%|${REPO}|g" /tmp/release_notes.md
+
+          # Escape for JSON: backslash -> \\, quote -> \", newlines -> \n
+          ESCAPED_NOTES=$(sed 's/\\/\\\\/g; s/"/\\"/g' /tmp/release_notes.md | awk '{printf "%s\\n", $0}')
+          ESCAPED_NOTES="${ESCAPED_NOTES%\\n}"
+
+          echo "Creating release for tag ${TAG}..."
+
+          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
+            "${API}/repos/${REPO}/releases" \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d "{\"tag_name\":\"${TAG}\",\"name\":\"${TAG}\",\"body\":\"${ESCAPED_NOTES}\",\"draft\":false,\"prerelease\":false}")
+
+          HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+          BODY=$(echo "$RESPONSE" | sed '$d')
+
+          echo "HTTP status: ${HTTP_CODE}"
+          echo "Response body:"
+          echo "${BODY}"
+
+          if [ "$HTTP_CODE" != "201" ] && [ "$HTTP_CODE" != "200" ]; then
+            echo "FAILED to create release"
+            exit 1
+          fi
+
+          # Extract release ID for asset upload
+          RELEASE_ID=$(echo "$BODY" | grep -o '"id":[0-9]*' | head -1 | cut -d: -f2)
+          echo "Release ID: ${RELEASE_ID}"
+          echo "RELEASE_ID=${RELEASE_ID}" >> "$GITHUB_ENV"
+
+      - name: Upload tracer-collector asset
+        run: |
+          curl -s -X POST \
+            "${GITHUB_API_URL%/api/v1}/api/v1/repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}/assets" \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -F "attachment=@${COLLECTOR_ARCHIVE}" \
+            -F "name=tracer-collector-linux-amd64.tar.gz"
+          echo "Uploaded tracer-collector asset"
+
+      - name: Upload tracer-panel asset
+        run: |
+          curl -s -X POST \
+            "${GITHUB_API_URL%/api/v1}/api/v1/repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}/assets" \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -F "attachment=@${PANEL_ARCHIVE}" \
+            -F "name=tracer-panel-linux-amd64.tar.gz"
+          echo "Uploaded tracer-panel asset"
+
+      - name: Upload checksums
+        run: |
+          curl -s -X POST \
+            "${GITHUB_API_URL%/api/v1}/api/v1/repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}/assets" \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -F "attachment=@/tmp/checksums.txt" \
+            -F "name=checksums.txt"
+          echo "Uploaded checksums"
