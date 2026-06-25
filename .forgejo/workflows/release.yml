@@ -225,33 +225,28 @@ jobs:
       # runner (default Forgejo runner containers lack it), the
       # steps below are marked continue-on-error so the release
       # itself still succeeds.
-      - name: Check Docker availability
-        continue-on-error: true
+      - name: Show CI context
         run: |
-          set -x
-          echo "=== Docker CLI ==="
-          docker version --format '{{.Client.Version}}' 2>&1 || echo "docker CLI not available"
-          echo "=== Docker daemon ==="
-          docker info 2>&1 || echo "Docker daemon not reachable"
-          echo "=== DOCKER_HOST ==="
-          echo "${DOCKER_HOST:-<not set>}"
-          echo "=== Environment ==="
-          env | sort
+          echo "github.actor: ${{ github.actor }}"
+          echo "github.repository_owner: ${{ github.repository_owner }}"
+          echo "github.repository: ${{ github.repository }}"
+          echo "github.ref_name: ${{ github.ref_name }}"
+          echo "github.ref: ${{ github.ref }}"
+          echo "github.sha: ${{ github.sha }}"
+          echo "github.workspace: ${{ github.workspace }}"
 
       - name: Install Docker CLI (if missing)
-        continue-on-error: true
         run: |
           if ! command -v docker &>/dev/null; then
             echo "Docker CLI not found, installing..."
             apt-get update -qq
-            apt-get install -y -qq docker.io 2>&1 || true
+            apt-get install -y -qq docker.io 2>&1
           else
             echo "Docker CLI already installed"
           fi
-          docker version --format '{{.Client.Version}}' 2>&1 || echo "still not usable"
+          docker version --format '{{.Client.Version}}'
 
       - name: Build panel image
-        continue-on-error: true
         run: |
           docker build \
             -t git.naqerl.com/naqerl/panel:${{ github.ref_name }} \
@@ -260,14 +255,11 @@ jobs:
             .
 
       - name: Log in to Forgejo Container Registry
-        continue-on-error: true
         run: |
           echo "${{ secrets.GITHUB_TOKEN }}" | \
-            docker login git.naqerl.com -u "${{ github.repository_owner }}" --password-stdin 2>&1 || \
-            echo "WARNING: docker login failed, push will also fail"
+            docker login git.naqerl.com -u "${{ github.actor }}" --password-stdin
 
       - name: Push panel image
-        continue-on-error: true
         run: |
-          docker push git.naqerl.com/naqerl/panel:${{ github.ref_name }} 2>&1 || echo "WARNING: push failed"
-          docker push git.naqerl.com/naqerl/panel:latest 2>&1 || echo "WARNING: push failed"
+          docker push git.naqerl.com/naqerl/panel:${{ github.ref_name }}
+          docker push git.naqerl.com/naqerl/panel:latest
