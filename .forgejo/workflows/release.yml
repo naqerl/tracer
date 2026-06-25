@@ -1,3 +1,9 @@
+# Release workflow for tracer
+#
+# Builds tracer-collector and tracer-panel binaries for linux/amd64.
+# On tags matching "v*", also publishes them as a release.
+# On push to main, just builds and runs checks.
+
 name: Release
 
 on:
@@ -5,19 +11,28 @@ on:
     branches: [main]
     tags: ["v*"]
 
+env:
+  BINARY_COLLECTOR: tracer-collector
+  BINARY_PANEL: tracer-panel
+
 jobs:
   build:
-    name: Test
+    name: Build and Lint
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      # ── Checkout ────────────────────────────────────────────────
+      # Uses the Forgejo API directly to avoid depending on git
+      # or environment variables that may not be set on the runner.
+      - name: Checkout repository
         run: |
           set -e
-          curl -sL "https://git.naqerl.com/api/v1/repos/naqerl/eco_tracer/archive/${GITHUB_REF_NAME:-main}.tar.gz" -o /tmp/repo.tar.gz
+          curl -sL "https://git.naqerl.com/api/v1/repos/naqerl/eco_tracer/archive/${GITHUB_REF_NAME:-main}.tar.gz" \
+            -o /tmp/repo.tar.gz
           mkdir -p /tmp/checkout
           tar -C /tmp/checkout -xzf /tmp/repo.tar.gz
           mv /tmp/checkout/*/* "${GITHUB_WORKSPACE}/"
 
+      # ── Go ──────────────────────────────────────────────────────
       - name: Install Go
         run: |
           if ! command -v go &>/dev/null || ! go version | grep -q 'go1\.26\.4'; then
@@ -32,10 +47,170 @@ jobs:
           export PATH="/usr/local/go/bin:$PATH"
           go version
 
-      - name: Go mod download
+      - name: Download dependencies
         run: |
           go mod download
 
-      - name: Make vet
+      # ── Lint ────────────────────────────────────────────────────
+      - name: Install lint tools
+        run: |
+          go install honnef.co/go/tools/cmd/staticcheck@v0.7.0
+
+      - name: Vet (fmt + vet + staticcheck)
         run: |
           make vet
+
+      # ── Build ───────────────────────────────────────────────────
+      - name: Build binaries
+        run: |
+          make build
+          ls -lh bin/
+
+      # ── Test ────────────────────────────────────────────────────
+      - name: Test
+        run: |
+          go test ./...
+
+      # ── Package ─────────────────────────────────────────────────
+      - name: Package binaries
+        run: |
+          chmod +x bin/tracer-collector bin/tracer-panel
+
+          COLLECTOR_ARCHIVE="tracer-collector-linux-amd64.tar.gz"
+          PANEL_ARCHIVE="tracer-panel-linux-amd64.tar.gz"
+
+          tar -czf "/tmp/${COLLECTOR_ARCHIVE}" -C bin tracer-collector
+          tar -czf "/tmp/${PANEL_ARCHIVE}" -C bin tracer-panel
+
+          ls -lh "/tmp/${COLLECTOR_ARCHIVE}" "/tmp/${PANEL_ARCHIVE}"
+
+          sha256sum "/tmp/${COLLECTOR_ARCHIVE}" >> /tmp/checksums.txt
+          sha256sum "/tmp/${PANEL_ARCHIVE}" >> /tmp/checksums.txt
+
+          echo "COLLECTOR_ARCHIVE=/tmp/${COLLECTOR_ARCHIVE}" >> "$GITHUB_ENV"
+          echo "PANEL_ARCHIVE=/tmp/${PANEL_ARCHIVE}" >> "$GITHUB_ENV"
+
+      - name: Show checksums
+        run: |
+          echo "--- Checksums ---"
+          cat /tmp/checksums.txt
+
+      # ── Release (only on tag push) ──────────────────────────────
+      - name: Determine if tag
+        id: check_tag
+        run: |
+          if echo "${GITHUB_REF}" | grep -q '^refs/tags/v'; then
+            echo "is_tag=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_tag=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create release
+        if: steps.check_tag.outputs.is_tag == 'true'
+        run: |
+          set -e
+
+          TAG="${GITHUB_REF_NAME}"
+          API="${GITHUB_API_URL%/api/v1}/api/v1"
+          REPO="${GITHUB_REPOSITORY}"
+          SERVER_URL="${GITHUB_SERVER_URL}"
+
+          cat > /tmp/release_notes.md << 'NOTESEOF'
+          ## Release %TAG%
+
+          ### Pre-built binaries (Linux amd64)
+
+          | Binary | Download |
+          |--------|----------|
+          | tracer-collector | [tracer-collector-linux-amd64.tar.gz](%SERVER%/%REPO%/releases/download/%TAG%/tracer-collector-linux-amd64.tar.gz) |
+          | tracer-panel | [tracer-panel-linux-amd64.tar.gz](%SERVER%/%REPO%/releases/download/%TAG%/tracer-panel-linux-amd64.tar.gz) |
+
+          ### Usage
+
+          \`\`\`bash
+          # Download both binaries
+          curl -L -o tracer-collector.tar.gz "%SERVER%/%REPO%/releases/download/%TAG%/tracer-collector-linux-amd64.tar.gz"
+          curl -L -o tracer-panel.tar.gz "%SERVER%/%REPO%/releases/download/%TAG%/tracer-panel-linux-amd64.tar.gz"
+
+          # Extract
+          tar -xzf tracer-collector.tar.gz
+          tar -xzf tracer-panel.tar.gz
+
+          # Install
+          sudo mv tracer-collector /usr/local/bin/
+          sudo mv tracer-panel /usr/local/bin/
+          \`\`\`
+
+          ### Quick install
+
+          \`\`\`bash
+          curl -fsSL %SERVER%/%REPO%/raw/%TAG%/install.sh | sudo bash
+          \`\`\`
+
+          ### Verify
+
+          \`\`\`bash
+          sha256sum -c <(curl -sL %SERVER%/%REPO%/releases/download/%TAG%/checksums.txt)
+          \`\`\`
+          NOTESEOF
+
+          sed -i 's/^          //' /tmp/release_notes.md
+
+          sed -i "s|%TAG%|${TAG}|g; s|%SERVER%|${SERVER_URL}|g; s|%REPO%|${REPO}|g" /tmp/release_notes.md
+
+          ESCAPED_NOTES=$(sed 's/\\/\\\\/g; s/"/\\"/g' /tmp/release_notes.md | awk '{printf "%s\\n", $0}')
+          ESCAPED_NOTES="${ESCAPED_NOTES%\\n}"
+
+          echo "Creating release for tag ${TAG}..."
+
+          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
+            "${API}/repos/${REPO}/releases" \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d "{\"tag_name\":\"${TAG}\",\"name\":\"${TAG}\",\"body\":\"${ESCAPED_NOTES}\",\"draft\":false,\"prerelease\":false}")
+
+          HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+          BODY=$(echo "$RESPONSE" | sed '$d')
+
+          echo "HTTP status: ${HTTP_CODE}"
+          echo "Response body:"
+          echo "${BODY}"
+
+          if [ "$HTTP_CODE" != "201" ] && [ "$HTTP_CODE" != "200" ]; then
+            echo "FAILED to create release"
+            exit 1
+          fi
+
+          RELEASE_ID=$(echo "$BODY" | grep -o '"id":[0-9]*' | head -1 | cut -d: -f2)
+          echo "Release ID: ${RELEASE_ID}"
+          echo "RELEASE_ID=${RELEASE_ID}" >> "$GITHUB_ENV"
+
+      - name: Upload tracer-collector asset
+        if: steps.check_tag.outputs.is_tag == 'true'
+        run: |
+          curl -s -X POST \
+            "${GITHUB_API_URL%/api/v1}/api/v1/repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}/assets" \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -F "attachment=@${COLLECTOR_ARCHIVE}" \
+            -F "name=tracer-collector-linux-amd64.tar.gz"
+          echo "Uploaded tracer-collector asset"
+
+      - name: Upload tracer-panel asset
+        if: steps.check_tag.outputs.is_tag == 'true'
+        run: |
+          curl -s -X POST \
+            "${GITHUB_API_URL%/api/v1}/api/v1/repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}/assets" \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -F "attachment=@${PANEL_ARCHIVE}" \
+            -F "name=tracer-panel-linux-amd64.tar.gz"
+          echo "Uploaded tracer-panel asset"
+
+      - name: Upload checksums
+        if: steps.check_tag.outputs.is_tag == 'true'
+        run: |
+          curl -s -X POST \
+            "${GITHUB_API_URL%/api/v1}/api/v1/repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}/assets" \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -F "attachment=@/tmp/checksums.txt" \
+            -F "name=checksums.txt"
+          echo "Uploaded checksums"
