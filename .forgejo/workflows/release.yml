@@ -35,3 +35,7 @@ jobs:
       - name: Go mod download
         run: |
           go mod download
+
+      - name: Make vet
+        run: |
+          make vet
