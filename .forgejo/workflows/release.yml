@@ -256,7 +256,7 @@ jobs:
 
       - name: Log in to Forgejo Container Registry
         run: |
-          echo "${{ secrets.GITHUB_TOKEN }}" | \
+          echo "${{ secrets.PACKAGE_PAT }}" | \
             docker login git.naqerl.com -u "${{ github.actor }}" --password-stdin
 
       - name: Push panel image
