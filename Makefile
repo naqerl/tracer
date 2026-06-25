@@ -41,11 +41,12 @@ vet:
 	go tool staticcheck ./...
 
 dev-setup:
+	go install github.com/sqlc-dev/sqlc/cmd/sqlc@v1.30.0
 	go mod download
 	go mod tidy
 
 generate:
-	templ generate
+	go tool templ generate
 
 sqlc:
 	cd apps/panel && sqlc generate
