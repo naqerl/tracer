@@ -55,6 +55,7 @@ jobs:
       - name: Install lint tools
         run: |
           go install honnef.co/go/tools/cmd/staticcheck@v0.7.0
+          echo "${HOME}/go/bin" >> "$GITHUB_PATH"
 
       - name: Vet (fmt + vet + staticcheck)
         run: |
