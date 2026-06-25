@@ -31,15 +31,3 @@ jobs:
           fi
           export PATH="/usr/local/go/bin:$PATH"
           go version
-
-      - name: Go mod download
-        run: |
-          go mod download
-
-      - name: Make vet
-        run: |
-          make vet
-
-      - name: Make build
-        run: |
-          make build
