@@ -13,25 +13,33 @@ jobs:
       - name: Checkout
         run: |
           set -e
-          echo "=== Checking out ==="
-          echo "GITHUB_WORKSPACE=${GITHUB_WORKSPACE}"
-          echo "GITHUB_REF_NAME=${GITHUB_REF_NAME}"
           curl -sL "https://git.naqerl.com/api/v1/repos/naqerl/eco_tracer/archive/${GITHUB_REF_NAME:-main}.tar.gz" -o /tmp/repo.tar.gz
-          ls -lh /tmp/repo.tar.gz
           mkdir -p /tmp/checkout
           tar -C /tmp/checkout -xzf /tmp/repo.tar.gz
-          ls -la /tmp/checkout/
-          echo "=== Moving files ==="
-          mkdir -p "${GITHUB_WORKSPACE}"
           mv /tmp/checkout/*/* "${GITHUB_WORKSPACE}/"
-          cd "${GITHUB_WORKSPACE}"
-          ls -la
 
-      - name: List files
+      - name: Install Go
         run: |
-          echo "=== PWD ==="
-          pwd
-          echo "=== Files ==="
-          ls -la
-          echo "=== Makefile exists? ==="
-          test -f Makefile && echo "YES" || echo "NO"
+          if ! command -v go &>/dev/null || ! go version | grep -q 'go1\.26\.4'; then
+            echo "Installing Go 1.26.4..."
+            curl -fsSL "https://go.dev/dl/go1.26.4.linux-amd64.tar.gz" -o /tmp/go.tar.gz
+            rm -rf /usr/local/go
+            tar -C /usr/local -xzf /tmp/go.tar.gz
+            echo "/usr/local/go/bin" >> "$GITHUB_PATH"
+          else
+            echo "Go 1.26.4 already installed"
+          fi
+          export PATH="/usr/local/go/bin:$PATH"
+          go version
+
+      - name: Go mod download
+        run: |
+          go mod download
+
+      - name: Make vet
+        run: |
+          make vet
+
+      - name: Make build
+        run: |
+          make build
