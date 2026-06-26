@@ -33,6 +33,9 @@ templ TopologyGraph(p TopologyGraphProps) {
 					}
 
 					const snapshot = JSON.parse(dataEl.dataset.snapshot);
+					const MAX_PARTICLES = 60;
+					const EVENT_THROTTLE_MS = 50;
+
 					const state = {
 						snapshot: snapshot,
 						nodes: new Map(),
@@ -41,6 +44,15 @@ templ TopologyGraph(p TopologyGraphProps) {
 						nextActivityID: 1,
 						logFlights: new Map(),
 					};
+
+					let isHidden = document.hidden;
+					let activeParticles = 0;
+					let animationFrameId = null;
+					let lastEventTime = 0;
+					const activeAnimations = new Set();
+					const edgeFlashTimers = new Map();
+					const eventBuffer = [];
+					let eventFlushId = null;
 
 					const NS = 'http://www.w3.org/2000/svg';
 					const COLORS = {
@@ -323,29 +335,74 @@ templ TopologyGraph(p TopologyGraphProps) {
 						svg.style.marginRight = 'auto';
 					}
 
-					function flashEdge(edge, color) {
-						if (!edge) return;
-						edge.path.setAttribute('stroke', color);
-						if (!animeFn) {
-							edge.path.setAttribute('opacity', '0.72');
-							window.setTimeout(() => {
-								edge.path.setAttribute('stroke', COLORS.edge);
-								edge.path.setAttribute('opacity', edge.dashed ? '0.18' : '0.28');
-							}, 320);
+					function tick(now) {
+						if (activeAnimations.size === 0) {
+							animationFrameId = null;
 							return;
 						}
-						if (typeof animeFn.remove === 'function') {
-							animeFn.remove(edge.path);
-						}
-						animeFn({
-							targets: edge.path,
-							opacity: [{ value: 0.72, duration: 140 }, { value: edge.dashed ? 0.18 : 0.28, duration: 420 }],
-							easing: 'easeOutQuad',
-							duration: 560,
-							complete: function() {
-								edge.path.setAttribute('stroke', COLORS.edge);
+						for (const anim of activeAnimations) {
+							const elapsed = now - anim.startedAt;
+							const progress = Math.min(elapsed / anim.duration, 1);
+							anim.update(progress);
+							if (progress >= 1) {
+								activeAnimations.delete(anim);
+								if (anim.onComplete) anim.onComplete();
 							}
-						});
+						}
+						animationFrameId = requestAnimationFrame(tick);
+					}
+
+					function startLoop() {
+						if (animationFrameId == null && activeAnimations.size > 0) {
+							animationFrameId = requestAnimationFrame(tick);
+						}
+					}
+
+					function scheduleFrame() {
+						if (!isHidden) startLoop();
+					}
+
+					function onVisibilityChange() {
+						isHidden = document.hidden;
+						if (!isHidden) {
+							flushEventBuffer();
+							startLoop();
+						}
+					}
+
+					function flashEdge(edge, color) {
+						if (!edge) return;
+						const path = edge.path;
+						const existing = edgeFlashTimers.get(edge.path);
+						if (existing) {
+							if (existing.type === 'timeout') clearTimeout(existing.id);
+							else activeAnimations.delete(existing.ref);
+						}
+						path.setAttribute('stroke', color);
+						if (!animeFn) {
+							path.setAttribute('opacity', '0.72');
+							const id = window.setTimeout(function() {
+								path.setAttribute('stroke', COLORS.edge);
+								path.setAttribute('opacity', edge.dashed ? '0.18' : '0.28');
+								edgeFlashTimers.delete(path);
+							}, 320);
+							edgeFlashTimers.set(path, { type: 'timeout', id: id });
+							return;
+						}
+						const ref = {
+							startedAt: performance.now(),
+							duration: 560,
+							update: function(p) {
+								path.setAttribute('opacity', p < 0.25 ? String(0.28 + p / 0.25 * 0.44) : String(0.72 - ((p - 0.25) / 0.75) * (0.72 - (edge.dashed ? 0.18 : 0.28))));
+							},
+							onComplete: function() {
+								path.setAttribute('stroke', COLORS.edge);
+								edgeFlashTimers.delete(path);
+							}
+						};
+						edgeFlashTimers.set(path, { type: 'anim', ref: ref });
+						activeAnimations.add(ref);
+						scheduleFrame();
 					}
 
 					function logFlightKey(evt) {
@@ -375,24 +432,42 @@ templ TopologyGraph(p TopologyGraphProps) {
 						if (!node) return;
 						const baseFill = node.baseFill || COLORS.panelFill;
 						const activeFill = brightenColor(baseFill, amount || 0.16);
+						const body = node.body;
 
 						if (!animeFn) {
-							window.setTimeout(function() {
-								node.body.setAttribute('fill', activeFill);
-								window.setTimeout(function() {
-									node.body.setAttribute('fill', baseFill);
-								}, 240);
-							}, delay || 0);
+							const ref = {
+								startedAt: performance.now() + (delay || 0),
+								duration: 240,
+								update: function(p) {
+									body.setAttribute('fill', p < 0.5 ? activeFill : baseFill);
+								},
+								onComplete: function() {
+									body.setAttribute('fill', baseFill);
+								}
+							};
+							activeAnimations.add(ref);
+							scheduleFrame();
 							return;
 						}
 
-						animeFn({
-							targets: node.body,
-							fill: [baseFill, activeFill, baseFill],
+						const ref = {
+							startedAt: performance.now() + (delay || 0),
 							duration: 520,
-							delay: delay || 0,
-							easing: 'easeOutSine'
-						});
+							update: function(p) {
+								if (p < 0.5) {
+									const t = p * 2;
+									body.setAttribute('fill', brightenColor(baseFill, (amount || 0.16) * t));
+								} else {
+									const t = (p - 0.5) * 2;
+									body.setAttribute('fill', brightenColor(baseFill, (amount || 0.16) * (1 - t)));
+								}
+							},
+							onComplete: function() {
+								body.setAttribute('fill', baseFill);
+							}
+						};
+						activeAnimations.add(ref);
+						scheduleFrame();
 					}
 
 					function playHeartbeatWave() {
@@ -440,11 +515,13 @@ templ TopologyGraph(p TopologyGraphProps) {
 
 					function sendParticle(edge, color, radius, reverse, shape, sourceNode, onComplete) {
 						if (!edge || !edge.path) return;
+						if (activeParticles >= MAX_PARTICLES) return;
 
 						flashEdge(edge, color);
 
 						const particle = createParticle(shape, color, radius || 4);
 						edge.particleLayer.appendChild(particle);
+						activeParticles++;
 						const activityID = beginNodeActivity(sourceNode, color);
 
 						const path = edge.path;
@@ -457,42 +534,34 @@ templ TopologyGraph(p TopologyGraphProps) {
 							positionParticle(particle, point.x, point.y);
 						}
 
-						if (!animeFn) {
-							const startedAt = performance.now();
-							const duration = 700;
-							function step(now) {
-								const progress = (now - startedAt) / duration;
-								if (progress >= 1) {
-									particle.remove();
-									endNodeActivity(sourceNode, activityID);
-									if (typeof onComplete === 'function') onComplete();
-									return;
-								}
-								place(progress);
-								particle.setAttribute('opacity', String(0.95 - progress * 0.5));
-								requestAnimationFrame(step);
-							}
-							place(0);
-							requestAnimationFrame(step);
+						const duration = animeFn ? 720 : 700;
+
+						function cleanup() {
+							particle.remove();
+							activeParticles--;
+							endNodeActivity(sourceNode, activityID);
+							if (typeof onComplete === 'function') onComplete();
+						}
+
+						if (isHidden) {
+							particle.remove();
+							activeParticles--;
+							endNodeActivity(sourceNode, activityID);
+							if (typeof onComplete === 'function') onComplete();
 							return;
 						}
 
-						const motion = { progress: 0 };
-						animeFn({
-							targets: motion,
-							progress: 1,
-							duration: 720,
-							easing: 'linear',
-							update: function() {
-								place(motion.progress);
-								particle.setAttribute('opacity', String(0.95 - motion.progress * 0.45));
+						const ref = {
+							startedAt: performance.now(),
+							duration: duration,
+							update: function(p) {
+								place(p);
+								particle.setAttribute('opacity', String(0.95 - p * 0.45));
 							},
-							complete: function() {
-								particle.remove();
-								endNodeActivity(sourceNode, activityID);
-								if (typeof onComplete === 'function') onComplete();
-							}
-						});
+							onComplete: cleanup
+						};
+						activeAnimations.add(ref);
+						scheduleFrame();
 					}
 
 					function createParticle(shape, color, size) {
@@ -681,38 +750,59 @@ templ TopologyGraph(p TopologyGraphProps) {
 						}
 					}
 
-					function applyCollectorStats(evt) {
-						appendEventRow('collector_stats', evt);
-						const collector = findCollectorByName(evt.collector);
-						if (!collector) {
-							window.location.reload();
+					function throttledAppend(type, evt) {
+						if (isHidden) {
+							eventBuffer.push({ type: type, evt: evt });
 							return;
 						}
+						const now = performance.now();
+						if (now - lastEventTime < EVENT_THROTTLE_MS) {
+							eventBuffer.push({ type: type, evt: evt });
+							if (!eventFlushId) {
+								eventFlushId = setTimeout(flushEventBuffer, EVENT_THROTTLE_MS);
+							}
+							return;
+						}
+						lastEventTime = now;
+						appendEventRow(type, evt);
+					}
+
+					function flushEventBuffer() {
+						eventFlushId = null;
+						if (eventBuffer.length === 0) return;
+						const batch = eventBuffer.splice(0, 20);
+						for (const item of batch) {
+							appendEventRow(item.type, item.evt);
+						}
+						lastEventTime = performance.now();
+						if (eventBuffer.length > 0) {
+							eventFlushId = setTimeout(flushEventBuffer, EVENT_THROTTLE_MS);
+						}
+					}
+
+					function applyCollectorStats(evt) {
+						throttledAppend('collector_stats', evt);
+						const collector = findCollectorByName(evt.collector);
+						if (!collector) return;
 						const node = state.nodes.get(collector.id);
 						sendParticle(state.edges.get(`edge-panel-${collector.id}`), COLORS.muted, 3.5, true, 'square', node);
 					}
 
 					function applyAppHealth(evt) {
-						appendEventRow('app_health', evt);
+						throttledAppend('app_health', evt);
 						const collector = findCollectorByName(evt.collector);
 						const app = findApp(evt.collector, evt.app);
-						if (!collector || !app) {
-							window.location.reload();
-							return;
-						}
+						if (!collector || !app) return;
 						if (app.has_health) {
 							sendParticle(state.edges.get(`edge-app-${collector.id}-${app.id}`), COLORS.muted, 4, false, 'triangle', state.nodes.get(collector.id));
 						}
 					}
 
 					function applyLogEvent(evt) {
-						appendEventRow('log_received', evt);
+						throttledAppend('log_received', evt);
 						const collector = findCollectorByName(evt.collector);
 						const app = findApp(evt.collector, evt.app);
-						if (!collector || !app) {
-							window.location.reload();
-							return;
-						}
+						if (!collector || !app) return;
 						const color = logLevelColor(evt.level);
 						const key = logFlightKey(evt);
 						const flight = {
@@ -732,12 +822,9 @@ templ TopologyGraph(p TopologyGraphProps) {
 					}
 
 					function applyPersistedLogEvent(evt) {
-						appendEventRow('log_persisted', evt);
+						throttledAppend('log_persisted', evt);
 						const collector = findCollectorByName(evt.collector);
-						if (!collector) {
-							window.location.reload();
-							return;
-						}
+						if (!collector) return;
 						const color = logLevelColor(evt.level);
 						const key = logFlightKey(evt);
 						const flight = state.logFlights.get(key);
@@ -749,8 +836,8 @@ templ TopologyGraph(p TopologyGraphProps) {
 					}
 
 					function panelTick(evt) {
-						appendEventRow('panel_tick', evt);
-						playHeartbeatWave();
+						throttledAppend('panel_tick', evt);
+						if (!isHidden) playHeartbeatWave();
 					}
 
 					layoutGraph();
@@ -759,8 +846,7 @@ templ TopologyGraph(p TopologyGraphProps) {
 
 					eventSource.addEventListener('register', function(event) {
 						const payload = JSON.parse(event.data);
-						appendEventRow('collector_registered', payload);
-						window.location.reload();
+						throttledAppend('collector_registered', payload);
 					});
 
 					eventSource.addEventListener('log', function(event) {
@@ -790,7 +876,17 @@ templ TopologyGraph(p TopologyGraphProps) {
 
 					window.addEventListener('beforeunload', function() {
 						eventSource.close();
+						if (animationFrameId != null) {
+							cancelAnimationFrame(animationFrameId);
+							animationFrameId = null;
+						}
+						if (eventFlushId != null) {
+							clearTimeout(eventFlushId);
+							eventFlushId = null;
+						}
 					});
+
+					document.addEventListener('visibilitychange', onVisibilityChange);
 				})();
 			</script>
 		</body>
