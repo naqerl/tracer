@@ -15,9 +15,10 @@ if [ "${E2E_INSTALL_MODE:-build}" = "release" ]; then
 else
     echo "[e2e] Installing from pre-built binaries..."
     tracer-collector install
-    tracer-collector set name demo
     tracer-panel install
 fi
+
+tracer-collector set name demo
 
 # Add no-auth and readonly flags for demo iframes
 mkdir -p /etc/systemd/system/tracer-panel.service.d
