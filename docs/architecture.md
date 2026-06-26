@@ -34,11 +34,6 @@ This document defines the domain-first project structure, ownership boundaries, 
     /sqlc.yaml      # SQLC configuration
     /db             # Generated SQLC code
 
-  /landing          # Landing page server
-    /cmd/tracer-landing
-    /internal/http
-    /web
-
 /libs
   /shared           # Shared utilities (no business logic)
     /logx           # Logging utilities
@@ -82,7 +77,6 @@ NOT allowed at root:
 | Collector registry | panel | Tracking connected collectors |
 | Retention | panel | Data cleanup policies |
 | Database lifecycle | panel | All SQL/DB/sqlc operations |
-| Landing pages | landing | Public marketing pages |
 | Generic helpers | shared | Non-domain utilities |
 
 ## Import Constraints
@@ -100,12 +94,7 @@ NOT allowed at root:
    - Standard library packages
    - External dependencies
 
-3. **landing** can import:
-   - `libs/shared/*`
-   - Standard library packages
-   - External dependencies
-
-4. **shared** can import:
+3. **shared** can import:
    - Standard library packages
    - External dependencies
    - **NOT** any app domain code
@@ -113,7 +102,6 @@ NOT allowed at root:
 ### Forbidden Imports
 
 - `apps/collector/*` → `apps/panel/*` (circular dependency)
-- `apps/landing/*` → `apps/panel/*` (separation of concerns)
 - `libs/shared/*` → `apps/*/internal/*` (shared must be generic)
 - Root-level business code imports (use domain paths)
 

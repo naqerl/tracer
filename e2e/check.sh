@@ -12,7 +12,6 @@ DEMO_USER="${DEMO_USER:-demo}"
 DEMO_PASSWORD="${DEMO_PASSWORD:-demo123}"
 
 expected_units=(
-  caddy.service
   install-on-boot.service
   tracer-panel.service
   tracer-collector.service

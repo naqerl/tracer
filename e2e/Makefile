@@ -24,7 +24,6 @@ up: down build
 		--cgroupns=host \
 		-p $(DEMO_PORT):8080 \
 		-v /sys/fs/cgroup:/sys/fs/cgroup:rw \
-		-v $(ROOT_DIR)/landing/html:/opt/tracer/landing/html:ro \
 		--tmpfs /run \
 		--tmpfs /run/lock \
 		--tmpfs /tmp \

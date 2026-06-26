@@ -36,22 +36,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     make && \
     rm -rf /var/lib/apt/lists/*
 
-RUN curl -fsSL -o /tmp/caddy.tar.gz \
-    https://github.com/caddyserver/caddy/releases/download/v2.9.1/caddy_2.9.1_linux_amd64.tar.gz && \
-    tar -xzf /tmp/caddy.tar.gz -C /usr/local/bin caddy && \
-    chmod 0755 /usr/local/bin/caddy && \
-    rm /tmp/caddy.tar.gz
-
 COPY --from=build /out/tracer-demo-loggen /usr/local/bin/tracer-demo-loggen
 
 COPY e2e/install-on-boot.sh /opt/tracer/e2e/install-on-boot.sh
 COPY e2e/systemd/ /etc/systemd/system/
-COPY e2e/Caddyfile /etc/caddy/Caddyfile
 
 RUN mkdir -p /etc/tracer && echo "E2E_INSTALL_MODE=${E2E_INSTALL_MODE}" > /etc/tracer/e2e.env && \
     chmod 0755 /opt/tracer/e2e/install-on-boot.sh /usr/local/bin/tracer-demo-loggen && \
-    mkdir -p /etc/systemd/system/multi-user.target.wants /opt/tracer/landing/html && \
-    ln -sf /etc/systemd/system/caddy.service /etc/systemd/system/multi-user.target.wants/caddy.service && \
+    mkdir -p /etc/systemd/system/multi-user.target.wants && \
     ln -sf /etc/systemd/system/install-on-boot.service /etc/systemd/system/multi-user.target.wants/install-on-boot.service && \
     ln -sf /etc/systemd/system/demo-api.service /etc/systemd/system/multi-user.target.wants/demo-api.service && \
     ln -sf /etc/systemd/system/demo-worker.service /etc/systemd/system/multi-user.target.wants/demo-worker.service && \

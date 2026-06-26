@@ -22,7 +22,11 @@ func NewServer(deps Dependencies, port string, noAuth bool, readOnly bool) *http
 	authMux := auth.InitMux(deps.Auth, deps.User)
 
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, "/panel/", http.StatusSeeOther)
+		if middleware.HasUserID(r) {
+			http.Redirect(w, r, "/panel/", http.StatusSeeOther)
+		} else {
+			authmw.RedirectToLogin(w, r)
+		}
 	})
 	mux.Handle("/static/", http.StripPrefix("/static", static.Handler()))
 	mux.Handle("/ingest/", http.StripPrefix("/ingest", ingest.InitMux(deps.Auth, deps.Ingest, deps.Tracker, deps.Topology)))

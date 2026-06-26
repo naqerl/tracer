@@ -265,7 +265,7 @@ CI workflow** (see `.forgejo/workflows/release.yml`).
 ### End-to-End Testing
 
 The `e2e/` directory contains a full integration test environment using a
-mock log generator and a Caddy reverse proxy. See [e2e/README.md](./e2e/README.md)
+mock log generator. See [e2e/README.md](./e2e/README.md)
 for details.
 
 ## Deployment
