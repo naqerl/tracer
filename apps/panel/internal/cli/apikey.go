@@ -11,13 +11,13 @@ import (
 
 // GenerateCollectorAPIKey creates a new collector API key with the given name.
 func GenerateCollectorAPIKey(ctx context.Context, name string) (string, error) {
-	sqlDB, err := dbmanager.OpenPanelDB(config.DataDir())
+	handle, err := dbmanager.OpenPanelDB(config.DataDir())
 	if err != nil {
 		return "", fmt.Errorf("open panel database: %w", err)
 	}
-	defer sqlDB.Close()
+	defer handle.Close()
 
-	authSvc := auth.New(sqlDB)
+	authSvc := auth.New(handle)
 
 	req := auth.GenerateCollectorAPIKeyRequest{Name: name}
 	if err := req.Validate(); err != nil {

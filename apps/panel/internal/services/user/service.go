@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"tracer/apps/panel/db"
+	"tracer/apps/panel/internal/dbmanager"
 )
 
 var (
@@ -15,17 +16,17 @@ var (
 )
 
 type Service struct {
-	queries *db.Queries
+	handle *dbmanager.DBHandle
 }
 
-func NewService(sqlDB *sql.DB) *Service {
+func NewService(handle *dbmanager.DBHandle) *Service {
 	return &Service{
-		queries: db.New(sqlDB),
+		handle: handle,
 	}
 }
 
 func (s *Service) FindByID(ctx context.Context, id int64) (User, error) {
-	user, err := s.queries.GetUserByID(ctx, id)
+	user, err := db.New(s.handle.Read()).GetUserByID(ctx, id)
 	switch {
 	case err == nil:
 		return db2dto(user), nil
@@ -45,7 +46,7 @@ func (s *Service) FindAccessPolicy(ctx context.Context, userId int64) (AccessPol
 		return AccessPolicy{}, nil
 	}
 
-	rows, err := s.queries.FindUserAccessPolicy(ctx, userId)
+	rows, err := db.New(s.handle.Read()).FindUserAccessPolicy(ctx, userId)
 	if err != nil {
 		return AccessPolicy{}, fmt.Errorf("could not get user access policy from db: %w", err)
 	}
@@ -63,29 +64,35 @@ func (s *Service) FindAccessPolicy(ctx context.Context, userId int64) (AccessPol
 
 // List returns all users
 func (s *Service) List(ctx context.Context) ([]db.User, error) {
-	return s.queries.ListUsers(ctx)
+	return db.New(s.handle.Read()).ListUsers(ctx)
 }
 
 // Delete deletes a user by ID
 func (s *Service) Delete(ctx context.Context, id int64) error {
-	return s.queries.DeleteUser(ctx, id)
+	return s.handle.Write(ctx, func(tx db.DBTX) error {
+		return db.New(tx).DeleteUser(ctx, id)
+	})
 }
 
 // AddApp grants a user access to an app within a collector.
 func (s *Service) GrantAccess(ctx context.Context, userID int64, access AppAccess) error {
-	return s.queries.GrantAppAccess(ctx, db.GrantAppAccessParams{
-		UserID:        userID,
-		CollectorName: access.CollectorName,
-		AppName:       access.AppName,
+	return s.handle.Write(ctx, func(tx db.DBTX) error {
+		return db.New(tx).GrantAppAccess(ctx, db.GrantAppAccessParams{
+			UserID:        userID,
+			CollectorName: access.CollectorName,
+			AppName:       access.AppName,
+		})
 	})
 }
 
 // RemoveApp revokes a user's access to an app within a collector.
 func (s *Service) RevokeAccess(ctx context.Context, userID int64, access AppAccess) error {
-	return s.queries.RevokeAppAccess(ctx, db.RevokeAppAccessParams{
-		UserID:        userID,
-		CollectorName: access.CollectorName,
-		AppName:       access.AppName,
+	return s.handle.Write(ctx, func(tx db.DBTX) error {
+		return db.New(tx).RevokeAppAccess(ctx, db.RevokeAppAccessParams{
+			UserID:        userID,
+			CollectorName: access.CollectorName,
+			AppName:       access.AppName,
+		})
 	})
 }
 
@@ -96,11 +103,19 @@ func (s *Service) Create(ctx context.Context, username, passwordHash string, isA
 		adminInt = 1
 	}
 
-	user, err := s.queries.CreateUser(ctx, db.CreateUserParams{
-		Username:     username,
-		PasswordHash: passwordHash,
-		IsAdmin:      adminInt,
-		CreatedAt:    time.Now().UTC().Unix(),
+	var user db.User
+	err := s.handle.Write(ctx, func(tx db.DBTX) error {
+		result, err := db.New(tx).CreateUser(ctx, db.CreateUserParams{
+			Username:     username,
+			PasswordHash: passwordHash,
+			IsAdmin:      adminInt,
+			CreatedAt:    time.Now().UTC().Unix(),
+		})
+		if err != nil {
+			return err
+		}
+		user = result
+		return nil
 	})
 	if err != nil {
 		return User{}, fmt.Errorf("create user: %w", err)

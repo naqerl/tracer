@@ -10,10 +10,11 @@ import (
 	_ "modernc.org/sqlite"
 
 	paneldb "tracer/apps/panel/db"
+	"tracer/apps/panel/internal/dbmanager"
 	panelmigrations "tracer/apps/panel/sql/panel"
 )
 
-func newTestDB(t *testing.T) *sql.DB {
+func newTestDB(t *testing.T) *dbmanager.DBHandle {
 	t.Helper()
 
 	db, err := sql.Open("sqlite", "file::memory:?cache=shared")
@@ -30,7 +31,7 @@ func newTestDB(t *testing.T) *sql.DB {
 		t.Fatalf("run migrations: %v", err)
 	}
 
-	return db
+	return dbmanager.NewDBHandle(db, "test-panel")
 }
 
 func TestGenerateAndValidateCollectorAPIKey(t *testing.T) {
@@ -132,7 +133,7 @@ func TestValidateCollectorAPIKeyUpdatesLastUsedAt(t *testing.T) {
 		t.Fatal("expected collector key to validate")
 	}
 
-	updated, err := paneldb.New(db).GetCollectorAPIKeyByName(ctx, row.Name)
+	updated, err := paneldb.New(db.Read()).GetCollectorAPIKeyByName(ctx, row.Name)
 	if err != nil {
 		t.Fatalf("get collector api key by name: %v", err)
 	}

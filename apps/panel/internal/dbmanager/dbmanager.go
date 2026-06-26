@@ -396,7 +396,7 @@ func (m *Manager) Close() error {
 
 // OpenPanelDB opens the panel database (panel.db) with proper pragmas and runs migrations.
 // This is a package-level function (not tied to Manager) as panel.db is separate from collector/app DBs.
-func OpenPanelDB(dataDir string) (*sql.DB, error) {
+func OpenPanelDB(dataDir string) (*DBHandle, error) {
 	if err := os.MkdirAll(dataDir, 0755); err != nil {
 		return nil, fmt.Errorf("create data dir: %w", err)
 	}
@@ -414,7 +414,7 @@ func OpenPanelDB(dataDir string) (*sql.DB, error) {
 		return nil, fmt.Errorf("run panel migrations: %w", err)
 	}
 
-	return sqlDB, nil
+	return NewDBHandle(sqlDB, "panel"), nil
 }
 
 func runPanelMigrations(sqlDB *sql.DB) error {

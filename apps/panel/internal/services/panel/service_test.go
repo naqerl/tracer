@@ -23,7 +23,7 @@ import (
 )
 
 // newTestPanelDB creates an in-memory panel database with migrations applied.
-func newTestPanelDB(t *testing.T) *sql.DB {
+func newTestPanelDB(t *testing.T) *dbmanager.DBHandle {
 	t.Helper()
 
 	db, err := sql.Open("sqlite", "file::memory:?cache=shared")
@@ -40,7 +40,7 @@ func newTestPanelDB(t *testing.T) *sql.DB {
 		t.Fatalf("run migrations: %v", err)
 	}
 
-	return db
+	return dbmanager.NewDBHandle(db, "test-panel")
 }
 
 // newTestDBManager creates a dbmanager.Manager backed by a temp directory.
@@ -57,7 +57,7 @@ func newTestDBManager(t *testing.T) *dbmanager.Manager {
 
 // setupTestService creates a fully wired panel Service for testing.
 // It creates a test user (admin), registers a collector+app DB, and grants access.
-func setupTestService(t *testing.T) (*Service, *sql.DB, int64, string, string) {
+func setupTestService(t *testing.T) (*Service, *dbmanager.DBHandle, int64, string, string) {
 	t.Helper()
 	ctx := context.Background()
 

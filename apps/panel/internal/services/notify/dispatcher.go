@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"tracer/apps/panel/db"
+	"tracer/apps/panel/internal/dbmanager"
 	"tracer/apps/panel/internal/services/user"
 )
 
@@ -18,17 +19,17 @@ const maxWorkers = 5
 type Dispatcher struct {
 	ch        chan Notification
 	semaphore chan struct{}
-	db        db.DBTX
+	handle    *dbmanager.DBHandle
 	factories map[string]FromRawJSON
 	userSvc   *user.Service
 }
 
 // NewDispatcher creates a new notification dispatcher.
-func NewDispatcher(db db.DBTX, factories map[string]FromRawJSON, ch chan Notification, userSvc *user.Service) *Dispatcher {
+func NewDispatcher(handle *dbmanager.DBHandle, factories map[string]FromRawJSON, ch chan Notification, userSvc *user.Service) *Dispatcher {
 	return &Dispatcher{
 		ch:        ch,
 		semaphore: make(chan struct{}, maxWorkers),
-		db:        db,
+		handle:    handle,
 		factories: factories,
 		userSvc:   userSvc,
 	}
@@ -73,7 +74,7 @@ func (d *Dispatcher) Start(ctx context.Context) {
 
 // getNotifiers queries the database for matching notifiers and creates instances.
 func (d *Dispatcher) getNotifiers(ctx context.Context, collectorName, appName string) ([]Notifier, error) {
-	queries := db.New(d.db)
+	queries := db.New(d.handle.Read())
 	rows, err := queries.GetMatchingNotifiers(ctx, db.GetMatchingNotifiersParams{
 		CollectorName: collectorName,
 		AppName:       appName,

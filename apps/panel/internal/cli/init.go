@@ -43,11 +43,11 @@ func InitPanel(ctx context.Context, opts InitOptions) (InitResult, error) {
 	}
 
 	// Open database with migrations
-	sqlDB, err := dbmanager.OpenPanelDB(config.DataDir())
+	handle, err := dbmanager.OpenPanelDB(config.DataDir())
 	if err != nil {
 		return InitResult{}, fmt.Errorf("open panel database: %w", err)
 	}
-	defer sqlDB.Close()
+	defer handle.Close()
 
 	// Ensure data dir files are owned by the service user.
 	// -init may run as root during installation, but the panel service
@@ -56,7 +56,7 @@ func InitPanel(ctx context.Context, opts InitOptions) (InitResult, error) {
 		return InitResult{}, fmt.Errorf("chown data dir: %w", err)
 	}
 
-	authSvc := auth.New(sqlDB)
+	authSvc := auth.New(handle)
 
 	// Check if users already exist
 	hasUsers, err := authSvc.HasAnyUsers(ctx)

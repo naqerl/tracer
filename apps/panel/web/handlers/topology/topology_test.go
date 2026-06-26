@@ -14,6 +14,7 @@ import (
 	"github.com/pressly/goose/v3"
 	_ "modernc.org/sqlite"
 
+	"tracer/apps/panel/internal/dbmanager"
 	authsvc "tracer/apps/panel/internal/services/auth"
 	topologysvc "tracer/apps/panel/internal/services/topology"
 	usersvc "tracer/apps/panel/internal/services/user"
@@ -22,7 +23,7 @@ import (
 	"tracer/libs/types"
 )
 
-func newTestDB(t *testing.T) *sql.DB {
+func newTestDB(t *testing.T) *dbmanager.DBHandle {
 	t.Helper()
 
 	db, err := sql.Open("sqlite", "file::memory:?cache=shared")
@@ -38,7 +39,7 @@ func newTestDB(t *testing.T) *sql.DB {
 		t.Fatalf("run migrations: %v", err)
 	}
 
-	return db
+	return dbmanager.NewDBHandle(db, "test-panel")
 }
 
 func newAuthedHandler(t *testing.T) (http.Handler, *topologysvc.Service, string) {

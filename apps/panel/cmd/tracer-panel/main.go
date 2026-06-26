@@ -177,15 +177,15 @@ func serve(ctx context.Context, cfg config.Panel, noAuth, readOnly bool) error {
 	slog.Info("Migrations complete")
 
 	// Initialize panel database and run migrations
-	panelDB, err := dbmanager.OpenPanelDB(cfg.DataDir)
+	panelHandle, err := dbmanager.OpenPanelDB(cfg.DataDir)
 	if err != nil {
 		return fmt.Errorf("initialize panel database: %w", err)
 	}
-	defer panelDB.Close()
+	defer panelHandle.Close()
 
 	// Initialize services
-	authService := auth.New(panelDB)
-	userService := user.NewService(panelDB)
+	authService := auth.New(panelHandle)
+	userService := user.NewService(panelHandle)
 
 	// Check if first run (no users exist)
 	hasUsers, err := authService.HasAnyUsers(ctx)
@@ -214,8 +214,8 @@ func serve(ctx context.Context, cfg config.Panel, noAuth, readOnly bool) error {
 	notifyChan := make(chan notify.Notification, 100)
 
 	// Initialize notification components
-	notifyDispatcher := notify.NewDispatcher(panelDB, notifierFactories, notifyChan, userService)
-	notifyService := notify.New(panelDB, userService, notifierFactories)
+	notifyDispatcher := notify.NewDispatcher(panelHandle, notifierFactories, notifyChan, userService)
+	notifyService := notify.New(panelHandle, userService, notifierFactories)
 
 	// Initialize ingest service
 	alertFormatter := func(collectorName, appName string, logID int64) string {
