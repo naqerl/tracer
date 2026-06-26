@@ -13,6 +13,7 @@ import (
 	"tracer/apps/panel/web/handlers/topology"
 	"tracer/apps/panel/web/middleware"
 	authmw "tracer/apps/panel/web/middleware/auth"
+	"tracer/apps/panel/web/static"
 )
 
 // NewServer creates and configures an HTTP server with all handlers.
@@ -23,6 +24,7 @@ func NewServer(deps Dependencies, port string, noAuth bool, readOnly bool) *http
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/panel/", http.StatusSeeOther)
 	})
+	mux.Handle("/static/", http.StripPrefix("/static", static.Handler()))
 	mux.Handle("/ingest/", http.StripPrefix("/ingest", ingest.InitMux(deps.Auth, deps.Ingest, deps.Tracker, deps.Topology)))
 	mux.Handle("/panel/", http.StripPrefix("/panel", panel.InitMux(deps.PanelService)))
 	mux.Handle("/topology/", http.StripPrefix("/topology", topology.InitMux(deps.Topology, deps.User)))

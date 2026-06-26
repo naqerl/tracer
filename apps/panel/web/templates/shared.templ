@@ -6,14 +6,12 @@ import "strconv"
 templ Head() {
 	<meta charset="UTF-8"/>
 	<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-	<link rel="preconnect" href="https://unpkg.com" crossorigin="crossorigin"/>
-	<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin="crossorigin"/>
 	<link rel="preconnect" href="https://cdn.tailwindcss.com" crossorigin="crossorigin"/>
-	<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/uplot@1.6.30/dist/uPlot.min.css"/>
+	<link rel="stylesheet" href="/static/uPlot.min.css"/>
 	<script src="https://cdn.tailwindcss.com?plugins=forms"></script>
-	<script src="https://unpkg.com/htmx.org@2.0.0" defer="defer"></script>
-	<script src="https://cdn.jsdelivr.net/npm/animejs/dist/bundles/anime.umd.min.js" defer="defer"></script>
-	<script src="https://cdn.jsdelivr.net/npm/uplot@1.6.30/dist/uPlot.iife.min.js" async="async"></script>
+	<script src="/static/htmx.min.js"></script>
+	<script src="/static/anime.umd.min.js" defer="defer"></script>
+	<script src="/static/uPlot.iife.min.js" async="async"></script>
 	<script type="text/javascript">
 		tailwind.config = {
 			theme: {

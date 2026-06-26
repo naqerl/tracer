@@ -15,25 +15,24 @@ templ TopologyGraph(p TopologyGraphProps) {
 			<title>{ p.Title }</title>
 		</head>
 		<body>
-			<div id="topology-graph-shell" class="flex min-h-[60vh] flex-1 items-center justify-center lg:min-h-0">
+			<div id="topology-graph-shell" data-snapshot={ p.Snapshot } class="flex min-h-[60vh] flex-1 items-center justify-center lg:min-h-0">
 				<div class="w-full overflow-hidden">
 					<svg id="topology-graph" class="block w-full max-w-full mx-auto" role="img" aria-label="Live topology graph"></svg>
 				</div>
 			</div>
-			<script type="application/json" id="topology-data">{ p.Snapshot }</script>
 			<script>
 				(function() {
 					const svg = document.getElementById('topology-graph');
 					const graphShell = document.getElementById('topology-graph-shell');
 					const eventLogEl = document.getElementById('topology-event-log');
-					const dataEl = document.getElementById('topology-data');
+					const dataEl = document.getElementById('topology-graph-shell');
 					const animeFn = typeof window.anime === 'function' ? window.anime : null;
 
 					if (!svg || !graphShell || !dataEl) {
 						return;
 					}
 
-					const snapshot = JSON.parse(dataEl.textContent);
+					const snapshot = JSON.parse(dataEl.dataset.snapshot);
 					const state = {
 						snapshot: snapshot,
 						nodes: new Map(),
