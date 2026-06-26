@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -68,6 +69,10 @@ func main() {
 
 	if *initPanel {
 		if err := initPanelCmd(*initUsername, *initPassword); err != nil {
+			if errors.Is(err, cli.ErrAlreadyInitialized) {
+				fmt.Fprintln(os.Stderr, "Panel already initialized")
+				os.Exit(2)
+			}
 			log.Fatalf("failed to initialize panel: %s", err)
 		}
 		return
