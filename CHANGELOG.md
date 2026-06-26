@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.1.12] - 2024-06-26
+
+### Fixed
+- Topology SSE: use PersistedLogMessage directly for 'persisted' events, bypass envelope normalization
+
 ## [0.3.6] - 2026-01-10
 
 ### Added
