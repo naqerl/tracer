@@ -161,3 +161,24 @@ func FileExists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil
 }
+
+// RequireServiceUser checks that the current process is running as the
+// expected service user and group. It should be called only before the
+// long-running serve path — not for CLI subcommands like install, init,
+// or config, which are expected to run as root.
+func RequireServiceUser(expectedUser, expectedGroup string) {
+	uid := os.Getuid()
+	gid := os.Getgid()
+
+	wantUID, wantGID, err := lookupUserGroup(expectedUser, expectedGroup)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "fatal: cannot resolve service user %s:%s: %v\n", expectedUser, expectedGroup, err)
+		os.Exit(1)
+	}
+
+	if uid != wantUID || gid != wantGID {
+		fmt.Fprintf(os.Stderr, "fatal: must run as %s:%s (uid=%d gid=%d), running as uid=%d gid=%d\n",
+			expectedUser, expectedGroup, wantUID, wantGID, uid, gid)
+		os.Exit(1)
+	}
+}

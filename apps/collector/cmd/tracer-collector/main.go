@@ -29,6 +29,7 @@ import (
 	"tracer/libs/logx"
 	"tracer/libs/types"
 	"tracer/libs/updater"
+	"tracer/pkg/setup"
 )
 
 func main() {
@@ -90,6 +91,8 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to load config: %s", err)
 	}
+
+	setup.RequireServiceUser(setup.CollectorUser, setup.TracerGroup)
 
 	slog.Info("Starting collector",
 		"name", cfg.Transport.Name,

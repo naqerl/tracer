@@ -30,6 +30,7 @@ import (
 	"tracer/apps/panel/web"
 	"tracer/libs/logx"
 	"tracer/libs/updater"
+	"tracer/pkg/setup"
 )
 
 func main() {
@@ -100,6 +101,8 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to load config: %s", err)
 	}
+
+	setup.RequireServiceUser(setup.PanelUser, setup.TracerGroup)
 
 	slog.Info("Starting panel",
 		"port", cfg.Port,
