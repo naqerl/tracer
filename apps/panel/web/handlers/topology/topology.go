@@ -189,7 +189,7 @@ func sseEvent(evt topologysvc.Message) (string, any, bool) {
 	case evt.Envelope != nil:
 		return string(evt.Envelope.Type), evt.Envelope, true
 	case evt.Persisted != nil:
-		return "log_persisted", evt.Persisted, true
+		return "persisted", evt.Persisted, true
 	default:
 		return "", nil, false
 	}

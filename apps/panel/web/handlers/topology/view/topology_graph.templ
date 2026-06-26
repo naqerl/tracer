@@ -855,7 +855,7 @@ templ TopologyGraph(p TopologyGraphProps) {
 					});
 
 					eventSource.addEventListener('persisted', function(event) {
-						const payload = normalizeLogEvent(JSON.parse(event.data));
+						const payload = JSON.parse(event.data);
 						applyPersistedLogEvent(payload);
 					});
 

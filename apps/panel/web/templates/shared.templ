@@ -230,10 +230,10 @@ templ MarkdownCheckboxScript() {
 
 // JSONViewer renders a JSON object as a key-value grid
 templ JSONViewer(data string, valid bool) {
-	<span>{ jsonViewerHTML(data, valid) }</span>
+	@templ.Raw(jsonViewerHTML(data, valid))
 }
 
 // JSONViewerFull renders a full JSON object as a key-value grid
 templ JSONViewerFull(data string, valid bool) {
-	<span>{ jsonViewerFullHTML(data, valid) }</span>
+	@templ.Raw(jsonViewerFullHTML(data, valid))
 }

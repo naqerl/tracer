@@ -143,15 +143,12 @@ func (h *handler) processMessage(ctx context.Context, connID, remoteAddr string,
 func (h *handler) handleEnvelope(ctx context.Context, env types.Envelope) {
 	switch env.Type {
 	case types.EventTypeLog:
-		h.topology.Publish(topologysvc.Message{
-			Envelope: &env,
-		})
 		var evt types.LogEvent
 		if err := json.Unmarshal(env.Data, &evt); err != nil {
 			slog.Warn("Failed to decode log event", "error", err, "collector", env.Collector)
 			return
 		}
-		h.handleLog(ctx, env.Collector, evt.App, evt.Entry)
+		h.handleLog(ctx, env.Collector, evt.App, evt.Entry, &env)
 	case types.EventTypeLifecycle:
 		var evt types.LifecycleEvent
 		if err := json.Unmarshal(env.Data, &evt); err != nil {
@@ -180,7 +177,7 @@ func (h *handler) handleEnvelope(ctx context.Context, env types.Envelope) {
 			Level:     types.LevelError,
 			Message:   "SOURCE_ERROR[" + evt.ErrType + "]: " + evt.Message + " (source: " + evt.Source + ")",
 		}
-		h.handleLog(ctx, env.Collector, evt.App, entry)
+		h.handleLog(ctx, env.Collector, evt.App, entry, nil)
 	case types.EventTypeHealth:
 		h.topology.Publish(topologysvc.Message{
 			Envelope: &env,
@@ -250,7 +247,7 @@ func (h *handler) handleLifecycle(ctx context.Context, collector string, evt typ
 	}
 }
 
-func (h *handler) handleLog(ctx context.Context, collector, app string, entry types.LogEntry) {
+func (h *handler) handleLog(ctx context.Context, collector, app string, entry types.LogEntry, env *types.Envelope) {
 	req := ingest.StoreLogRequest{
 		CollectorName: collector,
 		AppName:       app,
@@ -268,14 +265,18 @@ func (h *handler) handleLog(ctx context.Context, collector, app string, entry ty
 	}
 
 	if logID > 0 {
-		h.topology.Publish(topologysvc.Message{
+		msg := topologysvc.Message{
 			Persisted: &topologysvc.PersistedLogMessage{
 				Collector: collector,
 				App:       app,
 				Level:     string(entry.Level),
 				Timestamp: entry.Timestamp.Format(time.RFC3339Nano),
 			},
-		})
+		}
+		if env != nil {
+			msg.Envelope = env
+		}
+		h.topology.Publish(msg)
 	}
 }
 

@@ -3,6 +3,7 @@ package templates
 import (
 	"encoding/json"
 	"fmt"
+	"html"
 	"strings"
 )
 
@@ -119,9 +120,9 @@ func renderJSONValue(v any) string {
 		return fmt.Sprintf(`<span class="text-secondary">%v</span>`, val)
 	case string:
 		if strings.HasPrefix(val, "http://") || strings.HasPrefix(val, "https://") {
-			return fmt.Sprintf(`<a href="%s" class="text-accent hover:underline break-all" target="_blank">%s</a>`, val, val)
+			return fmt.Sprintf(`<a href="%s" class="text-accent hover:underline break-all" target="_blank">%s</a>`, val, html.EscapeString(val))
 		}
-		return fmt.Sprintf(`<span class="break-words">%s</span>`, val)
+		return fmt.Sprintf(`<span class="break-words">%s</span>`, html.EscapeString(val))
 	case []any:
 		return fmt.Sprintf(`<span class="text-fg-secondary">[%d items]</span>`, len(val))
 	default:
