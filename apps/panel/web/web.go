@@ -21,6 +21,12 @@ func NewServer(deps Dependencies, port string, noAuth bool, readOnly bool) *http
 	mux := http.NewServeMux()
 	authMux := auth.InitMux(deps.Auth, deps.User)
 
+	// Health check endpoint for k8s/load balancer probes (no auth required)
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok"))
+	})
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if middleware.HasUserID(r) {
 			http.Redirect(w, r, "/panel/", http.StatusSeeOther)
