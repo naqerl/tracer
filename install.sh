@@ -60,7 +60,7 @@ fi
 TRACER_VERSION="${TRACER_VERSION:-latest}"
 if [ "$TRACER_VERSION" = "latest" ]; then
 	log "Detecting latest tracer version..."
-	TRACER_VERSION=$(curl -fsSL "${API_URL}/releases/latest" 2>/dev/null | grep '"tag_name"' | cut -d'"' -f4 || echo "")
+	TRACER_VERSION=$(curl -fsSL "${API_URL}/releases/latest" 2>/dev/null | grep '"tag_name"' | cut -d'"' -f6 || echo "")
 	if [ -z "$TRACER_VERSION" ]; then
 		die "Could not determine latest version from Forgejo API"
 	fi
