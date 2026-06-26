@@ -86,7 +86,7 @@ done
 
 log "Verifying checksums..."
 curl -fsSL "${DOWNLOAD_URL}/${TRACER_VERSION}/checksums.txt" -o "$TMPDIR/checksums.txt" || die "Failed to download checksums"
-sed "s|^.*/|${TMPDIR}/|" "$TMPDIR/checksums.txt" > "$TMPDIR/checksums.fixed.txt"
+awk -v dir="$TMPDIR" '{split($2,a,"/"); $2=dir"/"a[length(a)]; print}' "$TMPDIR/checksums.txt" > "$TMPDIR/checksums.fixed.txt"
 (cd "$TMPDIR" && sha256sum -c "checksums.fixed.txt") || die "Checksum verification failed"
 
 log "Extracting binaries..."
