@@ -150,11 +150,9 @@ func initPanelCmd(username, password string) error {
 		return err
 	}
 
-	fmt.Printf("admin_username=%s\n", result.AdminUsername)
-	if result.IsNewPassword {
-		fmt.Printf("admin_password=%s\n", result.AdminPassword)
-	}
-	fmt.Printf("collector_api_key=%s\n", result.CollectorAPIKey)
+	fmt.Println("admin_username=" + result.AdminUsername)
+	fmt.Println("admin_password=" + result.AdminPassword)
+	fmt.Println("collector_api_key=" + result.CollectorAPIKey)
 	return nil
 }
 

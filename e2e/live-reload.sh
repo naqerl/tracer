@@ -25,13 +25,13 @@ require_cmd() {
 }
 
 ensure_container_running() {
-  if ! podman container exists "${DEMO_CONTAINER}"; then
+  if ! docker container exists "${DEMO_CONTAINER}"; then
     printf 'Container %s does not exist. Run `make -C e2e up` first.\n' "${DEMO_CONTAINER}" >&2
     exit 1
   fi
 
   local state
-  state="$(podman inspect -f '{{.State.Status}}' "${DEMO_CONTAINER}")"
+  state="$(docker inspect -f '{{.State.Status}}' "${DEMO_CONTAINER}")"
   if [[ "${state}" != "running" ]]; then
     printf 'Container %s is not running (state: %s).\n' "${DEMO_CONTAINER}" "${state}" >&2
     exit 1
@@ -56,12 +56,12 @@ reload_panel() {
   make -C "${ROOT_DIR}" build-panel
 
   log "Copying binary into ${DEMO_CONTAINER}"
-  podman cp "${ROOT_DIR}/bin/tracer-panel" "${DEMO_CONTAINER}:/tmp/tracer-panel.new"
+  docker cp "${ROOT_DIR}/bin/tracer-panel" "${DEMO_CONTAINER}:/tmp/tracer-panel.new"
 
   log "Replacing binary and restarting tracer-panel.service"
-  if ! podman exec "${DEMO_CONTAINER}" bash -lc \
+  if ! docker exec "${DEMO_CONTAINER}" bash -lc \
     'install -m 0755 /tmp/tracer-panel.new /usr/local/bin/tracer-panel && rm -f /tmp/tracer-panel.new && systemctl restart tracer-panel.service && systemctl is-active --quiet tracer-panel.service'; then
-    printf 'Failed to restart tracer-panel.service. Inspect with `make -C e2e logs` or `podman exec %s systemctl status tracer-panel.service`.\n' "${DEMO_CONTAINER}" >&2
+    printf 'Failed to restart tracer-panel.service. Inspect with `make -C e2e logs` or `docker exec %s systemctl status tracer-panel.service`.\n' "${DEMO_CONTAINER}" >&2
     exit 1
   fi
 
@@ -70,7 +70,7 @@ reload_panel() {
 
 main() {
   require_cmd make
-  require_cmd podman
+  require_cmd docker
   require_cmd entr
   require_cmd find
 
@@ -86,7 +86,7 @@ main() {
 
 if [[ "${1:-}" == "--reload" ]]; then
   require_cmd make
-  require_cmd podman
+  require_cmd docker
   ensure_container_running
   reload_panel
   exit 0

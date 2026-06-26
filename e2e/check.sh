@@ -92,7 +92,7 @@ wait_for_panel_health() {
 assert_no_errors() {
   local unit="$1"
   local output
-  output="$(podman exec "${DEMO_CONTAINER}" journalctl -u "${unit}" --no-pager || true)"
+  output="$(docker exec "${DEMO_CONTAINER}" journalctl -u "${unit}" --no-pager || true)"
   # Filter out transient startup errors (connection refused during initial startup, user creation)
   filtered_output="$(printf '%s\n' "${output}" | grep -E 'SOURCE_ERROR|level=ERROR|[Ff]ailed to ' | \
     grep -v 'Failed to connect to panel' | \
@@ -107,21 +107,21 @@ assert_no_errors() {
 
 require_cmd curl
 require_cmd go
-require_cmd podman
+require_cmd docker
 
-podman container exists "${DEMO_CONTAINER}" >/dev/null 2>&1 || fail "container ${DEMO_CONTAINER} is not running"
+docker container exists "${DEMO_CONTAINER}" >/dev/null 2>&1 || fail "container ${DEMO_CONTAINER} is not running"
 
 log "waiting for panel HTTP endpoint"
 wait_for_http
 
 log "checking expected systemd units"
 for unit in "${expected_units[@]}"; do
-  state="$(podman exec "${DEMO_CONTAINER}" systemctl is-active "${unit}")"
+  state="$(docker exec "${DEMO_CONTAINER}" systemctl is-active "${unit}")"
   [[ "${state}" == "active" ]] || fail "${unit} is ${state}"
 done
 
 log "checking failed units allowlist"
-failed_units="$(podman exec "${DEMO_CONTAINER}" systemctl --failed --no-legend || true)"
+failed_units="$(docker exec "${DEMO_CONTAINER}" systemctl --failed --no-legend || true)"
 if [[ -n "${failed_units}" ]]; then
   unexpected="$(printf '%s\n' "${failed_units}" | grep -Ev 'sys-kernel-(config|debug|tracing)\.mount|proc-sys-fs-binfmt_misc\.automount' || true)"
   [[ -z "${unexpected}" ]] || fail "unexpected failed units detected: ${unexpected}"

@@ -7,5 +7,4 @@ tasks
 /.opencode/
 *.md
 docs/
-e2e/
 landing/
