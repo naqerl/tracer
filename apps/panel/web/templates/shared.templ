@@ -8,6 +8,7 @@ templ Head() {
 	<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 	<link rel="preconnect" href="https://cdn.tailwindcss.com" crossorigin="crossorigin"/>
 	<link rel="stylesheet" href="/static/uPlot.min.css"/>
+	<link rel="stylesheet" href="/static/scrollbar.css"/>
 	<script src="https://cdn.tailwindcss.com?plugins=forms"></script>
 	<script src="/static/htmx.min.js"></script>
 	<script src="/static/anime.umd.min.js" defer="defer"></script>
@@ -37,33 +38,6 @@ templ Head() {
 			body {
 				@apply bg-bg text-fg font-sans antialiased;
 			}
-		}
-
-		* {
-			scrollbar-width: thin;
-			scrollbar-color: #888 transparent;
-		}
-
-		::-webkit-scrollbar {
-			width: 8px;
-			height: 8px;
-		}
-
-		::-webkit-scrollbar-track {
-			background: transparent;
-		}
-
-		::-webkit-scrollbar-thumb {
-			background: #888;
-			border-radius: 0;
-		}
-
-		::-webkit-scrollbar-thumb:hover {
-			background: #aaa;
-		}
-
-		::-webkit-scrollbar-corner {
-			background: transparent;
 		}
 	</style>
 }

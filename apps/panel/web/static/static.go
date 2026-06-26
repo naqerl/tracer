@@ -6,7 +6,7 @@ import (
 	"net/http"
 )
 
-//go:embed htmx.min.js anime.umd.min.js uPlot.iife.min.js uPlot.min.css
+//go:embed htmx.min.js anime.umd.min.js uPlot.iife.min.js uPlot.min.css scrollbar.css
 var assets embed.FS
 
 func Handler() http.Handler {
