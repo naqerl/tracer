@@ -29,10 +29,10 @@ var (
 type DBManager interface {
 	ListCollectors() ([]string, error)
 	ListApps(collector string) ([]string, error)
-	GetCollectorDB(collectorName string) (db.DBTX, error)
-	CreateCollectorDB(collectorName string) (db.DBTX, error)
-	GetAppDB(collectorName, appName string) (db.DBTX, error)
-	CreateAppDB(collectorName, appName string) (db.DBTX, error)
+	GetCollectorDB(collectorName string) (*dbmanager.DBHandle, error)
+	CreateCollectorDB(collectorName string) (*dbmanager.DBHandle, error)
+	GetAppDB(collectorName, appName string) (*dbmanager.DBHandle, error)
+	CreateAppDB(collectorName, appName string) (*dbmanager.DBHandle, error)
 }
 
 // Service manages ingest operations using dbmanager for all DB access.
@@ -78,43 +78,44 @@ func (r SaveSystemStatsRequest) Validate() error {
 // SaveSystemStats saves system statistics for a collector.
 // Creates the collector DB if it doesn't exist.
 func (s *Service) SaveSystemStats(ctx context.Context, req SaveSystemStatsRequest) error {
-	dbtx, err := s.dbManager.GetCollectorDB(req.CollectorName)
+	handle, err := s.dbManager.GetCollectorDB(req.CollectorName)
 	if err != nil {
 		return err
 	}
-	queries := db.New(dbtx)
-	return queries.InsertSystemStats(ctx, db.InsertSystemStatsParams{
-		CollectorName:   req.CollectorName,
-		CpuUsagePercent: req.Stats.CPUUsagePercent,
-		MemTotalMb:      req.Stats.MemTotalMB,
-		MemUsedMb:       req.Stats.MemUsedMB,
-		MemAvailableMb:  req.Stats.MemAvailableMB,
-		DiskTotalGb:     req.Stats.DiskTotalGB,
-		DiskUsedGb:      req.Stats.DiskUsedGB,
-		DiskAvailGb:     req.Stats.DiskAvailGB,
-		CreatedAt:       req.Stats.Timestamp.Unix(),
+	return handle.Write(ctx, func(tx db.DBTX) error {
+		return db.New(tx).InsertSystemStats(ctx, db.InsertSystemStatsParams{
+			CollectorName:   req.CollectorName,
+			CpuUsagePercent: req.Stats.CPUUsagePercent,
+			MemTotalMb:      req.Stats.MemTotalMB,
+			MemUsedMb:       req.Stats.MemUsedMB,
+			MemAvailableMb:  req.Stats.MemAvailableMB,
+			DiskTotalGb:     req.Stats.DiskTotalGB,
+			DiskUsedGb:      req.Stats.DiskUsedGB,
+			DiskAvailGb:     req.Stats.DiskAvailGB,
+			CreatedAt:       req.Stats.Timestamp.Unix(),
+		})
 	})
 }
 
 // GetLatestStats returns the latest system stats for a collector.
 // Returns error if collector DB doesn't exist.
 func (s *Service) GetLatestStats(ctx context.Context, collector string) (db.SystemStat, error) {
-	dbtx, err := s.dbManager.GetCollectorDB(collector)
+	handle, err := s.dbManager.GetCollectorDB(collector)
 	if err != nil {
 		return db.SystemStat{}, err
 	}
-	queries := db.New(dbtx)
+	queries := db.New(handle.Read())
 	return queries.GetLatestStats(ctx)
 }
 
 // GetStatsHistory returns system stats history for a collector since a given time.
 // Returns error if collector DB doesn't exist.
 func (s *Service) GetStatsHistory(ctx context.Context, collector string, since time.Time) ([]db.SystemStat, error) {
-	dbtx, err := s.dbManager.GetCollectorDB(collector)
+	handle, err := s.dbManager.GetCollectorDB(collector)
 	if err != nil {
 		return nil, err
 	}
-	queries := db.New(dbtx)
+	queries := db.New(handle.Read())
 	return queries.GetStatsHistory(ctx, since.UTC().Unix())
 }
 
@@ -127,7 +128,7 @@ func (s *Service) DeleteOldStats(ctx context.Context, before time.Time) error {
 	}
 
 	for _, collector := range collectors {
-		dbtx, err := s.dbManager.GetCollectorDB(collector)
+		handle, err := s.dbManager.GetCollectorDB(collector)
 		if err != nil {
 			if errors.Is(err, dbmanager.ErrDBNotFound) {
 				// Skip collectors without stats DB
@@ -135,8 +136,9 @@ func (s *Service) DeleteOldStats(ctx context.Context, before time.Time) error {
 			}
 			return err
 		}
-		queries := db.New(dbtx)
-		if err := queries.DeleteOldStats(ctx, before.UTC().Unix()); err != nil {
+		if err := handle.Write(ctx, func(tx db.DBTX) error {
+			return db.New(tx).DeleteOldStats(ctx, before.UTC().Unix())
+		}); err != nil {
 			return err
 		}
 	}
@@ -258,11 +260,10 @@ func (s *Service) StoreLog(ctx context.Context, req StoreLogRequest) (int64, err
 		return 0, nil // Skipped by sampling
 	}
 
-	dbtx, err := s.dbManager.GetAppDB(req.CollectorName, req.AppName)
+	handle, err := s.dbManager.GetAppDB(req.CollectorName, req.AppName)
 	if err != nil {
 		return 0, err
 	}
-	queries := db.New(dbtx)
 
 	// Marshal extra context
 	contextJSON := "{}"
@@ -272,43 +273,49 @@ func (s *Service) StoreLog(ctx context.Context, req StoreLogRequest) (int64, err
 		}
 	}
 
-	// Get or create log group for this message and level
-	logGroup, err := queries.GetOrCreateLogGroup(ctx, db.GetOrCreateLogGroupParams{
-		Message: req.Entry.Message,
-		Level:   string(req.Entry.Level),
+	var logID int64
+	var logGroupID int64
+	err = handle.Write(ctx, func(tx db.DBTX) error {
+		q := db.New(tx)
+
+		// Get or create log group for this message and level
+		logGroup, err := q.GetOrCreateLogGroup(ctx, db.GetOrCreateLogGroupParams{
+			Message: req.Entry.Message,
+			Level:   string(req.Entry.Level),
+		})
+		if err != nil {
+			return err
+		}
+		logGroupID = logGroup.ID
+
+		// Store log entry as Unix timestamp
+		ts := req.Entry.Timestamp.Unix()
+		log, err := q.InsertLog(ctx, db.InsertLogParams{
+			TraceID:   sql.NullString{String: req.Entry.TraceID, Valid: true},
+			Level:     string(req.Entry.Level),
+			Message:   req.Entry.Message,
+			Context:   sql.NullString{String: contextJSON, Valid: true},
+			GroupID:   sql.NullInt64{Int64: logGroup.ID, Valid: true},
+			CreatedAt: ts,
+		})
+		if err != nil {
+			return err
+		}
+		logID = log.ID
+
+		// Increment the log group counter
+		return q.IncrementLogGroupCounter(ctx, db.IncrementLogGroupCounterParams{
+			ID:        logGroup.ID,
+			LastLogAt: ts,
+		})
 	})
 	if err != nil {
-		return 0, err
-	}
-
-	// Store log entry as Unix timestamp
-	ts := req.Entry.Timestamp.Unix()
-
-	log, err := queries.InsertLog(ctx, db.InsertLogParams{
-		TraceID:   sql.NullString{String: req.Entry.TraceID, Valid: true},
-		Level:     string(req.Entry.Level),
-		Message:   req.Entry.Message,
-		Context:   sql.NullString{String: contextJSON, Valid: true},
-		GroupID:   sql.NullInt64{Int64: logGroup.ID, Valid: true},
-		CreatedAt: ts,
-	})
-	if err != nil {
-		return 0, err
-	}
-
-	logID := log.ID
-
-	// Increment the log group counter
-	if err := queries.IncrementLogGroupCounter(ctx, db.IncrementLogGroupCounterParams{
-		ID:        logGroup.ID,
-		LastLogAt: ts,
-	}); err != nil {
 		return 0, err
 	}
 
 	// Send notification for errors
 	if isError && s.notifyChan != nil {
-		s.sendErrorNotification(req, logID, logGroup.ID)
+		s.sendErrorNotification(req, logID, logGroupID)
 	}
 
 	return logID, nil
@@ -340,18 +347,19 @@ func (r StoreLifecycleRequest) Validate() error {
 
 // StoreLifecycle stores lifecycle events in a dedicated app-level table.
 func (s *Service) StoreLifecycle(ctx context.Context, req StoreLifecycleRequest) error {
-	dbtx, err := s.dbManager.GetAppDB(req.CollectorName, req.AppName)
+	handle, err := s.dbManager.GetAppDB(req.CollectorName, req.AppName)
 	if err != nil {
 		return err
 	}
-	queries := db.New(dbtx)
 
-	_, err = queries.InsertLifecycleEvent(ctx, db.InsertLifecycleEventParams{
-		Kind:      string(req.Kind),
-		RawLine:   req.RawLine,
-		CreatedAt: req.Timestamp.Unix(),
-	})
-	if err != nil {
+	if err := handle.Write(ctx, func(tx db.DBTX) error {
+		_, err := db.New(tx).InsertLifecycleEvent(ctx, db.InsertLifecycleEventParams{
+			Kind:      string(req.Kind),
+			RawLine:   req.RawLine,
+			CreatedAt: req.Timestamp.Unix(),
+		})
+		return err
+	}); err != nil {
 		return err
 	}
 
@@ -397,35 +405,37 @@ func (r StoreHealthRequest) Validate() error {
 }
 
 func (s *Service) SaveHealthPeriod(ctx context.Context, req StoreHealthRequest) error {
-	dbtx, err := s.dbManager.GetAppDB(req.CollectorName, req.AppName)
+	handle, err := s.dbManager.GetAppDB(req.CollectorName, req.AppName)
 	if err != nil {
 		return err
 	}
-	queries := db.New(dbtx)
 
-	current, err := queries.GetOpenHealthPeriod(ctx)
-	switch {
-	case err == nil:
-		if current.Status == string(req.Status) {
-			return nil
-		}
-		if err := queries.CloseHealthPeriod(ctx, db.CloseHealthPeriodParams{
-			EndedAt: sql.NullInt64{Int64: req.Time.Unix(), Valid: true},
-			ID:      current.ID,
-		}); err != nil {
+	return handle.Write(ctx, func(tx db.DBTX) error {
+		q := db.New(tx)
+
+		current, err := q.GetOpenHealthPeriod(ctx)
+		switch {
+		case err == nil:
+			if current.Status == string(req.Status) {
+				return nil
+			}
+			if err := q.CloseHealthPeriod(ctx, db.CloseHealthPeriodParams{
+				EndedAt: sql.NullInt64{Int64: req.Time.Unix(), Valid: true},
+				ID:      current.ID,
+			}); err != nil {
+				return err
+			}
+		case errors.Is(err, sql.ErrNoRows):
+		default:
 			return err
 		}
-	case errors.Is(err, sql.ErrNoRows):
-	default:
-		return err
-	}
 
-	err = queries.SaveHealthPeriod(ctx, db.SaveHealthPeriodParams{
-		Status:    string(req.Status),
-		StartedAt: req.Time.Unix(),
-		EndedAt:   sql.NullInt64{},
+		return q.SaveHealthPeriod(ctx, db.SaveHealthPeriodParams{
+			Status:    string(req.Status),
+			StartedAt: req.Time.Unix(),
+			EndedAt:   sql.NullInt64{},
+		})
 	})
-	return err
 }
 
 // sendErrorNotification sends a notification for error logs

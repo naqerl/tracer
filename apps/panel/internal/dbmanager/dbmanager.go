@@ -15,7 +15,6 @@ import (
 	"github.com/pressly/goose/v3"
 	_ "modernc.org/sqlite"
 
-	"tracer/apps/panel/db"
 	"tracer/apps/panel/internal/domain"
 	appmigrations "tracer/apps/panel/sql/app"
 	collectormigrations "tracer/apps/panel/sql/collector"
@@ -28,8 +27,8 @@ var ErrDBNotFound = errors.New("database not found")
 type Manager struct {
 	mu            sync.RWMutex
 	collectorsDir string
-	appDBs        map[string]*sql.DB // key: collector\x00app
-	collectorDBs  map[string]*sql.DB // key: collector (for stats)
+	appDBs        map[string]*DBHandle // key: collector\x00app
+	collectorDBs  map[string]*DBHandle // key: collector (for stats)
 }
 
 func New(baseDir string) (*Manager, error) {
@@ -40,8 +39,8 @@ func New(baseDir string) (*Manager, error) {
 
 	return &Manager{
 		collectorsDir: collectorsDir,
-		appDBs:        make(map[string]*sql.DB),
-		collectorDBs:  make(map[string]*sql.DB),
+		appDBs:        make(map[string]*DBHandle),
+		collectorDBs:  make(map[string]*DBHandle),
 	}, nil
 }
 
@@ -88,9 +87,9 @@ func (m *Manager) ListApps(collector string) ([]string, error) {
 	return apps, nil
 }
 
-// GetAppDB returns the database connection for the given collector/app.
+// GetAppDB returns the DBHandle for the given collector/app.
 // Returns ErrDBNotFound if the database does not exist.
-func (m *Manager) GetAppDB(collectorName, appName string) (db.DBTX, error) {
+func (m *Manager) GetAppDB(collectorName, appName string) (*DBHandle, error) {
 	if err := domain.ValidateCollectorName(collectorName); err != nil {
 		return nil, fmt.Errorf("invalid collector name: %w", err)
 	}
@@ -100,9 +99,9 @@ func (m *Manager) GetAppDB(collectorName, appName string) (db.DBTX, error) {
 	key := appDBKey(collectorName, appName)
 
 	m.mu.RLock()
-	if sqlDB, ok := m.appDBs[key]; ok {
+	if h, ok := m.appDBs[key]; ok {
 		m.mu.RUnlock()
-		return newLoggingDB(sqlDB, collectorName+"/"+appName), nil
+		return h, nil
 	}
 	m.mu.RUnlock()
 
@@ -117,7 +116,7 @@ func (m *Manager) GetAppDB(collectorName, appName string) (db.DBTX, error) {
 }
 
 // CreateAppDB creates a new database for the given collector/app.
-func (m *Manager) CreateAppDB(collectorName, appName string) (db.DBTX, error) {
+func (m *Manager) CreateAppDB(collectorName, appName string) (*DBHandle, error) {
 	if err := domain.ValidateCollectorName(collectorName); err != nil {
 		return nil, fmt.Errorf("invalid collector name: %w", err)
 	}
@@ -131,8 +130,8 @@ func (m *Manager) CreateAppDB(collectorName, appName string) (db.DBTX, error) {
 	defer m.mu.Unlock()
 
 	// Return existing if already created
-	if sqlDB, ok := m.appDBs[key]; ok {
-		return newLoggingDB(sqlDB, collectorName+"/"+appName), nil
+	if h, ok := m.appDBs[key]; ok {
+		return h, nil
 	}
 
 	appsDir := filepath.Join(m.collectorsDir, collectorName, "apps")
@@ -146,8 +145,7 @@ func (m *Manager) CreateAppDB(collectorName, appName string) (db.DBTX, error) {
 		return nil, fmt.Errorf("open database for app %s/%s: %w", collectorName, appName, err)
 	}
 
-	sqlDB.SetMaxOpenConns(1)
-	sqlDB.SetMaxIdleConns(1)
+	h := NewDBHandle(sqlDB, collectorName+"/"+appName)
 
 	// Run migrations for new database
 	if err := m.runAppMigrations(sqlDB); err != nil {
@@ -155,21 +153,21 @@ func (m *Manager) CreateAppDB(collectorName, appName string) (db.DBTX, error) {
 		return nil, fmt.Errorf("run migrations for app %s/%s: %w", collectorName, appName, err)
 	}
 
-	m.appDBs[key] = sqlDB
+	m.appDBs[key] = h
 	slog.Info("Created database for app", "collector_name", collectorName, "app_name", appName, "path", dbPath)
 
-	return newLoggingDB(sqlDB, collectorName+"/"+appName), nil
+	return h, nil
 }
 
-func (m *Manager) openAppDB(collectorName, appName string) (db.DBTX, error) {
+func (m *Manager) openAppDB(collectorName, appName string) (*DBHandle, error) {
 	key := appDBKey(collectorName, appName)
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	// Double-check after acquiring lock
-	if sqlDB, ok := m.appDBs[key]; ok {
-		return newLoggingDB(sqlDB, collectorName+"/"+appName), nil
+	if h, ok := m.appDBs[key]; ok {
+		return h, nil
 	}
 
 	dbPath := m.appDBPath(collectorName, appName)
@@ -178,21 +176,22 @@ func (m *Manager) openAppDB(collectorName, appName string) (db.DBTX, error) {
 		return nil, fmt.Errorf("open database for app %s/%s: %w", collectorName, appName, err)
 	}
 
-	m.appDBs[key] = sqlDB
-	return newLoggingDB(sqlDB, collectorName+"/"+appName), nil
+	h := NewDBHandle(sqlDB, collectorName+"/"+appName)
+	m.appDBs[key] = h
+	return h, nil
 }
 
-// GetCollectorDB returns the stats database for a collector.
+// GetCollectorDB returns the stats DBHandle for a collector.
 // Returns ErrDBNotFound if the database does not exist.
-func (m *Manager) GetCollectorDB(collectorName string) (db.DBTX, error) {
+func (m *Manager) GetCollectorDB(collectorName string) (*DBHandle, error) {
 	if err := domain.ValidateCollectorName(collectorName); err != nil {
 		return nil, fmt.Errorf("invalid collector name: %w", err)
 	}
 
 	m.mu.RLock()
-	if sqlDB, ok := m.collectorDBs[collectorName]; ok {
+	if h, ok := m.collectorDBs[collectorName]; ok {
 		m.mu.RUnlock()
-		return newLoggingDB(sqlDB, "collector/"+collectorName), nil
+		return h, nil
 	}
 	m.mu.RUnlock()
 
@@ -207,7 +206,7 @@ func (m *Manager) GetCollectorDB(collectorName string) (db.DBTX, error) {
 }
 
 // CreateCollectorDB creates a new stats database for the collector.
-func (m *Manager) CreateCollectorDB(collectorName string) (db.DBTX, error) {
+func (m *Manager) CreateCollectorDB(collectorName string) (*DBHandle, error) {
 	if err := domain.ValidateCollectorName(collectorName); err != nil {
 		return nil, fmt.Errorf("invalid collector name: %w", err)
 	}
@@ -216,8 +215,8 @@ func (m *Manager) CreateCollectorDB(collectorName string) (db.DBTX, error) {
 	defer m.mu.Unlock()
 
 	// Return existing if already created
-	if sqlDB, ok := m.collectorDBs[collectorName]; ok {
-		return newLoggingDB(sqlDB, "collector/"+collectorName), nil
+	if h, ok := m.collectorDBs[collectorName]; ok {
+		return h, nil
 	}
 
 	collectorDir := filepath.Join(m.collectorsDir, collectorName)
@@ -237,19 +236,20 @@ func (m *Manager) CreateCollectorDB(collectorName string) (db.DBTX, error) {
 		return nil, fmt.Errorf("run migrations for collector %s: %w", collectorName, err)
 	}
 
-	m.collectorDBs[collectorName] = sqlDB
+	h := NewDBHandle(sqlDB, "collector/"+collectorName)
+	m.collectorDBs[collectorName] = h
 	slog.Info("Created collector database", "collector_name", collectorName, "path", dbPath)
 
-	return newLoggingDB(sqlDB, "collector/"+collectorName), nil
+	return h, nil
 }
 
-func (m *Manager) openCollectorDB(collectorName string) (db.DBTX, error) {
+func (m *Manager) openCollectorDB(collectorName string) (*DBHandle, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	// Double-check after acquiring lock
-	if sqlDB, ok := m.collectorDBs[collectorName]; ok {
-		return newLoggingDB(sqlDB, "collector/"+collectorName), nil
+	if h, ok := m.collectorDBs[collectorName]; ok {
+		return h, nil
 	}
 
 	dbPath := m.collectorDBPath(collectorName)
@@ -258,8 +258,9 @@ func (m *Manager) openCollectorDB(collectorName string) (db.DBTX, error) {
 		return nil, fmt.Errorf("open collector db for %s: %w", collectorName, err)
 	}
 
-	m.collectorDBs[collectorName] = sqlDB
-	return newLoggingDB(sqlDB, "collector/"+collectorName), nil
+	h := NewDBHandle(sqlDB, "collector/"+collectorName)
+	m.collectorDBs[collectorName] = h
+	return h, nil
 }
 
 func (m *Manager) runAppMigrations(sqlDB *sql.DB) error {
@@ -307,8 +308,8 @@ func openSQLiteDB(dsn string) (*sql.DB, error) {
 	if err != nil {
 		return nil, err
 	}
-	sqlDB.SetMaxOpenConns(1)
-	sqlDB.SetMaxIdleConns(1)
+	sqlDB.SetMaxOpenConns(4)
+	sqlDB.SetMaxIdleConns(4)
 	return sqlDB, nil
 }
 
@@ -376,20 +377,20 @@ func (m *Manager) Close() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	for appName, db := range m.appDBs {
-		if err := db.Close(); err != nil {
+	for appName, handle := range m.appDBs {
+		if err := handle.Close(); err != nil {
 			slog.Error("Failed to close app database", "app_name", appName, "error", err)
 		}
 	}
 
-	for collectorName, db := range m.collectorDBs {
-		if err := db.Close(); err != nil {
+	for collectorName, handle := range m.collectorDBs {
+		if err := handle.Close(); err != nil {
 			slog.Error("Failed to close collector database", "collector_name", collectorName, "error", err)
 		}
 	}
 
-	m.appDBs = make(map[string]*sql.DB)
-	m.collectorDBs = make(map[string]*sql.DB)
+	m.appDBs = make(map[string]*DBHandle)
+	m.collectorDBs = make(map[string]*DBHandle)
 	return nil
 }
 

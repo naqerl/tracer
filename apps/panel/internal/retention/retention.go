@@ -65,7 +65,7 @@ func (s *Service) runCleanup(ctx context.Context) {
 		}
 
 		for _, appName := range apps {
-			sqlDB, err := s.dbManager.GetAppDB(collector, appName)
+			handle, err := s.dbManager.GetAppDB(collector, appName)
 			if err != nil {
 				if err == dbmanager.ErrDBNotFound {
 					// Skip if DB doesn't exist
@@ -75,23 +75,18 @@ func (s *Service) runCleanup(ctx context.Context) {
 				continue
 			}
 
-			queries := db.New(sqlDB)
-			err = queries.DeleteOldLogs(ctx, cutoff.Unix())
-			if err != nil {
-				slog.Error("Failed to cleanup logs", "collector", collector, "app", appName, "error", err)
-				continue
-			}
-
-			// Recalculate counters after deletion to keep them accurate
-			err = queries.RecalculateLogGroupCounters(ctx)
-			if err != nil {
-				slog.Error("Failed to recalculate log group counters", "collector", collector, "app", appName, "error", err)
-				continue
-			}
-
-			err = queries.DeleteOldHealthPeriods(ctx, sql.NullInt64{Int64: cutoff.Unix(), Valid: true})
-			if err != nil {
-				slog.Error("Failed to cleanup health periods", "collector", collector, "app", appName, "error", err)
+			if err := handle.Write(ctx, func(tx db.DBTX) error {
+				q := db.New(tx)
+				if err := q.DeleteOldLogs(ctx, cutoff.Unix()); err != nil {
+					return err
+				}
+				// Recalculate counters after deletion to keep them accurate
+				if err := q.RecalculateLogGroupCounters(ctx); err != nil {
+					return err
+				}
+				return q.DeleteOldHealthPeriods(ctx, sql.NullInt64{Int64: cutoff.Unix(), Valid: true})
+			}); err != nil {
+				slog.Error("Failed to cleanup app data", "collector", collector, "app", appName, "error", err)
 				continue
 			}
 

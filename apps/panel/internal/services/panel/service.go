@@ -733,21 +733,24 @@ func (s *Service) DeleteLogGroup(ctx context.Context, req DeleteLogGroupRequest)
 		return ErrAccessDenied
 	}
 
-	queries, err := s.queriesForApp(req.CollectorName, req.AppName)
+	handle, err := s.dbManager.GetAppDB(req.CollectorName, req.AppName)
 	if err != nil {
+		if err == dbmanager.ErrDBNotFound {
+			return ErrAppNotFound
+		}
 		return err
 	}
 
-	// Then delete the group
-	rowsAffected, err := queries.DeleteLogGroup(ctx, req.GroupID)
-	if err != nil {
-		return fmt.Errorf("delete log group: %w", err)
-	}
-	if rowsAffected == 0 {
-		return ErrLogNotFound
-	}
-
-	return nil
+	return handle.Write(ctx, func(tx db.DBTX) error {
+		rowsAffected, err := db.New(tx).DeleteLogGroup(ctx, req.GroupID)
+		if err != nil {
+			return fmt.Errorf("delete log group: %w", err)
+		}
+		if rowsAffected == 0 {
+			return ErrLogNotFound
+		}
+		return nil
+	})
 }
 
 func (s *Service) GetLogVolumeTimeSeries(ctx context.Context, collectorName, appName string, since time.Time, granularity string) ([]db.GetLogVolumeTimeSeriesRow, error) {
@@ -763,14 +766,14 @@ func (s *Service) GetLogVolumeTimeSeries(ctx context.Context, collectorName, app
 }
 
 func (s *Service) queriesForApp(collectorName, appName string) (*db.Queries, error) {
-	sqlDB, err := s.dbManager.GetAppDB(collectorName, appName)
+	handle, err := s.dbManager.GetAppDB(collectorName, appName)
 	if err != nil {
 		if err == dbmanager.ErrDBNotFound {
 			return nil, ErrAppNotFound
 		}
 		return nil, err
 	}
-	return db.New(sqlDB), nil
+	return db.New(handle.Read()), nil
 }
 
 func formatCollectorStats(stats db.SystemStat) *CollectorStats {
