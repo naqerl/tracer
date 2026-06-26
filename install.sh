@@ -7,7 +7,7 @@
 # systemd service units.
 #
 # Usage:
-#   curl -fsSL https://git.naqerl.com/eco/tracer/plain/install.sh | sudo bash
+#   curl -fsSL https://git.naqerl.com/naqerl/tracer/raw/branch/main/install.sh | sudo bash
 #
 # Environment variables:
 #   TRACER_VERSION       - version tag to download (default: latest)
@@ -25,8 +25,8 @@ fi
 
 # --- Defaults ----------------------------------------------------------------
 TRACER_DIR="${TRACER_DIR:-/usr/local/bin}"
-DOWNLOAD_URL="${DOWNLOAD_URL:-https://git.naqerl.com/eco/tracer/releases/download}"
-API_URL="https://git.naqerl.com/eco/tracer/api/v1/repos/eco/tracer"
+DOWNLOAD_URL="${DOWNLOAD_URL:-https://git.naqerl.com/naqerl/tracer/releases/download}"
+API_URL="https://git.naqerl.com/api/v1/repos/naqerl/tracer"
 
 # --- Helpers -----------------------------------------------------------------
 log()  { printf "\033[1;32m%s\033[0m\n" "$*" >&2; }
@@ -38,7 +38,7 @@ if [ "$(id -u)" -ne 0 ]; then
 	die "This script must be run as root. Try: curl ... | sudo bash"
 fi
 
-for cmd in curl sha256sum uname chmod cp; do
+for cmd in curl sha256sum uname chmod cp tar; do
 	if ! command -v "$cmd" >/dev/null 2>&1; then
 		die "Required command not found: $cmd"
 	fi
@@ -78,11 +78,21 @@ TMPDIR=$(mktemp -d) || die "Failed to create temporary directory"
 trap 'rm -rf "$TMPDIR"' EXIT
 
 for bin in "${BINARIES[@]}"; do
-	URL="${DOWNLOAD_URL}/${TRACER_VERSION}/${bin}-linux-${ARCH}"
+	ARCHIVE="${bin}-linux-${ARCH}.tar.gz"
+	URL="${DOWNLOAD_URL}/${TRACER_VERSION}/${ARCHIVE}"
 	log "Downloading ${bin}..."
-	curl -fsSL "$URL" -o "$TMPDIR/$bin" || die "Failed to download ${bin} from ${URL}"
-	curl -fsSL "${URL}.sha256" -o "$TMPDIR/$bin.sha256" || die "Failed to download checksum for ${bin}"
-	(cd "$TMPDIR" && sha256sum -c "$bin.sha256") || die "Checksum verification failed for ${bin}"
+	curl -fsSL "$URL" -o "$TMPDIR/$ARCHIVE" || die "Failed to download ${bin} from ${URL}"
+done
+
+log "Verifying checksums..."
+curl -fsSL "${DOWNLOAD_URL}/${TRACER_VERSION}/checksums.txt" -o "$TMPDIR/checksums.txt" || die "Failed to download checksums"
+sed "s|^.*/|${TMPDIR}/|" "$TMPDIR/checksums.txt" > "$TMPDIR/checksums.fixed.txt"
+(cd "$TMPDIR" && sha256sum -c "checksums.fixed.txt") || die "Checksum verification failed"
+
+log "Extracting binaries..."
+for bin in "${BINARIES[@]}"; do
+	ARCHIVE="${bin}-linux-${ARCH}.tar.gz"
+	tar -xzf "$TMPDIR/$ARCHIVE" -C "$TMPDIR"
 	chmod 0755 "$TMPDIR/$bin"
 done
 
