@@ -122,10 +122,10 @@ if [ -z "${TRACER_COLLECTOR_ONLY:-}" ]; then
 	EXIT_CODE=$?
 	set -e
 
-	if [ "$EXIT_CODE" -eq 2 ]; then
+	if [ "$EXIT_CODE" -eq 2 ] || echo "$OUTPUT" | grep -q "already initialized"; then
 		log "Panel already initialized, skipping initialization"
 	elif [ "$EXIT_CODE" -ne 0 ]; then
-		die "Failed to initialize panel (exit code ${EXIT_CODE})"
+		die "Failed to initialize panel (exit code ${EXIT_CODE}):\n${OUTPUT}"
 	else
 		ADMIN_USERNAME=$(echo "$OUTPUT" | grep '^admin_username=' | cut -d= -f2)
 		ADMIN_PASSWORD=$(echo "$OUTPUT" | grep '^admin_password=' | cut -d= -f2)
