@@ -25,7 +25,7 @@ require_cmd() {
 }
 
 ensure_container_running() {
-  if ! docker container exists "${DEMO_CONTAINER}"; then
+  if ! docker inspect "${DEMO_CONTAINER}" >/dev/null 2>&1; then
     printf 'Container %s does not exist. Run `make -C e2e up` first.\n' "${DEMO_CONTAINER}" >&2
     exit 1
   fi

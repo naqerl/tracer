@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"os/user"
+	"path/filepath"
 	"strconv"
 )
 
@@ -62,6 +63,19 @@ func ChownDir(path, owner, group string) error {
 		return fmt.Errorf("chown %s %s:%s: %w", path, owner, group, err)
 	}
 	return nil
+}
+
+func ChownDirRecursive(path, owner, group string) error {
+	uid, gid, err := lookupUserGroup(owner, group)
+	if err != nil {
+		return fmt.Errorf("lookup %s:%s: %w", owner, group, err)
+	}
+	return filepath.Walk(path, func(p string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		return os.Chown(p, uid, gid)
+	})
 }
 
 func WriteConfig(path string, data []byte, mode os.FileMode, owner, group string) error {

@@ -109,7 +109,7 @@ require_cmd curl
 require_cmd go
 require_cmd docker
 
-docker container exists "${DEMO_CONTAINER}" >/dev/null 2>&1 || fail "container ${DEMO_CONTAINER} is not running"
+docker inspect "${DEMO_CONTAINER}" >/dev/null 2>&1 || fail "container ${DEMO_CONTAINER} is not running"
 
 log "waiting for panel HTTP endpoint"
 wait_for_http

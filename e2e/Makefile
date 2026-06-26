@@ -50,7 +50,7 @@ up-release: down build-release
 	@echo "  Logs: make -C e2e logs"
 
 down:
-	@docker container exists $(DEMO_CONTAINER) 2>/dev/null && docker rm -f -t 10 $(DEMO_CONTAINER) >/dev/null || true
+	@docker inspect $(DEMO_CONTAINER) >/dev/null 2>&1 && docker rm -f -t 10 $(DEMO_CONTAINER) >/dev/null || true
 	@echo "E2E demo stopped"
 
 logs:
@@ -71,19 +71,19 @@ live-reload:
 	./live-reload.sh
 
 mock-logs-high:
-	@docker container exists $(DEMO_CONTAINER) >/dev/null 2>&1 || { echo "container $(DEMO_CONTAINER) is not running"; exit 1; }
+	@docker inspect $(DEMO_CONTAINER) >/dev/null 2>&1 || { echo "container $(DEMO_CONTAINER) is not running"; exit 1; }
 	docker exec $(DEMO_CONTAINER) systemctl set-environment TRACER_DEMO_LOG_PROFILE=high
 	docker exec $(DEMO_CONTAINER) systemctl restart $(DEMO_UNITS)
 	@echo "Mock service logging profile set to high"
 
 mock-logs-normal:
-	@docker container exists $(DEMO_CONTAINER) >/dev/null 2>&1 || { echo "container $(DEMO_CONTAINER) is not running"; exit 1; }
+	@docker inspect $(DEMO_CONTAINER) >/dev/null 2>&1 || { echo "container $(DEMO_CONTAINER) is not running"; exit 1; }
 	docker exec $(DEMO_CONTAINER) systemctl unset-environment TRACER_DEMO_LOG_PROFILE
 	docker exec $(DEMO_CONTAINER) systemctl restart $(DEMO_UNITS)
 	@echo "Mock service logging profile set to normal"
 
 mock-logs-status:
-	@docker container exists $(DEMO_CONTAINER) >/dev/null 2>&1 || { echo "container $(DEMO_CONTAINER) is not running"; exit 1; }
+	@docker inspect $(DEMO_CONTAINER) >/dev/null 2>&1 || { echo "container $(DEMO_CONTAINER) is not running"; exit 1; }
 	@profile="$$(docker exec $(DEMO_CONTAINER) systemctl show-environment | sed -n 's/^TRACER_DEMO_LOG_PROFILE=//p')"; \
 	if [ -z "$$profile" ]; then \
 		profile=normal; \

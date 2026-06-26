@@ -8,6 +8,7 @@ import (
 	"tracer/apps/panel/internal/config"
 	"tracer/apps/panel/internal/dbmanager"
 	"tracer/apps/panel/internal/services/auth"
+	"tracer/pkg/setup"
 )
 
 // InitPanel creates the admin user and initial collector API key.
@@ -47,6 +48,13 @@ func InitPanel(ctx context.Context, opts InitOptions) (InitResult, error) {
 		return InitResult{}, fmt.Errorf("open panel database: %w", err)
 	}
 	defer sqlDB.Close()
+
+	// Ensure data dir files are owned by the service user.
+	// -init may run as root during installation, but the panel service
+	// runs as a non-root user and needs write access to the database.
+	if err := setup.ChownDirRecursive(config.DataDir(), setup.PanelUser, setup.TracerGroup); err != nil {
+		return InitResult{}, fmt.Errorf("chown data dir: %w", err)
+	}
 
 	authSvc := auth.New(sqlDB)
 
