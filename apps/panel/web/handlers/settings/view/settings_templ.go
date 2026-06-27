@@ -9,6 +9,7 @@ import "github.com/a-h/templ"
 import templruntime "github.com/a-h/templ/runtime"
 
 import (
+	"fmt"
 	"strconv"
 	"tracer/apps/panel/web/templates"
 )
@@ -72,6 +73,12 @@ type NotifierFormView struct {
 	TelegramChatID string
 }
 
+type ConfigPageProps struct {
+	CPUDeltaPercent float64
+	MemDeltaKB      int
+	DiskDeltaKB     int
+}
+
 // SettingsPage renders the main settings page.
 func SettingsPage(props SettingsPageProps) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
@@ -94,496 +101,485 @@ func SettingsPage(props SettingsPageProps) templ.Component {
 			templ_7745c5c3_Var1 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<!doctype html><html lang=\"en\"><head>")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = templates.Head().Render(ctx, templ_7745c5c3_Buffer)
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "<title>")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		var templ_7745c5c3_Var2 string
-		templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.JoinStringErrs(props.Title)
-		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/settings.templ`, Line: 73, Col: 23}
-		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var2))
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, " - Tracer</title></head><body>")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = templates.Navbar(templates.NavData{Since: "24h"}).Render(ctx, templ_7745c5c3_Buffer)
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "<div class=\"max-w-5xl mx-auto p-2 md:p-6\"><!-- Account Section --><div class=\"mb-10\"><h2 class=\"text-xl font-medium mb-6\">Account</h2><div class=\"flex items-center justify-between border border-bg-secondary/70 p-4\"><div><p class=\"text-lg text-fg\">")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		var templ_7745c5c3_Var3 string
-		templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(props.CurrentUser.Username)
-		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/settings.templ`, Line: 83, Col: 62}
-		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "</p><p class=\"text-sm text-fg-secondary mt-1\">")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		if props.CurrentUser.IsAdmin {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "Administrator")
+		templ_7745c5c3_Var2 := templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
+			templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
+			templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
+			if !templ_7745c5c3_IsBuffer {
+				defer func() {
+					templ_7745c5c3_BufErr := templruntime.ReleaseBuffer(templ_7745c5c3_Buffer)
+					if templ_7745c5c3_Err == nil {
+						templ_7745c5c3_Err = templ_7745c5c3_BufErr
+					}
+				}()
+			}
+			ctx = templ.InitializeContext(ctx)
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"max-w-5xl mx-auto p-2 md:p-6\"><div class=\"mb-10\"><h2 class=\"text-xl font-medium mb-6\">Account</h2><div class=\"flex items-center justify-between border border-bg-secondary/70 p-4\"><div><p class=\"text-lg text-fg\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-		} else {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "User")
+			var templ_7745c5c3_Var3 string
+			templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(props.CurrentUser.Username)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/settings.templ`, Line: 82, Col: 61}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "</p></div><form action=\"/auth/logout\" method=\"POST\"><button type=\"submit\" class=\"text-sm text-fg-secondary hover:text-red-500 underline transition-colors\">Logout</button></form></div></div><!-- API Keys Section --><div class=\"mb-10\"><h2 class=\"text-xl font-medium mb-6\">API Keys</h2><p class=\"text-base text-fg-secondary mb-6\">Generate API keys to access logs programmatically.</p><div class=\"mb-8 w-full border border-bg-secondary/70 p-4\"><form action=\"/settings/api-keys\" method=\"POST\"><div class=\"mb-4 w-full\"><input type=\"text\" id=\"key_name\" name=\"name\" placeholder=\"Key name\" required=\"required\" maxlength=\"64\" class=\"w-full max-w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg placeholder:text-fg-secondary/50 md:w-[40ch]\"></div><button type=\"submit\" class=\"text-sm text-fg border border-fg px-4 py-2 hover:bg-fg hover:text-bg transition-colors\">Generate Key</button></form></div>")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		if props.NewUserAPIKey != "" {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "<div class=\"bg-bg-secondary border border-fg/10 p-4 mb-6\"><p class=\"text-sm text-fg-secondary mb-2\">New API key ")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "</p><p class=\"text-sm text-fg-secondary mt-1\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			if props.NewUserAPIKeyName != "" {
-				var templ_7745c5c3_Var4 string
-				templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinStringErrs(": " + props.NewUserAPIKeyName)
-				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/settings.templ`, Line: 118, Col: 41}
-				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "</p><code class=\"text-base font-mono block break-all\">")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var5 string
-			templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinStringErrs(props.NewUserAPIKey)
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/settings.templ`, Line: 121, Col: 78}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var5))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "</code></div>")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-		}
-		if len(props.UserAPIKeys) > 0 {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "<table class=\"w-full\"><thead class=\"border-b border-bg-secondary\"><tr class=\"text-left text-sm text-fg-secondary\"><th class=\"pb-2 font-medium\">Name</th><th class=\"pb-2 font-medium\">Key</th><th class=\"pb-2 font-medium\">Last Used</th><th class=\"pb-2 font-medium\"></th></tr></thead> <tbody class=\"text-base\">")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			for _, k := range props.UserAPIKeys {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "<tr class=\"group opacity-60 hover:opacity-100 transition-opacity duration-700 hover:duration-150 border-b border-bg-secondary/50\"><td class=\"py-3\">")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				var templ_7745c5c3_Var6 string
-				templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.JoinStringErrs(k.Name)
-				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/settings.templ`, Line: 138, Col: 35}
-				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var6))
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "</td><td class=\"py-3\"><code class=\"text-sm font-mono\">****")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				var templ_7745c5c3_Var7 string
-				templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(k.KeySuffix)
-				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/settings.templ`, Line: 139, Col: 76}
-				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, "</code></td><td class=\"py-3 text-sm text-fg-secondary\">")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				if k.LastUsedValid {
-					var templ_7745c5c3_Var8 string
-					templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(formatTimestamp(k.LastUsed))
-					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/settings.templ`, Line: 142, Col: 41}
-					}
-					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
-					if templ_7745c5c3_Err != nil {
-						return templ_7745c5c3_Err
-					}
-				} else {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, "Never")
-					if templ_7745c5c3_Err != nil {
-						return templ_7745c5c3_Err
-					}
-				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, "</td><td class=\"py-3 text-right\"><button hx-delete=\"")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				var templ_7745c5c3_Var9 string
-				templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.ResolveAttributeValue("/settings/api-keys/" + strconv.FormatInt(k.ID, 10))
-				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/settings.templ`, Line: 148, Col: 82}
-				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var9)
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "\" hx-confirm=\"")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				var templ_7745c5c3_Var10 string
-				templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.ResolveAttributeValue("Delete API key " + k.Name + "?")
-				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/settings.templ`, Line: 149, Col: 58}
-				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var10)
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 19, "\" hx-target=\"body\" hx-swap=\"outerHTML\" class=\"text-sm text-fg-secondary hover:text-red-500 underline transition-colors\">Delete</button></td></tr>")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 20, "</tbody></table>")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-		} else {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, "<p class=\"text-sm text-fg-secondary/60 py-6 text-center\">No API keys generated yet.</p>")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 22, "</div>")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		if props.IsAdmin {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, "<!-- Collector API Keys Section --> <div class=\"mb-10\"><h2 class=\"text-xl font-medium mb-6\">Collector API Keys</h2><p class=\"text-base text-fg-secondary mb-6\">Create separate collector credentials per host or environment. Plaintext is shown only once.</p>")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			if props.NewCollectorAPIKey != "" {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "<div class=\"bg-bg-secondary border border-fg/10 p-4 mb-6\"><p class=\"text-sm text-fg-secondary mb-2\">New collector key ")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				if props.NewCollectorAPIKeyName != "" {
-					var templ_7745c5c3_Var11 string
-					templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinStringErrs(": " + props.NewCollectorAPIKeyName)
-					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/settings.templ`, Line: 173, Col: 47}
-					}
-					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var11))
-					if templ_7745c5c3_Err != nil {
-						return templ_7745c5c3_Err
-					}
-				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 25, "</p><code class=\"text-base font-mono block break-all\">")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				var templ_7745c5c3_Var12 string
-				templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.JoinStringErrs(props.NewCollectorAPIKey)
-				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/settings.templ`, Line: 176, Col: 84}
-				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var12))
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 26, "</code></div>")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 27, "<div class=\"mb-8 w-full border border-bg-secondary/70 p-4\"><form action=\"/settings/admin/collector-api-keys\" method=\"POST\"><div class=\"mb-4 w-full\"><input type=\"text\" id=\"collector_key_name\" name=\"name\" placeholder=\"Collector key name\" required=\"required\" maxlength=\"64\" class=\"w-full max-w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg placeholder:text-fg-secondary/50 md:w-[40ch]\"></div><button type=\"submit\" class=\"text-sm text-fg border border-fg px-4 py-2 hover:bg-fg hover:text-bg transition-colors\">Create Collector Key</button></form></div>")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = CollectorAPIKeyTable(props.CollectorAPIKeys).Render(ctx, templ_7745c5c3_Buffer)
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 28, "</div><!-- Users Section --> <div class=\"mb-10\"><h2 class=\"text-xl font-medium mb-6\">Users</h2><div class=\"mb-8 w-full border border-bg-secondary/70 p-4\"><form action=\"/settings/users\" method=\"POST\"><div class=\"mb-4 w-full space-y-4\"><div class=\"w-full\"><input type=\"text\" id=\"username\" name=\"username\" placeholder=\"Username\" required=\"required\" maxlength=\"32\" class=\"w-full max-w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg placeholder:text-fg-secondary/50 md:w-[24ch]\"></div><div class=\"w-full\"><input type=\"password\" id=\"password\" name=\"password\" placeholder=\"Password\" required=\"required\" maxlength=\"72\" class=\"w-full max-w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg placeholder:text-fg-secondary/50 md:w-[32ch]\"></div></div>")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templates.MarkdownCheckbox("is_admin", "is_admin", "Admin", "on", false, 0).Render(ctx, templ_7745c5c3_Buffer)
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 29, "<div class=\"mt-4\"><button type=\"submit\" class=\"text-sm text-fg border border-fg px-4 py-2 hover:bg-fg hover:text-bg transition-colors\">Add User</button></div></form></div>")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			if len(props.Users) > 0 {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 30, "<table class=\"w-full\"><thead class=\"border-b border-bg-secondary\"><tr class=\"text-left text-sm text-fg-secondary\"><th class=\"pb-2 font-medium\">Username</th><th class=\"pb-2 font-medium\">Role</th><th class=\"pb-2 font-medium\">Created</th></tr></thead> <tbody class=\"text-base\">")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				for _, user := range props.Users {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 31, "<tr class=\"group opacity-60 hover:opacity-100 transition-opacity duration-700 hover:duration-150 border-b border-bg-secondary/50\"><td class=\"py-0\"><a href=\"")
-					if templ_7745c5c3_Err != nil {
-						return templ_7745c5c3_Err
-					}
-					var templ_7745c5c3_Var13 templ.SafeURL
-					templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.JoinURLErrs("/settings/users/" + strconv.FormatInt(user.ID, 10))
-					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/settings.templ`, Line: 227, Col: 89}
-					}
-					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var13))
-					if templ_7745c5c3_Err != nil {
-						return templ_7745c5c3_Err
-					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 32, "\" class=\"block py-3\">")
-					if templ_7745c5c3_Err != nil {
-						return templ_7745c5c3_Err
-					}
-					var templ_7745c5c3_Var14 string
-					templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.JoinStringErrs(user.Username)
-					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/settings.templ`, Line: 227, Col: 126}
-					}
-					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var14))
-					if templ_7745c5c3_Err != nil {
-						return templ_7745c5c3_Err
-					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 33, "</a></td><td class=\"py-0 text-sm text-fg\"><a href=\"")
-					if templ_7745c5c3_Err != nil {
-						return templ_7745c5c3_Err
-					}
-					var templ_7745c5c3_Var15 templ.SafeURL
-					templ_7745c5c3_Var15, templ_7745c5c3_Err = templ.JoinURLErrs("/settings/users/" + strconv.FormatInt(user.ID, 10))
-					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/settings.templ`, Line: 228, Col: 105}
-					}
-					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var15))
-					if templ_7745c5c3_Err != nil {
-						return templ_7745c5c3_Err
-					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 34, "\" class=\"block py-3\">")
-					if templ_7745c5c3_Err != nil {
-						return templ_7745c5c3_Err
-					}
-					if user.IsAdmin {
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 35, "Admin")
-						if templ_7745c5c3_Err != nil {
-							return templ_7745c5c3_Err
-						}
-					} else {
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 36, "User")
-						if templ_7745c5c3_Err != nil {
-							return templ_7745c5c3_Err
-						}
-					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 37, "</a></td><td class=\"py-0 text-sm text-fg-secondary\"><a href=\"")
-					if templ_7745c5c3_Err != nil {
-						return templ_7745c5c3_Err
-					}
-					var templ_7745c5c3_Var16 templ.SafeURL
-					templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.JoinURLErrs("/settings/users/" + strconv.FormatInt(user.ID, 10))
-					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/settings.templ`, Line: 235, Col: 115}
-					}
-					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var16))
-					if templ_7745c5c3_Err != nil {
-						return templ_7745c5c3_Err
-					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 38, "\" class=\"block py-3\">")
-					if templ_7745c5c3_Err != nil {
-						return templ_7745c5c3_Err
-					}
-					var templ_7745c5c3_Var17 string
-					templ_7745c5c3_Var17, templ_7745c5c3_Err = templ.JoinStringErrs(formatTimestamp(user.CreatedAt))
-					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/settings.templ`, Line: 235, Col: 170}
-					}
-					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var17))
-					if templ_7745c5c3_Err != nil {
-						return templ_7745c5c3_Err
-					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 39, "</a></td></tr>")
-					if templ_7745c5c3_Err != nil {
-						return templ_7745c5c3_Err
-					}
-				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 40, "</tbody></table>")
+			if props.CurrentUser.IsAdmin {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "Administrator")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			} else {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 41, "<p class=\"text-sm text-fg-secondary/60 py-6 text-center\">No users yet.</p>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "User")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 42, "</div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "</p></div><form action=\"/auth/logout\" method=\"POST\"><button type=\"submit\" class=\"text-sm text-fg-secondary hover:text-red-500 underline transition-colors\">Logout</button></form></div></div><div class=\"mb-10\"><h2 class=\"text-xl font-medium mb-6\">API Keys</h2><p class=\"text-base text-fg-secondary mb-6\">Generate API keys to access logs programmatically.</p><div class=\"mb-8 w-full border border-bg-secondary/70 p-4\"><form action=\"/settings/api-keys\" method=\"POST\"><div class=\"mb-4 w-full\"><input type=\"text\" id=\"key_name\" name=\"name\" placeholder=\"Key name\" required=\"required\" maxlength=\"64\" class=\"w-full max-w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg placeholder:text-fg-secondary/50 md:w-[40ch]\"></div><button type=\"submit\" class=\"text-sm text-fg border border-fg px-4 py-2 hover:bg-fg hover:text-bg transition-colors\">Generate Key</button></form></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 43, "<!-- Notifiers Section --><div class=\"mb-10\"><h2 class=\"text-xl font-medium mb-6\">Notifications</h2><p class=\"text-base text-fg-secondary mb-6\">")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		if props.IsAdmin {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 44, "Configure notifier endpoints for error alerts.")
+			if props.NewUserAPIKey != "" {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "<div class=\"bg-bg-secondary border border-fg/10 p-4 mb-6\"><p class=\"text-sm text-fg-secondary mb-2\">New API key ")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				if props.NewUserAPIKeyName != "" {
+					var templ_7745c5c3_Var4 string
+					templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinStringErrs(": " + props.NewUserAPIKeyName)
+					if templ_7745c5c3_Err != nil {
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/settings.templ`, Line: 113, Col: 40}
+					}
+					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "</p><code class=\"text-base font-mono block break-all\">")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				var templ_7745c5c3_Var5 string
+				templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinStringErrs(props.NewUserAPIKey)
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/settings.templ`, Line: 116, Col: 77}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var5))
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "</code></div>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			if len(props.UserAPIKeys) > 0 {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "<table class=\"w-full\"><thead class=\"border-b border-bg-secondary\"><tr class=\"text-left text-sm text-fg-secondary\"><th class=\"pb-2 font-medium\">Name</th><th class=\"pb-2 font-medium\">Key</th><th class=\"pb-2 font-medium\">Last Used</th><th class=\"pb-2 font-medium\"></th></tr></thead> <tbody class=\"text-base\">")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				for _, k := range props.UserAPIKeys {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "<tr class=\"group opacity-60 hover:opacity-100 transition-opacity duration-700 hover:duration-150 border-b border-bg-secondary/50\"><td class=\"py-3\">")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					var templ_7745c5c3_Var6 string
+					templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.JoinStringErrs(k.Name)
+					if templ_7745c5c3_Err != nil {
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/settings.templ`, Line: 132, Col: 34}
+					}
+					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var6))
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "</td><td class=\"py-3\"><code class=\"text-sm font-mono\">****")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					var templ_7745c5c3_Var7 string
+					templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(k.KeySuffix)
+					if templ_7745c5c3_Err != nil {
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/settings.templ`, Line: 133, Col: 75}
+					}
+					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "</code></td><td class=\"py-3 text-sm text-fg-secondary\">")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					if k.LastUsedValid {
+						var templ_7745c5c3_Var8 string
+						templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(formatTimestamp(k.LastUsed))
+						if templ_7745c5c3_Err != nil {
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/settings.templ`, Line: 136, Col: 40}
+						}
+						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
+						if templ_7745c5c3_Err != nil {
+							return templ_7745c5c3_Err
+						}
+					} else {
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "Never")
+						if templ_7745c5c3_Err != nil {
+							return templ_7745c5c3_Err
+						}
+					}
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "</td><td class=\"py-3 text-right\"><button hx-delete=\"")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					var templ_7745c5c3_Var9 string
+					templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.ResolveAttributeValue("/settings/api-keys/" + strconv.FormatInt(k.ID, 10))
+					if templ_7745c5c3_Err != nil {
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/settings.templ`, Line: 142, Col: 81}
+					}
+					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var9)
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, "\" hx-confirm=\"")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					var templ_7745c5c3_Var10 string
+					templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.ResolveAttributeValue("Delete API key " + k.Name + "?")
+					if templ_7745c5c3_Err != nil {
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/settings.templ`, Line: 143, Col: 57}
+					}
+					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var10)
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, "\" hx-target=\"body\" hx-swap=\"outerHTML\" class=\"text-sm text-fg-secondary hover:text-red-500 underline transition-colors\">Delete</button></td></tr>")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, "</tbody></table>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			} else {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "<p class=\"text-sm text-fg-secondary/60 py-6 text-center\">No API keys generated yet.</p>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 19, "</div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-		} else {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 45, "Configure notifier endpoints for your assigned apps.")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 46, "</p>")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = NotifierForm(props.NotifierForm).Render(ctx, templ_7745c5c3_Buffer)
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		if len(props.Notifiers) > 0 {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 47, "<table class=\"w-full\"><thead class=\"border-b border-bg-secondary\"><tr class=\"text-left text-sm text-fg-secondary\"><th class=\"pb-2 font-medium\">Name</th><th class=\"pb-2 font-medium\">Type</th><th class=\"pb-2 font-medium\">Status</th></tr></thead> <tbody class=\"text-base\">")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			for _, n := range props.Notifiers {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 48, "<tr class=\"group opacity-60 hover:opacity-100 transition-opacity duration-700 hover:duration-150 border-b border-bg-secondary/50\"><td class=\"py-0\"><a href=\"")
+			if props.IsAdmin {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 20, "<div class=\"mb-10\"><h2 class=\"text-xl font-medium mb-6\">Collector API Keys</h2><p class=\"text-base text-fg-secondary mb-6\">Create separate collector credentials per host or environment. Plaintext is shown only once.</p>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				var templ_7745c5c3_Var18 templ.SafeURL
-				templ_7745c5c3_Var18, templ_7745c5c3_Err = templ.JoinURLErrs("/settings/notifiers/" + strconv.FormatInt(n.ID, 10))
-				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/settings.templ`, Line: 272, Col: 73}
+				if props.NewCollectorAPIKey != "" {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, "<div class=\"bg-bg-secondary border border-fg/10 p-4 mb-6\"><p class=\"text-sm text-fg-secondary mb-2\">New collector key ")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					if props.NewCollectorAPIKeyName != "" {
+						var templ_7745c5c3_Var11 string
+						templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinStringErrs(": " + props.NewCollectorAPIKeyName)
+						if templ_7745c5c3_Err != nil {
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/settings.templ`, Line: 164, Col: 46}
+						}
+						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var11))
+						if templ_7745c5c3_Err != nil {
+							return templ_7745c5c3_Err
+						}
+					}
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 22, "</p><code class=\"text-base font-mono block break-all\">")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					var templ_7745c5c3_Var12 string
+					templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.JoinStringErrs(props.NewCollectorAPIKey)
+					if templ_7745c5c3_Err != nil {
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/settings.templ`, Line: 167, Col: 83}
+					}
+					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var12))
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, "</code></div>")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
 				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var18))
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 49, "\" class=\"block py-3\">")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				var templ_7745c5c3_Var19 string
-				templ_7745c5c3_Var19, templ_7745c5c3_Err = templ.JoinStringErrs(n.Name)
-				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/settings.templ`, Line: 272, Col: 103}
-				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var19))
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 50, "</a></td><td class=\"py-0 text-sm text-fg-secondary\"><a href=\"")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				var templ_7745c5c3_Var20 templ.SafeURL
-				templ_7745c5c3_Var20, templ_7745c5c3_Err = templ.JoinURLErrs("/settings/notifiers/" + strconv.FormatInt(n.ID, 10))
-				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/settings.templ`, Line: 275, Col: 73}
-				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var20))
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 51, "\" class=\"block py-3\">")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				var templ_7745c5c3_Var21 string
-				templ_7745c5c3_Var21, templ_7745c5c3_Err = templ.JoinStringErrs(n.Type)
-				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/settings.templ`, Line: 275, Col: 103}
-				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var21))
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "<div class=\"mb-8 w-full border border-bg-secondary/70 p-4\"><form action=\"/settings/admin/collector-api-keys\" method=\"POST\"><div class=\"mb-4 w-full\"><input type=\"text\" id=\"collector_key_name\" name=\"name\" placeholder=\"Collector key name\" required=\"required\" maxlength=\"64\" class=\"w-full max-w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg placeholder:text-fg-secondary/50 md:w-[40ch]\"></div><button type=\"submit\" class=\"text-sm text-fg border border-fg px-4 py-2 hover:bg-fg hover:text-bg transition-colors\">Create Collector Key</button></form></div>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 52, "</a></td><td class=\"py-0 text-sm text-fg-secondary\"><a href=\"")
+				templ_7745c5c3_Err = CollectorAPIKeyTable(props.CollectorAPIKeys).Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				var templ_7745c5c3_Var22 templ.SafeURL
-				templ_7745c5c3_Var22, templ_7745c5c3_Err = templ.JoinURLErrs("/settings/notifiers/" + strconv.FormatInt(n.ID, 10))
-				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/settings.templ`, Line: 278, Col: 73}
-				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var22))
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 25, "</div><div class=\"mb-10\"><h2 class=\"text-xl font-medium mb-6\">Users</h2><div class=\"mb-8 w-full border border-bg-secondary/70 p-4\"><form action=\"/settings/users\" method=\"POST\"><div class=\"mb-4 w-full space-y-4\"><div class=\"w-full\"><input type=\"text\" id=\"username\" name=\"username\" placeholder=\"Username\" required=\"required\" maxlength=\"32\" class=\"w-full max-w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg placeholder:text-fg-secondary/50 md:w-[24ch]\"></div><div class=\"w-full\"><input type=\"password\" id=\"password\" name=\"password\" placeholder=\"Password\" required=\"required\" maxlength=\"72\" class=\"w-full max-w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg placeholder:text-fg-secondary/50 md:w-[32ch]\"></div></div>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 53, "\" class=\"block py-3\">")
+				templ_7745c5c3_Err = templates.MarkdownCheckbox("is_admin", "is_admin", "Admin", "on", false, 0).Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				if n.Enabled == 1 {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 54, "Enabled")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 26, "<div class=\"mt-4\"><button type=\"submit\" class=\"text-sm text-fg border border-fg px-4 py-2 hover:bg-fg hover:text-bg transition-colors\">Add User</button></div></form></div>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				if len(props.Users) > 0 {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 27, "<table class=\"w-full\"><thead class=\"border-b border-bg-secondary\"><tr class=\"text-left text-sm text-fg-secondary\"><th class=\"pb-2 font-medium\">Username</th><th class=\"pb-2 font-medium\">Role</th><th class=\"pb-2 font-medium\">Created</th></tr></thead> <tbody class=\"text-base\">")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					for _, user := range props.Users {
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 28, "<tr class=\"group opacity-60 hover:opacity-100 transition-opacity duration-700 hover:duration-150 border-b border-bg-secondary/50\"><td class=\"py-0\"><a href=\"")
+						if templ_7745c5c3_Err != nil {
+							return templ_7745c5c3_Err
+						}
+						var templ_7745c5c3_Var13 templ.SafeURL
+						templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.JoinURLErrs("/settings/users/" + strconv.FormatInt(user.ID, 10))
+						if templ_7745c5c3_Err != nil {
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/settings.templ`, Line: 213, Col: 88}
+						}
+						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var13))
+						if templ_7745c5c3_Err != nil {
+							return templ_7745c5c3_Err
+						}
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 29, "\" class=\"block py-3\">")
+						if templ_7745c5c3_Err != nil {
+							return templ_7745c5c3_Err
+						}
+						var templ_7745c5c3_Var14 string
+						templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.JoinStringErrs(user.Username)
+						if templ_7745c5c3_Err != nil {
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/settings.templ`, Line: 213, Col: 125}
+						}
+						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var14))
+						if templ_7745c5c3_Err != nil {
+							return templ_7745c5c3_Err
+						}
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 30, "</a></td><td class=\"py-0 text-sm text-fg\"><a href=\"")
+						if templ_7745c5c3_Err != nil {
+							return templ_7745c5c3_Err
+						}
+						var templ_7745c5c3_Var15 templ.SafeURL
+						templ_7745c5c3_Var15, templ_7745c5c3_Err = templ.JoinURLErrs("/settings/users/" + strconv.FormatInt(user.ID, 10))
+						if templ_7745c5c3_Err != nil {
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/settings.templ`, Line: 214, Col: 104}
+						}
+						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var15))
+						if templ_7745c5c3_Err != nil {
+							return templ_7745c5c3_Err
+						}
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 31, "\" class=\"block py-3\">")
+						if templ_7745c5c3_Err != nil {
+							return templ_7745c5c3_Err
+						}
+						if user.IsAdmin {
+							templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 32, "Admin")
+							if templ_7745c5c3_Err != nil {
+								return templ_7745c5c3_Err
+							}
+						} else {
+							templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 33, "User")
+							if templ_7745c5c3_Err != nil {
+								return templ_7745c5c3_Err
+							}
+						}
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 34, "</a></td><td class=\"py-0 text-sm text-fg-secondary\"><a href=\"")
+						if templ_7745c5c3_Err != nil {
+							return templ_7745c5c3_Err
+						}
+						var templ_7745c5c3_Var16 templ.SafeURL
+						templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.JoinURLErrs("/settings/users/" + strconv.FormatInt(user.ID, 10))
+						if templ_7745c5c3_Err != nil {
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/settings.templ`, Line: 221, Col: 114}
+						}
+						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var16))
+						if templ_7745c5c3_Err != nil {
+							return templ_7745c5c3_Err
+						}
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 35, "\" class=\"block py-3\">")
+						if templ_7745c5c3_Err != nil {
+							return templ_7745c5c3_Err
+						}
+						var templ_7745c5c3_Var17 string
+						templ_7745c5c3_Var17, templ_7745c5c3_Err = templ.JoinStringErrs(formatTimestamp(user.CreatedAt))
+						if templ_7745c5c3_Err != nil {
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/settings.templ`, Line: 221, Col: 169}
+						}
+						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var17))
+						if templ_7745c5c3_Err != nil {
+							return templ_7745c5c3_Err
+						}
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 36, "</a></td></tr>")
+						if templ_7745c5c3_Err != nil {
+							return templ_7745c5c3_Err
+						}
+					}
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 37, "</tbody></table>")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 				} else {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 55, "Disabled")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 38, "<p class=\"text-sm text-fg-secondary/60 py-6 text-center\">No users yet.</p>")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 56, "</a></td></tr>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 39, "</div><div class=\"mb-10\"><h2 class=\"text-xl font-medium mb-6\">Configuration</h2><p class=\"text-base text-fg-secondary mb-6\">Panel configuration options. Changes require restart to take effect.</p><a href=\"/settings/config\" class=\"text-sm text-fg border border-fg px-4 py-2 hover:bg-fg hover:text-bg transition-colors\">Edit Configuration</a></div>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 57, "</tbody></table>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 40, "<div class=\"mb-10\"><h2 class=\"text-xl font-medium mb-6\">Notifications</h2><p class=\"text-base text-fg-secondary mb-6\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-		} else {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 58, "<p class=\"text-sm text-fg-secondary/60 py-6 text-center\">No notifiers configured.</p>")
+			if props.IsAdmin {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 41, "Configure notifier endpoints for error alerts.")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			} else {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 42, "Configure notifier endpoints for your assigned apps.")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 43, "</p>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 59, "</div></div>")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = templates.MarkdownCheckboxScript().Render(ctx, templ_7745c5c3_Buffer)
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 60, "</body></html>")
+			templ_7745c5c3_Err = NotifierForm(props.NotifierForm).Render(ctx, templ_7745c5c3_Buffer)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if len(props.Notifiers) > 0 {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 44, "<table class=\"w-full\"><thead class=\"border-b border-bg-secondary\"><tr class=\"text-left text-sm text-fg-secondary\"><th class=\"pb-2 font-medium\">Name</th><th class=\"pb-2 font-medium\">Type</th><th class=\"pb-2 font-medium\">Status</th></tr></thead> <tbody class=\"text-base\">")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				for _, n := range props.Notifiers {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 45, "<tr class=\"group opacity-60 hover:opacity-100 transition-opacity duration-700 hover:duration-150 border-b border-bg-secondary/50\"><td class=\"py-0\"><a href=\"")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					var templ_7745c5c3_Var18 templ.SafeURL
+					templ_7745c5c3_Var18, templ_7745c5c3_Err = templ.JoinURLErrs("/settings/notifiers/" + strconv.FormatInt(n.ID, 10))
+					if templ_7745c5c3_Err != nil {
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/settings.templ`, Line: 261, Col: 72}
+					}
+					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var18))
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 46, "\" class=\"block py-3\">")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					var templ_7745c5c3_Var19 string
+					templ_7745c5c3_Var19, templ_7745c5c3_Err = templ.JoinStringErrs(n.Name)
+					if templ_7745c5c3_Err != nil {
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/settings.templ`, Line: 261, Col: 102}
+					}
+					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var19))
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 47, "</a></td><td class=\"py-0 text-sm text-fg-secondary\"><a href=\"")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					var templ_7745c5c3_Var20 templ.SafeURL
+					templ_7745c5c3_Var20, templ_7745c5c3_Err = templ.JoinURLErrs("/settings/notifiers/" + strconv.FormatInt(n.ID, 10))
+					if templ_7745c5c3_Err != nil {
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/settings.templ`, Line: 264, Col: 72}
+					}
+					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var20))
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 48, "\" class=\"block py-3\">")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					var templ_7745c5c3_Var21 string
+					templ_7745c5c3_Var21, templ_7745c5c3_Err = templ.JoinStringErrs(n.Type)
+					if templ_7745c5c3_Err != nil {
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/settings.templ`, Line: 264, Col: 102}
+					}
+					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var21))
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 49, "</a></td><td class=\"py-0 text-sm text-fg-secondary\"><a href=\"")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					var templ_7745c5c3_Var22 templ.SafeURL
+					templ_7745c5c3_Var22, templ_7745c5c3_Err = templ.JoinURLErrs("/settings/notifiers/" + strconv.FormatInt(n.ID, 10))
+					if templ_7745c5c3_Err != nil {
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/settings.templ`, Line: 267, Col: 72}
+					}
+					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var22))
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 50, "\" class=\"block py-3\">")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					if n.Enabled == 1 {
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 51, "Enabled")
+						if templ_7745c5c3_Err != nil {
+							return templ_7745c5c3_Err
+						}
+					} else {
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 52, "Disabled")
+						if templ_7745c5c3_Err != nil {
+							return templ_7745c5c3_Err
+						}
+					}
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 53, "</a></td></tr>")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 54, "</tbody></table>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			} else {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 55, "<p class=\"text-sm text-fg-secondary/60 py-6 text-center\">No notifiers configured.</p>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 56, "</div>")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templates.MarkdownCheckboxScript().Render(ctx, templ_7745c5c3_Buffer)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 57, "</div>")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			return nil
+		})
+		templ_7745c5c3_Err = templates.Layout("Settings", templates.NavData{Since: "24h"}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var2), templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -613,7 +609,7 @@ func NotifierForm(form NotifierFormView) templ.Component {
 			templ_7745c5c3_Var23 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 61, "<div id=\"notifier-form-panel\" class=\"mb-8 w-full border border-bg-secondary/70\"><div class=\"flex border-b border-bg-secondary/70 text-sm\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 58, "<div id=\"notifier-form-panel\" class=\"mb-8 w-full border border-bg-secondary/70\"><div class=\"flex border-b border-bg-secondary/70 text-sm\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -622,7 +618,7 @@ func NotifierForm(form NotifierFormView) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 62, "<a href=\"/settings/notifiers/new?type=ntfy\" hx-get=\"/settings/notifiers/new?type=ntfy\" hx-target=\"#notifier-form-panel\" hx-swap=\"outerHTML\" class=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 59, "<a href=\"/settings/notifiers/new?type=ntfy\" hx-get=\"/settings/notifiers/new?type=ntfy\" hx-target=\"#notifier-form-panel\" hx-swap=\"outerHTML\" class=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -635,7 +631,7 @@ func NotifierForm(form NotifierFormView) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 63, "\">ntfy.sh</a> ")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 60, "\">ntfy.sh</a> ")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -644,7 +640,7 @@ func NotifierForm(form NotifierFormView) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 64, "<a href=\"/settings/notifiers/new?type=telegram\" hx-get=\"/settings/notifiers/new?type=telegram\" hx-target=\"#notifier-form-panel\" hx-swap=\"outerHTML\" class=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 61, "<a href=\"/settings/notifiers/new?type=telegram\" hx-get=\"/settings/notifiers/new?type=telegram\" hx-target=\"#notifier-form-panel\" hx-swap=\"outerHTML\" class=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -657,61 +653,61 @@ func NotifierForm(form NotifierFormView) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 65, "\">Telegram</a></div><form action=\"/settings/notifiers\" method=\"POST\" class=\"p-4\"><input type=\"hidden\" name=\"type\" value=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 62, "\">Telegram</a></div><form action=\"/settings/notifiers\" method=\"POST\" class=\"p-4\"><input type=\"hidden\" name=\"type\" value=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var28 string
 		templ_7745c5c3_Var28, templ_7745c5c3_Err = templ.ResolveAttributeValue(form.ActiveType)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/settings.templ`, Line: 321, Col: 59}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/settings.templ`, Line: 308, Col: 59}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var28)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 66, "\"><div class=\"mb-4 space-y-4\"><div class=\"w-full\"><input type=\"text\" id=\"notifier_name\" name=\"name\" placeholder=\"Name\" required=\"required\" maxlength=\"64\" class=\"w-full max-w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg placeholder:text-fg-secondary/50 md:w-[40ch]\"></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 63, "\"><div class=\"mb-4 space-y-4\"><div class=\"w-full\"><input type=\"text\" id=\"notifier_name\" name=\"name\" placeholder=\"Name\" required=\"required\" maxlength=\"64\" class=\"w-full max-w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg placeholder:text-fg-secondary/50 md:w-[40ch]\"></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if form.ActiveType == "telegram" {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 67, "<div class=\"w-full\"><input type=\"text\" id=\"telegram_token\" name=\"telegram_token\" placeholder=\"Bot token\" required=\"required\" class=\"w-full max-w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg placeholder:text-fg-secondary/50 md:w-[40ch]\"></div><div class=\"w-full\"><input type=\"text\" id=\"telegram_chat_id\" name=\"telegram_chat_id\" placeholder=\"Chat ID\" required=\"required\" class=\"w-full max-w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg placeholder:text-fg-secondary/50 md:w-[20ch]\"></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 64, "<div class=\"w-full\"><input type=\"text\" id=\"telegram_token\" name=\"telegram_token\" placeholder=\"Bot token\" required=\"required\" class=\"w-full max-w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg placeholder:text-fg-secondary/50 md:w-[40ch]\"></div><div class=\"w-full\"><input type=\"text\" id=\"telegram_chat_id\" name=\"telegram_chat_id\" placeholder=\"Chat ID\" required=\"required\" class=\"w-full max-w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg placeholder:text-fg-secondary/50 md:w-[20ch]\"></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		} else if form.ActiveType == "ntfy" {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 68, "<div class=\"w-full\"><input type=\"url\" id=\"ntfy_url\" name=\"ntfy_url\" value=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 65, "<div class=\"w-full\"><input type=\"url\" id=\"ntfy_url\" name=\"ntfy_url\" value=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var29 string
 			templ_7745c5c3_Var29, templ_7745c5c3_Err = templ.ResolveAttributeValue(form.NtfyURL)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/settings.templ`, Line: 339, Col: 74}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/settings.templ`, Line: 325, Col: 74}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var29)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 69, "\" required=\"required\" placeholder=\"Server URL\" class=\"w-full max-w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg placeholder:text-fg-secondary/50 md:w-[48ch]\"></div><div class=\"w-full\"><input type=\"text\" id=\"ntfy_topic\" name=\"ntfy_topic\" value=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 66, "\" required=\"required\" placeholder=\"Server URL\" class=\"w-full max-w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg placeholder:text-fg-secondary/50 md:w-[48ch]\"></div><div class=\"w-full\"><input type=\"text\" id=\"ntfy_topic\" name=\"ntfy_topic\" value=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var30 string
 			templ_7745c5c3_Var30, templ_7745c5c3_Err = templ.ResolveAttributeValue(form.NtfyTopic)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/settings.templ`, Line: 344, Col: 81}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/settings.templ`, Line: 330, Col: 81}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var30)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 70, "\" required=\"required\" placeholder=\"Topic\" maxlength=\"64\" class=\"w-full max-w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg placeholder:text-fg-secondary/50 md:w-[64ch]\"></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 67, "\" required=\"required\" placeholder=\"Topic\" maxlength=\"64\" class=\"w-full max-w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg placeholder:text-fg-secondary/50 md:w-[64ch]\"></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 71, "</div><button type=\"submit\" class=\"text-sm text-fg border border-fg px-4 py-2 hover:bg-fg hover:text-bg transition-colors\">Add Notifier</button></form></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 68, "</div><button type=\"submit\" class=\"text-sm text-fg border border-fg px-4 py-2 hover:bg-fg hover:text-bg transition-colors\">Add Notifier</button></form></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -742,100 +738,100 @@ func NotifierListView(notifiers []NotifierView) templ.Component {
 		}
 		ctx = templ.ClearChildren(ctx)
 		if len(notifiers) == 0 {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 72, "<div class=\"text-sm text-fg-secondary/60 py-4\">No notifiers configured.</div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 69, "<div class=\"text-sm text-fg-secondary/60 py-4\">No notifiers configured.</div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		} else {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 73, "<div class=\"grid gap-3\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 70, "<div class=\"grid gap-3\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			for _, n := range notifiers {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 74, "<div class=\"bg-bg-secondary p-4 flex items-center justify-between\"><div><div class=\"font-medium\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 71, "<div class=\"bg-bg-secondary p-4 flex items-center justify-between\"><div><div class=\"font-medium\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var32 string
 				templ_7745c5c3_Var32, templ_7745c5c3_Err = templ.JoinStringErrs(n.Name)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/settings.templ`, Line: 364, Col: 39}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/settings.templ`, Line: 350, Col: 39}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var32))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 75, "</div><div class=\"text-xs text-fg-secondary\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 72, "</div><div class=\"text-xs text-fg-secondary\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var33 string
 				templ_7745c5c3_Var33, templ_7745c5c3_Err = templ.JoinStringErrs(n.Type)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/settings.templ`, Line: 365, Col: 53}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/settings.templ`, Line: 351, Col: 53}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var33))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 76, "</div></div><div class=\"flex items-center gap-3\"><label class=\"relative inline-flex items-center cursor-pointer\"><input type=\"checkbox\" class=\"sr-only peer\" checked=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 73, "</div></div><div class=\"flex items-center gap-3\"><label class=\"relative inline-flex items-center cursor-pointer\"><input type=\"checkbox\" class=\"sr-only peer\" checked=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var34 string
 				templ_7745c5c3_Var34, templ_7745c5c3_Err = templ.ResolveAttributeValue(n.Enabled == 1)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/settings.templ`, Line: 369, Col: 75}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/settings.templ`, Line: 355, Col: 75}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var34)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 77, "\" hx-put=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 74, "\" hx-put=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var35 string
 				templ_7745c5c3_Var35, templ_7745c5c3_Err = templ.ResolveAttributeValue("/settings/notifiers/" + strconv.FormatInt(n.ID, 10) + "/toggle")
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/settings.templ`, Line: 370, Col: 84}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/settings.templ`, Line: 356, Col: 84}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var35)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 78, "\" hx-swap=\"outerHTML\" hx-target=\"closest .bg-bg-secondary\"><div class=\"w-9 h-5 bg-fg-secondary/30 peer-checked:bg-accent rounded-full after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-bg after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:after:translate-x-full\"></div></label> <a href=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 75, "\" hx-swap=\"outerHTML\" hx-target=\"closest .bg-bg-secondary\"><div class=\"w-9 h-5 bg-fg-secondary/30 peer-checked:bg-accent rounded-full after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-bg after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:after:translate-x-full\"></div></label> <a href=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var36 templ.SafeURL
 				templ_7745c5c3_Var36, templ_7745c5c3_Err = templ.JoinURLErrs("/settings/notifiers/" + strconv.FormatInt(n.ID, 10) + "/subscriptions")
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/settings.templ`, Line: 375, Col: 87}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/settings.templ`, Line: 361, Col: 87}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var36))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 79, "\" class=\"text-xs text-accent hover:underline\">Subscriptions</a> <button hx-delete=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 76, "\" class=\"text-xs text-accent hover:underline\">Subscriptions</a> <button hx-delete=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var37 string
 				templ_7745c5c3_Var37, templ_7745c5c3_Err = templ.ResolveAttributeValue("/settings/notifiers/" + strconv.FormatInt(n.ID, 10))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/settings.templ`, Line: 376, Col: 78}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/settings.templ`, Line: 362, Col: 78}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var37)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 80, "\" hx-confirm=\"Delete notifier?\" class=\"text-xs text-fg-secondary hover:text-red-500 transition-colors\">Delete</button></div></div>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 77, "\" hx-confirm=\"Delete notifier?\" class=\"text-xs text-fg-secondary hover:text-red-500 transition-colors\">Delete</button></div></div>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 81, "</div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 78, "</div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -866,83 +862,83 @@ func CollectorAPIKeyTable(keys []CollectorAPIKeyView) templ.Component {
 			templ_7745c5c3_Var38 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 82, "<table id=\"collector-api-keys-table\" class=\"w-full text-sm\"><thead class=\"border-b border-bg-secondary\"><tr class=\"text-left text-fg-secondary\"><th class=\"pb-2 font-medium\">Name</th><th class=\"pb-2 font-medium\">Key</th><th class=\"pb-2 font-medium\">Last Used</th></tr></thead> <tbody>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 79, "<table id=\"collector-api-keys-table\" class=\"w-full text-sm\"><thead class=\"border-b border-bg-secondary\"><tr class=\"text-left text-fg-secondary\"><th class=\"pb-2 font-medium\">Name</th><th class=\"pb-2 font-medium\">Key</th><th class=\"pb-2 font-medium\">Last Used</th></tr></thead> <tbody>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if len(keys) == 0 {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 83, "<tr><td colspan=\"3\" class=\"text-sm text-fg-secondary/60 py-4\">No API keys configured.</td></tr>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 80, "<tr><td colspan=\"3\" class=\"text-sm text-fg-secondary/60 py-4\">No API keys configured.</td></tr>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
 		for _, k := range keys {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 84, "<tr class=\"border-b border-bg-secondary/50\"><td class=\"py-0\"><a href=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 81, "<tr class=\"border-b border-bg-secondary/50\"><td class=\"py-0\"><a href=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var39 templ.SafeURL
 			templ_7745c5c3_Var39, templ_7745c5c3_Err = templ.JoinURLErrs("/settings/admin/collector-api-keys/" + k.Name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/settings.templ`, Line: 404, Col: 62}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/settings.templ`, Line: 390, Col: 62}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var39))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 85, "\" class=\"block py-3\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 82, "\" class=\"block py-3\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var40 string
 			templ_7745c5c3_Var40, templ_7745c5c3_Err = templ.JoinStringErrs(k.Name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/settings.templ`, Line: 404, Col: 92}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/settings.templ`, Line: 390, Col: 92}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var40))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 86, "</a></td><td class=\"py-0\"><a href=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 83, "</a></td><td class=\"py-0\"><a href=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var41 templ.SafeURL
 			templ_7745c5c3_Var41, templ_7745c5c3_Err = templ.JoinURLErrs("/settings/admin/collector-api-keys/" + k.Name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/settings.templ`, Line: 407, Col: 62}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/settings.templ`, Line: 393, Col: 62}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var41))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 87, "\" class=\"block py-3\"><code class=\"text-sm font-mono\">****")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 84, "\" class=\"block py-3\"><code class=\"text-sm font-mono\">****")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var42 string
 			templ_7745c5c3_Var42, templ_7745c5c3_Err = templ.JoinStringErrs(k.KeySuffix)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/settings.templ`, Line: 407, Col: 133}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/settings.templ`, Line: 393, Col: 133}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var42))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 88, "</code></a></td><td class=\"py-0 text-sm text-fg-secondary\"><a href=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 85, "</code></a></td><td class=\"py-0 text-sm text-fg-secondary\"><a href=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var43 templ.SafeURL
 			templ_7745c5c3_Var43, templ_7745c5c3_Err = templ.JoinURLErrs("/settings/admin/collector-api-keys/" + k.Name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/settings.templ`, Line: 410, Col: 62}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/settings.templ`, Line: 396, Col: 62}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var43))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 89, "\" class=\"block py-3\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 86, "\" class=\"block py-3\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -950,24 +946,111 @@ func CollectorAPIKeyTable(keys []CollectorAPIKeyView) templ.Component {
 				var templ_7745c5c3_Var44 string
 				templ_7745c5c3_Var44, templ_7745c5c3_Err = templ.JoinStringErrs(formatTimestamp(k.LastUsed))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/settings.templ`, Line: 412, Col: 37}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/settings.templ`, Line: 398, Col: 37}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var44))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			} else {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 90, "Never")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 87, "Never")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 91, "</a></td></tr>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 88, "</a></td></tr>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 92, "</tbody></table>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 89, "</tbody></table>")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		return nil
+	})
+}
+
+// ConfigPage renders the configuration page.
+func ConfigPage(props ConfigPageProps) templ.Component {
+	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
+		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
+		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
+			return templ_7745c5c3_CtxErr
+		}
+		templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
+		if !templ_7745c5c3_IsBuffer {
+			defer func() {
+				templ_7745c5c3_BufErr := templruntime.ReleaseBuffer(templ_7745c5c3_Buffer)
+				if templ_7745c5c3_Err == nil {
+					templ_7745c5c3_Err = templ_7745c5c3_BufErr
+				}
+			}()
+		}
+		ctx = templ.InitializeContext(ctx)
+		templ_7745c5c3_Var45 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var45 == nil {
+			templ_7745c5c3_Var45 = templ.NopComponent
+		}
+		ctx = templ.ClearChildren(ctx)
+		templ_7745c5c3_Var46 := templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
+			templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
+			templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
+			if !templ_7745c5c3_IsBuffer {
+				defer func() {
+					templ_7745c5c3_BufErr := templruntime.ReleaseBuffer(templ_7745c5c3_Buffer)
+					if templ_7745c5c3_Err == nil {
+						templ_7745c5c3_Err = templ_7745c5c3_BufErr
+					}
+				}()
+			}
+			ctx = templ.InitializeContext(ctx)
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 90, "<div class=\"max-w-5xl mx-auto p-2 md:p-6\"><div class=\"mb-6\"><h2 class=\"text-xl font-medium\">Configuration</h2><p class=\"text-base text-fg-secondary mt-1\">Changes require restart to take effect.</p></div><form action=\"/settings/config\" method=\"POST\" class=\"max-w-lg border border-bg-secondary/70 p-6\"><h3 class=\"text-lg font-medium mb-4\">Stats Period Thresholds</h3><p class=\"text-sm text-fg-secondary mb-6\">Minimum change required to create a new stats period. Changes below these thresholds are ignored.</p><div class=\"space-y-4\"><div><label class=\"block text-sm text-fg-secondary mb-1\">CPU Delta (%)</label> <input type=\"number\" name=\"cpu_delta_percent\" step=\"0.1\" min=\"0\" value=\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var47 string
+			templ_7745c5c3_Var47, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("%.1f", props.CPUDeltaPercent))
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/settings.templ`, Line: 426, Col: 121}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var47)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 91, "\" class=\"w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg\"><p class=\"text-xs text-fg-secondary/60 mt-1\">Default: 1.0</p></div><div><label class=\"block text-sm text-fg-secondary mb-1\">Memory Delta (KB)</label> <input type=\"number\" name=\"mem_delta_kb\" min=\"0\" value=\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var48 string
+			templ_7745c5c3_Var48, templ_7745c5c3_Err = templ.ResolveAttributeValue(strconv.Itoa(props.MemDeltaKB))
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/settings.templ`, Line: 432, Col: 93}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var48)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 92, "\" class=\"w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg\"><p class=\"text-xs text-fg-secondary/60 mt-1\">Default: 64</p></div><div><label class=\"block text-sm text-fg-secondary mb-1\">Disk Delta (KB)</label> <input type=\"number\" name=\"disk_delta_kb\" min=\"0\" value=\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var49 string
+			templ_7745c5c3_Var49, templ_7745c5c3_Err = templ.ResolveAttributeValue(strconv.Itoa(props.DiskDeltaKB))
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/settings.templ`, Line: 438, Col: 95}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var49)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 93, "\" class=\"w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg\"><p class=\"text-xs text-fg-secondary/60 mt-1\">Default: 1024</p></div></div><div class=\"mt-6 flex gap-3\"><button type=\"submit\" class=\"text-sm text-fg border border-fg px-4 py-2 hover:bg-fg hover:text-bg transition-colors\">Save</button> <a href=\"/settings/\" class=\"text-sm text-fg-secondary hover:text-fg px-4 py-2 transition-colors\">Cancel</a></div></form></div>")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			return nil
+		})
+		templ_7745c5c3_Err = templates.Layout("Configuration", templates.NavData{Since: "24h"}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var46), templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

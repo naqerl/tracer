@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"sync"
 	"syscall"
 	"time"
@@ -46,6 +47,7 @@ func main() {
 		keyName        = flag.String("key-name", "default", "collector API key name for -generate-api-key")
 		noAuth         = flag.Bool("no-auth", false, "disable authentication, inject admin user for all requests")
 		readOnly       = flag.Bool("readonly", false, "allow only GET requests")
+		setCmd         = flag.NewFlagSet("set", flag.ExitOnError)
 	)
 	flag.Parse()
 
@@ -92,6 +94,9 @@ func main() {
 		case "config":
 			handleConfig(flag.Args()[1:])
 			return
+		case "set":
+			handleSet(cfgPath, setCmd)
+			return
 		default:
 			log.Fatalf("Unknown command: %s\n", flag.Arg(0))
 		}
@@ -102,6 +107,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to load config: %s", err)
 	}
+	cfgObj := config.New(cfg, cfgPath)
 
 	sysinstall.RequireServiceUser(build.PanelUser, build.TracerGroup)
 
@@ -116,7 +122,7 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	if err := serve(ctx, cfg, *noAuth, *readOnly); err != nil {
+	if err := serve(ctx, cfgObj, *noAuth, *readOnly); err != nil {
 		log.Fatalf("failed to serve: %s", err)
 	}
 }
@@ -160,11 +166,11 @@ func initPanelCmd(username, password string) error {
 	return nil
 }
 
-func serve(ctx context.Context, cfg config.Panel, noAuth, readOnly bool) error {
+func serve(ctx context.Context, cfg *config.Config, noAuth, readOnly bool) error {
 	var wg sync.WaitGroup
 
 	// Initialize database manager
-	dbManager, err := dbmanager.New(cfg.DataDir)
+	dbManager, err := dbmanager.New(cfg.GetDataDir())
 	if err != nil {
 		return fmt.Errorf("create database manager: %w", err)
 	}
@@ -178,7 +184,7 @@ func serve(ctx context.Context, cfg config.Panel, noAuth, readOnly bool) error {
 	slog.Info("Migrations complete")
 
 	// Initialize panel database and run migrations
-	panelHandle, err := dbmanager.OpenPanelDB(cfg.DataDir)
+	panelHandle, err := dbmanager.OpenPanelDB(cfg.GetDataDir())
 	if err != nil {
 		return fmt.Errorf("initialize panel database: %w", err)
 	}
@@ -196,7 +202,7 @@ func serve(ctx context.Context, cfg config.Panel, noAuth, readOnly bool) error {
 
 	if !hasUsers {
 		slog.Info("No users found. Visit /setup to create the admin account.",
-			"url", fmt.Sprintf("http://localhost:%s/setup", cfg.Port))
+			"url", fmt.Sprintf("http://localhost:%s/setup", cfg.GetPort()))
 	} else {
 		collectorKeys, err := authService.ListCollectorAPIKeys(ctx)
 		if err != nil {
@@ -220,12 +226,12 @@ func serve(ctx context.Context, cfg config.Panel, noAuth, readOnly bool) error {
 
 	// Initialize ingest service
 	alertFormatter := func(collectorName, appName string, logID int64) string {
-		return fmt.Sprintf("%s/panel/collectors/%s/apps/%s/logs/%d", cfg.Host, collectorName, appName, logID)
+		return fmt.Sprintf("%s/panel/collectors/%s/apps/%s/logs/%d", cfg.GetHost(), collectorName, appName, logID)
 	}
-	ingestService := ingest.New(dbManager, notifyChan, alertFormatter, cfg.SampleRate)
+	ingestService := ingest.New(dbManager, notifyChan, alertFormatter, cfg)
 
 	// Initialize retention service
-	retentionService := retention.New(dbManager, ingestService, cfg.RetentionDays)
+	retentionService := retention.New(dbManager, ingestService, cfg)
 
 	// Initialize collector tracker
 	tracker := ingest.NewTracker()
@@ -274,8 +280,9 @@ func serve(ctx context.Context, cfg config.Panel, noAuth, readOnly bool) error {
 		Tracker:      tracker,
 		Topology:     topologyService,
 		PanelService: panelService,
+		Config:       cfg,
 	}
-	server := web.NewServer(deps, cfg.Port, noAuth, readOnly)
+	server := web.NewServer(deps, cfg.GetPort(), noAuth, readOnly)
 
 	// Handle server shutdown
 	wg.Go(func() {
@@ -294,7 +301,7 @@ func serve(ctx context.Context, cfg config.Panel, noAuth, readOnly bool) error {
 	})
 
 	// Start server
-	slog.Info("Server starting", "addr", ":"+cfg.Port)
+	slog.Info("Server starting", "addr", ":"+cfg.GetPort())
 	if err := server.ListenAndServe(); err != http.ErrServerClosed {
 		return fmt.Errorf("server error: %w", err)
 	}
@@ -332,6 +339,58 @@ func handleConfig(args []string) {
 	if err := install.RunConfig(args[0]); err != nil {
 		log.Fatalf("Config failed: %v", err)
 	}
+}
+
+func handleSet(cfgPath string, setCmd *flag.FlagSet) {
+	setCmd.Parse(flag.Args()[1:])
+	remaining := setCmd.Args()
+
+	if len(remaining) < 2 {
+		log.Fatal("Usage: tracer-panel set <key> <value>")
+	}
+
+	key := remaining[0]
+	value := remaining[1]
+
+	cfg, err := config.LoadRaw(cfgPath)
+	if err != nil {
+		log.Fatalf("Failed to load config: %s", err)
+	}
+
+	switch key {
+	case "host":
+		cfg.Host = value
+	case "port":
+		cfg.Port = value
+	case "data_dir":
+		cfg.DataDir = value
+	case "cpu_delta_percent":
+		v, err := strconv.ParseFloat(value, 64)
+		if err != nil {
+			log.Fatalf("Invalid value for cpu_delta_percent: %s", value)
+		}
+		cfg.CPUDeltaPercent = v
+	case "mem_delta_kb":
+		v, err := strconv.Atoi(value)
+		if err != nil {
+			log.Fatalf("Invalid value for mem_delta_kb: %s", value)
+		}
+		cfg.MemDeltaKB = v
+	case "disk_delta_kb":
+		v, err := strconv.Atoi(value)
+		if err != nil {
+			log.Fatalf("Invalid value for disk_delta_kb: %s", value)
+		}
+		cfg.DiskDeltaKB = v
+	default:
+		log.Fatalf("Unknown key: %s. Supported keys: host, port, data_dir, cpu_delta_percent, mem_delta_kb, disk_delta_kb", key)
+	}
+
+	if err := cfg.Persist(cfgPath); err != nil {
+		log.Fatalf("Failed to write config: %s", err)
+	}
+
+	fmt.Printf("Set %s successfully\n", key)
 }
 
 // resolveConfigPath resolves the config path from flag, env var, or default.

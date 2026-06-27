@@ -18,68 +18,60 @@ type NotifierDetailProps struct {
 
 // NotifierDetail renders the notifier detail page.
 templ NotifierDetail(props NotifierDetailProps) {
-	<!DOCTYPE html>
-	<html lang="en">
-		<head>
-			@templates.Head()
-			<title>{ props.Title } - Tracer</title>
-		</head>
-		<body>
-			@templates.Navbar(templates.NavData{Since: "24h"})
-			<div class="max-w-5xl mx-auto p-6">
-				<div class="mb-6">
-					<a href="/settings" class="text-sm text-fg-secondary hover:text-fg transition-colors">&larr; Back to Settings</a>
-				</div>
+	@templates.Layout("Notifier", templates.NavData{Since: "24h"}) {
+		<div class="max-w-5xl mx-auto p-6">
+			<div class="mb-6">
+				<a href="/settings" class="text-sm text-fg-secondary hover:text-fg transition-colors">&larr; Back to Settings</a>
+			</div>
 
-				<div class="mb-6 flex items-center justify-between gap-4">
-					<h2 class="text-xl font-medium">Notifier</h2>
-					<button hx-delete={ "/settings/notifiers/" + strconv.FormatInt(props.NotifierID, 10) }
-							hx-confirm={ "Delete notifier " + props.NotifierName + "?" }
-							hx-target="body" hx-swap="outerHTML"
-							class="text-sm text-fg-secondary hover:text-red-500 underline transition-colors">Delete</button>
-				</div>
+			<div class="mb-6 flex items-center justify-between gap-4">
+				<h2 class="text-xl font-medium">Notifier</h2>
+				<button hx-delete={ "/settings/notifiers/" + strconv.FormatInt(props.NotifierID, 10) }
+						hx-confirm={ "Delete notifier " + props.NotifierName + "?" }
+						hx-target="body" hx-swap="outerHTML"
+						class="text-sm text-fg-secondary hover:text-red-500 underline transition-colors">Delete</button>
+			</div>
 
-				<div class="mb-8">
-					<div class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
-						<span class="text-fg-secondary">Name:</span>
-						<span>{ props.NotifierName }</span>
+			<div class="mb-8">
+				<div class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
+					<span class="text-fg-secondary">Name:</span>
+					<span>{ props.NotifierName }</span>
 
-						<span class="text-fg-secondary">Type:</span>
-						<span>{ props.NotifierType }</span>
+					<span class="text-fg-secondary">Type:</span>
+					<span>{ props.NotifierType }</span>
 
-						<span class="text-fg-secondary">Status:</span>
-						<span class="flex items-center gap-3">
+					<span class="text-fg-secondary">Status:</span>
+					<span class="flex items-center gap-3">
+						if props.Enabled == 1 {
+							Enabled
+						} else {
+							Disabled
+						}
+						<button hx-put={ "/settings/notifiers/" + strconv.FormatInt(props.NotifierID, 10) + "/toggle" }
+								hx-target="body" hx-swap="outerHTML"
+								class="text-sm text-fg-secondary hover:text-fg transition-colors">
 							if props.Enabled == 1 {
-								Enabled
+								Disable
 							} else {
-								Disabled
+								Enable
 							}
-							<button hx-put={ "/settings/notifiers/" + strconv.FormatInt(props.NotifierID, 10) + "/toggle" }
-									hx-target="body" hx-swap="outerHTML"
-									class="text-sm text-fg-secondary hover:text-fg transition-colors">
-								if props.Enabled == 1 {
-									Disable
-								} else {
-									Enable
-								}
-							</button>
-						</span>
-					</div>
-				</div>
-
-				<div class="mb-8">
-					<h3 class="text-sm text-fg-secondary mb-3">Config</h3>
-					@templates.JSONViewerFull(props.Config, true)
-				</div>
-
-				<div class="mb-6">
-					<h3 class="text-xl font-medium mb-4">Subscriptions</h3>
-					@NotifierSubscriptionsForm(props)
+						</button>
+					</span>
 				</div>
 			</div>
-			@templates.MarkdownCheckboxScript()
-		</body>
-	</html>
+
+			<div class="mb-8">
+				<h3 class="text-sm text-fg-secondary mb-3">Config</h3>
+				@templates.JSONViewerFull(props.Config, true)
+			</div>
+
+			<div class="mb-6">
+				<h3 class="text-xl font-medium mb-4">Subscriptions</h3>
+				@NotifierSubscriptionsForm(props)
+			</div>
+		</div>
+		@templates.MarkdownCheckboxScript()
+	}
 }
 
 // NotifierSubscriptionsForm renders the subscriptions form for a notifier.

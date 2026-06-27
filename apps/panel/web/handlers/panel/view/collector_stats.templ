@@ -83,9 +83,7 @@ templ CollectorStatsData(props CollectorStatsProps) {
 		</div>
 
 		<!-- CPU Periods Table -->
-		<details class="mt-6" if len(props.CPUPeriods) > 0 {
-			open
-		}>
+		<details class="mt-6">
 			<summary class="cursor-pointer text-sm text-fg-secondary hover:text-fg transition-colors mb-2">CPU Periods ({ strconv.Itoa(len(props.CPUPeriods)) })</summary>
 			<table id="cpu-periods" class="stats-table text-sm">
 				<thead>
@@ -116,9 +114,7 @@ templ CollectorStatsData(props CollectorStatsProps) {
 		</details>
 
 		<!-- Memory Periods Table -->
-		<details class="mt-4" if len(props.MemPeriods) > 0 {
-			open
-		}>
+		<details class="mt-4">
 			<summary class="cursor-pointer text-sm text-fg-secondary hover:text-fg transition-colors mb-2">Memory Periods ({ strconv.Itoa(len(props.MemPeriods)) })</summary>
 			<table id="mem-periods" class="stats-table text-sm">
 				<thead>
@@ -161,9 +157,7 @@ templ CollectorStatsData(props CollectorStatsProps) {
 		</details>
 
 		<!-- Disk Periods Table -->
-		<details class="mt-4" if len(props.DiskPeriods) > 0 {
-			open
-		}>
+		<details class="mt-4">
 			<summary class="cursor-pointer text-sm text-fg-secondary hover:text-fg transition-colors mb-2">Disk Periods ({ strconv.Itoa(len(props.DiskPeriods)) })</summary>
 			<table id="disk-periods" class="stats-table text-sm">
 				<thead>

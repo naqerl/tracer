@@ -1,6 +1,7 @@
 package web
 
 import (
+	"tracer/apps/panel/internal/config"
 	"tracer/apps/panel/internal/dbmanager"
 	"tracer/apps/panel/internal/services/auth"
 	"tracer/apps/panel/internal/services/ingest"
@@ -19,4 +20,5 @@ type Dependencies struct {
 	Tracker      *ingest.Tracker
 	Topology     *topologysvc.Service
 	PanelService *panelsvc.Service
+	Config       *config.Config
 }

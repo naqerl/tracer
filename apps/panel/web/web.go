@@ -40,7 +40,7 @@ func NewServer(deps Dependencies, port string, noAuth bool, readOnly bool) *http
 	mux.Handle("/topology/", http.StripPrefix("/topology", topology.InitMux(deps.Topology, deps.User)))
 	mux.Handle("/auth/", http.StripPrefix("/auth", authMux))
 	mux.Handle("/llm", llm.InitMux())
-	mux.Handle("/settings/", http.StripPrefix("/settings", settings.InitMux(deps.Auth, deps.User, deps.Ingest, deps.DBManagerx, deps.Notify)))
+	mux.Handle("/settings/", http.StripPrefix("/settings", settings.InitMux(deps.Auth, deps.User, deps.Ingest, deps.DBManagerx, deps.Notify, deps.Config)))
 
 	markdownMiddleware := middleware.BuildMarkdownMiddleware()
 	loginPathMiddleware := authmw.BuildLoginPathMiddleware("/auth/login")

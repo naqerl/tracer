@@ -180,87 +180,77 @@ func CollectorStatsData(props CollectorStatsProps) templ.Component {
 		}
 		ctx = templ.ClearChildren(ctx)
 		if len(props.CPUPeriods) > 0 || len(props.MemPeriods) > 0 || len(props.DiskPeriods) > 0 {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "<!-- Charts Container --> <div id=\"charts-container\"><div id=\"cpu-chart\"></div><div id=\"ram-chart\"></div><div id=\"disk-chart\"></div></div><!-- CPU Periods Table --> <details class=\"mt-6\"")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			if len(props.CPUPeriods) > 0 {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, " open")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "><summary class=\"cursor-pointer text-sm text-fg-secondary hover:text-fg transition-colors mb-2\">CPU Periods (")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "<!-- Charts Container --> <div id=\"charts-container\"><div id=\"cpu-chart\"></div><div id=\"ram-chart\"></div><div id=\"disk-chart\"></div></div><!-- CPU Periods Table --> <details class=\"mt-6\"><summary class=\"cursor-pointer text-sm text-fg-secondary hover:text-fg transition-colors mb-2\">CPU Periods (")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var6 string
 			templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.JoinStringErrs(strconv.Itoa(len(props.CPUPeriods)))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/panel/view/collector_stats.templ`, Line: 89, Col: 148}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/panel/view/collector_stats.templ`, Line: 87, Col: 148}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var6))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, ")</summary><table id=\"cpu-periods\" class=\"stats-table text-sm\"><thead><tr><th>From</th><th>To</th><th>CPU %</th></tr></thead> <tbody>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, ")</summary><table id=\"cpu-periods\" class=\"stats-table text-sm\"><thead><tr><th>From</th><th>To</th><th>CPU %</th></tr></thead> <tbody>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			for _, p := range props.CPUPeriods {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "<tr data-start=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "<tr data-start=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var7 string
 				templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.ResolveAttributeValue(strconv.FormatInt(p.PeriodStart, 10))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/panel/view/collector_stats.templ`, Line: 100, Col: 59}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/panel/view/collector_stats.templ`, Line: 98, Col: 59}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var7)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "\" data-end=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "\" data-end=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var8 string
 				templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.ResolveAttributeValue(strconv.FormatInt(p.PeriodEnd, 10))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/panel/view/collector_stats.templ`, Line: 101, Col: 55}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/panel/view/collector_stats.templ`, Line: 99, Col: 55}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var8)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "\" data-value=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "\" data-value=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var9 string
 				templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("%f", p.UsagePercent))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/panel/view/collector_stats.templ`, Line: 102, Col: 56}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/panel/view/collector_stats.templ`, Line: 100, Col: 56}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var9)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, "\"><td>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "\"><td>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var10 string
 				templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinStringErrs(time.Unix(p.PeriodStart, 0).Format("15:04:05"))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/panel/view/collector_stats.templ`, Line: 103, Col: 59}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/panel/view/collector_stats.templ`, Line: 101, Col: 59}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, "</td><td>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "</td><td>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -268,130 +258,120 @@ func CollectorStatsData(props CollectorStatsProps) templ.Component {
 					var templ_7745c5c3_Var11 string
 					templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinStringErrs(time.Unix(p.PeriodEnd, 0).Format("15:04:05"))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/panel/view/collector_stats.templ`, Line: 106, Col: 55}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/panel/view/collector_stats.templ`, Line: 104, Col: 55}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var11))
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 				} else {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, "now")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, "now")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "</td><td>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, "</td><td>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var12 string
 				templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%.1f", p.UsagePercent))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/panel/view/collector_stats.templ`, Line: 111, Col: 48}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/panel/view/collector_stats.templ`, Line: 109, Col: 48}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var12))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 19, "%</td></tr>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, "%</td></tr>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 20, "</tbody></table></details><!-- Memory Periods Table --> <details class=\"mt-4\"")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			if len(props.MemPeriods) > 0 {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, " open")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 22, "><summary class=\"cursor-pointer text-sm text-fg-secondary hover:text-fg transition-colors mb-2\">Memory Periods (")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "</tbody></table></details><!-- Memory Periods Table --> <details class=\"mt-4\"><summary class=\"cursor-pointer text-sm text-fg-secondary hover:text-fg transition-colors mb-2\">Memory Periods (")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var13 string
 			templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.JoinStringErrs(strconv.Itoa(len(props.MemPeriods)))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/panel/view/collector_stats.templ`, Line: 122, Col: 151}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/panel/view/collector_stats.templ`, Line: 118, Col: 151}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var13))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, ")</summary><table id=\"mem-periods\" class=\"stats-table text-sm\"><thead><tr><th>From</th><th>To</th><th>Used MB</th><th>Total MB</th><th>Used %</th></tr></thead> <tbody>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 19, ")</summary><table id=\"mem-periods\" class=\"stats-table text-sm\"><thead><tr><th>From</th><th>To</th><th>Used MB</th><th>Total MB</th><th>Used %</th></tr></thead> <tbody>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			for _, p := range props.MemPeriods {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "<tr data-start=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 20, "<tr data-start=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var14 string
 				templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.ResolveAttributeValue(strconv.FormatInt(p.PeriodStart, 10))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/panel/view/collector_stats.templ`, Line: 135, Col: 59}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/panel/view/collector_stats.templ`, Line: 131, Col: 59}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var14)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 25, "\" data-end=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, "\" data-end=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var15 string
 				templ_7745c5c3_Var15, templ_7745c5c3_Err = templ.ResolveAttributeValue(strconv.FormatInt(p.PeriodEnd, 10))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/panel/view/collector_stats.templ`, Line: 136, Col: 55}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/panel/view/collector_stats.templ`, Line: 132, Col: 55}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var15)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 26, "\" data-used=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 22, "\" data-used=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var16 string
 				templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.ResolveAttributeValue(strconv.FormatInt(p.UsedMb, 10))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/panel/view/collector_stats.templ`, Line: 137, Col: 53}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/panel/view/collector_stats.templ`, Line: 133, Col: 53}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var16)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 27, "\" data-total=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, "\" data-total=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var17 string
 				templ_7745c5c3_Var17, templ_7745c5c3_Err = templ.ResolveAttributeValue(strconv.FormatInt(p.TotalMb, 10))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/panel/view/collector_stats.templ`, Line: 138, Col: 55}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/panel/view/collector_stats.templ`, Line: 134, Col: 55}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var17)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 28, "\"><td>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "\"><td>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var18 string
 				templ_7745c5c3_Var18, templ_7745c5c3_Err = templ.JoinStringErrs(time.Unix(p.PeriodStart, 0).Format("15:04:05"))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/panel/view/collector_stats.templ`, Line: 139, Col: 59}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/panel/view/collector_stats.templ`, Line: 135, Col: 59}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var18))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 29, "</td><td>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 25, "</td><td>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -399,45 +379,45 @@ func CollectorStatsData(props CollectorStatsProps) templ.Component {
 					var templ_7745c5c3_Var19 string
 					templ_7745c5c3_Var19, templ_7745c5c3_Err = templ.JoinStringErrs(time.Unix(p.PeriodEnd, 0).Format("15:04:05"))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/panel/view/collector_stats.templ`, Line: 142, Col: 55}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/panel/view/collector_stats.templ`, Line: 138, Col: 55}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var19))
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 				} else {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 30, "now")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 26, "now")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 31, "</td><td>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 27, "</td><td>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var20 string
 				templ_7745c5c3_Var20, templ_7745c5c3_Err = templ.JoinStringErrs(strconv.FormatInt(p.UsedMb, 10))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/panel/view/collector_stats.templ`, Line: 147, Col: 44}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/panel/view/collector_stats.templ`, Line: 143, Col: 44}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var20))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 32, " MB</td><td>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 28, " MB</td><td>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var21 string
 				templ_7745c5c3_Var21, templ_7745c5c3_Err = templ.JoinStringErrs(strconv.FormatInt(p.TotalMb, 10))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/panel/view/collector_stats.templ`, Line: 148, Col: 45}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/panel/view/collector_stats.templ`, Line: 144, Col: 45}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var21))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 33, " MB</td><td>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 29, " MB</td><td>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -450,98 +430,88 @@ func CollectorStatsData(props CollectorStatsProps) templ.Component {
 						return "0.0"
 					}())
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/panel/view/collector_stats.templ`, Line: 155, Col: 11}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/panel/view/collector_stats.templ`, Line: 151, Col: 11}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var22))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 34, "%</td></tr>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 30, "%</td></tr>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 35, "</tbody></table></details><!-- Disk Periods Table --> <details class=\"mt-4\"")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			if len(props.DiskPeriods) > 0 {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 36, " open")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 37, "><summary class=\"cursor-pointer text-sm text-fg-secondary hover:text-fg transition-colors mb-2\">Disk Periods (")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 31, "</tbody></table></details><!-- Disk Periods Table --> <details class=\"mt-4\"><summary class=\"cursor-pointer text-sm text-fg-secondary hover:text-fg transition-colors mb-2\">Disk Periods (")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var23 string
 			templ_7745c5c3_Var23, templ_7745c5c3_Err = templ.JoinStringErrs(strconv.Itoa(len(props.DiskPeriods)))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/panel/view/collector_stats.templ`, Line: 167, Col: 150}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/panel/view/collector_stats.templ`, Line: 161, Col: 150}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var23))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 38, ")</summary><table id=\"disk-periods\" class=\"stats-table text-sm\"><thead><tr><th>From</th><th>To</th><th>Available GB</th></tr></thead> <tbody>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 32, ")</summary><table id=\"disk-periods\" class=\"stats-table text-sm\"><thead><tr><th>From</th><th>To</th><th>Available GB</th></tr></thead> <tbody>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			for _, p := range props.DiskPeriods {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 39, "<tr data-start=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 33, "<tr data-start=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var24 string
 				templ_7745c5c3_Var24, templ_7745c5c3_Err = templ.ResolveAttributeValue(strconv.FormatInt(p.PeriodStart, 10))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/panel/view/collector_stats.templ`, Line: 178, Col: 59}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/panel/view/collector_stats.templ`, Line: 172, Col: 59}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var24)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 40, "\" data-end=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 34, "\" data-end=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var25 string
 				templ_7745c5c3_Var25, templ_7745c5c3_Err = templ.ResolveAttributeValue(strconv.FormatInt(p.PeriodEnd, 10))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/panel/view/collector_stats.templ`, Line: 179, Col: 55}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/panel/view/collector_stats.templ`, Line: 173, Col: 55}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var25)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 41, "\" data-value=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 35, "\" data-value=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var26 string
 				templ_7745c5c3_Var26, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("%f", p.AvailGb))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/panel/view/collector_stats.templ`, Line: 180, Col: 51}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/panel/view/collector_stats.templ`, Line: 174, Col: 51}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var26)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 42, "\"><td>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 36, "\"><td>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var27 string
 				templ_7745c5c3_Var27, templ_7745c5c3_Err = templ.JoinStringErrs(time.Unix(p.PeriodStart, 0).Format("15:04:05"))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/panel/view/collector_stats.templ`, Line: 181, Col: 59}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/panel/view/collector_stats.templ`, Line: 175, Col: 59}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var27))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 43, "</td><td>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 37, "</td><td>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -549,42 +519,42 @@ func CollectorStatsData(props CollectorStatsProps) templ.Component {
 					var templ_7745c5c3_Var28 string
 					templ_7745c5c3_Var28, templ_7745c5c3_Err = templ.JoinStringErrs(time.Unix(p.PeriodEnd, 0).Format("15:04:05"))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/panel/view/collector_stats.templ`, Line: 184, Col: 55}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/panel/view/collector_stats.templ`, Line: 178, Col: 55}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var28))
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 				} else {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 44, "now")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 38, "now")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 45, "</td><td>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 39, "</td><td>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var29 string
 				templ_7745c5c3_Var29, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%.1f", p.AvailGb))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/panel/view/collector_stats.templ`, Line: 189, Col: 43}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/panel/view/collector_stats.templ`, Line: 183, Col: 43}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var29))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 46, " GB</td></tr>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 40, " GB</td></tr>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 47, "</tbody></table></details><!-- Chart Rendering Script --> <script>\n\t\t\t(function() {\n\t\t\t\tfunction initCharts() {\n\t\t\t\t\tif (typeof uPlot === 'undefined') {\n\t\t\t\t\t\tsetTimeout(initCharts, 50);\n\t\t\t\t\t\treturn;\n\t\t\t\t\t}\n\t\t\t\t\trenderCharts();\n\t\t\t\t}\n\t\t\t\t\n\t\t\t\tfunction renderCharts() {\n\t\t\t\tconst containerWidth = document.getElementById('charts-container').offsetWidth;\n\t\t\t\tconst isMobile = window.innerWidth < 768;\n\t\t\t\tconst commonOpts = {\n\t\t\t\t\twidth: containerWidth,\n\t\t\t\t\theight: isMobile ? 200 : 250,\n\t\t\t\t\tscales: {\n\t\t\t\t\t\tx: { time: true }\n\t\t\t\t\t},\n\t\t\t\t\taxes: [\n\t\t\t\t\t\t{ \n\t\t\t\t\t\t\tstroke: \"#808080\",\n\t\t\t\t\t\t\tgrid: { stroke: \"#1E1E1E\", width: 1 },\n\t\t\t\t\t\t\tsize: isMobile ? 40 : 50\n\t\t\t\t\t\t},\n\t\t\t\t\t\t{ \n\t\t\t\t\t\t\tstroke: \"#808080\",\n\t\t\t\t\t\t\tsize: isMobile ? 50 : 60,\n\t\t\t\t\t\t\tgrid: { stroke: \"#1E1E1E\", width: 1 }\n\t\t\t\t\t\t}\n\t\t\t\t\t],\n\t\t\t\t\tlegend: { show: false },\n\t\t\t\t\tcursor: {\n\t\t\t\t\t\tdrag: { x: false, y: false },\n\t\t\t\t\t\tfocus: { prox: isMobile ? 50 : 30 },\n\t\t\t\t\t\tpoints: {\n\t\t\t\t\t\t\tsize: isMobile ? 6 : 8,\n\t\t\t\t\t\t\twidth: 2\n\t\t\t\t\t\t}\n\t\t\t\t\t}\n\t\t\t\t};\n\n\t\t\t\t// Store chart instances for resize handling\n\t\t\t\tconst instances = [];\n\n\t\t\t\t// Build stepped data from periods: each period becomes two points (start, end)\n\t\t\t\t// For open periods (end=0), emit current time as endpoint so the line extends to \"now\"\n\t\t\t\tfunction periodsToSeries(rows, valueKey) {\n\t\t\t\t\tconst timestamps = [];\n\t\t\t\t\tconst values = [];\n\t\t\t\t\trows.forEach(row => {\n\t\t\t\t\t\tconst start = parseInt(row.dataset.start);\n\t\t\t\t\t\tconst end = parseInt(row.dataset.end);\n\t\t\t\t\t\tconst val = parseFloat(row.dataset[valueKey]);\n\t\t\t\t\t\ttimestamps.push(start);\n\t\t\t\t\t\tvalues.push(val);\n\t\t\t\t\t\tif (end > 0) {\n\t\t\t\t\t\t\ttimestamps.push(end);\n\t\t\t\t\t\t\tvalues.push(val);\n\t\t\t\t\t\t} else {\n\t\t\t\t\t\t\t// Open period: extend to current time\n\t\t\t\t\t\t\ttimestamps.push(Math.floor(Date.now() / 1000));\n\t\t\t\t\t\t\tvalues.push(val);\n\t\t\t\t\t\t}\n\t\t\t\t\t});\n\t\t\t\t\t// Sort by timestamp\n\t\t\t\t\tconst indices = timestamps.map((_, i) => i).sort((a, b) => timestamps[a] - timestamps[b]);\n\t\t\t\t\treturn [\n\t\t\t\t\t\tindices.map(i => timestamps[i]),\n\t\t\t\t\t\tindices.map(i => values[i])\n\t\t\t\t\t];\n\t\t\t\t}\n\n\t\t\t\tconst cpuRows = document.querySelectorAll('#cpu-periods tbody tr');\n\t\t\t\tif (cpuRows.length > 0) {\n\t\t\t\t\tconst [cpuTs, cpuVals] = periodsToSeries(cpuRows, 'value');\n\t\t\t\t\tinstances.push(new uPlot({\n\t\t\t\t\t\t...commonOpts,\n\t\t\t\t\t\ttitle: \"CPU Usage\",\n\t\t\t\t\t\tseries: [\n\t\t\t\t\t\t\t{ },\n\t\t\t\t\t\t\t{ \n\t\t\t\t\t\t\t\tlabel: \"CPU %\", \n\t\t\t\t\t\t\t\tstroke: \"#5C9CF5\", \n\t\t\t\t\t\t\t\tfill: \"rgba(92, 156, 245, 0.1)\",\n\t\t\t\t\t\t\t\twidth: 2\n\t\t\t\t\t\t\t}\n\t\t\t\t\t\t],\n\t\t\t\t\t\taxes: [\n\t\t\t\t\t\t\tcommonOpts.axes[0],\n\t\t\t\t\t\t\t{ \n\t\t\t\t\t\t\t\t...commonOpts.axes[1],\n\t\t\t\t\t\t\t\tvalues: (u, vals) => vals.map(v => v.toFixed(1) + '%')\n\t\t\t\t\t\t\t}\n\t\t\t\t\t\t],\n\t\t\t\t\t}, [cpuTs, cpuVals], document.getElementById('cpu-chart')));\n\t\t\t\t}\n\n\t\t\t\tconst memRows = document.querySelectorAll('#mem-periods tbody tr');\n\t\t\t\tif (memRows.length > 0) {\n\t\t\t\t\tconst timestamps = [];\n\t\t\t\t\tconst values = [];\n\t\t\t\t\tmemRows.forEach(row => {\n\t\t\t\t\t\tconst start = parseInt(row.dataset.start);\n\t\t\t\t\t\tconst end = parseInt(row.dataset.end);\n\t\t\t\t\t\tconst total = parseInt(row.dataset.total);\n\t\t\t\t\t\tconst used = parseInt(row.dataset.used);\n\t\t\t\t\t\tconst pct = total > 0 ? (used / total) * 100 : 0;\n\t\t\t\t\t\ttimestamps.push(start);\n\t\t\t\t\t\tvalues.push(pct);\n\t\t\t\t\t\tif (end > 0) {\n\t\t\t\t\t\t\ttimestamps.push(end);\n\t\t\t\t\t\t\tvalues.push(pct);\n\t\t\t\t\t\t} else {\n\t\t\t\t\t\t\t// Open period: extend to current time\n\t\t\t\t\t\t\ttimestamps.push(Math.floor(Date.now() / 1000));\n\t\t\t\t\t\t\tvalues.push(pct);\n\t\t\t\t\t\t}\n\t\t\t\t\t});\n\t\t\t\t\tconst indices = timestamps.map((_, i) => i).sort((a, b) => timestamps[a] - timestamps[b]);\n\t\t\t\t\tconst sortedTs = indices.map(i => timestamps[i]);\n\t\t\t\t\tconst sortedVals = indices.map(i => values[i]);\n\n\t\t\t\t\tinstances.push(new uPlot({\n\t\t\t\t\t\t...commonOpts,\n\t\t\t\t\t\ttitle: \"RAM Usage\",\n\t\t\t\t\t\tseries: [\n\t\t\t\t\t\t\t{ },\n\t\t\t\t\t\t\t{ \n\t\t\t\t\t\t\t\tlabel: \"RAM %\", \n\t\t\t\t\t\t\t\tstroke: \"#F5A742\", \n\t\t\t\t\t\t\t\tfill: \"rgba(245, 167, 66, 0.1)\",\n\t\t\t\t\t\t\t\twidth: 2\n\t\t\t\t\t\t\t}\n\t\t\t\t\t\t],\n\t\t\t\t\t\taxes: [\n\t\t\t\t\t\t\tcommonOpts.axes[0],\n\t\t\t\t\t\t\t{ \n\t\t\t\t\t\t\t\t...commonOpts.axes[1],\n\t\t\t\t\t\t\t\tvalues: (u, vals) => vals.map(v => v.toFixed(1) + '%')\n\t\t\t\t\t\t\t}\n\t\t\t\t\t\t],\n\t\t\t\t\t}, [sortedTs, sortedVals], document.getElementById('ram-chart')));\n\t\t\t\t}\n\n\t\t\t\tconst diskRows = document.querySelectorAll('#disk-periods tbody tr');\n\t\t\t\tif (diskRows.length > 0) {\n\t\t\t\t\tconst [diskTs, diskVals] = periodsToSeries(diskRows, 'value');\n\t\t\t\t\tinstances.push(new uPlot({\n\t\t\t\t\t\t...commonOpts,\n\t\t\t\t\t\ttitle: \"Disk Available\",\n\t\t\t\t\t\tseries: [\n\t\t\t\t\t\t\t{ },\n\t\t\t\t\t\t\t{ \n\t\t\t\t\t\t\t\tlabel: \"Free GB\", \n\t\t\t\t\t\t\t\tstroke: \"#22C55E\", \n\t\t\t\t\t\t\t\tfill: \"rgba(34, 197, 94, 0.1)\",\n\t\t\t\t\t\t\t\twidth: 2\n\t\t\t\t\t\t\t}\n\t\t\t\t\t\t],\n\t\t\t\t\t\taxes: [\n\t\t\t\t\t\t\tcommonOpts.axes[0],\n\t\t\t\t\t\t\t{ \n\t\t\t\t\t\t\t\t...commonOpts.axes[1],\n\t\t\t\t\t\t\t\tvalues: (u, vals) => vals.map(v => v.toFixed(0) + ' GB')\n\t\t\t\t\t\t\t}\n\t\t\t\t\t\t],\n\t\t\t\t\t}, [diskTs, diskVals], document.getElementById('disk-chart')));\n\t\t\t\t}\n\n\t\t\t\tlet resizeTimeout;\n\t\t\t\twindow.addEventListener('resize', () => {\n\t\t\t\t\tclearTimeout(resizeTimeout);\n\t\t\t\t\tresizeTimeout = setTimeout(() => {\n\t\t\t\t\t\tconst newWidth = document.getElementById('charts-container').offsetWidth;\n\t\t\t\t\t\tconst newIsMobile = window.innerWidth < 768;\n\t\t\t\t\t\tconst newHeight = newIsMobile ? 200 : 250;\n\t\t\t\t\t\t\n\t\t\t\t\t\tinstances.forEach(u => {\n\t\t\t\t\t\t\tu.setSize({ \n\t\t\t\t\t\t\t\twidth: newWidth, \n\t\t\t\t\t\t\t\theight: newHeight \n\t\t\t\t\t\t\t});\n\t\t\t\t\t\t});\n\t\t\t\t\t}, 150);\n\t\t\t\t});\n\t\t\t\t}\n\t\t\t\t\n\t\t\t\tinitCharts();\n\t\t\t})();\n\t\t</script>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 41, "</tbody></table></details><!-- Chart Rendering Script --> <script>\n\t\t\t(function() {\n\t\t\t\tfunction initCharts() {\n\t\t\t\t\tif (typeof uPlot === 'undefined') {\n\t\t\t\t\t\tsetTimeout(initCharts, 50);\n\t\t\t\t\t\treturn;\n\t\t\t\t\t}\n\t\t\t\t\trenderCharts();\n\t\t\t\t}\n\t\t\t\t\n\t\t\t\tfunction renderCharts() {\n\t\t\t\tconst containerWidth = document.getElementById('charts-container').offsetWidth;\n\t\t\t\tconst isMobile = window.innerWidth < 768;\n\t\t\t\tconst commonOpts = {\n\t\t\t\t\twidth: containerWidth,\n\t\t\t\t\theight: isMobile ? 200 : 250,\n\t\t\t\t\tscales: {\n\t\t\t\t\t\tx: { time: true }\n\t\t\t\t\t},\n\t\t\t\t\taxes: [\n\t\t\t\t\t\t{ \n\t\t\t\t\t\t\tstroke: \"#808080\",\n\t\t\t\t\t\t\tgrid: { stroke: \"#1E1E1E\", width: 1 },\n\t\t\t\t\t\t\tsize: isMobile ? 40 : 50\n\t\t\t\t\t\t},\n\t\t\t\t\t\t{ \n\t\t\t\t\t\t\tstroke: \"#808080\",\n\t\t\t\t\t\t\tsize: isMobile ? 50 : 60,\n\t\t\t\t\t\t\tgrid: { stroke: \"#1E1E1E\", width: 1 }\n\t\t\t\t\t\t}\n\t\t\t\t\t],\n\t\t\t\t\tlegend: { show: false },\n\t\t\t\t\tcursor: {\n\t\t\t\t\t\tdrag: { x: false, y: false },\n\t\t\t\t\t\tfocus: { prox: isMobile ? 50 : 30 },\n\t\t\t\t\t\tpoints: {\n\t\t\t\t\t\t\tsize: isMobile ? 6 : 8,\n\t\t\t\t\t\t\twidth: 2\n\t\t\t\t\t\t}\n\t\t\t\t\t}\n\t\t\t\t};\n\n\t\t\t\t// Store chart instances for resize handling\n\t\t\t\tconst instances = [];\n\n\t\t\t\t// Build stepped data from periods: each period becomes two points (start, end)\n\t\t\t\t// For open periods (end=0), emit current time as endpoint so the line extends to \"now\"\n\t\t\t\tfunction periodsToSeries(rows, valueKey) {\n\t\t\t\t\tconst timestamps = [];\n\t\t\t\t\tconst values = [];\n\t\t\t\t\trows.forEach(row => {\n\t\t\t\t\t\tconst start = parseInt(row.dataset.start);\n\t\t\t\t\t\tconst end = parseInt(row.dataset.end);\n\t\t\t\t\t\tconst val = parseFloat(row.dataset[valueKey]);\n\t\t\t\t\t\ttimestamps.push(start);\n\t\t\t\t\t\tvalues.push(val);\n\t\t\t\t\t\tif (end > 0) {\n\t\t\t\t\t\t\ttimestamps.push(end);\n\t\t\t\t\t\t\tvalues.push(val);\n\t\t\t\t\t\t} else {\n\t\t\t\t\t\t\t// Open period: extend to current time\n\t\t\t\t\t\t\ttimestamps.push(Math.floor(Date.now() / 1000));\n\t\t\t\t\t\t\tvalues.push(val);\n\t\t\t\t\t\t}\n\t\t\t\t\t});\n\t\t\t\t\t// Sort by timestamp\n\t\t\t\t\tconst indices = timestamps.map((_, i) => i).sort((a, b) => timestamps[a] - timestamps[b]);\n\t\t\t\t\treturn [\n\t\t\t\t\t\tindices.map(i => timestamps[i]),\n\t\t\t\t\t\tindices.map(i => values[i])\n\t\t\t\t\t];\n\t\t\t\t}\n\n\t\t\t\tconst cpuRows = document.querySelectorAll('#cpu-periods tbody tr');\n\t\t\t\tif (cpuRows.length > 0) {\n\t\t\t\t\tconst [cpuTs, cpuVals] = periodsToSeries(cpuRows, 'value');\n\t\t\t\t\tinstances.push(new uPlot({\n\t\t\t\t\t\t...commonOpts,\n\t\t\t\t\t\ttitle: \"CPU Usage\",\n\t\t\t\t\t\tseries: [\n\t\t\t\t\t\t\t{ },\n\t\t\t\t\t\t\t{ \n\t\t\t\t\t\t\t\tlabel: \"CPU %\", \n\t\t\t\t\t\t\t\tstroke: \"#5C9CF5\", \n\t\t\t\t\t\t\t\tfill: \"rgba(92, 156, 245, 0.1)\",\n\t\t\t\t\t\t\t\twidth: 2\n\t\t\t\t\t\t\t}\n\t\t\t\t\t\t],\n\t\t\t\t\t\taxes: [\n\t\t\t\t\t\t\tcommonOpts.axes[0],\n\t\t\t\t\t\t\t{ \n\t\t\t\t\t\t\t\t...commonOpts.axes[1],\n\t\t\t\t\t\t\t\tvalues: (u, vals) => vals.map(v => v.toFixed(1) + '%')\n\t\t\t\t\t\t\t}\n\t\t\t\t\t\t],\n\t\t\t\t\t}, [cpuTs, cpuVals], document.getElementById('cpu-chart')));\n\t\t\t\t}\n\n\t\t\t\tconst memRows = document.querySelectorAll('#mem-periods tbody tr');\n\t\t\t\tif (memRows.length > 0) {\n\t\t\t\t\tconst timestamps = [];\n\t\t\t\t\tconst values = [];\n\t\t\t\t\tmemRows.forEach(row => {\n\t\t\t\t\t\tconst start = parseInt(row.dataset.start);\n\t\t\t\t\t\tconst end = parseInt(row.dataset.end);\n\t\t\t\t\t\tconst total = parseInt(row.dataset.total);\n\t\t\t\t\t\tconst used = parseInt(row.dataset.used);\n\t\t\t\t\t\tconst pct = total > 0 ? (used / total) * 100 : 0;\n\t\t\t\t\t\ttimestamps.push(start);\n\t\t\t\t\t\tvalues.push(pct);\n\t\t\t\t\t\tif (end > 0) {\n\t\t\t\t\t\t\ttimestamps.push(end);\n\t\t\t\t\t\t\tvalues.push(pct);\n\t\t\t\t\t\t} else {\n\t\t\t\t\t\t\t// Open period: extend to current time\n\t\t\t\t\t\t\ttimestamps.push(Math.floor(Date.now() / 1000));\n\t\t\t\t\t\t\tvalues.push(pct);\n\t\t\t\t\t\t}\n\t\t\t\t\t});\n\t\t\t\t\tconst indices = timestamps.map((_, i) => i).sort((a, b) => timestamps[a] - timestamps[b]);\n\t\t\t\t\tconst sortedTs = indices.map(i => timestamps[i]);\n\t\t\t\t\tconst sortedVals = indices.map(i => values[i]);\n\n\t\t\t\t\tinstances.push(new uPlot({\n\t\t\t\t\t\t...commonOpts,\n\t\t\t\t\t\ttitle: \"RAM Usage\",\n\t\t\t\t\t\tseries: [\n\t\t\t\t\t\t\t{ },\n\t\t\t\t\t\t\t{ \n\t\t\t\t\t\t\t\tlabel: \"RAM %\", \n\t\t\t\t\t\t\t\tstroke: \"#F5A742\", \n\t\t\t\t\t\t\t\tfill: \"rgba(245, 167, 66, 0.1)\",\n\t\t\t\t\t\t\t\twidth: 2\n\t\t\t\t\t\t\t}\n\t\t\t\t\t\t],\n\t\t\t\t\t\taxes: [\n\t\t\t\t\t\t\tcommonOpts.axes[0],\n\t\t\t\t\t\t\t{ \n\t\t\t\t\t\t\t\t...commonOpts.axes[1],\n\t\t\t\t\t\t\t\tvalues: (u, vals) => vals.map(v => v.toFixed(1) + '%')\n\t\t\t\t\t\t\t}\n\t\t\t\t\t\t],\n\t\t\t\t\t}, [sortedTs, sortedVals], document.getElementById('ram-chart')));\n\t\t\t\t}\n\n\t\t\t\tconst diskRows = document.querySelectorAll('#disk-periods tbody tr');\n\t\t\t\tif (diskRows.length > 0) {\n\t\t\t\t\tconst [diskTs, diskVals] = periodsToSeries(diskRows, 'value');\n\t\t\t\t\tinstances.push(new uPlot({\n\t\t\t\t\t\t...commonOpts,\n\t\t\t\t\t\ttitle: \"Disk Available\",\n\t\t\t\t\t\tseries: [\n\t\t\t\t\t\t\t{ },\n\t\t\t\t\t\t\t{ \n\t\t\t\t\t\t\t\tlabel: \"Free GB\", \n\t\t\t\t\t\t\t\tstroke: \"#22C55E\", \n\t\t\t\t\t\t\t\tfill: \"rgba(34, 197, 94, 0.1)\",\n\t\t\t\t\t\t\t\twidth: 2\n\t\t\t\t\t\t\t}\n\t\t\t\t\t\t],\n\t\t\t\t\t\taxes: [\n\t\t\t\t\t\t\tcommonOpts.axes[0],\n\t\t\t\t\t\t\t{ \n\t\t\t\t\t\t\t\t...commonOpts.axes[1],\n\t\t\t\t\t\t\t\tvalues: (u, vals) => vals.map(v => v.toFixed(0) + ' GB')\n\t\t\t\t\t\t\t}\n\t\t\t\t\t\t],\n\t\t\t\t\t}, [diskTs, diskVals], document.getElementById('disk-chart')));\n\t\t\t\t}\n\n\t\t\t\tlet resizeTimeout;\n\t\t\t\twindow.addEventListener('resize', () => {\n\t\t\t\t\tclearTimeout(resizeTimeout);\n\t\t\t\t\tresizeTimeout = setTimeout(() => {\n\t\t\t\t\t\tconst newWidth = document.getElementById('charts-container').offsetWidth;\n\t\t\t\t\t\tconst newIsMobile = window.innerWidth < 768;\n\t\t\t\t\t\tconst newHeight = newIsMobile ? 200 : 250;\n\t\t\t\t\t\t\n\t\t\t\t\t\tinstances.forEach(u => {\n\t\t\t\t\t\t\tu.setSize({ \n\t\t\t\t\t\t\t\twidth: newWidth, \n\t\t\t\t\t\t\t\theight: newHeight \n\t\t\t\t\t\t\t});\n\t\t\t\t\t\t});\n\t\t\t\t\t}, 150);\n\t\t\t\t});\n\t\t\t\t}\n\t\t\t\t\n\t\t\t\tinitCharts();\n\t\t\t})();\n\t\t</script>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		} else {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 48, "<div class=\"text-center text-sm text-fg-secondary/60 py-12\"><p>No stats available for the selected time range.</p><p class=\"mt-2\">Stats are collected every 30 seconds when the collector is running.</p></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 42, "<div class=\"text-center text-sm text-fg-secondary/60 py-12\"><p>No stats available for the selected time range.</p><p class=\"mt-2\">Stats are collected every 30 seconds when the collector is running.</p></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

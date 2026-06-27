@@ -116,6 +116,12 @@ func RunConfig(key string) error {
 		fmt.Println(cfg.DataDir)
 	case "config_file":
 		fmt.Println(ConfigFilePath)
+	case "cpu_delta_percent":
+		fmt.Printf("%.1f\n", cfg.CPUDeltaPercent)
+	case "mem_delta_kb":
+		fmt.Println(cfg.MemDeltaKB)
+	case "disk_delta_kb":
+		fmt.Println(cfg.DiskDeltaKB)
 	default:
 		return fmt.Errorf("unknown config key: %s", key)
 	}

@@ -22,6 +22,19 @@ import (
 	"github.com/pressly/goose/v3"
 )
 
+// testIngestConfig implements ingest.IngestConfig for testing.
+type testIngestConfig struct {
+	cpuDeltaPercent float64
+	memDeltaKB      int
+	diskDeltaKB     int
+	sampleRate      float64
+}
+
+func (c *testIngestConfig) GetCPUDeltaPercent() float64 { return c.cpuDeltaPercent }
+func (c *testIngestConfig) GetMemDeltaKB() int          { return c.memDeltaKB }
+func (c *testIngestConfig) GetDiskDeltaKB() int         { return c.diskDeltaKB }
+func (c *testIngestConfig) GetSampleRate() float64      { return c.sampleRate }
+
 // newTestPanelDB creates an in-memory panel database with migrations applied.
 func newTestPanelDB(t *testing.T) *dbmanager.DBHandle {
 	t.Helper()
@@ -93,7 +106,12 @@ func setupTestService(t *testing.T) (*Service, *dbmanager.DBHandle, int64, strin
 	}
 
 	// --- Register collector (creates DBs) ---
-	ingestSvc := ingestsvc.New(mgr, nil, nil, 1.0)
+	ingestSvc := ingestsvc.New(mgr, nil, nil, &testIngestConfig{
+		sampleRate:      1.0,
+		cpuDeltaPercent: 1.0,
+		memDeltaKB:      64,
+		diskDeltaKB:     1024,
+	})
 	if err := ingestSvc.RegisterCollector(ctx, ingestsvc.RegisterCollectorRequest{
 		CollectorName: "test-collector",
 		Apps:          []string{"test-app"},
@@ -119,7 +137,12 @@ func setupTestServiceNoAccess(t *testing.T) (*Service, int64) {
 	authSvc := authsvc.New(panelDB)
 
 	// Register collector anyway (so it exists)
-	ingestSvc := ingestsvc.New(mgr, nil, nil, 1.0)
+	ingestSvc := ingestsvc.New(mgr, nil, nil, &testIngestConfig{
+		sampleRate:      1.0,
+		cpuDeltaPercent: 1.0,
+		memDeltaKB:      64,
+		diskDeltaKB:     1024,
+	})
 	if err := ingestSvc.RegisterCollector(ctx, ingestsvc.RegisterCollectorRequest{
 		CollectorName: "other-collector",
 		Apps:          []string{"other-app"},

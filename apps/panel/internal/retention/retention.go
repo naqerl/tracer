@@ -11,22 +11,27 @@ import (
 	"tracer/apps/panel/internal/services/ingest"
 )
 
+// RetentionConfig provides runtime access to retention-related config values.
+type RetentionConfig interface {
+	GetRetentionDays() int
+}
+
 type Service struct {
 	dbManager     *dbmanager.Manager
 	ingestService *ingest.Service
-	retentionDays int
+	cfg           RetentionConfig
 }
 
-func New(dbManager *dbmanager.Manager, ingestService *ingest.Service, retentionDays int) *Service {
+func New(dbManager *dbmanager.Manager, ingestService *ingest.Service, cfg RetentionConfig) *Service {
 	return &Service{
 		dbManager:     dbManager,
 		ingestService: ingestService,
-		retentionDays: retentionDays,
+		cfg:           cfg,
 	}
 }
 
 func (s *Service) Start(ctx context.Context) {
-	slog.Info("Retention service started", "retention_days", s.retentionDays)
+	slog.Info("Retention service started", "retention_days", s.cfg.GetRetentionDays())
 
 	// Run immediately on start
 	s.runCleanup(ctx)
@@ -54,7 +59,7 @@ func (s *Service) runCleanup(ctx context.Context) {
 		return
 	}
 
-	cutoff := time.Now().AddDate(0, 0, -s.retentionDays)
+	cutoff := time.Now().AddDate(0, 0, -s.cfg.GetRetentionDays())
 
 	// For each ingest, list apps and cleanup
 	for _, collector := range ingestList {
@@ -99,7 +104,7 @@ func (s *Service) runCleanup(ctx context.Context) {
 }
 
 func (s *Service) cleanupSystemStats(ctx context.Context) {
-	cutoff := time.Now().AddDate(0, 0, -s.retentionDays)
+	cutoff := time.Now().AddDate(0, 0, -s.cfg.GetRetentionDays())
 
 	err := s.ingestService.DeleteOldStats(ctx, cutoff)
 	if err != nil {

@@ -36,20 +36,28 @@ type DBManager interface {
 }
 
 // Service manages ingest operations using dbmanager for all DB access.
+// IngestConfig provides runtime access to ingest-related config values.
+type IngestConfig interface {
+	GetCPUDeltaPercent() float64
+	GetMemDeltaKB() int
+	GetDiskDeltaKB() int
+	GetSampleRate() float64
+}
+
 type Service struct {
 	dbManager      DBManager
 	notifyChan     chan<- notify.Notification
 	alertFormatter func(collectorName, appName string, logID int64) string
-	sampleRate     float64
+	cfg            IngestConfig
 }
 
 // New creates a new ingest service.
-func New(dbManager DBManager, notifyChan chan<- notify.Notification, alertFormatter func(collectorName, appName string, logID int64) string, sampleRate float64) *Service {
+func New(dbManager DBManager, notifyChan chan<- notify.Notification, alertFormatter func(collectorName, appName string, logID int64) string, cfg IngestConfig) *Service {
 	return &Service{
 		dbManager:      dbManager,
 		notifyChan:     notifyChan,
 		alertFormatter: alertFormatter,
-		sampleRate:     sampleRate,
+		cfg:            cfg,
 	}
 }
 
@@ -130,8 +138,12 @@ func (s *Service) saveCPUPeriod(ctx context.Context, q *db.Queries, collectorNam
 	current, err := q.GetOpenCPUPeriod(ctx)
 	switch {
 	case err == nil:
-		if current.UsagePercent == usagePercent {
-			return nil // same value, keep period open
+		delta := usagePercent - current.UsagePercent
+		if delta < 0 {
+			delta = -delta
+		}
+		if delta < s.cfg.GetCPUDeltaPercent() {
+			return nil // change below threshold, keep period open
 		}
 		if err := q.CloseCPUPeriod(ctx, db.CloseCPUPeriodParams{
 			EndedAt: sql.NullInt64{Int64: nowUnix, Valid: true},
@@ -156,8 +168,27 @@ func (s *Service) saveMemPeriod(ctx context.Context, q *db.Queries, collectorNam
 	current, err := q.GetOpenMemPeriod(ctx)
 	switch {
 	case err == nil:
-		if current.TotalMb == totalMB && current.UsedMb == usedMB && current.AvailableMb == availableMB {
-			return nil // same value, keep period open
+		// Convert MB to KB for delta comparison
+		totalKB := totalMB * 1024
+		usedKB := usedMB * 1024
+		availKB := availableMB * 1024
+		curTotalKB := current.TotalMb * 1024
+		curUsedKB := current.UsedMb * 1024
+		curAvailKB := current.AvailableMb * 1024
+		dTotal := totalKB - curTotalKB
+		dUsed := usedKB - curUsedKB
+		dAvail := availKB - curAvailKB
+		if dTotal < 0 {
+			dTotal = -dTotal
+		}
+		if dUsed < 0 {
+			dUsed = -dUsed
+		}
+		if dAvail < 0 {
+			dAvail = -dAvail
+		}
+		if dTotal < int64(s.cfg.GetMemDeltaKB()) && dUsed < int64(s.cfg.GetMemDeltaKB()) && dAvail < int64(s.cfg.GetMemDeltaKB()) {
+			return nil // all changes below threshold, keep period open
 		}
 		if err := q.CloseMemPeriod(ctx, db.CloseMemPeriodParams{
 			EndedAt: sql.NullInt64{Int64: nowUnix, Valid: true},
@@ -184,8 +215,27 @@ func (s *Service) saveDiskPeriod(ctx context.Context, q *db.Queries, collectorNa
 	current, err := q.GetOpenDiskPeriod(ctx)
 	switch {
 	case err == nil:
-		if current.TotalGb == totalGB && current.UsedGb == usedGB && current.AvailGb == availGB {
-			return nil // same value, keep period open
+		// Convert GB to KB for delta comparison
+		totalKB := totalGB * 1024 * 1024
+		usedKB := usedGB * 1024 * 1024
+		availKB := availGB * 1024 * 1024
+		curTotalKB := current.TotalGb * 1024 * 1024
+		curUsedKB := current.UsedGb * 1024 * 1024
+		curAvailKB := current.AvailGb * 1024 * 1024
+		dTotal := totalKB - curTotalKB
+		dUsed := usedKB - curUsedKB
+		dAvail := availKB - curAvailKB
+		if dTotal < 0 {
+			dTotal = -dTotal
+		}
+		if dUsed < 0 {
+			dUsed = -dUsed
+		}
+		if dAvail < 0 {
+			dAvail = -dAvail
+		}
+		if dTotal < int64(s.cfg.GetDiskDeltaKB()) && dUsed < int64(s.cfg.GetDiskDeltaKB()) && dAvail < int64(s.cfg.GetDiskDeltaKB()) {
+			return nil // all changes below threshold, keep period open
 		}
 		if err := q.CloseDiskPeriod(ctx, db.CloseDiskPeriodParams{
 			EndedAt: sql.NullInt64{Int64: nowUnix, Valid: true},
@@ -445,7 +495,7 @@ func (s *Service) StoreLog(ctx context.Context, req StoreLogRequest) (int64, err
 	isError := req.Entry.Level == types.LevelError
 
 	// Sampling logic: always persist errors, sample others
-	if !isError && rand.Float64() >= s.sampleRate {
+	if !isError && rand.Float64() >= s.cfg.GetSampleRate() {
 		return 0, nil // Skipped by sampling
 	}
 

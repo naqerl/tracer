@@ -16,55 +16,47 @@ type CollectorAPIKeyDetailProps struct {
 
 // CollectorAPIKeyDetail renders the collector API key detail page.
 templ CollectorAPIKeyDetail(props CollectorAPIKeyDetailProps) {
-	<!DOCTYPE html>
-	<html lang="en">
-		<head>
-			@templates.Head()
-			<title>{ props.Title } - Tracer</title>
-		</head>
-		<body>
-			@templates.Navbar(templates.NavData{Since: "24h"})
-			<div class="max-w-5xl mx-auto p-6">
-				<div class="mb-6">
-					<a href="/settings" class="text-sm text-fg-secondary hover:text-fg transition-colors">&larr; Back to Settings</a>
-				</div>
+	@templates.Layout("Collector API Key", templates.NavData{Since: "24h"}) {
+		<div class="max-w-5xl mx-auto p-6">
+			<div class="mb-6">
+				<a href="/settings" class="text-sm text-fg-secondary hover:text-fg transition-colors">&larr; Back to Settings</a>
+			</div>
 
-				<div class="mb-6">
-					<h2 class="text-xl font-medium">Collector API Key</h2>
-				</div>
+			<div class="mb-6">
+				<h2 class="text-xl font-medium">Collector API Key</h2>
+			</div>
 
-				<div class="mb-8">
-					<div class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
-						<span class="text-fg-secondary">Name:</span>
-						<span>{ props.KeyName }</span>
+			<div class="mb-8">
+				<div class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
+					<span class="text-fg-secondary">Name:</span>
+					<span>{ props.KeyName }</span>
 
-						<span class="text-fg-secondary">Key Suffix:</span>
-						<span class="font-mono">****{ props.KeySuffix }</span>
+					<span class="text-fg-secondary">Key Suffix:</span>
+					<span class="font-mono">****{ props.KeySuffix }</span>
 
-						<span class="text-fg-secondary">Created:</span>
-						<span>{ formatTimestamp(props.CreatedAt) }</span>
+					<span class="text-fg-secondary">Created:</span>
+					<span>{ formatTimestamp(props.CreatedAt) }</span>
 
-						<span class="text-fg-secondary">Last Used:</span>
-						<span>
-							if props.LastUsedValid {
-								{ formatTimestamp(props.LastUsed) }
-							} else {
-								Never
-							}
-						</span>
-					</div>
-				</div>
-
-				<div>
-					<button hx-delete={ "/settings/admin/collector-api-keys/" + props.KeyName }
-							hx-confirm={ "Delete collector API key " + props.KeyName + "?" }
-							hx-target="body"
-							hx-swap="outerHTML"
-							class="text-sm text-fg-secondary hover:text-red-500 underline transition-colors">
-						Delete collector API key
-					</button>
+					<span class="text-fg-secondary">Last Used:</span>
+					<span>
+						if props.LastUsedValid {
+							{ formatTimestamp(props.LastUsed) }
+						} else {
+							Never
+						}
+					</span>
 				</div>
 			</div>
-		</body>
-	</html>
+
+			<div>
+				<button hx-delete={ "/settings/admin/collector-api-keys/" + props.KeyName }
+						hx-confirm={ "Delete collector API key " + props.KeyName + "?" }
+						hx-target="body"
+						hx-swap="outerHTML"
+						class="text-sm text-fg-secondary hover:text-red-500 underline transition-colors">
+					Delete collector API key
+				</button>
+			</div>
+		</div>
+	}
 }

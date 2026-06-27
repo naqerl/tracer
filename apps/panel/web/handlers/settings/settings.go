@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 
+	"tracer/apps/panel/internal/config"
 	"tracer/apps/panel/internal/dbmanager"
 	"tracer/apps/panel/internal/services/auth"
 	"tracer/apps/panel/internal/services/ingest"
@@ -32,13 +33,14 @@ type handler struct {
 	ingestService *ingest.Service
 	dbManager     *dbmanager.Manager
 	notifyService *notify.Service
+	cfg           *config.Config
 }
 
 func appKey(collectorName, appName string) string {
 	return collectorName + ":" + appName
 }
 
-func InitMux(authService *auth.Service, userService *usersvc.Service, ingestService *ingest.Service, dbManager *dbmanager.Manager, notifyService *notify.Service) *http.ServeMux {
+func InitMux(authService *auth.Service, userService *usersvc.Service, ingestService *ingest.Service, dbManager *dbmanager.Manager, notifyService *notify.Service, cfg *config.Config) *http.ServeMux {
 	m := http.NewServeMux()
 	h := handler{
 		authService:   authService,
@@ -46,6 +48,7 @@ func InitMux(authService *auth.Service, userService *usersvc.Service, ingestServ
 		ingestService: ingestService,
 		dbManager:     dbManager,
 		notifyService: notifyService,
+		cfg:           cfg,
 	}
 
 	// Users management
@@ -73,6 +76,10 @@ func InitMux(authService *auth.Service, userService *usersvc.Service, ingestServ
 	m.HandleFunc("PUT /notifiers/{id}/toggle", h.toggleNotifier)
 	m.HandleFunc("GET /notifiers/{id}/subscriptions", h.getNotifierSubscriptions)
 	m.HandleFunc("PUT /notifiers/{id}/subscriptions", h.updateNotifierSubscriptions)
+
+	// Config management
+	m.HandleFunc("GET /config", h.getConfig)
+	m.HandleFunc("POST /config", h.updateConfig)
 
 	return m
 }
@@ -967,4 +974,51 @@ func generateNtfyTopic() (string, error) {
 	}
 	hash := sha256.Sum256(buf)
 	return hex.EncodeToString(hash[:8]), nil
+}
+
+func (h *handler) getConfig(w http.ResponseWriter, r *http.Request) {
+	if _, err := h.requireAdminUser(w, r); err != nil {
+		return
+	}
+
+	view.ConfigPage(view.ConfigPageProps{
+		CPUDeltaPercent: h.cfg.GetCPUDeltaPercent(),
+		MemDeltaKB:      h.cfg.GetMemDeltaKB(),
+		DiskDeltaKB:     h.cfg.GetDiskDeltaKB(),
+	}).Render(r.Context(), w)
+}
+
+func (h *handler) updateConfig(w http.ResponseWriter, r *http.Request) {
+	if _, err := h.requireAdminUser(w, r); err != nil {
+		return
+	}
+
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "Invalid form data", http.StatusBadRequest)
+		return
+	}
+
+	cpuDelta, err := strconv.ParseFloat(r.FormValue("cpu_delta_percent"), 64)
+	if err != nil || cpuDelta < 0 {
+		http.Error(w, "Invalid CPU delta percent", http.StatusBadRequest)
+		return
+	}
+
+	memDelta, err := strconv.Atoi(r.FormValue("mem_delta_kb"))
+	if err != nil || memDelta < 0 {
+		http.Error(w, "Invalid memory delta KB", http.StatusBadRequest)
+		return
+	}
+
+	diskDelta, err := strconv.Atoi(r.FormValue("disk_delta_kb"))
+	if err != nil || diskDelta < 0 {
+		http.Error(w, "Invalid disk delta KB", http.StatusBadRequest)
+		return
+	}
+
+	h.cfg.SetCPUDeltaPercent(cpuDelta)
+	h.cfg.SetMemDeltaKB(memDelta)
+	h.cfg.SetDiskDeltaKB(diskDelta)
+
+	htmx.Redirect(w, r, "/settings/")
 }
