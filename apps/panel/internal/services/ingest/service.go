@@ -65,6 +65,25 @@ func (s *Service) ListApps(collector string) ([]string, error) {
 
 // --- Stats Operations (using sqlc) ---
 
+// SystemStat represents the latest combined system statistics from open periods.
+type SystemStat struct {
+	CPUUsagePercent float64
+	MemTotalMb      int64
+	MemUsedMb       int64
+	MemAvailableMb  int64
+	DiskTotalGb     int64
+	DiskUsedGb      int64
+	DiskAvailGb     int64
+	Timestamp       int64 // most recent started_at among open periods
+}
+
+// StatsHistoryResult holds period data for all three resource types.
+type StatsHistoryResult struct {
+	CPUPeriods  []db.CpuPeriod
+	MemPeriods  []db.MemPeriod
+	DiskPeriods []db.DiskPeriod
+}
+
 // SaveSystemStatsRequest contains system statistics to save for a collector.
 type SaveSystemStatsRequest struct {
 	CollectorName string
@@ -75,48 +94,210 @@ func (r SaveSystemStatsRequest) Validate() error {
 	return domain.ValidateCollectorName(r.CollectorName)
 }
 
-// SaveSystemStats saves system statistics for a collector.
-// Creates the collector DB if it doesn't exist.
+// SaveSystemStats saves system statistics for a collector using change-based periods.
+// Creates a new period only when the value changes from the current open period.
+// If the value is unchanged, the existing period continues (no INSERT).
 func (s *Service) SaveSystemStats(ctx context.Context, req SaveSystemStatsRequest) error {
 	handle, err := s.dbManager.GetCollectorDB(req.CollectorName)
 	if err != nil {
 		return err
 	}
+	nowUnix := req.Stats.Timestamp.Unix()
+
 	return handle.Write(ctx, func(tx db.DBTX) error {
-		return db.New(tx).InsertSystemStats(ctx, db.InsertSystemStatsParams{
-			CollectorName:   req.CollectorName,
-			CpuUsagePercent: req.Stats.CPUUsagePercent,
-			MemTotalMb:      req.Stats.MemTotalMB,
-			MemUsedMb:       req.Stats.MemUsedMB,
-			MemAvailableMb:  req.Stats.MemAvailableMB,
-			DiskTotalGb:     req.Stats.DiskTotalGB,
-			DiskUsedGb:      req.Stats.DiskUsedGB,
-			DiskAvailGb:     req.Stats.DiskAvailGB,
-			CreatedAt:       req.Stats.Timestamp.Unix(),
-		})
+		q := db.New(tx)
+
+		// --- CPU ---
+		if err := s.saveCPUPeriod(ctx, q, req.CollectorName, req.Stats.CPUUsagePercent, nowUnix); err != nil {
+			return err
+		}
+
+		// --- Memory ---
+		if err := s.saveMemPeriod(ctx, q, req.CollectorName, req.Stats.MemTotalMB, req.Stats.MemUsedMB, req.Stats.MemAvailableMB, nowUnix); err != nil {
+			return err
+		}
+
+		// --- Disk ---
+		if err := s.saveDiskPeriod(ctx, q, req.CollectorName, req.Stats.DiskTotalGB, req.Stats.DiskUsedGB, req.Stats.DiskAvailGB, nowUnix); err != nil {
+			return err
+		}
+
+		return nil
 	})
 }
 
-// GetLatestStats returns the latest system stats for a collector.
-// Returns error if collector DB doesn't exist.
-func (s *Service) GetLatestStats(ctx context.Context, collector string) (db.SystemStat, error) {
-	handle, err := s.dbManager.GetCollectorDB(collector)
-	if err != nil {
-		return db.SystemStat{}, err
+func (s *Service) saveCPUPeriod(ctx context.Context, q *db.Queries, collectorName string, usagePercent float64, nowUnix int64) error {
+	current, err := q.GetOpenCPUPeriod(ctx)
+	switch {
+	case err == nil:
+		if current.UsagePercent == usagePercent {
+			return nil // same value, keep period open
+		}
+		if err := q.CloseCPUPeriod(ctx, db.CloseCPUPeriodParams{
+			EndedAt: sql.NullInt64{Int64: nowUnix, Valid: true},
+			ID:      current.ID,
+		}); err != nil {
+			return err
+		}
+	case errors.Is(err, sql.ErrNoRows):
+	default:
+		return err
 	}
-	queries := db.New(handle.Read())
-	return queries.GetLatestStats(ctx)
+
+	_, err = q.InsertCPUPeriod(ctx, db.InsertCPUPeriodParams{
+		CollectorName: collectorName,
+		UsagePercent:  usagePercent,
+		StartedAt:     nowUnix,
+	})
+	return err
 }
 
-// GetStatsHistory returns system stats history for a collector since a given time.
-// Returns error if collector DB doesn't exist.
-func (s *Service) GetStatsHistory(ctx context.Context, collector string, since time.Time) ([]db.SystemStat, error) {
+func (s *Service) saveMemPeriod(ctx context.Context, q *db.Queries, collectorName string, totalMB, usedMB, availableMB int64, nowUnix int64) error {
+	current, err := q.GetOpenMemPeriod(ctx)
+	switch {
+	case err == nil:
+		if current.TotalMb == totalMB && current.UsedMb == usedMB && current.AvailableMb == availableMB {
+			return nil // same value, keep period open
+		}
+		if err := q.CloseMemPeriod(ctx, db.CloseMemPeriodParams{
+			EndedAt: sql.NullInt64{Int64: nowUnix, Valid: true},
+			ID:      current.ID,
+		}); err != nil {
+			return err
+		}
+	case errors.Is(err, sql.ErrNoRows):
+	default:
+		return err
+	}
+
+	_, err = q.InsertMemPeriod(ctx, db.InsertMemPeriodParams{
+		CollectorName: collectorName,
+		TotalMb:       totalMB,
+		UsedMb:        usedMB,
+		AvailableMb:   availableMB,
+		StartedAt:     nowUnix,
+	})
+	return err
+}
+
+func (s *Service) saveDiskPeriod(ctx context.Context, q *db.Queries, collectorName string, totalGB, usedGB, availGB int64, nowUnix int64) error {
+	current, err := q.GetOpenDiskPeriod(ctx)
+	switch {
+	case err == nil:
+		if current.TotalGb == totalGB && current.UsedGb == usedGB && current.AvailGb == availGB {
+			return nil // same value, keep period open
+		}
+		if err := q.CloseDiskPeriod(ctx, db.CloseDiskPeriodParams{
+			EndedAt: sql.NullInt64{Int64: nowUnix, Valid: true},
+			ID:      current.ID,
+		}); err != nil {
+			return err
+		}
+	case errors.Is(err, sql.ErrNoRows):
+	default:
+		return err
+	}
+
+	_, err = q.InsertDiskPeriod(ctx, db.InsertDiskPeriodParams{
+		CollectorName: collectorName,
+		TotalGb:       totalGB,
+		UsedGb:        usedGB,
+		AvailGb:       availGB,
+		StartedAt:     nowUnix,
+	})
+	return err
+}
+
+// GetLatestStats returns the latest system stats for a collector by combining
+// the open periods from each resource table.
+// Returns sql.ErrNoRows if no data exists for any resource.
+func (s *Service) GetLatestStats(ctx context.Context, collector string) (SystemStat, error) {
 	handle, err := s.dbManager.GetCollectorDB(collector)
 	if err != nil {
-		return nil, err
+		return SystemStat{}, err
 	}
 	queries := db.New(handle.Read())
-	return queries.GetStatsHistory(ctx, since.UTC().Unix())
+
+	var stat SystemStat
+	var maxTs int64
+	var found bool
+
+	cpu, err := queries.GetOpenCPUPeriod(ctx)
+	if err == nil {
+		stat.CPUUsagePercent = cpu.UsagePercent
+		if cpu.StartedAt > maxTs {
+			maxTs = cpu.StartedAt
+		}
+		found = true
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return SystemStat{}, err
+	}
+
+	mem, err := queries.GetOpenMemPeriod(ctx)
+	if err == nil {
+		stat.MemTotalMb = mem.TotalMb
+		stat.MemUsedMb = mem.UsedMb
+		stat.MemAvailableMb = mem.AvailableMb
+		if mem.StartedAt > maxTs {
+			maxTs = mem.StartedAt
+		}
+		found = true
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return SystemStat{}, err
+	}
+
+	disk, err := queries.GetOpenDiskPeriod(ctx)
+	if err == nil {
+		stat.DiskTotalGb = disk.TotalGb
+		stat.DiskUsedGb = disk.UsedGb
+		stat.DiskAvailGb = disk.AvailGb
+		if disk.StartedAt > maxTs {
+			maxTs = disk.StartedAt
+		}
+		found = true
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return SystemStat{}, err
+	}
+
+	if !found {
+		return SystemStat{}, sql.ErrNoRows
+	}
+
+	stat.Timestamp = maxTs
+	return stat, nil
+}
+
+// GetStatsHistory returns period data for all three resource types since a given time.
+// Returns error if collector DB doesn't exist.
+func (s *Service) GetStatsHistory(ctx context.Context, collector string, since time.Time) (StatsHistoryResult, error) {
+	handle, err := s.dbManager.GetCollectorDB(collector)
+	if err != nil {
+		return StatsHistoryResult{}, err
+	}
+	queries := db.New(handle.Read())
+
+	sinceUnix := sql.NullInt64{Int64: since.UTC().Unix(), Valid: true}
+
+	cpuPeriods, err := queries.GetCPUHistory(ctx, sinceUnix)
+	if err != nil {
+		return StatsHistoryResult{}, err
+	}
+
+	memPeriods, err := queries.GetMemHistory(ctx, sinceUnix)
+	if err != nil {
+		return StatsHistoryResult{}, err
+	}
+
+	diskPeriods, err := queries.GetDiskHistory(ctx, sinceUnix)
+	if err != nil {
+		return StatsHistoryResult{}, err
+	}
+
+	return StatsHistoryResult{
+		CPUPeriods:  cpuPeriods,
+		MemPeriods:  memPeriods,
+		DiskPeriods: diskPeriods,
+	}, nil
 }
 
 // DeleteOldStats removes stats older than the given time for all collectors.
@@ -127,17 +308,25 @@ func (s *Service) DeleteOldStats(ctx context.Context, before time.Time) error {
 		return err
 	}
 
+	beforeUnix := sql.NullInt64{Int64: before.UTC().Unix(), Valid: true}
+
 	for _, collector := range collectors {
 		handle, err := s.dbManager.GetCollectorDB(collector)
 		if err != nil {
 			if errors.Is(err, dbmanager.ErrDBNotFound) {
-				// Skip collectors without stats DB
 				continue
 			}
 			return err
 		}
 		if err := handle.Write(ctx, func(tx db.DBTX) error {
-			return db.New(tx).DeleteOldStats(ctx, before.UTC().Unix())
+			q := db.New(tx)
+			if err := q.DeleteOldCPUPeriods(ctx, beforeUnix); err != nil {
+				return err
+			}
+			if err := q.DeleteOldMemPeriods(ctx, beforeUnix); err != nil {
+				return err
+			}
+			return q.DeleteOldDiskPeriods(ctx, beforeUnix)
 		}); err != nil {
 			return err
 		}

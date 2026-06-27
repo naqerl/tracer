@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.1.14] - 2026-06-27
+
+### Added
+- Integration tests for resource monitoring (SaveSystemStats, GetLatestStats, GetStatsHistory, GetCollector, DeleteOldStats)
+- Tests verify deduplication, change detection, partial data, retention, and since filtering
+
+### Changed
+- Refactored existing tests from unit-style to integration-style using public API methods
+- Test staleness checks now use GetCollector instead of private formatCollectorStats
+
 ## [0.1.12] - 2024-06-26
 
 ### Fixed

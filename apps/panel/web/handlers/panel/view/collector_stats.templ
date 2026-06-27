@@ -11,15 +11,28 @@ type CollectorStatsProps struct {
 	Title         string
 	CollectorName string
 	Since         string
-	Stats         []StatPoint
+	CPUPeriods    []CPUPeriodView
+	MemPeriods    []MemPeriodView
+	DiskPeriods   []DiskPeriodView
 }
 
-type StatPoint struct {
-	CreatedAt       int64
-	CpuUsagePercent float64
-	MemUsedMb       int64
-	MemTotalMb      int64
-	DiskAvailGb     float64
+type CPUPeriodView struct {
+	PeriodStart  int64
+	PeriodEnd    int64 // 0 means still open
+	UsagePercent float64
+}
+
+type MemPeriodView struct {
+	PeriodStart int64
+	PeriodEnd   int64 // 0 means still open
+	UsedMb      int64
+	TotalMb     int64
+}
+
+type DiskPeriodView struct {
+	PeriodStart int64
+	PeriodEnd   int64 // 0 means still open
+	AvailGb     float64
 }
 
 // CollectorStats renders the collector stats/resources page with charts.
@@ -37,6 +50,7 @@ templ CollectorStats(props CollectorStatsProps) {
 				.stats-table tr:hover { background-color: #1E1E1E; }
 				@media (max-width: 640px) {
 					.uplot { margin: 1rem 0; }
+					.stats-table { font-size: 0.75rem; }
 				}
 			</style>
 		</head>
@@ -60,7 +74,7 @@ templ CollectorStatsContent(props CollectorStatsProps) {
 
 // CollectorStatsData renders the stats data with charts and table.
 templ CollectorStatsData(props CollectorStatsProps) {
-	if len(props.Stats) > 0 {
+	if len(props.CPUPeriods) > 0 || len(props.MemPeriods) > 0 || len(props.DiskPeriods) > 0 {
 		<!-- Charts Container -->
 		<div id="charts-container">
 			<div id="cpu-chart"></div>
@@ -68,39 +82,111 @@ templ CollectorStatsData(props CollectorStatsProps) {
 			<div id="disk-chart"></div>
 		</div>
 
-		<!-- Data Table -->
-		<details class="mt-6">
-			<summary class="cursor-pointer text-sm text-fg-secondary hover:text-fg transition-colors mb-2">Show raw data ({ strconv.Itoa(len(props.Stats)) } data points)</summary>
-			<table id="stats-data" class="stats-table text-sm">
+		<!-- CPU Periods Table -->
+		<details class="mt-6" if len(props.CPUPeriods) > 0 {
+			open
+		}>
+			<summary class="cursor-pointer text-sm text-fg-secondary hover:text-fg transition-colors mb-2">CPU Periods ({ strconv.Itoa(len(props.CPUPeriods)) })</summary>
+			<table id="cpu-periods" class="stats-table text-sm">
 				<thead>
 					<tr>
-						<th>Time</th>
+						<th>From</th>
+						<th>To</th>
 						<th>CPU %</th>
-						<th>RAM Used</th>
-						<th>RAM Total</th>
-						<th>RAM %</th>
-						<th>Disk Free</th>
 					</tr>
 				</thead>
 				<tbody>
-					for _, s := range props.Stats {
-						<tr data-timestamp={ strconv.FormatInt(s.CreatedAt, 10) }
-							data-cpu={ fmt.Sprintf("%f", s.CpuUsagePercent) }
-							data-ram-used={ strconv.FormatInt(s.MemUsedMb, 10) }
-							data-ram-total={ strconv.FormatInt(s.MemTotalMb, 10) }
-							data-disk-avail={ fmt.Sprintf("%f", s.DiskAvailGb) }>
-							<td>{ time.Unix(s.CreatedAt, 0).Format("2006-01-02 15:04:05") }</td>
-							<td>{ fmt.Sprintf("%.1f", s.CpuUsagePercent) }%</td>
-							<td>{ strconv.FormatInt(s.MemUsedMb, 10) } MB</td>
-							<td>{ strconv.FormatInt(s.MemTotalMb, 10) } MB</td>
+					for _, p := range props.CPUPeriods {
+						<tr data-start={ strconv.FormatInt(p.PeriodStart, 10) }
+						    data-end={ strconv.FormatInt(p.PeriodEnd, 10) }
+						    data-value={ fmt.Sprintf("%f", p.UsagePercent) }>
+							<td>{ time.Unix(p.PeriodStart, 0).Format("15:04:05") }</td>
 							<td>
-								if s.MemTotalMb > 0 {
-									{ fmt.Sprintf("%.1f", (float64(s.MemUsedMb)/float64(s.MemTotalMb))*100.0) }%
+								if p.PeriodEnd > 0 {
+									{ time.Unix(p.PeriodEnd, 0).Format("15:04:05") }
 								} else {
-									0%
+									now
 								}
 							</td>
-							<td>{ fmt.Sprintf("%.1f", s.DiskAvailGb) } GB</td>
+							<td>{ fmt.Sprintf("%.1f", p.UsagePercent) }%</td>
+						</tr>
+					}
+				</tbody>
+			</table>
+		</details>
+
+		<!-- Memory Periods Table -->
+		<details class="mt-4" if len(props.MemPeriods) > 0 {
+			open
+		}>
+			<summary class="cursor-pointer text-sm text-fg-secondary hover:text-fg transition-colors mb-2">Memory Periods ({ strconv.Itoa(len(props.MemPeriods)) })</summary>
+			<table id="mem-periods" class="stats-table text-sm">
+				<thead>
+					<tr>
+						<th>From</th>
+						<th>To</th>
+						<th>Used MB</th>
+						<th>Total MB</th>
+						<th>Used %</th>
+					</tr>
+				</thead>
+				<tbody>
+					for _, p := range props.MemPeriods {
+						<tr data-start={ strconv.FormatInt(p.PeriodStart, 10) }
+						    data-end={ strconv.FormatInt(p.PeriodEnd, 10) }
+						    data-used={ strconv.FormatInt(p.UsedMb, 10) }
+						    data-total={ strconv.FormatInt(p.TotalMb, 10) }>
+							<td>{ time.Unix(p.PeriodStart, 0).Format("15:04:05") }</td>
+							<td>
+								if p.PeriodEnd > 0 {
+									{ time.Unix(p.PeriodEnd, 0).Format("15:04:05") }
+								} else {
+									now
+								}
+							</td>
+							<td>{ strconv.FormatInt(p.UsedMb, 10) } MB</td>
+							<td>{ strconv.FormatInt(p.TotalMb, 10) } MB</td>
+							<td>{
+								func() string {
+									if p.TotalMb > 0 {
+										return fmt.Sprintf("%.1f", (float64(p.UsedMb)/float64(p.TotalMb))*100.0)
+									}
+									return "0.0"
+								}()
+							}%</td>
+						</tr>
+					}
+				</tbody>
+			</table>
+		</details>
+
+		<!-- Disk Periods Table -->
+		<details class="mt-4" if len(props.DiskPeriods) > 0 {
+			open
+		}>
+			<summary class="cursor-pointer text-sm text-fg-secondary hover:text-fg transition-colors mb-2">Disk Periods ({ strconv.Itoa(len(props.DiskPeriods)) })</summary>
+			<table id="disk-periods" class="stats-table text-sm">
+				<thead>
+					<tr>
+						<th>From</th>
+						<th>To</th>
+						<th>Available GB</th>
+					</tr>
+				</thead>
+				<tbody>
+					for _, p := range props.DiskPeriods {
+						<tr data-start={ strconv.FormatInt(p.PeriodStart, 10) }
+						    data-end={ strconv.FormatInt(p.PeriodEnd, 10) }
+						    data-value={ fmt.Sprintf("%f", p.AvailGb) }>
+							<td>{ time.Unix(p.PeriodStart, 0).Format("15:04:05") }</td>
+							<td>
+								if p.PeriodEnd > 0 {
+									{ time.Unix(p.PeriodEnd, 0).Format("15:04:05") }
+								} else {
+									now
+								}
+							</td>
+							<td>{ fmt.Sprintf("%.1f", p.AvailGb) } GB</td>
 						</tr>
 					}
 				</tbody>
@@ -119,27 +205,6 @@ templ CollectorStatsData(props CollectorStatsProps) {
 				}
 				
 				function renderCharts() {
-				const rows = document.querySelectorAll('#stats-data tbody tr');
-				if (rows.length === 0) return;
-
-				const timestamps = [];
-				const cpuData = [];
-				const ramUsedData = [];
-				const ramTotalData = [];
-				const diskData = [];
-
-				rows.forEach(row => {
-					timestamps.push(parseInt(row.dataset.timestamp));
-					cpuData.push(parseFloat(row.dataset.cpu));
-					ramUsedData.push(parseInt(row.dataset.ramUsed));
-					ramTotalData.push(parseInt(row.dataset.ramTotal));
-					diskData.push(parseInt(row.dataset.diskAvail));
-				});
-
-				const ramPercent = ramUsedData.map((used, i) => 
-					ramTotalData[i] > 0 ? (used / ramTotalData[i]) * 100 : 0
-				);
-
 				const containerWidth = document.getElementById('charts-container').offsetWidth;
 				const isMobile = window.innerWidth < 768;
 				const commonOpts = {
@@ -171,68 +236,133 @@ templ CollectorStatsData(props CollectorStatsProps) {
 					}
 				};
 
-				new uPlot({
-					...commonOpts,
-					title: "CPU Usage",
-					series: [
-						{ },
-						{ 
-							label: "CPU %", 
-							stroke: "#5C9CF5", 
-							fill: "rgba(92, 156, 245, 0.1)",
-							width: 2
-						}
-					],
-					axes: [
-						commonOpts.axes[0],
-						{ 
-							...commonOpts.axes[1],
-							values: (u, vals) => vals.map(v => v.toFixed(1) + '%')
-						}
-					],
-				}, [timestamps, cpuData], document.getElementById('cpu-chart'));
+				// Store chart instances for resize handling
+				const instances = [];
 
-				new uPlot({
-					...commonOpts,
-					title: "RAM Usage",
-					series: [
-						{ },
-						{ 
-							label: "RAM %", 
-							stroke: "#F5A742", 
-							fill: "rgba(245, 167, 66, 0.1)",
-							width: 2
+				// Build stepped data from periods: each period becomes two points (start, end)
+				// For open periods (end=0), emit current time as endpoint so the line extends to "now"
+				function periodsToSeries(rows, valueKey) {
+					const timestamps = [];
+					const values = [];
+					rows.forEach(row => {
+						const start = parseInt(row.dataset.start);
+						const end = parseInt(row.dataset.end);
+						const val = parseFloat(row.dataset[valueKey]);
+						timestamps.push(start);
+						values.push(val);
+						if (end > 0) {
+							timestamps.push(end);
+							values.push(val);
+						} else {
+							// Open period: extend to current time
+							timestamps.push(Math.floor(Date.now() / 1000));
+							values.push(val);
 						}
-					],
-					axes: [
-						commonOpts.axes[0],
-						{ 
-							...commonOpts.axes[1],
-							values: (u, vals) => vals.map(v => v.toFixed(1) + '%')
-						}
-					],
-				}, [timestamps, ramPercent], document.getElementById('ram-chart'));
+					});
+					// Sort by timestamp
+					const indices = timestamps.map((_, i) => i).sort((a, b) => timestamps[a] - timestamps[b]);
+					return [
+						indices.map(i => timestamps[i]),
+						indices.map(i => values[i])
+					];
+				}
 
-				new uPlot({
-					...commonOpts,
-					title: "Disk Available",
-					series: [
-						{ },
-						{ 
-							label: "Free GB", 
-							stroke: "#22C55E", 
-							fill: "rgba(34, 197, 94, 0.1)",
-							width: 2
+				const cpuRows = document.querySelectorAll('#cpu-periods tbody tr');
+				if (cpuRows.length > 0) {
+					const [cpuTs, cpuVals] = periodsToSeries(cpuRows, 'value');
+					instances.push(new uPlot({
+						...commonOpts,
+						title: "CPU Usage",
+						series: [
+							{ },
+							{ 
+								label: "CPU %", 
+								stroke: "#5C9CF5", 
+								fill: "rgba(92, 156, 245, 0.1)",
+								width: 2
+							}
+						],
+						axes: [
+							commonOpts.axes[0],
+							{ 
+								...commonOpts.axes[1],
+								values: (u, vals) => vals.map(v => v.toFixed(1) + '%')
+							}
+						],
+					}, [cpuTs, cpuVals], document.getElementById('cpu-chart')));
+				}
+
+				const memRows = document.querySelectorAll('#mem-periods tbody tr');
+				if (memRows.length > 0) {
+					const timestamps = [];
+					const values = [];
+					memRows.forEach(row => {
+						const start = parseInt(row.dataset.start);
+						const end = parseInt(row.dataset.end);
+						const total = parseInt(row.dataset.total);
+						const used = parseInt(row.dataset.used);
+						const pct = total > 0 ? (used / total) * 100 : 0;
+						timestamps.push(start);
+						values.push(pct);
+						if (end > 0) {
+							timestamps.push(end);
+							values.push(pct);
+						} else {
+							// Open period: extend to current time
+							timestamps.push(Math.floor(Date.now() / 1000));
+							values.push(pct);
 						}
-					],
-					axes: [
-						commonOpts.axes[0],
-						{ 
-							...commonOpts.axes[1],
-							values: (u, vals) => vals.map(v => v.toFixed(0) + ' GB')
-						}
-					],
-				}, [timestamps, diskData], document.getElementById('disk-chart'));
+					});
+					const indices = timestamps.map((_, i) => i).sort((a, b) => timestamps[a] - timestamps[b]);
+					const sortedTs = indices.map(i => timestamps[i]);
+					const sortedVals = indices.map(i => values[i]);
+
+					instances.push(new uPlot({
+						...commonOpts,
+						title: "RAM Usage",
+						series: [
+							{ },
+							{ 
+								label: "RAM %", 
+								stroke: "#F5A742", 
+								fill: "rgba(245, 167, 66, 0.1)",
+								width: 2
+							}
+						],
+						axes: [
+							commonOpts.axes[0],
+							{ 
+								...commonOpts.axes[1],
+								values: (u, vals) => vals.map(v => v.toFixed(1) + '%')
+							}
+						],
+					}, [sortedTs, sortedVals], document.getElementById('ram-chart')));
+				}
+
+				const diskRows = document.querySelectorAll('#disk-periods tbody tr');
+				if (diskRows.length > 0) {
+					const [diskTs, diskVals] = periodsToSeries(diskRows, 'value');
+					instances.push(new uPlot({
+						...commonOpts,
+						title: "Disk Available",
+						series: [
+							{ },
+							{ 
+								label: "Free GB", 
+								stroke: "#22C55E", 
+								fill: "rgba(34, 197, 94, 0.1)",
+								width: 2
+							}
+						],
+						axes: [
+							commonOpts.axes[0],
+							{ 
+								...commonOpts.axes[1],
+								values: (u, vals) => vals.map(v => v.toFixed(0) + ' GB')
+							}
+						],
+					}, [diskTs, diskVals], document.getElementById('disk-chart')));
+				}
 
 				let resizeTimeout;
 				window.addEventListener('resize', () => {
@@ -242,15 +372,11 @@ templ CollectorStatsData(props CollectorStatsProps) {
 						const newIsMobile = window.innerWidth < 768;
 						const newHeight = newIsMobile ? 200 : 250;
 						
-						const charts = document.querySelectorAll('.uplot');
-						charts.forEach(chart => {
-							const uplot = uPlot.charts.find(c => c.root === chart);
-							if (uplot) {
-								uplot.setSize({ 
-									width: newWidth, 
-									height: newHeight 
-								});
-							}
+						instances.forEach(u => {
+							u.setSize({ 
+								width: newWidth, 
+								height: newHeight 
+							});
 						});
 					}, 150);
 				});

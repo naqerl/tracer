@@ -11,7 +11,10 @@ import (
 
 type Querier interface {
 	AddNotifierSubscription(ctx context.Context, arg AddNotifierSubscriptionParams) error
+	CloseCPUPeriod(ctx context.Context, arg CloseCPUPeriodParams) error
+	CloseDiskPeriod(ctx context.Context, arg CloseDiskPeriodParams) error
 	CloseHealthPeriod(ctx context.Context, arg CloseHealthPeriodParams) error
+	CloseMemPeriod(ctx context.Context, arg CloseMemPeriodParams) error
 	// Count total logs in a group
 	CountLogsByGroupID(ctx context.Context, groupID sql.NullInt64) (int64, error)
 	CountUsers(ctx context.Context) (int64, error)
@@ -30,9 +33,11 @@ type Querier interface {
 	// Delete a log group by ID
 	DeleteLogGroup(ctx context.Context, id int64) (int64, error)
 	DeleteNotifier(ctx context.Context, id int64) error
+	DeleteOldCPUPeriods(ctx context.Context, endedAt sql.NullInt64) error
+	DeleteOldDiskPeriods(ctx context.Context, endedAt sql.NullInt64) error
 	DeleteOldHealthPeriods(ctx context.Context, endedAt sql.NullInt64) error
 	DeleteOldLogs(ctx context.Context, createdAt int64) error
-	DeleteOldStats(ctx context.Context, createdAt int64) error
+	DeleteOldMemPeriods(ctx context.Context, endedAt sql.NullInt64) error
 	DeleteSession(ctx context.Context, id string) error
 	DeleteUser(ctx context.Context, id int64) error
 	DeleteUserAPIKey(ctx context.Context, id int64) error
@@ -41,10 +46,11 @@ type Querier interface {
 	// User access policy queries
 	FindUserAccessPolicy(ctx context.Context, userID int64) ([]FindUserAccessPolicyRow, error)
 	FindUserCredsByUsername(ctx context.Context, username string) (FindUserCredsByUsernameRow, error)
+	GetCPUHistory(ctx context.Context, endedAt sql.NullInt64) ([]CpuPeriod, error)
 	GetCollectorAPIKeyByName(ctx context.Context, name string) (CollectorApiKey, error)
 	GetCollectorAPIKeys(ctx context.Context) ([]GetCollectorAPIKeysRow, error)
+	GetDiskHistory(ctx context.Context, endedAt sql.NullInt64) ([]DiskPeriod, error)
 	GetLatestHealthPeriod(ctx context.Context) (AppHealthPeriod, error)
-	GetLatestStats(ctx context.Context) (SystemStat, error)
 	GetLogByID(ctx context.Context, id int64) (Log, error)
 	GetLogGroupByID(ctx context.Context, groupID sql.NullInt64) (GetLogGroupByIDRow, error)
 	// Get log volume over time bucketed by intervals and grouped by level
@@ -58,24 +64,32 @@ type Querier interface {
 	// 3. All apps from this specific collector (app = "*", collector = specific)
 	// 4. All apps from any collector (app = "*", collector = "*")
 	GetMatchingNotifiers(ctx context.Context, arg GetMatchingNotifiersParams) ([]Notifier, error)
+	GetMemHistory(ctx context.Context, endedAt sql.NullInt64) ([]MemPeriod, error)
 	GetNotifier(ctx context.Context, id int64) (Notifier, error)
 	// Notifier subscription mapping queries
 	// Returns all subscriptions (with collector) for a notifier
 	GetNotifierSubscriptions(ctx context.Context, notifierID int64) ([]GetNotifierSubscriptionsRow, error)
+	// CPU Period
+	GetOpenCPUPeriod(ctx context.Context) (CpuPeriod, error)
+	// Disk Period
+	GetOpenDiskPeriod(ctx context.Context) (DiskPeriod, error)
 	GetOpenHealthPeriod(ctx context.Context) (AppHealthPeriod, error)
+	// Memory Period
+	GetOpenMemPeriod(ctx context.Context) (MemPeriod, error)
 	// Get existing log group by message and level, or create if doesn't exist
 	GetOrCreateLogGroup(ctx context.Context, arg GetOrCreateLogGroupParams) (LogGroup, error)
 	GetPercentiles(ctx context.Context, createdAt int64) (GetPercentilesRow, error)
 	GetSession(ctx context.Context, id string) (Session, error)
-	GetStatsHistory(ctx context.Context, createdAt int64) ([]SystemStat, error)
 	GetUserAPIKeysByUser(ctx context.Context, userID int64) ([]GetUserAPIKeysByUserRow, error)
 	GetUserByID(ctx context.Context, id int64) (User, error)
 	GrantAppAccess(ctx context.Context, arg GrantAppAccessParams) error
 	// Update last_log_at for a group
 	IncrementLogGroupCounter(ctx context.Context, arg IncrementLogGroupCounterParams) error
+	InsertCPUPeriod(ctx context.Context, arg InsertCPUPeriodParams) (CpuPeriod, error)
+	InsertDiskPeriod(ctx context.Context, arg InsertDiskPeriodParams) (DiskPeriod, error)
 	InsertLifecycleEvent(ctx context.Context, arg InsertLifecycleEventParams) (LifecycleEvent, error)
 	InsertLog(ctx context.Context, arg InsertLogParams) (Log, error)
-	InsertSystemStats(ctx context.Context, arg InsertSystemStatsParams) error
+	InsertMemPeriod(ctx context.Context, arg InsertMemPeriodParams) (MemPeriod, error)
 	ListAllNotifiers(ctx context.Context) ([]Notifier, error)
 	ListHealthPeriodsOverlappingRange(ctx context.Context, arg ListHealthPeriodsOverlappingRangeParams) ([]AppHealthPeriod, error)
 	ListLogGroups(ctx context.Context, arg ListLogGroupsParams) ([]ListLogGroupsRow, error)

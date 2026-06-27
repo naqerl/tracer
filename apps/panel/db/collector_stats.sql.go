@@ -7,71 +7,99 @@ package db
 
 import (
 	"context"
+	"database/sql"
 )
 
-const deleteOldStats = `-- name: DeleteOldStats :exec
-DELETE FROM system_stats WHERE created_at < ?
+const closeCPUPeriod = `-- name: CloseCPUPeriod :exec
+UPDATE cpu_period SET ended_at = ? WHERE id = ?
 `
 
-func (q *Queries) DeleteOldStats(ctx context.Context, createdAt int64) error {
-	_, err := q.db.ExecContext(ctx, deleteOldStats, createdAt)
+type CloseCPUPeriodParams struct {
+	EndedAt sql.NullInt64
+	ID      int64
+}
+
+func (q *Queries) CloseCPUPeriod(ctx context.Context, arg CloseCPUPeriodParams) error {
+	_, err := q.db.ExecContext(ctx, closeCPUPeriod, arg.EndedAt, arg.ID)
 	return err
 }
 
-const getLatestStats = `-- name: GetLatestStats :one
-SELECT id, collector_name, cpu_usage_percent, mem_total_mb, mem_used_mb, 
-       mem_available_mb, disk_total_gb, disk_used_gb, disk_avail_gb, created_at
-FROM system_stats
-ORDER BY created_at DESC
-LIMIT 1
+const closeDiskPeriod = `-- name: CloseDiskPeriod :exec
+UPDATE disk_period SET ended_at = ? WHERE id = ?
 `
 
-func (q *Queries) GetLatestStats(ctx context.Context) (SystemStat, error) {
-	row := q.db.QueryRowContext(ctx, getLatestStats)
-	var i SystemStat
-	err := row.Scan(
-		&i.ID,
-		&i.CollectorName,
-		&i.CpuUsagePercent,
-		&i.MemTotalMb,
-		&i.MemUsedMb,
-		&i.MemAvailableMb,
-		&i.DiskTotalGb,
-		&i.DiskUsedGb,
-		&i.DiskAvailGb,
-		&i.CreatedAt,
-	)
-	return i, err
+type CloseDiskPeriodParams struct {
+	EndedAt sql.NullInt64
+	ID      int64
 }
 
-const getStatsHistory = `-- name: GetStatsHistory :many
-SELECT id, collector_name, cpu_usage_percent, mem_total_mb, mem_used_mb, 
-       mem_available_mb, disk_total_gb, disk_used_gb, disk_avail_gb, created_at
-FROM system_stats
-WHERE created_at >= ?
-ORDER BY created_at ASC
+func (q *Queries) CloseDiskPeriod(ctx context.Context, arg CloseDiskPeriodParams) error {
+	_, err := q.db.ExecContext(ctx, closeDiskPeriod, arg.EndedAt, arg.ID)
+	return err
+}
+
+const closeMemPeriod = `-- name: CloseMemPeriod :exec
+UPDATE mem_period SET ended_at = ? WHERE id = ?
 `
 
-func (q *Queries) GetStatsHistory(ctx context.Context, createdAt int64) ([]SystemStat, error) {
-	rows, err := q.db.QueryContext(ctx, getStatsHistory, createdAt)
+type CloseMemPeriodParams struct {
+	EndedAt sql.NullInt64
+	ID      int64
+}
+
+func (q *Queries) CloseMemPeriod(ctx context.Context, arg CloseMemPeriodParams) error {
+	_, err := q.db.ExecContext(ctx, closeMemPeriod, arg.EndedAt, arg.ID)
+	return err
+}
+
+const deleteOldCPUPeriods = `-- name: DeleteOldCPUPeriods :exec
+DELETE FROM cpu_period WHERE ended_at IS NOT NULL AND ended_at < ?
+`
+
+func (q *Queries) DeleteOldCPUPeriods(ctx context.Context, endedAt sql.NullInt64) error {
+	_, err := q.db.ExecContext(ctx, deleteOldCPUPeriods, endedAt)
+	return err
+}
+
+const deleteOldDiskPeriods = `-- name: DeleteOldDiskPeriods :exec
+DELETE FROM disk_period WHERE ended_at IS NOT NULL AND ended_at < ?
+`
+
+func (q *Queries) DeleteOldDiskPeriods(ctx context.Context, endedAt sql.NullInt64) error {
+	_, err := q.db.ExecContext(ctx, deleteOldDiskPeriods, endedAt)
+	return err
+}
+
+const deleteOldMemPeriods = `-- name: DeleteOldMemPeriods :exec
+DELETE FROM mem_period WHERE ended_at IS NOT NULL AND ended_at < ?
+`
+
+func (q *Queries) DeleteOldMemPeriods(ctx context.Context, endedAt sql.NullInt64) error {
+	_, err := q.db.ExecContext(ctx, deleteOldMemPeriods, endedAt)
+	return err
+}
+
+const getCPUHistory = `-- name: GetCPUHistory :many
+SELECT id, collector_name, usage_percent, started_at, ended_at FROM cpu_period
+WHERE (ended_at IS NULL OR ended_at >= ?)
+ORDER BY started_at ASC
+`
+
+func (q *Queries) GetCPUHistory(ctx context.Context, endedAt sql.NullInt64) ([]CpuPeriod, error) {
+	rows, err := q.db.QueryContext(ctx, getCPUHistory, endedAt)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []SystemStat
+	var items []CpuPeriod
 	for rows.Next() {
-		var i SystemStat
+		var i CpuPeriod
 		if err := rows.Scan(
 			&i.ID,
 			&i.CollectorName,
-			&i.CpuUsagePercent,
-			&i.MemTotalMb,
-			&i.MemUsedMb,
-			&i.MemAvailableMb,
-			&i.DiskTotalGb,
-			&i.DiskUsedGb,
-			&i.DiskAvailGb,
-			&i.CreatedAt,
+			&i.UsagePercent,
+			&i.StartedAt,
+			&i.EndedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -86,36 +114,229 @@ func (q *Queries) GetStatsHistory(ctx context.Context, createdAt int64) ([]Syste
 	return items, nil
 }
 
-const insertSystemStats = `-- name: InsertSystemStats :exec
-INSERT INTO system_stats (
-    collector_name, cpu_usage_percent, mem_total_mb, mem_used_mb,
-    mem_available_mb, disk_total_gb, disk_used_gb, disk_avail_gb, created_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+const getDiskHistory = `-- name: GetDiskHistory :many
+SELECT id, collector_name, total_gb, used_gb, avail_gb, started_at, ended_at FROM disk_period
+WHERE (ended_at IS NULL OR ended_at >= ?)
+ORDER BY started_at ASC
 `
 
-type InsertSystemStatsParams struct {
-	CollectorName   string
-	CpuUsagePercent float64
-	MemTotalMb      int64
-	MemUsedMb       int64
-	MemAvailableMb  int64
-	DiskTotalGb     int64
-	DiskUsedGb      int64
-	DiskAvailGb     int64
-	CreatedAt       int64
+func (q *Queries) GetDiskHistory(ctx context.Context, endedAt sql.NullInt64) ([]DiskPeriod, error) {
+	rows, err := q.db.QueryContext(ctx, getDiskHistory, endedAt)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []DiskPeriod
+	for rows.Next() {
+		var i DiskPeriod
+		if err := rows.Scan(
+			&i.ID,
+			&i.CollectorName,
+			&i.TotalGb,
+			&i.UsedGb,
+			&i.AvailGb,
+			&i.StartedAt,
+			&i.EndedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
-func (q *Queries) InsertSystemStats(ctx context.Context, arg InsertSystemStatsParams) error {
-	_, err := q.db.ExecContext(ctx, insertSystemStats,
-		arg.CollectorName,
-		arg.CpuUsagePercent,
-		arg.MemTotalMb,
-		arg.MemUsedMb,
-		arg.MemAvailableMb,
-		arg.DiskTotalGb,
-		arg.DiskUsedGb,
-		arg.DiskAvailGb,
-		arg.CreatedAt,
+const getMemHistory = `-- name: GetMemHistory :many
+SELECT id, collector_name, total_mb, used_mb, available_mb, started_at, ended_at FROM mem_period
+WHERE (ended_at IS NULL OR ended_at >= ?)
+ORDER BY started_at ASC
+`
+
+func (q *Queries) GetMemHistory(ctx context.Context, endedAt sql.NullInt64) ([]MemPeriod, error) {
+	rows, err := q.db.QueryContext(ctx, getMemHistory, endedAt)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []MemPeriod
+	for rows.Next() {
+		var i MemPeriod
+		if err := rows.Scan(
+			&i.ID,
+			&i.CollectorName,
+			&i.TotalMb,
+			&i.UsedMb,
+			&i.AvailableMb,
+			&i.StartedAt,
+			&i.EndedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getOpenCPUPeriod = `-- name: GetOpenCPUPeriod :one
+SELECT id, collector_name, usage_percent, started_at, ended_at FROM cpu_period WHERE ended_at IS NULL ORDER BY started_at DESC LIMIT 1
+`
+
+// CPU Period
+func (q *Queries) GetOpenCPUPeriod(ctx context.Context) (CpuPeriod, error) {
+	row := q.db.QueryRowContext(ctx, getOpenCPUPeriod)
+	var i CpuPeriod
+	err := row.Scan(
+		&i.ID,
+		&i.CollectorName,
+		&i.UsagePercent,
+		&i.StartedAt,
+		&i.EndedAt,
 	)
-	return err
+	return i, err
+}
+
+const getOpenDiskPeriod = `-- name: GetOpenDiskPeriod :one
+SELECT id, collector_name, total_gb, used_gb, avail_gb, started_at, ended_at FROM disk_period WHERE ended_at IS NULL ORDER BY started_at DESC LIMIT 1
+`
+
+// Disk Period
+func (q *Queries) GetOpenDiskPeriod(ctx context.Context) (DiskPeriod, error) {
+	row := q.db.QueryRowContext(ctx, getOpenDiskPeriod)
+	var i DiskPeriod
+	err := row.Scan(
+		&i.ID,
+		&i.CollectorName,
+		&i.TotalGb,
+		&i.UsedGb,
+		&i.AvailGb,
+		&i.StartedAt,
+		&i.EndedAt,
+	)
+	return i, err
+}
+
+const getOpenMemPeriod = `-- name: GetOpenMemPeriod :one
+SELECT id, collector_name, total_mb, used_mb, available_mb, started_at, ended_at FROM mem_period WHERE ended_at IS NULL ORDER BY started_at DESC LIMIT 1
+`
+
+// Memory Period
+func (q *Queries) GetOpenMemPeriod(ctx context.Context) (MemPeriod, error) {
+	row := q.db.QueryRowContext(ctx, getOpenMemPeriod)
+	var i MemPeriod
+	err := row.Scan(
+		&i.ID,
+		&i.CollectorName,
+		&i.TotalMb,
+		&i.UsedMb,
+		&i.AvailableMb,
+		&i.StartedAt,
+		&i.EndedAt,
+	)
+	return i, err
+}
+
+const insertCPUPeriod = `-- name: InsertCPUPeriod :one
+INSERT INTO cpu_period (collector_name, usage_percent, started_at, ended_at)
+VALUES (?, ?, ?, NULL)
+RETURNING id, collector_name, usage_percent, started_at, ended_at
+`
+
+type InsertCPUPeriodParams struct {
+	CollectorName string
+	UsagePercent  float64
+	StartedAt     int64
+}
+
+func (q *Queries) InsertCPUPeriod(ctx context.Context, arg InsertCPUPeriodParams) (CpuPeriod, error) {
+	row := q.db.QueryRowContext(ctx, insertCPUPeriod, arg.CollectorName, arg.UsagePercent, arg.StartedAt)
+	var i CpuPeriod
+	err := row.Scan(
+		&i.ID,
+		&i.CollectorName,
+		&i.UsagePercent,
+		&i.StartedAt,
+		&i.EndedAt,
+	)
+	return i, err
+}
+
+const insertDiskPeriod = `-- name: InsertDiskPeriod :one
+INSERT INTO disk_period (collector_name, total_gb, used_gb, avail_gb, started_at, ended_at)
+VALUES (?, ?, ?, ?, ?, NULL)
+RETURNING id, collector_name, total_gb, used_gb, avail_gb, started_at, ended_at
+`
+
+type InsertDiskPeriodParams struct {
+	CollectorName string
+	TotalGb       int64
+	UsedGb        int64
+	AvailGb       int64
+	StartedAt     int64
+}
+
+func (q *Queries) InsertDiskPeriod(ctx context.Context, arg InsertDiskPeriodParams) (DiskPeriod, error) {
+	row := q.db.QueryRowContext(ctx, insertDiskPeriod,
+		arg.CollectorName,
+		arg.TotalGb,
+		arg.UsedGb,
+		arg.AvailGb,
+		arg.StartedAt,
+	)
+	var i DiskPeriod
+	err := row.Scan(
+		&i.ID,
+		&i.CollectorName,
+		&i.TotalGb,
+		&i.UsedGb,
+		&i.AvailGb,
+		&i.StartedAt,
+		&i.EndedAt,
+	)
+	return i, err
+}
+
+const insertMemPeriod = `-- name: InsertMemPeriod :one
+INSERT INTO mem_period (collector_name, total_mb, used_mb, available_mb, started_at, ended_at)
+VALUES (?, ?, ?, ?, ?, NULL)
+RETURNING id, collector_name, total_mb, used_mb, available_mb, started_at, ended_at
+`
+
+type InsertMemPeriodParams struct {
+	CollectorName string
+	TotalMb       int64
+	UsedMb        int64
+	AvailableMb   int64
+	StartedAt     int64
+}
+
+func (q *Queries) InsertMemPeriod(ctx context.Context, arg InsertMemPeriodParams) (MemPeriod, error) {
+	row := q.db.QueryRowContext(ctx, insertMemPeriod,
+		arg.CollectorName,
+		arg.TotalMb,
+		arg.UsedMb,
+		arg.AvailableMb,
+		arg.StartedAt,
+	)
+	var i MemPeriod
+	err := row.Scan(
+		&i.ID,
+		&i.CollectorName,
+		&i.TotalMb,
+		&i.UsedMb,
+		&i.AvailableMb,
+		&i.StartedAt,
+		&i.EndedAt,
+	)
+	return i, err
 }

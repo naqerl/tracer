@@ -29,6 +29,24 @@ type CollectorApiKey struct {
 	LastUsedAt sql.NullInt64
 }
 
+type CpuPeriod struct {
+	ID            int64
+	CollectorName string
+	UsagePercent  float64
+	StartedAt     int64
+	EndedAt       sql.NullInt64
+}
+
+type DiskPeriod struct {
+	ID            int64
+	CollectorName string
+	TotalGb       int64
+	UsedGb        int64
+	AvailGb       int64
+	StartedAt     int64
+	EndedAt       sql.NullInt64
+}
+
 type LifecycleEvent struct {
 	ID        int64
 	Kind      string
@@ -54,6 +72,16 @@ type LogGroup struct {
 	LastLogAt int64
 }
 
+type MemPeriod struct {
+	ID            int64
+	CollectorName string
+	TotalMb       int64
+	UsedMb        int64
+	AvailableMb   int64
+	StartedAt     int64
+	EndedAt       sql.NullInt64
+}
+
 type Notifier struct {
 	ID        int64
 	UserID    int64
@@ -75,19 +103,6 @@ type Session struct {
 	UserID    int64
 	ExpiresAt int64
 	CreatedAt int64
-}
-
-type SystemStat struct {
-	ID              int64
-	CollectorName   string
-	CpuUsagePercent float64
-	MemTotalMb      int64
-	MemUsedMb       int64
-	MemAvailableMb  int64
-	DiskTotalGb     int64
-	DiskUsedGb      int64
-	DiskAvailGb     int64
-	CreatedAt       int64
 }
 
 type User struct {

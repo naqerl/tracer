@@ -366,13 +366,13 @@ func sinceWithinRange(since time.Time) bool {
 	return time.Since(since) <= maxSinceAge+sinceValidationSkew
 }
 
-func (s *Service) GetStatsHistory(ctx context.Context, req GetStatsHistoryRequest) ([]db.SystemStat, error) {
+func (s *Service) GetStatsHistory(ctx context.Context, req GetStatsHistoryRequest) (ingest.StatsHistoryResult, error) {
 	access, err := s.userSvc.FindAccessPolicy(ctx, req.UserID)
 	if err != nil {
-		return nil, fmt.Errorf("could not list user apps: %w", err)
+		return ingest.StatsHistoryResult{}, fmt.Errorf("could not list user apps: %w", err)
 	}
 	if !access.AllowedTo(req.CollectorName, "") {
-		return nil, ErrAccessDenied
+		return ingest.StatsHistoryResult{}, ErrAccessDenied
 	}
 
 	return s.ingestSvc.GetStatsHistory(ctx, req.CollectorName, req.Since)
@@ -776,9 +776,9 @@ func (s *Service) queriesForApp(collectorName, appName string) (*db.Queries, err
 	return db.New(handle.Read()), nil
 }
 
-func formatCollectorStats(stats db.SystemStat) *CollectorStats {
+func formatCollectorStats(stats ingest.SystemStat) *CollectorStats {
 	now := time.Now()
-	createdAt := time.Unix(stats.CreatedAt, 0)
+	createdAt := time.Unix(stats.Timestamp, 0)
 	age := now.Sub(createdAt)
 
 	nowY, nowM, nowD := now.Date()
@@ -803,7 +803,7 @@ func formatCollectorStats(stats db.SystemStat) *CollectorStats {
 	}
 
 	return &CollectorStats{
-		CPUUsagePercent:    stats.CpuUsagePercent,
+		CPUUsagePercent:    stats.CPUUsagePercent,
 		MemTotalMB:         stats.MemTotalMb,
 		MemUsedMB:          stats.MemUsedMb,
 		DiskTotalGB:        stats.DiskTotalGb,

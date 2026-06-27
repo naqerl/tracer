@@ -223,21 +223,54 @@ func (h *handler) getCollectorResources(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	viewStats := make([]view.StatPoint, len(stats))
-	for i, s := range stats {
-		viewStats[i] = view.StatPoint{
-			CreatedAt:       s.CreatedAt,
-			CpuUsagePercent: s.CpuUsagePercent,
-			MemUsedMb:       s.MemUsedMb,
-			MemTotalMb:      s.MemTotalMb,
-			DiskAvailGb:     float64(s.DiskAvailGb),
+	// Convert period data to view layer
+	cpuPeriods := make([]view.CPUPeriodView, len(stats.CPUPeriods))
+	for i, p := range stats.CPUPeriods {
+		end := int64(0)
+		if p.EndedAt.Valid {
+			end = p.EndedAt.Int64
+		}
+		cpuPeriods[i] = view.CPUPeriodView{
+			PeriodStart:  p.StartedAt,
+			PeriodEnd:    end,
+			UsagePercent: p.UsagePercent,
 		}
 	}
+
+	memPeriods := make([]view.MemPeriodView, len(stats.MemPeriods))
+	for i, p := range stats.MemPeriods {
+		end := int64(0)
+		if p.EndedAt.Valid {
+			end = p.EndedAt.Int64
+		}
+		memPeriods[i] = view.MemPeriodView{
+			PeriodStart: p.StartedAt,
+			PeriodEnd:   end,
+			UsedMb:      p.UsedMb,
+			TotalMb:     p.TotalMb,
+		}
+	}
+
+	diskPeriods := make([]view.DiskPeriodView, len(stats.DiskPeriods))
+	for i, p := range stats.DiskPeriods {
+		end := int64(0)
+		if p.EndedAt.Valid {
+			end = p.EndedAt.Int64
+		}
+		diskPeriods[i] = view.DiskPeriodView{
+			PeriodStart: p.StartedAt,
+			PeriodEnd:   end,
+			AvailGb:     float64(p.AvailGb),
+		}
+	}
+
 	view.CollectorStats(view.CollectorStatsProps{
 		Title:         req.CollectorName + " Resources",
 		CollectorName: req.CollectorName,
 		Since:         sinceLabel,
-		Stats:         viewStats,
+		CPUPeriods:    cpuPeriods,
+		MemPeriods:    memPeriods,
+		DiskPeriods:   diskPeriods,
 	}).Render(r.Context(), w)
 }
 

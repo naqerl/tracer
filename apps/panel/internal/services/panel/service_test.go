@@ -446,7 +446,7 @@ func TestGetStatsHistory_Success(t *testing.T) {
 	}
 	_ = appName
 
-	stats, err := svc.GetStatsHistory(ctx, GetStatsHistoryRequest{
+	result, err := svc.GetStatsHistory(ctx, GetStatsHistoryRequest{
 		UserID:        userID,
 		CollectorName: collectorName,
 		Since:         time.Now().Add(-1 * time.Hour),
@@ -454,11 +454,17 @@ func TestGetStatsHistory_Success(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetStatsHistory: %v", err)
 	}
-	if len(stats) != 1 {
-		t.Fatalf("expected 1 stat entry, got %d", len(stats))
+	if len(result.CPUPeriods) != 1 {
+		t.Fatalf("expected 1 cpu period, got %d", len(result.CPUPeriods))
 	}
-	if stats[0].CpuUsagePercent != 42.5 {
-		t.Fatalf("expected CPU 42.5, got %f", stats[0].CpuUsagePercent)
+	if result.CPUPeriods[0].UsagePercent != 42.5 {
+		t.Fatalf("expected CPU 42.5, got %f", result.CPUPeriods[0].UsagePercent)
+	}
+	if len(result.MemPeriods) != 1 {
+		t.Fatalf("expected 1 mem period, got %d", len(result.MemPeriods))
+	}
+	if len(result.DiskPeriods) != 1 {
+		t.Fatalf("expected 1 disk period, got %d", len(result.DiskPeriods))
 	}
 }
 
@@ -872,68 +878,125 @@ func TestSinceWithinRange(t *testing.T) {
 	}
 }
 
-func TestFormatCollectorStats(t *testing.T) {
-	now := time.Now()
-	stats := db.SystemStat{
-		CpuUsagePercent: 50.0,
-		MemTotalMb:      16384,
-		MemUsedMb:       4096,
-		DiskTotalGb:     500,
-		DiskUsedGb:      100,
-		CreatedAt:       now.Unix(),
-	}
+// TestCollectorStats_Staleness_Fresh verifies staleness="fresh" for a recent stat
+// using the public GetCollector API.
+func TestCollectorStats_Staleness_Fresh(t *testing.T) {
+	svc, _, userID, collectorName, _ := setupTestService(t)
+	ctx := context.Background()
 
-	cs := formatCollectorStats(stats)
-	if cs == nil {
-		t.Fatal("expected non-nil CollectorStats")
+	saveStats(t, ctx, svc, collectorName, types.Stats{
+		CPUUsagePercent: 50.0,
+		MemTotalMB:      16384,
+		MemUsedMB:       4096,
+		MemAvailableMB:  12288,
+		DiskTotalGB:     500,
+		DiskUsedGB:      100,
+		DiskAvailGB:     400,
+		Timestamp:       time.Now(),
+	})
+
+	c, err := svc.GetCollector(ctx, GetCollectorRequest{
+		UserID:        userID,
+		CollectorName: collectorName,
+	})
+	if err != nil {
+		t.Fatalf("GetCollector: %v", err)
 	}
-	if cs.CPUUsagePercent != 50.0 {
-		t.Fatalf("expected CPU 50.0, got %f", cs.CPUUsagePercent)
+	if c.Stats == nil {
+		t.Fatal("expected non-nil Stats")
 	}
-	if cs.MemTotalMB != 16384 {
-		t.Fatalf("expected MemTotalMB 16384, got %d", cs.MemTotalMB)
+	if c.Stats.CPUUsagePercent != 50.0 {
+		t.Fatalf("CPU: expected 50.0, got %f", c.Stats.CPUUsagePercent)
 	}
-	if cs.Staleness != "fresh" {
-		t.Fatalf("expected fresh staleness, got %q", cs.Staleness)
+	if c.Stats.MemTotalMB != 16384 {
+		t.Fatalf("MemTotalMB: expected 16384, got %d", c.Stats.MemTotalMB)
+	}
+	if c.Stats.Staleness != "fresh" {
+		t.Fatalf("expected fresh staleness, got %q", c.Stats.Staleness)
 	}
 }
 
-func TestFormatCollectorStats_Stale(t *testing.T) {
-	old := time.Now().Add(-45 * time.Minute)
-	stats := db.SystemStat{
-		CpuUsagePercent: 10.0,
-		CreatedAt:       old.Unix(),
-	}
+// TestCollectorStats_Staleness_Stale verifies staleness="stale" for a 45-min-old stat.
+func TestCollectorStats_Staleness_Stale(t *testing.T) {
+	svc, _, userID, collectorName, _ := setupTestService(t)
+	ctx := context.Background()
 
-	cs := formatCollectorStats(stats)
-	if cs.Staleness != "stale" {
-		t.Fatalf("expected stale, got %q", cs.Staleness)
+	saveStats(t, ctx, svc, collectorName, types.Stats{
+		CPUUsagePercent: 10.0,
+		MemTotalMB:      4096,
+		MemUsedMB:       1024,
+		MemAvailableMB:  3072,
+		DiskTotalGB:     100,
+		DiskUsedGB:      50,
+		DiskAvailGB:     50,
+		Timestamp:       time.Now().Add(-45 * time.Minute),
+	})
+
+	c, err := svc.GetCollector(ctx, GetCollectorRequest{
+		UserID:        userID,
+		CollectorName: collectorName,
+	})
+	if err != nil {
+		t.Fatalf("GetCollector: %v", err)
+	}
+	if c.Stats.Staleness != "stale" {
+		t.Fatalf("expected stale, got %q", c.Stats.Staleness)
 	}
 }
 
-func TestFormatCollectorStats_Warning(t *testing.T) {
-	old := time.Now().Add(-7 * time.Minute)
-	stats := db.SystemStat{
-		CpuUsagePercent: 10.0,
-		CreatedAt:       old.Unix(),
-	}
+// TestCollectorStats_Staleness_Warning verifies staleness="warning" for a 7-min-old stat.
+func TestCollectorStats_Staleness_Warning(t *testing.T) {
+	svc, _, userID, collectorName, _ := setupTestService(t)
+	ctx := context.Background()
 
-	cs := formatCollectorStats(stats)
-	if cs.Staleness != "warning" {
-		t.Fatalf("expected warning, got %q", cs.Staleness)
+	saveStats(t, ctx, svc, collectorName, types.Stats{
+		CPUUsagePercent: 10.0,
+		MemTotalMB:      4096,
+		MemUsedMB:       1024,
+		MemAvailableMB:  3072,
+		DiskTotalGB:     100,
+		DiskUsedGB:      50,
+		DiskAvailGB:     50,
+		Timestamp:       time.Now().Add(-7 * time.Minute),
+	})
+
+	c, err := svc.GetCollector(ctx, GetCollectorRequest{
+		UserID:        userID,
+		CollectorName: collectorName,
+	})
+	if err != nil {
+		t.Fatalf("GetCollector: %v", err)
+	}
+	if c.Stats.Staleness != "warning" {
+		t.Fatalf("expected warning, got %q", c.Stats.Staleness)
 	}
 }
 
-func TestFormatCollectorStats_OldDate(t *testing.T) {
-	yesterday := time.Now().Add(-24 * time.Hour)
-	stats := db.SystemStat{
-		CpuUsagePercent: 10.0,
-		CreatedAt:       yesterday.Unix(),
-	}
+// TestCollectorStats_Staleness_Old verifies staleness="old" for a 24h-old stat.
+func TestCollectorStats_Staleness_Old(t *testing.T) {
+	svc, _, userID, collectorName, _ := setupTestService(t)
+	ctx := context.Background()
 
-	cs := formatCollectorStats(stats)
-	if cs.Staleness != "old" {
-		t.Fatalf("expected old, got %q", cs.Staleness)
+	saveStats(t, ctx, svc, collectorName, types.Stats{
+		CPUUsagePercent: 10.0,
+		MemTotalMB:      4096,
+		MemUsedMB:       1024,
+		MemAvailableMB:  3072,
+		DiskTotalGB:     100,
+		DiskUsedGB:      50,
+		DiskAvailGB:     50,
+		Timestamp:       time.Now().Add(-24 * time.Hour),
+	})
+
+	c, err := svc.GetCollector(ctx, GetCollectorRequest{
+		UserID:        userID,
+		CollectorName: collectorName,
+	})
+	if err != nil {
+		t.Fatalf("GetCollector: %v", err)
+	}
+	if c.Stats.Staleness != "old" {
+		t.Fatalf("expected old, got %q", c.Stats.Staleness)
 	}
 }
 
@@ -1320,5 +1383,452 @@ func TestDBManager_CreateAppDB(t *testing.T) {
 	}
 	if len(apps) != 1 || apps[0] != "my-app" {
 		t.Fatalf("expected [my-app], got %v", apps)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Resource monitoring integration tests
+// ---------------------------------------------------------------------------
+
+// saveStats is a helper to call SaveSystemStats via the ingest service.
+func saveStats(t *testing.T, ctx context.Context, svc *Service, collectorName string, stats types.Stats) {
+	t.Helper()
+	if err := svc.ingestSvc.SaveSystemStats(ctx, ingestsvc.SaveSystemStatsRequest{
+		CollectorName: collectorName,
+		Stats:         stats,
+	}); err != nil {
+		t.Fatalf("SaveSystemStats: %v", err)
+	}
+}
+
+// getLatestStats is a helper to call GetLatestStats via the ingest service.
+func getLatestStats(t *testing.T, ctx context.Context, svc *Service, collectorName string) ingestsvc.SystemStat {
+	t.Helper()
+	stat, err := svc.ingestSvc.GetLatestStats(ctx, collectorName)
+	if err != nil {
+		t.Fatalf("GetLatestStats: %v", err)
+	}
+	return stat
+}
+
+func TestSaveSystemStats_NoData_ReturnsErrNoRows(t *testing.T) {
+	svc, _, _, collectorName, _ := setupTestService(t)
+	ctx := context.Background()
+
+	_, err := svc.ingestSvc.GetLatestStats(ctx, collectorName)
+	if err != sql.ErrNoRows {
+		t.Fatalf("expected sql.ErrNoRows before any save, got %v", err)
+	}
+}
+
+func TestSaveSystemStats_FirstSave_CreatesOpenPeriods(t *testing.T) {
+	svc, _, _, collectorName, _ := setupTestService(t)
+	ctx := context.Background()
+
+	now := time.Now().Truncate(time.Second)
+	stats := types.Stats{
+		CPUUsagePercent: 42.5,
+		MemTotalMB:      16384,
+		MemUsedMB:       4096,
+		MemAvailableMB:  12288,
+		DiskTotalGB:     500,
+		DiskUsedGB:      150,
+		DiskAvailGB:     350,
+		Timestamp:       now,
+	}
+	saveStats(t, ctx, svc, collectorName, stats)
+
+	got := getLatestStats(t, ctx, svc, collectorName)
+
+	if got.CPUUsagePercent != 42.5 {
+		t.Fatalf("CPU: expected 42.5, got %f", got.CPUUsagePercent)
+	}
+	if got.MemTotalMb != 16384 {
+		t.Fatalf("MemTotal: expected 16384, got %d", got.MemTotalMb)
+	}
+	if got.MemUsedMb != 4096 {
+		t.Fatalf("MemUsed: expected 4096, got %d", got.MemUsedMb)
+	}
+	if got.DiskTotalGb != 500 {
+		t.Fatalf("DiskTotal: expected 500, got %d", got.DiskTotalGb)
+	}
+	if got.DiskUsedGb != 150 {
+		t.Fatalf("DiskUsed: expected 150, got %d", got.DiskUsedGb)
+	}
+	// Timestamp should be the saved timestamp
+	if got.Timestamp != now.Unix() {
+		t.Fatalf("Timestamp: expected %d, got %d", now.Unix(), got.Timestamp)
+	}
+}
+
+func TestSaveSystemStats_NoopOnSameValue_PeriodCountUnchanged(t *testing.T) {
+	svc, _, _, collectorName, _ := setupTestService(t)
+	ctx := context.Background()
+
+	now := time.Now().Truncate(time.Second)
+	stats := types.Stats{
+		CPUUsagePercent: 50.0,
+		MemTotalMB:      8192,
+		MemUsedMB:       2048,
+		MemAvailableMB:  6144,
+		DiskTotalGB:     250,
+		DiskUsedGB:      100,
+		DiskAvailGB:     150,
+		Timestamp:       now,
+	}
+	saveStats(t, ctx, svc, collectorName, stats)
+
+	// Save the same values again (one second later)
+	saveStats(t, ctx, svc, collectorName, types.Stats{
+		CPUUsagePercent: 50.0,
+		MemTotalMB:      8192,
+		MemUsedMB:       2048,
+		MemAvailableMB:  6144,
+		DiskTotalGB:     250,
+		DiskUsedGB:      100,
+		DiskAvailGB:     150,
+		Timestamp:       now.Add(time.Second),
+	})
+
+	// The history should contain exactly 1 period per resource (no duplicate)
+	history, err := svc.ingestSvc.GetStatsHistory(ctx, collectorName, now.Add(-1*time.Hour))
+	if err != nil {
+		t.Fatalf("GetStatsHistory: %v", err)
+	}
+	if len(history.CPUPeriods) != 1 {
+		t.Fatalf("expected 1 CPU period, got %d", len(history.CPUPeriods))
+	}
+	if len(history.MemPeriods) != 1 {
+		t.Fatalf("expected 1 Mem period, got %d", len(history.MemPeriods))
+	}
+	if len(history.DiskPeriods) != 1 {
+		t.Fatalf("expected 1 Disk period, got %d", len(history.DiskPeriods))
+	}
+
+	// The open period timestamp should still be the first save (no update)
+	got := getLatestStats(t, ctx, svc, collectorName)
+	if got.Timestamp != now.Unix() {
+		t.Fatalf("Timestamp should remain from first save: expected %d, got %d", now.Unix(), got.Timestamp)
+	}
+}
+
+func TestSaveSystemStats_ValueChange_ClosesOldAndCreatesNewPeriod(t *testing.T) {
+	svc, _, _, collectorName, _ := setupTestService(t)
+	ctx := context.Background()
+
+	t0 := time.Now().Truncate(time.Second).Add(-10 * time.Second)
+	t1 := t0.Add(5 * time.Second)
+
+	// First save with CPU=10
+	saveStats(t, ctx, svc, collectorName, types.Stats{
+		CPUUsagePercent: 10.0,
+		MemTotalMB:      8192,
+		MemUsedMB:       2048,
+		MemAvailableMB:  6144,
+		DiskTotalGB:     250,
+		DiskUsedGB:      100,
+		DiskAvailGB:     150,
+		Timestamp:       t0,
+	})
+
+	// Second save with CPU=90 (changed)
+	saveStats(t, ctx, svc, collectorName, types.Stats{
+		CPUUsagePercent: 90.0,
+		MemTotalMB:      8192,
+		MemUsedMB:       2048,
+		MemAvailableMB:  6144,
+		DiskTotalGB:     250,
+		DiskUsedGB:      100,
+		DiskAvailGB:     150,
+		Timestamp:       t1,
+	})
+
+	// Latest should reflect the new CPU value
+	got := getLatestStats(t, ctx, svc, collectorName)
+	if got.CPUUsagePercent != 90.0 {
+		t.Fatalf("CPU: expected 90.0, got %f", got.CPUUsagePercent)
+	}
+	if got.Timestamp != t1.Unix() {
+		t.Fatalf("Timestamp: expected %d (t1), got %d", t1.Unix(), got.Timestamp)
+	}
+
+	// History should contain two CPU periods
+	history, err := svc.ingestSvc.GetStatsHistory(ctx, collectorName, t0.Add(-1*time.Hour))
+	if err != nil {
+		t.Fatalf("GetStatsHistory: %v", err)
+	}
+	if len(history.CPUPeriods) != 2 {
+		t.Fatalf("expected 2 CPU periods, got %d", len(history.CPUPeriods))
+	}
+
+	// First period should be CPU=10 and closed at t1
+	p0 := history.CPUPeriods[0]
+	if p0.UsagePercent != 10.0 {
+		t.Fatalf("period 0 CPU: expected 10.0, got %f", p0.UsagePercent)
+	}
+	if !p0.EndedAt.Valid {
+		t.Fatal("period 0 should be closed")
+	}
+	if p0.EndedAt.Int64 != t1.Unix() {
+		t.Fatalf("period 0 ended_at: expected %d, got %d", t1.Unix(), p0.EndedAt.Int64)
+	}
+
+	// Second period should be CPU=90 and open (no End)
+	p1 := history.CPUPeriods[1]
+	if p1.UsagePercent != 90.0 {
+		t.Fatalf("period 1 CPU: expected 90.0, got %f", p1.UsagePercent)
+	}
+	if p1.EndedAt.Valid {
+		t.Fatal("period 1 (open) should not have ended_at set")
+	}
+
+	// Memory should still have 1 period (unchanged)
+	if len(history.MemPeriods) != 1 {
+		t.Fatalf("expected 1 Mem period, got %d", len(history.MemPeriods))
+	}
+}
+
+func TestSaveSystemStats_PartialCPUOnly_OtherResourcesZero(t *testing.T) {
+	svc, _, _, collectorName, _ := setupTestService(t)
+	ctx := context.Background()
+
+	now := time.Now().Truncate(time.Second)
+	// Save only CPU data (all other fields zero)
+	saveStats(t, ctx, svc, collectorName, types.Stats{
+		CPUUsagePercent: 75.0,
+		MemTotalMB:      0,
+		MemUsedMB:       0,
+		MemAvailableMB:  0,
+		DiskTotalGB:     0,
+		DiskUsedGB:      0,
+		DiskAvailGB:     0,
+		Timestamp:       now,
+	})
+
+	got := getLatestStats(t, ctx, svc, collectorName)
+
+	if got.CPUUsagePercent != 75.0 {
+		t.Fatalf("CPU: expected 75.0, got %f", got.CPUUsagePercent)
+	}
+	if got.MemTotalMb != 0 {
+		t.Fatalf("MemTotal: expected 0, got %d", got.MemTotalMb)
+	}
+	if got.DiskTotalGb != 0 {
+		t.Fatalf("DiskTotal: expected 0, got %d", got.DiskTotalGb)
+	}
+}
+
+func TestGetStatsHistory_SinceFilter_ExcludesOldPeriods(t *testing.T) {
+	svc, _, _, collectorName, _ := setupTestService(t)
+	ctx := context.Background()
+
+	now := time.Now().Truncate(time.Second)
+
+	// Old period: starts at -3h, gets closed at -2h when the new save happens
+	old := now.Add(-3 * time.Hour)
+	// Recent period: starts at -2h (replaces old), still open
+	recent := now.Add(-2 * time.Hour)
+	// Since: -1h → the old period (ended at -2h) should be excluded,
+	// but the recent period (open) should be included
+	since := now.Add(-1 * time.Hour)
+
+	saveStats(t, ctx, svc, collectorName, types.Stats{
+		CPUUsagePercent: 10.0,
+		MemTotalMB:      4096,
+		MemUsedMB:       1024,
+		MemAvailableMB:  3072,
+		DiskTotalGB:     100,
+		DiskUsedGB:      50,
+		DiskAvailGB:     50,
+		Timestamp:       old,
+	})
+
+	// This save closes the old period at -2h and creates a new open period
+	saveStats(t, ctx, svc, collectorName, types.Stats{
+		CPUUsagePercent: 80.0,
+		MemTotalMB:      8192,
+		MemUsedMB:       4096,
+		MemAvailableMB:  4096,
+		DiskTotalGB:     200,
+		DiskUsedGB:      100,
+		DiskAvailGB:     100,
+		Timestamp:       recent,
+	})
+
+	history, err := svc.ingestSvc.GetStatsHistory(ctx, collectorName, since)
+	if err != nil {
+		t.Fatalf("GetStatsHistory: %v", err)
+	}
+
+	// Only the open period (CPU=80) should be included.
+	// The old period (CPU=10) ended at -2h which is before since (-1h), so it's excluded.
+	if len(history.CPUPeriods) != 1 {
+		t.Fatalf("expected 1 CPU period, got %d; old period should be excluded by since filter", len(history.CPUPeriods))
+	}
+	if history.CPUPeriods[0].UsagePercent != 80.0 {
+		t.Fatalf("expected CPU 80.0, got %f", history.CPUPeriods[0].UsagePercent)
+	}
+	if len(history.MemPeriods) != 1 {
+		t.Fatalf("expected 1 Mem period, got %d", len(history.MemPeriods))
+	}
+	if len(history.DiskPeriods) != 1 {
+		t.Fatalf("expected 1 Disk period, got %d", len(history.DiskPeriods))
+	}
+}
+
+func TestGetCollector_NoStats_ReturnsNilStats(t *testing.T) {
+	svc, _, userID, collectorName, _ := setupTestService(t)
+	ctx := context.Background()
+
+	c, err := svc.GetCollector(ctx, GetCollectorRequest{
+		UserID:        userID,
+		CollectorName: collectorName,
+	})
+	if err != nil {
+		t.Fatalf("GetCollector: %v", err)
+	}
+	if c.Stats != nil {
+		t.Fatal("expected nil Stats when no data")
+	}
+}
+
+func TestGetCollector_WithStats_ReturnsFormattedStats(t *testing.T) {
+	svc, _, userID, collectorName, _ := setupTestService(t)
+	ctx := context.Background()
+
+	now := time.Now().Truncate(time.Second)
+	saveStats(t, ctx, svc, collectorName, types.Stats{
+		CPUUsagePercent: 55.5,
+		MemTotalMB:      32768,
+		MemUsedMB:       16384,
+		MemAvailableMB:  16384,
+		DiskTotalGB:     1000,
+		DiskUsedGB:      400,
+		DiskAvailGB:     600,
+		Timestamp:       now,
+	})
+
+	c, err := svc.GetCollector(ctx, GetCollectorRequest{
+		UserID:        userID,
+		CollectorName: collectorName,
+	})
+	if err != nil {
+		t.Fatalf("GetCollector: %v", err)
+	}
+	if c.Stats == nil {
+		t.Fatal("expected non-nil Stats")
+	}
+	if c.Stats.CPUUsagePercent != 55.5 {
+		t.Fatalf("CPU: expected 55.5, got %f", c.Stats.CPUUsagePercent)
+	}
+	if c.Stats.MemTotalMB != 32768 {
+		t.Fatalf("MemTotal: expected 32768, got %d", c.Stats.MemTotalMB)
+	}
+	if c.Stats.DiskUsedGB != 400 {
+		t.Fatalf("DiskUsed: expected 400, got %d", c.Stats.DiskUsedGB)
+	}
+}
+
+func TestDeleteOldStats_RemovesOnlyClosedPeriods(t *testing.T) {
+	svc, _, _, collectorName, _ := setupTestService(t)
+	ctx := context.Background()
+
+	now := time.Now().Truncate(time.Second)
+
+	// old starts at -48h, gets closed at -47h by the next save
+	old := now.Add(-48 * time.Hour)
+	// recent starts at -47h, still open
+	recent := now.Add(-47 * time.Hour)
+	// cutoff at -24h: anything closed before -24h gets deleted
+	cutoff := now.Add(-24 * time.Hour)
+
+	// Save old value (will be closed by the next save)
+	saveStats(t, ctx, svc, collectorName, types.Stats{
+		CPUUsagePercent: 10.0,
+		MemTotalMB:      4096,
+		MemUsedMB:       1024,
+		MemAvailableMB:  3072,
+		DiskTotalGB:     100,
+		DiskUsedGB:      50,
+		DiskAvailGB:     50,
+		Timestamp:       old,
+	})
+
+	// Save new value (closes the old period at -47h)
+	saveStats(t, ctx, svc, collectorName, types.Stats{
+		CPUUsagePercent: 90.0,
+		MemTotalMB:      8192,
+		MemUsedMB:       4096,
+		MemAvailableMB:  4096,
+		DiskTotalGB:     200,
+		DiskUsedGB:      100,
+		DiskAvailGB:     100,
+		Timestamp:       recent,
+	})
+
+	// Run retention: delete periods closed before cutoff (-24h)
+	// The old period ended at -47h < -24h, so it should be removed.
+	if err := svc.ingestSvc.DeleteOldStats(ctx, cutoff); err != nil {
+		t.Fatalf("DeleteOldStats: %v", err)
+	}
+
+	// History from the beginning should only contain the open period
+	// (the old closed period should be deleted because its ended_at < cutoff)
+	history, err := svc.ingestSvc.GetStatsHistory(ctx, collectorName, old.Add(-1*time.Hour))
+	if err != nil {
+		t.Fatalf("GetStatsHistory: %v", err)
+	}
+
+	if len(history.CPUPeriods) != 1 {
+		t.Fatalf("expected 1 CPU period after retention, got %d", len(history.CPUPeriods))
+	}
+	if history.CPUPeriods[0].UsagePercent != 90.0 {
+		t.Fatalf("expected CPU 90.0, got %f", history.CPUPeriods[0].UsagePercent)
+	}
+	// The remaining period must be open (open periods are never deleted)
+	if history.CPUPeriods[0].EndedAt.Valid {
+		t.Fatal("the remaining CPU period should be open (ended_at IS NULL)")
+	}
+}
+
+func TestGetStatsHistory_PanelService_Integration(t *testing.T) {
+	svc, _, userID, collectorName, _ := setupTestService(t)
+	ctx := context.Background()
+
+	now := time.Now().Truncate(time.Second)
+
+	// Save via ingest service
+	saveStats(t, ctx, svc, collectorName, types.Stats{
+		CPUUsagePercent: 33.3,
+		MemTotalMB:      4096,
+		MemUsedMB:       2048,
+		MemAvailableMB:  2048,
+		DiskTotalGB:     500,
+		DiskUsedGB:      250,
+		DiskAvailGB:     250,
+		Timestamp:       now,
+	})
+
+	// Retrieve via panel service's public API
+	result, err := svc.GetStatsHistory(ctx, GetStatsHistoryRequest{
+		UserID:        userID,
+		CollectorName: collectorName,
+		Since:         now.Add(-1 * time.Hour),
+	})
+	if err != nil {
+		t.Fatalf("GetStatsHistory (panel): %v", err)
+	}
+
+	if len(result.CPUPeriods) != 1 {
+		t.Fatalf("expected 1 CPU period, got %d", len(result.CPUPeriods))
+	}
+	if result.CPUPeriods[0].UsagePercent != 33.3 {
+		t.Fatalf("CPU: expected 33.3, got %f", result.CPUPeriods[0].UsagePercent)
+	}
+	if len(result.MemPeriods) != 1 {
+		t.Fatalf("expected 1 Mem period, got %d", len(result.MemPeriods))
+	}
+	if len(result.DiskPeriods) != 1 {
+		t.Fatalf("expected 1 Disk period, got %d", len(result.DiskPeriods))
 	}
 }
