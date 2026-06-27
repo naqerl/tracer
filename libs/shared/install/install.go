@@ -1,4 +1,5 @@
-package setup
+// Package install provides shared installation infrastructure for tracer services.
+package install
 
 import (
 	"errors"
@@ -8,6 +9,8 @@ import (
 	"os/user"
 	"path/filepath"
 	"strconv"
+
+	"tracer/build"
 )
 
 // systemdDetected returns true if systemd appears to be the init system.
@@ -98,7 +101,7 @@ func ChownFile(path, owner, group string) error {
 }
 
 func InstallService(unitPath string, content []byte) error {
-	switch WithSystemd {
+	switch build.WithSystemd {
 	case "yes":
 		// proceed
 	case "auto":

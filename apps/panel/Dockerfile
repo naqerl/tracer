@@ -23,17 +23,8 @@ RUN go mod download
 
 COPY . .
 
-# Build flags for containerised deployment (no systemd, default paths)
-ARG LDFLAGS="-s -w \
-  -X tracer/pkg/setup.WithSystemd=no \
-  -X tracer/pkg/setup.Bindir=/usr/local/bin \
-  -X tracer/pkg/setup.PanelUser=tracer-panel \
-  -X tracer/pkg/setup.CollectorUser=tracer-collector \
-  -X tracer/pkg/setup.TracerGroup=tracer \
-"
-
-RUN CGO_ENABLED=0 go build -ldflags="${LDFLAGS}" \
-  -o /out/tracer-panel ./apps/panel/cmd/tracer-panel
+# Build via make with env var overrides (no systemd in container)
+RUN WITH_SYSTEMD=no make build-panel
 
 # ── Stage 2: Runtime (scratch — minimal) ──────────────────────────────────────
 # The binary is statically linked (CGO_ENABLED=0), so it needs nothing from the
@@ -45,7 +36,7 @@ LABEL org.opencontainers.image.description="Log aggregation & alerting panel"
 LABEL org.opencontainers.image.source="https://git.naqerl.com/eco/tracer"
 LABEL org.opencontainers.image.licenses="MIT"
 
-COPY --from=build /out/tracer-panel /tracer-panel
+COPY --from=build /src/bin/tracer-panel /tracer-panel
 COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 
 # Default data directory (override at runtime with TRACER_DATA_DIR env)

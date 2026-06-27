@@ -10,7 +10,8 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"tracer/apps/panel/internal/config"
-	"tracer/pkg/setup"
+	"tracer/build"
+	tracerinstall "tracer/libs/shared/install"
 )
 
 const (
@@ -39,22 +40,22 @@ type serviceData struct {
 func Run() error {
 	fmt.Fprintln(os.Stderr, "Setting up tracer-panel...")
 
-	if err := setup.CreateGroup(setup.TracerGroup); err != nil {
+	if err := tracerinstall.CreateGroup(build.TracerGroup); err != nil {
 		return fmt.Errorf("create group: %w", err)
 	}
-	if err := setup.CreateSystemUser(setup.PanelUser, setup.TracerGroup, "Tracer Panel Service", DataDir); err != nil {
+	if err := tracerinstall.CreateSystemUser(build.PanelUser, build.TracerGroup, "Tracer Panel Service", DataDir); err != nil {
 		return fmt.Errorf("create user: %w", err)
 	}
-	if err := setup.CreateDir(ConfigDir, 0755); err != nil {
+	if err := tracerinstall.CreateDir(ConfigDir, 0755); err != nil {
 		return fmt.Errorf("create config dir: %w", err)
 	}
-	if err := setup.ChownDir(ConfigDir, "root", setup.TracerGroup); err != nil {
+	if err := tracerinstall.ChownDir(ConfigDir, "root", build.TracerGroup); err != nil {
 		return fmt.Errorf("chown config dir: %w", err)
 	}
-	if err := setup.CreateDir(DataDir, 0700); err != nil {
+	if err := tracerinstall.CreateDir(DataDir, 0700); err != nil {
 		return fmt.Errorf("create data dir: %w", err)
 	}
-	if err := setup.ChownDir(DataDir, setup.PanelUser, setup.TracerGroup); err != nil {
+	if err := tracerinstall.ChownDir(DataDir, build.PanelUser, build.TracerGroup); err != nil {
 		return fmt.Errorf("chown data dir: %w", err)
 	}
 	if err := createConfig(); err != nil {
@@ -68,7 +69,7 @@ func Run() error {
 }
 
 func createConfig() error {
-	if setup.FileExists(ConfigFilePath) {
+	if tracerinstall.FileExists(ConfigFilePath) {
 		fmt.Fprintf(os.Stderr, "Config already exists at %s, skipping\n", ConfigFilePath)
 		return nil
 	}
@@ -83,21 +84,21 @@ func createConfig() error {
 		return fmt.Errorf("marshal config: %w", err)
 	}
 
-	return setup.WriteConfig(ConfigFilePath, out, 0640, "root", setup.TracerGroup)
+	return tracerinstall.WriteConfig(ConfigFilePath, out, 0640, "root", build.TracerGroup)
 }
 
 func installSystemd() error {
 	var buf bytes.Buffer
 	data := serviceData{
 		ConfigFilePath: ConfigFilePath,
-		Bindir:         setup.Bindir,
-		User:           setup.PanelUser,
-		Group:          setup.TracerGroup,
+		Bindir:         build.Bindir,
+		User:           build.PanelUser,
+		Group:          build.TracerGroup,
 	}
 	if err := serviceTmpl.Execute(&buf, data); err != nil {
 		return fmt.Errorf("execute template: %w", err)
 	}
-	return setup.InstallService("/etc/systemd/system/tracer-panel.service", buf.Bytes())
+	return tracerinstall.InstallService("/etc/systemd/system/tracer-panel.service", buf.Bytes())
 }
 
 func RunConfig(key string) error {

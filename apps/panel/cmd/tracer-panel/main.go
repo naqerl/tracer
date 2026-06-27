@@ -28,9 +28,10 @@ import (
 	topologysvc "tracer/apps/panel/internal/services/topology"
 	"tracer/apps/panel/internal/services/user"
 	"tracer/apps/panel/web"
+	"tracer/build"
 	"tracer/libs/logx"
-	"tracer/libs/updater"
-	"tracer/pkg/setup"
+	sysinstall "tracer/libs/shared/install"
+	"tracer/libs/shared/update"
 )
 
 func main() {
@@ -102,7 +103,7 @@ func main() {
 		log.Fatalf("failed to load config: %s", err)
 	}
 
-	setup.RequireServiceUser(setup.PanelUser, setup.TracerGroup)
+	sysinstall.RequireServiceUser(build.PanelUser, build.TracerGroup)
 
 	slog.Info("Starting panel",
 		"port", cfg.Port,
@@ -305,8 +306,8 @@ func serve(ctx context.Context, cfg config.Panel, noAuth, readOnly bool) error {
 }
 
 func handleUpdate() {
-	if err := updater.Update(updater.Options{
-		BinaryName: updater.BinaryPanel,
+	if err := update.Update(update.Options{
+		BinaryName: update.BinaryPanel,
 		PostUpdate: func() {
 			fmt.Println("Please restart the panel to apply the update:")
 			fmt.Println()

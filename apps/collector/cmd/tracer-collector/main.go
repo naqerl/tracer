@@ -26,10 +26,11 @@ import (
 	"tracer/apps/collector/internal/source"
 	"tracer/apps/collector/internal/stats"
 	"tracer/apps/collector/internal/transport"
+	"tracer/build"
 	"tracer/libs/logx"
+	sysinstall "tracer/libs/shared/install"
+	"tracer/libs/shared/update"
 	"tracer/libs/types"
-	"tracer/libs/updater"
-	"tracer/pkg/setup"
 )
 
 func main() {
@@ -92,7 +93,7 @@ func main() {
 		log.Fatalf("failed to load config: %s", err)
 	}
 
-	setup.RequireServiceUser(setup.CollectorUser, setup.TracerGroup)
+	sysinstall.RequireServiceUser(build.CollectorUser, build.TracerGroup)
 
 	slog.Info("Starting collector",
 		"name", cfg.Transport.Name,
@@ -444,8 +445,8 @@ func handleSet(path string, cfg config.Config, setCmd *flag.FlagSet) {
 }
 
 func handleUpdate() {
-	if err := updater.Update(updater.Options{
-		BinaryName: updater.BinaryCollector,
+	if err := update.Update(update.Options{
+		BinaryName: update.BinaryCollector,
 		PostUpdate: func() {
 			fmt.Println("Please restart the collector to apply the update:")
 			fmt.Println()

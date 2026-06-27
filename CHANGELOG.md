@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.16] - 2026-06-28
+
+### Changed
+- Refactored shared packages: `pkg/setup/` → `libs/shared/install/`, `libs/updater/` → `libs/shared/update/`, all ldflags vars consolidated into `build/` package
+- Dockerfiles now delegate to `make` with env vars instead of duplicating ldflags
+- Removed `pkg/` directory entirely
+
 ## [0.1.15] - 2026-06-28
 
 ### Fixed

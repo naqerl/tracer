@@ -1,7 +1,7 @@
-// Package updater provides self-update functionality for tracer binaries.
+// Package update provides self-update functionality for tracer binaries.
 // Note: Self-updates work by rebuilding from source. The main branch always
 // contains the latest stable version.
-package updater
+package update
 
 import (
 	"context"

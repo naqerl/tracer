@@ -18,11 +18,11 @@ VERSION ?= unknown
 LDFLAGS := -s -w \
 	-X tracer/build.Commit=$(VERSION) \
 	-X tracer/build.Ref=$(VERSION) \
-	-X tracer/pkg/setup.WithSystemd=$(WITH_SYSTEMD) \
-	-X tracer/pkg/setup.Bindir=$(BINDIR) \
-	-X tracer/pkg/setup.PanelUser=$(PANEL_USER) \
-	-X tracer/pkg/setup.CollectorUser=$(COLLECTOR_USER) \
-	-X tracer/pkg/setup.TracerGroup=$(TRACER_GROUP)
+	-X tracer/build.WithSystemd=$(WITH_SYSTEMD) \
+	-X tracer/build.Bindir=$(BINDIR) \
+	-X tracer/build.PanelUser=$(PANEL_USER) \
+	-X tracer/build.CollectorUser=$(COLLECTOR_USER) \
+	-X tracer/build.TracerGroup=$(TRACER_GROUP)
 
 .PHONY: build build-collector build-panel clean test vet dev-setup generate sqlc install \
         docker-build-panel docker-tag-panel docker-push-panel

@@ -6,11 +6,9 @@ RUN go mod download
 
 COPY . .
 
-ARG LDFLAGS=-s\ -w\ -X\ tracer/pkg/setup.WithSystemd=yes
 ARG E2E_INSTALL_MODE=build
 
-RUN CGO_ENABLED=0 go build -ldflags="${LDFLAGS}" -o /out/tracer-panel ./apps/panel/cmd/tracer-panel && \
-    CGO_ENABLED=0 go build -ldflags="${LDFLAGS}" -o /out/tracer-collector ./apps/collector/cmd/tracer-collector && \
+RUN WITH_SYSTEMD=yes make build && \
     CGO_ENABLED=0 go build -ldflags="-s -w" -o /out/tracer-demo-loggen ./e2e/mocklog/main.go
 
 FROM docker.io/library/debian:bookworm
@@ -35,8 +33,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /out/tracer-demo-loggen /usr/local/bin/tracer-demo-loggen
-COPY --from=build /out/tracer-panel /usr/local/bin/tracer-panel
-COPY --from=build /out/tracer-collector /usr/local/bin/tracer-collector
+COPY --from=build /src/bin/tracer-panel /usr/local/bin/tracer-panel
+COPY --from=build /src/bin/tracer-collector /usr/local/bin/tracer-collector
 
 COPY e2e/install-on-boot.sh /opt/tracer/e2e/install-on-boot.sh
 COPY e2e/systemd/ /etc/systemd/system/
