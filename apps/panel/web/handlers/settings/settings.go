@@ -78,7 +78,6 @@ func InitMux(authService *auth.Service, userService *usersvc.Service, ingestServ
 	m.HandleFunc("PUT /notifiers/{id}/subscriptions", h.updateNotifierSubscriptions)
 
 	// Config management
-	m.HandleFunc("GET /config", h.getConfig)
 	m.HandleFunc("POST /config", h.updateConfig)
 
 	return m
@@ -119,6 +118,9 @@ func (h *handler) settingsPage(w http.ResponseWriter, r *http.Request) {
 			ActiveType: "ntfy",
 			NtfyURL:    "https://ntfy.sh",
 		},
+		CPUDeltaPercent: h.cfg.GetCPUDeltaPercent(),
+		MemDeltaKB:      h.cfg.GetMemDeltaKB(),
+		DiskDeltaKB:     h.cfg.GetDiskDeltaKB(),
 	}
 
 	// Load notifiers (admins see all, non-admins see only their own)
@@ -974,18 +976,6 @@ func generateNtfyTopic() (string, error) {
 	}
 	hash := sha256.Sum256(buf)
 	return hex.EncodeToString(hash[:8]), nil
-}
-
-func (h *handler) getConfig(w http.ResponseWriter, r *http.Request) {
-	if _, err := h.requireAdminUser(w, r); err != nil {
-		return
-	}
-
-	view.ConfigPage(view.ConfigPageProps{
-		CPUDeltaPercent: h.cfg.GetCPUDeltaPercent(),
-		MemDeltaKB:      h.cfg.GetMemDeltaKB(),
-		DiskDeltaKB:     h.cfg.GetDiskDeltaKB(),
-	}).Render(r.Context(), w)
 }
 
 func (h *handler) updateConfig(w http.ResponseWriter, r *http.Request) {

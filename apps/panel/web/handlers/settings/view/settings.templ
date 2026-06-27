@@ -20,6 +20,9 @@ type SettingsPageProps struct {
 	UserAPIKeys             []UserAPIKeyView
 	Notifiers               []NotifierView
 	NotifierForm            NotifierFormView
+	CPUDeltaPercent         float64
+	MemDeltaKB              int
+	DiskDeltaKB             int
 }
 
 type CurrentUserView struct {
@@ -63,12 +66,6 @@ type NotifierFormView struct {
 	NtfyTopic       string
 	TelegramToken   string
 	TelegramChatID  string
-}
-
-type ConfigPageProps struct {
-	CPUDeltaPercent float64
-	MemDeltaKB      int
-	DiskDeltaKB     int
 }
 
 // SettingsPage renders the main settings page.
@@ -229,10 +226,35 @@ templ SettingsPage(props SettingsPageProps) {
 				</div>
 				<div class="mb-10">
 					<h2 class="text-xl font-medium mb-6">Configuration</h2>
-					<p class="text-base text-fg-secondary mb-6">
-						Panel configuration options.
-					</p>
-					<a href="/settings/config" class="text-sm text-fg border border-fg px-4 py-2 hover:bg-fg hover:text-bg transition-colors">Edit Configuration</a>
+					<form action="/settings/config" method="POST" class="max-w-lg border border-bg-secondary/70 p-6">
+						<h3 class="text-lg font-medium mb-4">Stats Period Thresholds</h3>
+						<p class="text-sm text-fg-secondary mb-6">
+							Minimum change required to create a new stats period. Changes below these thresholds are ignored.
+						</p>
+						<div class="space-y-4">
+							<div>
+								<label class="block text-sm text-fg-secondary mb-1">CPU Delta (%)</label>
+								<input type="number" name="cpu_delta_percent" step="0.1" min="0" value={ fmt.Sprintf("%.1f", props.CPUDeltaPercent) }
+									   class="w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg"/>
+								<p class="text-xs text-fg-secondary/60 mt-1">Default: 1.0</p>
+							</div>
+							<div>
+								<label class="block text-sm text-fg-secondary mb-1">Memory Delta (KB)</label>
+								<input type="number" name="mem_delta_kb" min="0" value={ strconv.Itoa(props.MemDeltaKB) }
+									   class="w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg"/>
+								<p class="text-xs text-fg-secondary/60 mt-1">Default: 64</p>
+							</div>
+							<div>
+								<label class="block text-sm text-fg-secondary mb-1">Disk Delta (KB)</label>
+								<input type="number" name="disk_delta_kb" min="0" value={ strconv.Itoa(props.DiskDeltaKB) }
+									   class="w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg"/>
+								<p class="text-xs text-fg-secondary/60 mt-1">Default: 1024</p>
+							</div>
+						</div>
+						<div class="mt-6">
+							<button type="submit" class="text-sm text-fg border border-fg px-4 py-2 hover:bg-fg hover:text-bg transition-colors">Save</button>
+						</div>
+					</form>
 				</div>
 			}
 			<div class="mb-10">
@@ -405,45 +427,4 @@ templ CollectorAPIKeyTable(keys []CollectorAPIKeyView) {
 			}
 		</tbody>
 	</table>
-}
-
-// ConfigPage renders the configuration page.
-templ ConfigPage(props ConfigPageProps) {
-	@templates.Layout("Configuration", templates.NavData{Since: "24h"}) {
-		<div class="max-w-5xl mx-auto p-2 md:p-6">
-			<div class="mb-6">
-				<h2 class="text-xl font-medium">Configuration</h2>
-			</div>
-			<form action="/settings/config" method="POST" class="max-w-lg border border-bg-secondary/70 p-6">
-				<h3 class="text-lg font-medium mb-4">Stats Period Thresholds</h3>
-				<p class="text-sm text-fg-secondary mb-6">
-					Minimum change required to create a new stats period. Changes below these thresholds are ignored.
-				</p>
-				<div class="space-y-4">
-					<div>
-						<label class="block text-sm text-fg-secondary mb-1">CPU Delta (%)</label>
-						<input type="number" name="cpu_delta_percent" step="0.1" min="0" value={ fmt.Sprintf("%.1f", props.CPUDeltaPercent) }
-							   class="w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg"/>
-						<p class="text-xs text-fg-secondary/60 mt-1">Default: 1.0</p>
-					</div>
-					<div>
-						<label class="block text-sm text-fg-secondary mb-1">Memory Delta (KB)</label>
-						<input type="number" name="mem_delta_kb" min="0" value={ strconv.Itoa(props.MemDeltaKB) }
-							   class="w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg"/>
-						<p class="text-xs text-fg-secondary/60 mt-1">Default: 64</p>
-					</div>
-					<div>
-						<label class="block text-sm text-fg-secondary mb-1">Disk Delta (KB)</label>
-						<input type="number" name="disk_delta_kb" min="0" value={ strconv.Itoa(props.DiskDeltaKB) }
-							   class="w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg"/>
-						<p class="text-xs text-fg-secondary/60 mt-1">Default: 1024</p>
-					</div>
-				</div>
-				<div class="mt-6 flex gap-3">
-					<button type="submit" class="text-sm text-fg border border-fg px-4 py-2 hover:bg-fg hover:text-bg transition-colors">Save</button>
-					<a href="/settings/" class="text-sm text-fg-secondary hover:text-fg px-4 py-2 transition-colors">Cancel</a>
-				</div>
-			</form>
-		</div>
-	}
 }
