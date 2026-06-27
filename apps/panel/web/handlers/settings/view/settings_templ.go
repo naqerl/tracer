@@ -436,7 +436,7 @@ func SettingsPage(props SettingsPageProps) templ.Component {
 						return templ_7745c5c3_Err
 					}
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 39, "</div><div class=\"mb-10\"><h2 class=\"text-xl font-medium mb-6\">Configuration</h2><p class=\"text-base text-fg-secondary mb-6\">Panel configuration options. Changes require restart to take effect.</p><a href=\"/settings/config\" class=\"text-sm text-fg border border-fg px-4 py-2 hover:bg-fg hover:text-bg transition-colors\">Edit Configuration</a></div>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 39, "</div><div class=\"mb-10\"><h2 class=\"text-xl font-medium mb-6\">Configuration</h2><p class=\"text-base text-fg-secondary mb-6\">Panel configuration options.</p><a href=\"/settings/config\" class=\"text-sm text-fg border border-fg px-4 py-2 hover:bg-fg hover:text-bg transition-colors\">Edit Configuration</a></div>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -1005,14 +1005,14 @@ func ConfigPage(props ConfigPageProps) templ.Component {
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 90, "<div class=\"max-w-5xl mx-auto p-2 md:p-6\"><div class=\"mb-6\"><h2 class=\"text-xl font-medium\">Configuration</h2><p class=\"text-base text-fg-secondary mt-1\">Changes require restart to take effect.</p></div><form action=\"/settings/config\" method=\"POST\" class=\"max-w-lg border border-bg-secondary/70 p-6\"><h3 class=\"text-lg font-medium mb-4\">Stats Period Thresholds</h3><p class=\"text-sm text-fg-secondary mb-6\">Minimum change required to create a new stats period. Changes below these thresholds are ignored.</p><div class=\"space-y-4\"><div><label class=\"block text-sm text-fg-secondary mb-1\">CPU Delta (%)</label> <input type=\"number\" name=\"cpu_delta_percent\" step=\"0.1\" min=\"0\" value=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 90, "<div class=\"max-w-5xl mx-auto p-2 md:p-6\"><div class=\"mb-6\"><h2 class=\"text-xl font-medium\">Configuration</h2></div><form action=\"/settings/config\" method=\"POST\" class=\"max-w-lg border border-bg-secondary/70 p-6\"><h3 class=\"text-lg font-medium mb-4\">Stats Period Thresholds</h3><p class=\"text-sm text-fg-secondary mb-6\">Minimum change required to create a new stats period. Changes below these thresholds are ignored.</p><div class=\"space-y-4\"><div><label class=\"block text-sm text-fg-secondary mb-1\">CPU Delta (%)</label> <input type=\"number\" name=\"cpu_delta_percent\" step=\"0.1\" min=\"0\" value=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var47 string
 			templ_7745c5c3_Var47, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("%.1f", props.CPUDeltaPercent))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/settings.templ`, Line: 426, Col: 121}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/settings.templ`, Line: 425, Col: 121}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var47)
 			if templ_7745c5c3_Err != nil {
@@ -1025,7 +1025,7 @@ func ConfigPage(props ConfigPageProps) templ.Component {
 			var templ_7745c5c3_Var48 string
 			templ_7745c5c3_Var48, templ_7745c5c3_Err = templ.ResolveAttributeValue(strconv.Itoa(props.MemDeltaKB))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/settings.templ`, Line: 432, Col: 93}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/settings.templ`, Line: 431, Col: 93}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var48)
 			if templ_7745c5c3_Err != nil {
@@ -1038,7 +1038,7 @@ func ConfigPage(props ConfigPageProps) templ.Component {
 			var templ_7745c5c3_Var49 string
 			templ_7745c5c3_Var49, templ_7745c5c3_Err = templ.ResolveAttributeValue(strconv.Itoa(props.DiskDeltaKB))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/settings.templ`, Line: 438, Col: 95}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/settings.templ`, Line: 437, Col: 95}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var49)
 			if templ_7745c5c3_Err != nil {

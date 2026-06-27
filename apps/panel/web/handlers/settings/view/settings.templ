@@ -230,7 +230,7 @@ templ SettingsPage(props SettingsPageProps) {
 				<div class="mb-10">
 					<h2 class="text-xl font-medium mb-6">Configuration</h2>
 					<p class="text-base text-fg-secondary mb-6">
-						Panel configuration options. Changes require restart to take effect.
+						Panel configuration options.
 					</p>
 					<a href="/settings/config" class="text-sm text-fg border border-fg px-4 py-2 hover:bg-fg hover:text-bg transition-colors">Edit Configuration</a>
 				</div>
@@ -413,7 +413,6 @@ templ ConfigPage(props ConfigPageProps) {
 		<div class="max-w-5xl mx-auto p-2 md:p-6">
 			<div class="mb-6">
 				<h2 class="text-xl font-medium">Configuration</h2>
-				<p class="text-base text-fg-secondary mt-1">Changes require restart to take effect.</p>
 			</div>
 			<form action="/settings/config" method="POST" class="max-w-lg border border-bg-secondary/70 p-6">
 				<h3 class="text-lg font-medium mb-4">Stats Period Thresholds</h3>
