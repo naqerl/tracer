@@ -34,28 +34,25 @@ func LoginPage(title string) templ.Component {
 			templ_7745c5c3_Var1 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<!doctype html><html lang=\"en\"><head>")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = templates.Head().Render(ctx, templ_7745c5c3_Buffer)
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "<title>")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		var templ_7745c5c3_Var2 string
-		templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.JoinStringErrs(title)
-		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/auth/auth.templ`, Line: 13, Col: 17}
-		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var2))
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "</title></head><body class=\"min-h-screen flex items-center justify-center p-4\"><div class=\"bg-bg-secondary p-8 w-full max-w-sm\"><div class=\"text-center mb-6\"><h1 class=\"text-2xl font-semibold mb-1\">Tracer</h1><p class=\"text-fg-secondary text-sm\">Sign in to continue</p></div><div id=\"form-error\" class=\"empty:hidden bg-red-900/50 text-red-300 p-3 mb-4 text-sm\"></div><form hx-post=\"/auth/login\" hx-target=\"#form-error\" hx-swap=\"innerHTML\" hx-on::after-request=\"if (event.detail.xhr.status >= 400) { document.getElementById('form-error').innerHTML = event.detail.xhr.responseText; }\"><div class=\"mb-4\"><label for=\"username\" class=\"block text-fg-secondary text-sm mb-1.5\">Username</label> <input type=\"text\" id=\"username\" name=\"username\" required autofocus class=\"w-full px-3 py-2 bg-bg border border-bg-secondary focus:border-accent focus:outline-none text-fg\"></div><div class=\"mb-6\"><label for=\"password\" class=\"block text-fg-secondary text-sm mb-1.5\">Password</label> <input type=\"password\" id=\"password\" name=\"password\" required class=\"w-full px-3 py-2 bg-bg border border-bg-secondary focus:border-accent focus:outline-none text-fg\"></div><button type=\"submit\" class=\"w-full py-2.5 bg-accent hover:bg-accent/80 text-fg font-medium transition-colors\">Sign in</button></form></div></body></html>")
+		templ_7745c5c3_Var2 := templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
+			templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
+			templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
+			if !templ_7745c5c3_IsBuffer {
+				defer func() {
+					templ_7745c5c3_BufErr := templruntime.ReleaseBuffer(templ_7745c5c3_Buffer)
+					if templ_7745c5c3_Err == nil {
+						templ_7745c5c3_Err = templ_7745c5c3_BufErr
+					}
+				}()
+			}
+			ctx = templ.InitializeContext(ctx)
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"min-h-[calc(100vh-3.5rem)] flex items-center justify-center p-4\"><div class=\"bg-bg-secondary p-8 w-full max-w-sm\"><div class=\"text-center mb-6\"><h1 class=\"text-2xl font-semibold mb-1\">Tracer</h1><p class=\"text-fg-secondary text-sm\">Sign in to continue</p></div><div id=\"form-error\" class=\"empty:hidden bg-red-900/50 text-red-300 p-3 mb-4 text-sm\"></div><form hx-post=\"/auth/login\" hx-target=\"#form-error\" hx-swap=\"innerHTML\" hx-on::after-request=\"if (event.detail.xhr.status >= 400) { document.getElementById('form-error').innerHTML = event.detail.xhr.responseText; }\"><div class=\"mb-4\"><label for=\"username\" class=\"block text-fg-secondary text-sm mb-1.5\">Username</label> <input type=\"text\" id=\"username\" name=\"username\" required autofocus class=\"w-full px-3 py-2 bg-bg border border-bg-secondary focus:border-accent focus:outline-none text-fg\"></div><div class=\"mb-6\"><label for=\"password\" class=\"block text-fg-secondary text-sm mb-1.5\">Password</label> <input type=\"password\" id=\"password\" name=\"password\" required class=\"w-full px-3 py-2 bg-bg border border-bg-secondary focus:border-accent focus:outline-none text-fg\"></div><button type=\"submit\" class=\"w-full py-2.5 bg-accent hover:bg-accent/80 text-fg font-medium transition-colors\">Sign in</button></form></div></div>")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			return nil
+		})
+		templ_7745c5c3_Err = templates.Layout(title, templates.NavData{Since: "24h"}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var2), templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -85,51 +82,48 @@ func SetupPage(title string, errorMessage string) templ.Component {
 			templ_7745c5c3_Var3 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "<!doctype html><html lang=\"en\"><head>")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = templates.Head().Render(ctx, templ_7745c5c3_Buffer)
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "<title>")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		var templ_7745c5c3_Var4 string
-		templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinStringErrs(title)
-		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/auth/auth.templ`, Line: 48, Col: 17}
-		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "</title></head><body class=\"min-h-screen flex items-center justify-center p-4\"><div class=\"bg-bg-secondary p-8 w-full max-w-md\"><div class=\"text-center mb-6\"><h1 class=\"text-2xl font-semibold mb-1\">Tracer</h1><p class=\"text-fg-secondary text-sm\">Create your admin account to get started</p></div>")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		if errorMessage != "" {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "<div class=\"bg-red-900/50 text-red-300 p-3 mb-4 text-sm\">")
+		templ_7745c5c3_Var4 := templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
+			templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
+			templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
+			if !templ_7745c5c3_IsBuffer {
+				defer func() {
+					templ_7745c5c3_BufErr := templruntime.ReleaseBuffer(templ_7745c5c3_Buffer)
+					if templ_7745c5c3_Err == nil {
+						templ_7745c5c3_Err = templ_7745c5c3_BufErr
+					}
+				}()
+			}
+			ctx = templ.InitializeContext(ctx)
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "<div class=\"min-h-[calc(100vh-3.5rem)] flex items-center justify-center p-4\"><div class=\"bg-bg-secondary p-8 w-full max-w-md\"><div class=\"text-center mb-6\"><h1 class=\"text-2xl font-semibold mb-1\">Tracer</h1><p class=\"text-fg-secondary text-sm\">Create your admin account to get started</p></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var5 string
-			templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinStringErrs(errorMessage)
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/auth/auth.templ`, Line: 58, Col: 76}
+			if errorMessage != "" {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "<div class=\"bg-red-900/50 text-red-300 p-3 mb-4 text-sm\">")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				var templ_7745c5c3_Var5 string
+				templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinStringErrs(errorMessage)
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/auth/auth.templ`, Line: 48, Col: 76}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var5))
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "</div>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
 			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var5))
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "<form action=\"/auth/setup\" method=\"POST\"><div class=\"mb-4\"><label for=\"username\" class=\"block text-fg-secondary text-sm mb-1.5\">Admin Username</label> <input type=\"text\" id=\"username\" name=\"username\" required autofocus class=\"w-full px-3 py-2 bg-bg border border-bg-secondary focus:border-accent focus:outline-none text-fg\"></div><div class=\"mb-4\"><label for=\"password\" class=\"block text-fg-secondary text-sm mb-1.5\">Password</label> <input type=\"password\" id=\"password\" name=\"password\" required minlength=\"8\" class=\"w-full px-3 py-2 bg-bg border border-bg-secondary focus:border-accent focus:outline-none text-fg\"></div><div class=\"mb-6\"><label for=\"confirm_password\" class=\"block text-fg-secondary text-sm mb-1.5\">Confirm Password</label> <input type=\"password\" id=\"confirm_password\" name=\"confirm_password\" required class=\"w-full px-3 py-2 bg-bg border border-bg-secondary focus:border-accent focus:outline-none text-fg\"></div><button type=\"submit\" class=\"w-full py-2.5 bg-accent hover:bg-accent/80 text-fg font-medium transition-colors\">Create Admin Account</button></form></div></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "</div>")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "<form action=\"/auth/setup\" method=\"POST\"><div class=\"mb-4\"><label for=\"username\" class=\"block text-fg-secondary text-sm mb-1.5\">Admin Username</label> <input type=\"text\" id=\"username\" name=\"username\" required autofocus class=\"w-full px-3 py-2 bg-bg border border-bg-secondary focus:border-accent focus:outline-none text-fg\"></div><div class=\"mb-4\"><label for=\"password\" class=\"block text-fg-secondary text-sm mb-1.5\">Password</label> <input type=\"password\" id=\"password\" name=\"password\" required minlength=\"8\" class=\"w-full px-3 py-2 bg-bg border border-bg-secondary focus:border-accent focus:outline-none text-fg\"></div><div class=\"mb-6\"><label for=\"confirm_password\" class=\"block text-fg-secondary text-sm mb-1.5\">Confirm Password</label> <input type=\"password\" id=\"confirm_password\" name=\"confirm_password\" required class=\"w-full px-3 py-2 bg-bg border border-bg-secondary focus:border-accent focus:outline-none text-fg\"></div><button type=\"submit\" class=\"w-full py-2.5 bg-accent hover:bg-accent/80 text-fg font-medium transition-colors\">Create Admin Account</button></form></div></body></html>")
+			return nil
+		})
+		templ_7745c5c3_Err = templates.Layout(title, templates.NavData{Since: "24h"}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var4), templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -159,54 +153,51 @@ func SetupSuccessPage(title string, username string, collectorAPIKey string) tem
 			templ_7745c5c3_Var6 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "<!doctype html><html lang=\"en\"><head>")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = templates.Head().Render(ctx, templ_7745c5c3_Buffer)
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "<title>")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		var templ_7745c5c3_Var7 string
-		templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(title)
-		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/auth/auth.templ`, Line: 92, Col: 17}
-		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "</title></head><body class=\"min-h-screen flex items-center justify-center p-4\"><div class=\"bg-bg-secondary p-8 w-full max-w-lg\"><div class=\"text-center mb-6\"><h1 class=\"text-2xl font-semibold mb-1\">Setup Complete</h1><p class=\"text-fg-secondary text-sm\">Your admin account is ready and this collector key is shown only once.</p></div><div class=\"bg-bg border border-bg-secondary p-4 mb-6\"><h3 class=\"text-fg-secondary text-sm mb-2\">Collector API Key</h3><div class=\"font-mono text-green-400 break-all text-sm mb-2\">")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		var templ_7745c5c3_Var8 string
-		templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(collectorAPIKey)
-		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/auth/auth.templ`, Line: 103, Col: 83}
-		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "</div><p class=\"text-xs text-fg-secondary\">Save this key now and put it into your collector configuration.</p></div><div class=\"text-sm text-fg-secondary mb-6\">Admin username: <span class=\"text-fg\">")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		var templ_7745c5c3_Var9 string
-		templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(username)
-		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/auth/auth.templ`, Line: 108, Col: 53}
-		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "</span></div><a href=\"/panel/\" class=\"block w-full text-center py-2.5 bg-accent hover:bg-accent/80 text-fg font-medium transition-colors\">Continue To Panel</a></div></body></html>")
+		templ_7745c5c3_Var7 := templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
+			templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
+			templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
+			if !templ_7745c5c3_IsBuffer {
+				defer func() {
+					templ_7745c5c3_BufErr := templruntime.ReleaseBuffer(templ_7745c5c3_Buffer)
+					if templ_7745c5c3_Err == nil {
+						templ_7745c5c3_Err = templ_7745c5c3_BufErr
+					}
+				}()
+			}
+			ctx = templ.InitializeContext(ctx)
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "<div class=\"min-h-[calc(100vh-3.5rem)] flex items-center justify-center p-4\"><div class=\"bg-bg-secondary p-8 w-full max-w-lg\"><div class=\"text-center mb-6\"><h1 class=\"text-2xl font-semibold mb-1\">Setup Complete</h1><p class=\"text-fg-secondary text-sm\">Your admin account is ready and this collector key is shown only once.</p></div><div class=\"bg-bg border border-bg-secondary p-4 mb-6\"><h3 class=\"text-fg-secondary text-sm mb-2\">Collector API Key</h3><div class=\"font-mono text-green-400 break-all text-sm mb-2\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var8 string
+			templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(collectorAPIKey)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/auth/auth.templ`, Line: 88, Col: 83}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "</div><p class=\"text-xs text-fg-secondary\">Save this key now and put it into your collector configuration.</p></div><div class=\"text-sm text-fg-secondary mb-6\">Admin username: <span class=\"text-fg\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var9 string
+			templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(username)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/auth/auth.templ`, Line: 93, Col: 53}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "</span></div><a href=\"/panel/\" class=\"block w-full text-center py-2.5 bg-accent hover:bg-accent/80 text-fg font-medium transition-colors\">Continue To Panel</a></div></div>")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			return nil
+		})
+		templ_7745c5c3_Err = templates.Layout(title, templates.NavData{Since: "24h"}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var7), templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

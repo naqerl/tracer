@@ -3,7 +3,6 @@ package view
 import (
 	"fmt"
 	"strconv"
-	"tracer/apps/panel/web/templates"
 )
 
 // LogGroupsProps holds data for the log groups page.
@@ -30,22 +29,13 @@ type LevelFilterItem struct {
 
 // LogGroups renders the log groups page.
 templ LogGroups(props LogGroupsProps) {
-	<!DOCTYPE html>
-	<html lang="en">
-		<head>
-			@templates.Head()
-			<title>Log Groups - Tracer</title>
-		</head>
-		<body>
-			<div id="log-groups">
-				<h2 class="text-lg font-medium mb-4">Log Groups</h2>
-				<div class="flex flex-col gap-2 mb-6">
-					@LevelFilter(props)
-				</div>
-				@LogGroupsTable(props)
-			</div>
-		</body>
-	</html>
+	<div id="log-groups">
+		<h2 class="text-lg font-medium mb-4">Log Groups</h2>
+		<div class="flex flex-col gap-2 mb-6">
+			@LevelFilter(props)
+		</div>
+		@LogGroupsTable(props)
+	</div>
 }
 
 // LevelFilter renders the log level filter tabs.

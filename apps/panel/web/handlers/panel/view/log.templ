@@ -29,19 +29,11 @@ type LogEntryDetail struct {
 
 // Log renders the single log detail page.
 templ Log(props LogProps) {
-	<!DOCTYPE html>
-	<html lang="en">
-		<head>
-			@templates.Head()
-			<title>{ props.Title } - Tracer</title>
-		</head>
-		<body>
-			@templates.Navbar(templates.NavData{Since: "24h"})
-			<div class="max-w-5xl mx-auto p-6">
-				@LogContent(props)
-			</div>
-		</body>
-	</html>
+	@templates.Layout(props.Title, templates.NavData{Since: "24h"}) {
+		<div class="max-w-5xl mx-auto p-6">
+			@LogContent(props)
+		</div>
+	}
 }
 
 // LogContent renders the log content.

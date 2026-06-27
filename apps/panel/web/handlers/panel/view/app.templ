@@ -15,53 +15,45 @@ type AppProps struct {
 
 // App renders the app detail page.
 templ App(props AppProps) {
-	<!DOCTYPE html>
-	<html lang="en">
-		<head>
-			@templates.Head()
-			<title>{ props.App } - Tracer</title>
-			<style>
-				.uplot { margin: 1.5rem 0; touch-action: pan-y pinch-zoom; }
-				.range-tabs { display: flex; gap: 0.5rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
-				.range-tab {
-					padding: 0.5rem 1rem;
-					background: #1E1E1E;
-					color: #EEEEEE;
-					cursor: pointer;
-					transition: all 0.2s;
-					text-decoration: none;
-					display: inline-block;
-					font-size: 0.875rem;
-				}
-				.range-tab:hover { background: #2A2A2A; }
-				.range-tab.active { background: #5C9CF5; color: #0A0A0A; font-weight: 600; }
-				@media (max-width: 640px) {
-					.range-tab { padding: 0.4rem 0.75rem; font-size: 0.8rem; }
-				}
-			</style>
-		</head>
-		<body>
-			@templates.Navbar(templates.NavData{Since: props.Since})
-			<div class="max-w-5xl mx-auto p-6">
-				<h1 class="text-3xl font-semibold mb-6">{ props.App }</h1>
+	@templates.Layout(props.App+" Analytics", templates.NavData{Since: props.Since}) {
+		<style>
+			.uplot { margin: 1.5rem 0; touch-action: pan-y pinch-zoom; }
+			.range-tabs { display: flex; gap: 0.5rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
+			.range-tab {
+				padding: 0.5rem 1rem;
+				background: #1E1E1E;
+				color: #EEEEEE;
+				cursor: pointer;
+				transition: all 0.2s;
+				text-decoration: none;
+				display: inline-block;
+				font-size: 0.875rem;
+			}
+			.range-tab:hover { background: #2A2A2A; }
+			.range-tab.active { background: #5C9CF5; color: #0A0A0A; font-weight: 600; }
+			@media (max-width: 640px) {
+				.range-tab { padding: 0.4rem 0.75rem; font-size: 0.8rem; }
+			}
+		</style>
+		<div class="max-w-5xl mx-auto p-6">
+			<h1 class="text-3xl font-semibold mb-6">{ props.App }</h1>
 
-				<h2 class="text-lg font-medium mb-4">Uptime { props.Uptime.UptimeText }</h2>
-				<div class="mb-6">
-					@UptimeBars(props.Uptime.Bars, "lg")
-				</div>
-
-				<div
-				  hx-get={ "/panel/collectors/" + props.Collector + "/apps/" + props.App + "/stats" }
-				  hx-trigger="load"
-				></div>
-
-				<div
-				  hx-get={ "/panel/collectors/" + props.Collector + "/apps/" + props.App + "/logs/groups?level=" + props.Level }
-				  hx-trigger="load"
-				></div>
+			<h2 class="text-lg font-medium mb-4">Uptime { props.Uptime.UptimeText }</h2>
+			<div class="mb-6">
+				@UptimeBars(props.Uptime.Bars, "lg")
 			</div>
-		</body>
-	</html>
+
+			<div
+			  hx-get={ "/panel/collectors/" + props.Collector + "/apps/" + props.App + "/stats" }
+			  hx-trigger="load"
+			></div>
+
+			<div
+			  hx-get={ "/panel/collectors/" + props.Collector + "/apps/" + props.App + "/logs/groups?level=" + props.Level }
+			  hx-trigger="load"
+			></div>
+		</div>
+	}
 }
 
 // UptimeBars renders uptime bar visualizations.

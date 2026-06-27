@@ -1,26 +1,17 @@
 package view
 
-import "tracer/apps/panel/web/templates"
-
 type TopologyGraphProps struct {
 	Title    string
 	Snapshot string // JSON-serialized topology snapshot
 }
 
 templ TopologyGraph(p TopologyGraphProps) {
-	<!DOCTYPE html>
-	<html lang="en">
-		<head>
-			@templates.Head()
-			<title>{ p.Title }</title>
-		</head>
-		<body>
-			<div id="topology-graph-shell" data-snapshot={ p.Snapshot } class="flex min-h-[60vh] flex-1 items-center justify-center lg:min-h-0">
-				<div class="w-full overflow-hidden">
-					<svg id="topology-graph" class="block w-full max-w-full mx-auto" role="img" aria-label="Live topology graph"></svg>
-				</div>
-			</div>
-			<script>
+	<div id="topology-graph-shell" data-snapshot={ p.Snapshot } class="flex min-h-[60vh] flex-1 items-center justify-center lg:min-h-0">
+		<div class="w-full overflow-hidden">
+			<svg id="topology-graph" class="block w-full max-w-full mx-auto" role="img" aria-label="Live topology graph"></svg>
+		</div>
+	</div>
+	<script>
 				(function() {
 					const svg = document.getElementById('topology-graph');
 					const graphShell = document.getElementById('topology-graph-shell');
@@ -887,8 +878,6 @@ templ TopologyGraph(p TopologyGraphProps) {
 					});
 
 					document.addEventListener('visibilitychange', onVisibilityChange);
-				})();
-			</script>
-		</body>
-	</html>
+			})();
+		</script>
 }

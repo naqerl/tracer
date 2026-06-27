@@ -6,13 +6,8 @@ import (
 
 // LoginPage renders the login page
 templ LoginPage(title string) {
-	<!DOCTYPE html>
-	<html lang="en">
-		<head>
-			@templates.Head()
-			<title>{ title }</title>
-		</head>
-		<body class="min-h-screen flex items-center justify-center p-4">
+	@templates.Layout(title, templates.NavData{Since: "24h"}) {
+		<div class="min-h-[calc(100vh-3.5rem)] flex items-center justify-center p-4">
 			<div class="bg-bg-secondary p-8 w-full max-w-sm">
 				<div class="text-center mb-6">
 					<h1 class="text-2xl font-semibold mb-1">Tracer</h1>
@@ -35,19 +30,14 @@ templ LoginPage(title string) {
 					</button>
 				</form>
 			</div>
-		</body>
-	</html>
+		</div>
+	}
 }
 
 // SetupPage renders the setup page
 templ SetupPage(title string, errorMessage string) {
-	<!DOCTYPE html>
-	<html lang="en">
-		<head>
-			@templates.Head()
-			<title>{ title }</title>
-		</head>
-		<body class="min-h-screen flex items-center justify-center p-4">
+	@templates.Layout(title, templates.NavData{Since: "24h"}) {
+		<div class="min-h-[calc(100vh-3.5rem)] flex items-center justify-center p-4">
 			<div class="bg-bg-secondary p-8 w-full max-w-md">
 				<div class="text-center mb-6">
 					<h1 class="text-2xl font-semibold mb-1">Tracer</h1>
@@ -79,19 +69,14 @@ templ SetupPage(title string, errorMessage string) {
 					</button>
 				</form>
 			</div>
-		</body>
-	</html>
+		</div>
+	}
 }
 
 // SetupSuccessPage renders the setup success page
 templ SetupSuccessPage(title string, username string, collectorAPIKey string) {
-	<!DOCTYPE html>
-	<html lang="en">
-		<head>
-			@templates.Head()
-			<title>{ title }</title>
-		</head>
-		<body class="min-h-screen flex items-center justify-center p-4">
+	@templates.Layout(title, templates.NavData{Since: "24h"}) {
+		<div class="min-h-[calc(100vh-3.5rem)] flex items-center justify-center p-4">
 			<div class="bg-bg-secondary p-8 w-full max-w-lg">
 				<div class="text-center mb-6">
 					<h1 class="text-2xl font-semibold mb-1">Setup Complete</h1>
@@ -112,6 +97,6 @@ templ SetupSuccessPage(title string, username string, collectorAPIKey string) {
 					Continue To Panel
 				</a>
 			</div>
-		</body>
-	</html>
+		</div>
+	}
 }

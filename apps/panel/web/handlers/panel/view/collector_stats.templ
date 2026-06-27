@@ -37,30 +37,22 @@ type DiskPeriodView struct {
 
 // CollectorStats renders the collector stats/resources page with charts.
 templ CollectorStats(props CollectorStatsProps) {
-	<!DOCTYPE html>
-	<html lang="en">
-		<head>
-			@templates.Head()
-			<title>{ props.Title }</title>
-			<style>
-				.uplot { margin: 1.5rem 0; touch-action: pan-y pinch-zoom; }
-				.stats-table { width: 100%; border-collapse: collapse; margin-top: 2rem; overflow-x: auto; display: block; -webkit-overflow-scrolling: touch; }
-				.stats-table th, .stats-table td { padding: 0.5rem; text-align: left; border-bottom: 1px solid #1E1E1E; white-space: nowrap; }
-				.stats-table th { font-weight: 500; color: #808080; font-size: 0.875rem; }
-				.stats-table tr:hover { background-color: #1E1E1E; }
-				@media (max-width: 640px) {
-					.uplot { margin: 1rem 0; }
-					.stats-table { font-size: 0.75rem; }
-				}
-			</style>
-		</head>
-		<body>
-			@templates.Navbar(templates.NavData{Since: props.Since})
-			<div class="max-w-5xl mx-auto p-6">
-				@CollectorStatsContent(props)
-			</div>
-		</body>
-	</html>
+	@templates.Layout(props.Title, templates.NavData{Since: props.Since}) {
+		<style>
+			.uplot { margin: 1.5rem 0; touch-action: pan-y pinch-zoom; }
+			.stats-table { width: 100%; border-collapse: collapse; margin-top: 2rem; overflow-x: auto; display: block; -webkit-overflow-scrolling: touch; }
+			.stats-table th, .stats-table td { padding: 0.5rem; text-align: left; border-bottom: 1px solid #1E1E1E; white-space: nowrap; }
+			.stats-table th { font-weight: 500; color: #808080; font-size: 0.875rem; }
+			.stats-table tr:hover { background-color: #1E1E1E; }
+			@media (max-width: 640px) {
+				.uplot { margin: 1rem 0; }
+				.stats-table { font-size: 0.75rem; }
+			}
+		</style>
+		<div class="max-w-5xl mx-auto p-6">
+			@CollectorStatsContent(props)
+		</div>
+	}
 }
 
 // CollectorStatsContent renders the content area.

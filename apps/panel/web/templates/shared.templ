@@ -173,22 +173,14 @@ templ Layout(title string, nav NavData) {
 
 // ErrorPage renders an error page
 templ ErrorPage(title string, message string, status int, nav NavData) {
-	<!DOCTYPE html>
-	<html lang="en">
-		<head>
-			@Head()
-			<title>{ title } - Tracer</title>
-		</head>
-		<body>
-			@Navbar(nav)
-			<div class="max-w-5xl mx-auto p-6">
-				<div class="mb-6">
-					<h2 class="text-xl font-medium text-red-500">{ title }</h2>
-				</div>
-				<p class="text-fg-secondary">{ message }</p>
+	@Layout(title, nav) {
+		<div class="max-w-5xl mx-auto p-6">
+			<div class="mb-6">
+				<h2 class="text-xl font-medium text-red-500">{ title }</h2>
 			</div>
-		</body>
-	</html>
+			<p class="text-fg-secondary">{ message }</p>
+		</div>
+	}
 }
 
 // MarkdownCheckbox renders an interactive markdown-style checkbox

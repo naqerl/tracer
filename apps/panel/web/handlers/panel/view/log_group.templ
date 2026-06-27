@@ -28,25 +28,17 @@ type LogGroupData struct {
 
 // LogGroup renders the log group detail page.
 templ LogGroup(props LogGroupProps) {
-	<!DOCTYPE html>
-	<html lang="en">
-		<head>
-			@templates.Head()
-			<title>{ props.Title } - Tracer</title>
-			<style>
-				.uplot { margin: 1.5rem 0; touch-action: pan-y pinch-zoom; }
-				@media (max-width: 640px) {
-					.uplot { margin: 1rem 0; }
-				}
-			</style>
-		</head>
-		<body>
-			@templates.Navbar(templates.NavData{Since: props.Since})
-			<div class="max-w-5xl mx-auto p-6">
-				@LogGroupContent(props)
-			</div>
-		</body>
-	</html>
+	@templates.Layout(props.Title, templates.NavData{Since: props.Since}) {
+		<style>
+			.uplot { margin: 1.5rem 0; touch-action: pan-y pinch-zoom; }
+			@media (max-width: 640px) {
+				.uplot { margin: 1rem 0; }
+			}
+		</style>
+		<div class="max-w-5xl mx-auto p-6">
+			@LogGroupContent(props)
+		</div>
+	}
 }
 
 // LogGroupContent renders the log group content.

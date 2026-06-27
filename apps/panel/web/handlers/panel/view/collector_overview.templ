@@ -14,23 +14,15 @@ type CollectorOverviewProps struct {
 
 // CollectorOverview renders the collector overview page
 templ CollectorOverview(props CollectorOverviewProps) {
-	<!DOCTYPE html>
-	<html lang="en">
-		<head>
-			@templates.Head()
-			<title>{ props.Title }</title>
-			<style>
-				@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
-				.animate-pulse { animation: pulse 2s infinite; }
-			</style>
-		</head>
-		<body>
-			@templates.Navbar(templates.NavData{Since: props.Since})
-			<div class="max-w-5xl mx-auto p-6">
-				@CollectorOverviewContent(props)
-			</div>
-		</body>
-	</html>
+	@templates.Layout(props.Title, templates.NavData{Since: props.Since}) {
+		<style>
+			@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+			.animate-pulse { animation: pulse 2s infinite; }
+		</style>
+		<div class="max-w-5xl mx-auto p-6">
+			@CollectorOverviewContent(props)
+		</div>
+	}
 }
 
 // CollectorOverviewContent renders the collector overview content

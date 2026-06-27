@@ -4,63 +4,56 @@ import "tracer/apps/panel/web/templates"
 
 // llmDocsHTML renders the LLM documentation as HTML
 templ llmDocsHTML(baseURL string) {
-	<!DOCTYPE html>
-	<html lang="en">
-		<head>
-			@templates.Head()
-			<title>LLM API Documentation</title>
-		</head>
-		<body>
-			<div class="max-w-5xl mx-auto p-6">
-				<div class="bg-bg-secondary p-8">
-					<h1 class="text-2xl font-bold text-fg mb-6">LLM API Documentation</h1>
+	@templates.Layout("LLM API Documentation", templates.NavData{Since: "24h"}) {
+		<div class="max-w-5xl mx-auto p-6">
+			<div class="bg-bg-secondary p-8">
+				<h1 class="text-2xl font-bold text-fg mb-6">LLM API Documentation</h1>
 
-					<div class="prose prose-invert max-w-none">
-						<p class="text-fg-secondary mb-6">
-							Access tracer-panel logs and analytics programmatically using markdown-formatted endpoints.
+				<div class="prose prose-invert max-w-none">
+					<p class="text-fg-secondary mb-6">
+						Access tracer-panel logs and analytics programmatically using markdown-formatted endpoints.
+					</p>
+
+					<h2 class="text-xl font-semibold text-fg mt-8 mb-4">Authentication</h2>
+					<div class="bg-bg p-4 border-l-4 border-accent mb-6">
+						<p class="text-fg-secondary mb-2">All endpoints require authentication via API key.</p>
+						<p class="text-sm text-fg-secondary">
+							Generate your API key in <a href="/settings/" class="text-accent hover:underline">Settings</a> &rarr; API Keys section.
 						</p>
+					</div>
 
-						<h2 class="text-xl font-semibold text-fg mt-8 mb-4">Authentication</h2>
-						<div class="bg-bg p-4 border-l-4 border-accent mb-6">
-							<p class="text-fg-secondary mb-2">All endpoints require authentication via API key.</p>
-							<p class="text-sm text-fg-secondary">
-								Generate your API key in <a href="/settings/" class="text-accent hover:underline">Settings</a> &rarr; API Keys section.
-							</p>
-						</div>
+					<h3 class="text-lg font-medium text-fg mb-3">Using Your API Key</h3>
+					<div class="bg-bg p-4 mb-6">
+						<p class="text-xs text-fg-secondary mb-2">Use request header:</p>
+						<code class="text-green-400 text-sm">curl -H "X-API-Key: YOUR_KEY" "https://{ baseURL }/panel.md"</code>
+					</div>
 
-						<h3 class="text-lg font-medium text-fg mb-3">Using Your API Key</h3>
-						<div class="bg-bg p-4 mb-6">
-							<p class="text-xs text-fg-secondary mb-2">Use request header:</p>
-							<code class="text-green-400 text-sm">curl -H "X-API-Key: YOUR_KEY" "https://{ baseURL }/panel.md"</code>
-						</div>
+					<h2 class="text-xl font-semibold text-fg mt-8 mb-4">Available Endpoints</h2>
 
-						<h2 class="text-xl font-semibold text-fg mt-8 mb-4">Available Endpoints</h2>
+					<h3 class="text-lg font-medium text-fg mb-3">Analytics</h3>
+					<ul class="space-y-3 mb-6">
+						<li class="bg-bg p-3">
+							<code class="text-accent">GET /panel.md</code>
+							<p class="text-sm text-fg-secondary mt-1">Dashboard - Lists all collectors</p>
+						</li>
+						<li class="bg-bg p-3">
+							<code class="text-accent">GET /panel/collectors/{"{"}collector{"}"}.md</code>
+							<p class="text-sm text-fg-secondary mt-1">Collector overview with system stats</p>
+						</li>
+						<li class="bg-bg p-3">
+							<code class="text-accent">GET /panel/collectors/{"{"}collector{"}"}/apps/{"{"}app{"}"}.md</code>
+							<p class="text-sm text-fg-secondary mt-1">App analytics with statistics and grouped logs</p>
+						</li>
+					</ul>
 
-						<h3 class="text-lg font-medium text-fg mb-3">Analytics</h3>
-						<ul class="space-y-3 mb-6">
-							<li class="bg-bg p-3">
-								<code class="text-accent">GET /panel.md</code>
-								<p class="text-sm text-fg-secondary mt-1">Dashboard - Lists all collectors</p>
-							</li>
-							<li class="bg-bg p-3">
-								<code class="text-accent">GET /panel/collectors/{"{"}collector{"}"}.md</code>
-								<p class="text-sm text-fg-secondary mt-1">Collector overview with system stats</p>
-							</li>
-							<li class="bg-bg p-3">
-								<code class="text-accent">GET /panel/collectors/{"{"}collector{"}"}/apps/{"{"}app{"}"}.md</code>
-								<p class="text-sm text-fg-secondary mt-1">App analytics with statistics and grouped logs</p>
-							</li>
-						</ul>
-
-						<div class="bg-bg-secondary border border-accent p-4 mt-8">
-							<p class="text-fg text-sm">
-								<strong>💡 Tip:</strong> View the raw markdown version at
-								<a href="/llm.md" class="text-accent hover:underline">/llm.md</a>
-							</p>
-						</div>
+					<div class="bg-bg-secondary border border-accent p-4 mt-8">
+						<p class="text-fg text-sm">
+							<strong>💡 Tip:</strong> View the raw markdown version at
+							<a href="/llm.md" class="text-accent hover:underline">/llm.md</a>
+						</p>
 					</div>
 				</div>
 			</div>
-		</body>
-	</html>
+		</div>
+	}
 }
