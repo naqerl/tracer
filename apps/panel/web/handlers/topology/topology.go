@@ -101,7 +101,7 @@ func (h *handler) streamTopologyEvents(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	flusher.Flush()
 
-	if err := writeSSE(w, "panel_tick", map[string]string{
+	if err := writeSSE(w, "tick", map[string]string{
 		"timestamp": time.Now().Format(time.RFC3339Nano),
 	}); err != nil {
 		return
@@ -119,7 +119,7 @@ func (h *handler) streamTopologyEvents(w http.ResponseWriter, r *http.Request) {
 		case <-r.Context().Done():
 			return
 		case <-ticker.C:
-			if err := writeSSE(w, "panel_tick", map[string]string{
+			if err := writeSSE(w, "tick", map[string]string{
 				"timestamp": time.Now().Format(time.RFC3339Nano),
 			}); err != nil {
 				return

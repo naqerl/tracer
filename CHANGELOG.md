@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.1.15] - 2026-06-28
+
+### Fixed
+- Topology graph heartbeat wave animation not firing due to SSE event name mismatch (server sent `panel_tick`, client listened for `tick`)
+
 ## [0.1.14] - 2026-06-27
 
 ### Added

@@ -137,7 +137,7 @@ func TestTopologyEventsStreamsOnlyAuthorizedEvents(t *testing.T) {
 	if strings.Contains(body, `"collector":"collector-b"`) {
 		t.Fatalf("unexpected unauthorized event in body, got %q", body)
 	}
-	if !strings.Contains(body, "event: panel_tick") {
-		t.Fatalf("expected initial panel_tick in body, got %q", body)
+	if !strings.Contains(body, "event: tick") {
+		t.Fatalf("expected initial tick in body, got %q", body)
 	}
 }
