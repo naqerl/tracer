@@ -138,7 +138,7 @@ func SettingsPage(props SettingsPageProps) templ.Component {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "</p></div><form action=\"/auth/logout\" method=\"POST\"><button type=\"submit\" class=\"text-sm text-fg-secondary hover:text-red-500 underline transition-colors\">Logout</button></form></div></div><div class=\"mb-10\"><h2 class=\"text-xl font-medium mb-6\">API Keys</h2><p class=\"text-base text-fg-secondary mb-6\">Generate API keys to access logs programmatically.</p><div class=\"mb-8 w-full border border-bg-secondary/70 p-4\"><form hx-post=\"/settings/api-keys\" hx-target=\"body\" hx-swap=\"outerHTML\"><div class=\"mb-4 w-full\"><input type=\"text\" id=\"key_name\" name=\"name\" placeholder=\"Key name\" required=\"required\" maxlength=\"64\" class=\"w-full max-w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg placeholder:text-fg-secondary/50 md:w-[40ch]\"></div><button type=\"submit\" class=\"text-sm text-fg border border-fg px-4 py-2 hover:bg-fg hover:text-bg transition-colors\">Generate Key</button></form></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "</p></div><form action=\"/auth/logout\" method=\"POST\"><button type=\"submit\" class=\"text-sm text-fg-secondary hover:text-red-500 underline transition-colors\">Logout</button></form></div></div><div class=\"mb-10\"><h2 class=\"text-xl font-medium mb-6\">API Keys</h2><p class=\"text-base text-fg-secondary mb-6\">Generate API keys to access logs programmatically.</p><div class=\"mb-8 w-full border border-bg-secondary/70 p-4\"><form hx-post=\"/settings/api-keys\" hx-target=\"next .error\"><div class=\"mb-4 w-full\"><input type=\"text\" id=\"key_name\" name=\"name\" placeholder=\"Key name\" required=\"required\" maxlength=\"64\" class=\"w-full max-w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg placeholder:text-fg-secondary/50 md:w-[40ch]\"></div><button type=\"submit\" class=\"text-sm text-fg border border-fg px-4 py-2 hover:bg-fg hover:text-bg transition-colors\">Generate Key</button></form><span class=\"error\"></span></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -312,7 +312,7 @@ func SettingsPage(props SettingsPageProps) templ.Component {
 						return templ_7745c5c3_Err
 					}
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "<div class=\"mb-8 w-full border border-bg-secondary/70 p-4\"><form hx-post=\"/settings/admin/collector-api-keys\" hx-target=\"body\" hx-swap=\"outerHTML\"><div class=\"mb-4 w-full\"><input type=\"text\" id=\"collector_key_name\" name=\"name\" placeholder=\"Collector key name\" required=\"required\" maxlength=\"64\" class=\"w-full max-w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg placeholder:text-fg-secondary/50 md:w-[40ch]\"></div><button type=\"submit\" class=\"text-sm text-fg border border-fg px-4 py-2 hover:bg-fg hover:text-bg transition-colors\">Create Collector Key</button></form></div>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "<div class=\"mb-8 w-full border border-bg-secondary/70 p-4\"><form hx-post=\"/settings/admin/collector-api-keys\" hx-target=\"next .error\"><div class=\"mb-4 w-full\"><input type=\"text\" id=\"collector_key_name\" name=\"name\" placeholder=\"Collector key name\" required=\"required\" maxlength=\"64\" class=\"w-full max-w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg placeholder:text-fg-secondary/50 md:w-[40ch]\"></div><button type=\"submit\" class=\"text-sm text-fg border border-fg px-4 py-2 hover:bg-fg hover:text-bg transition-colors\">Create Collector Key</button></form><span class=\"error\"></span></div>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -320,7 +320,7 @@ func SettingsPage(props SettingsPageProps) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 25, "</div><div class=\"mb-10\"><h2 class=\"text-xl font-medium mb-6\">Users</h2><div class=\"mb-8 w-full border border-bg-secondary/70 p-4\"><form hx-post=\"/settings/users\" hx-target=\"body\" hx-swap=\"outerHTML\"><div class=\"mb-4 w-full space-y-4\"><div class=\"w-full\"><input type=\"text\" id=\"username\" name=\"username\" placeholder=\"Username\" required=\"required\" maxlength=\"32\" class=\"w-full max-w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg placeholder:text-fg-secondary/50 md:w-[24ch]\"></div><div class=\"w-full\"><input type=\"password\" id=\"password\" name=\"password\" placeholder=\"Password\" required=\"required\" maxlength=\"72\" class=\"w-full max-w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg placeholder:text-fg-secondary/50 md:w-[32ch]\"></div></div>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 25, "</div><div class=\"mb-10\"><h2 class=\"text-xl font-medium mb-6\">Users</h2><div class=\"mb-8 w-full border border-bg-secondary/70 p-4\"><form hx-post=\"/settings/users\" hx-target=\"next .error\"><div class=\"mb-4 w-full space-y-4\"><div class=\"w-full\"><input type=\"text\" id=\"username\" name=\"username\" placeholder=\"Username\" required=\"required\" maxlength=\"32\" class=\"w-full max-w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg placeholder:text-fg-secondary/50 md:w-[24ch]\"></div><div class=\"w-full\"><input type=\"password\" id=\"password\" name=\"password\" placeholder=\"Password\" required=\"required\" maxlength=\"72\" class=\"w-full max-w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg placeholder:text-fg-secondary/50 md:w-[32ch]\"></div></div>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -328,7 +328,7 @@ func SettingsPage(props SettingsPageProps) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 26, "<div class=\"mt-4\"><button type=\"submit\" class=\"text-sm text-fg border border-fg px-4 py-2 hover:bg-fg hover:text-bg transition-colors\">Add User</button></div></form></div>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 26, "<div class=\"mt-4\"><button type=\"submit\" class=\"text-sm text-fg border border-fg px-4 py-2 hover:bg-fg hover:text-bg transition-colors\">Add User</button></div></form><span class=\"error\"></span></div>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -433,14 +433,14 @@ func SettingsPage(props SettingsPageProps) templ.Component {
 						return templ_7745c5c3_Err
 					}
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 39, "</div><div class=\"mb-10\"><h2 class=\"text-xl font-medium mb-6\">Configuration</h2><form hx-post=\"/settings/config\" hx-target=\"body\" hx-swap=\"outerHTML\" class=\"max-w-lg border border-bg-secondary/70 p-6\"><h3 class=\"text-lg font-medium mb-4\">Stats Period Thresholds</h3><p class=\"text-sm text-fg-secondary mb-6\">Minimum change required to create a new stats period. Changes below these thresholds are ignored.</p><div class=\"space-y-4\"><div><label class=\"block text-sm text-fg-secondary mb-1\">CPU Delta (%)</label> <input type=\"number\" name=\"cpu_delta_percent\" step=\"0.1\" min=\"0\" value=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 39, "</div><div class=\"mb-10\"><h2 class=\"text-xl font-medium mb-6\">Configuration</h2><form hx-post=\"/settings/config\" hx-target=\"next .error\" class=\"max-w-lg border border-bg-secondary/70 p-6\"><h3 class=\"text-lg font-medium mb-4\">Stats Period Thresholds</h3><p class=\"text-sm text-fg-secondary mb-6\">Minimum change required to create a new stats period. Changes below these thresholds are ignored.</p><div class=\"space-y-4\"><div><label class=\"block text-sm text-fg-secondary mb-1\">CPU Delta (%)</label> <input type=\"number\" name=\"cpu_delta_percent\" step=\"0.1\" min=\"0\" value=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var18 string
 				templ_7745c5c3_Var18, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("%.1f", props.CPUDeltaPercent))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/settings.templ`, Line: 246, Col: 123}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/settings.templ`, Line: 245, Col: 123}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var18)
 				if templ_7745c5c3_Err != nil {
@@ -453,7 +453,7 @@ func SettingsPage(props SettingsPageProps) templ.Component {
 				var templ_7745c5c3_Var19 string
 				templ_7745c5c3_Var19, templ_7745c5c3_Err = templ.ResolveAttributeValue(strconv.Itoa(props.MemDeltaKB))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/settings.templ`, Line: 252, Col: 95}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/settings.templ`, Line: 251, Col: 95}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var19)
 				if templ_7745c5c3_Err != nil {
@@ -466,13 +466,13 @@ func SettingsPage(props SettingsPageProps) templ.Component {
 				var templ_7745c5c3_Var20 string
 				templ_7745c5c3_Var20, templ_7745c5c3_Err = templ.ResolveAttributeValue(strconv.Itoa(props.DiskDeltaKB))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/settings.templ`, Line: 258, Col: 97}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/settings.templ`, Line: 257, Col: 97}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var20)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 42, "\" class=\"w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg\"><p class=\"text-xs text-fg-secondary/60 mt-1\">Default: 1024</p></div></div><div class=\"mt-6\"><button type=\"submit\" class=\"text-sm text-fg border border-fg px-4 py-2 hover:bg-fg hover:text-bg transition-colors\">Save</button></div></form></div>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 42, "\" class=\"w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg\"><p class=\"text-xs text-fg-secondary/60 mt-1\">Default: 1024</p></div></div><div class=\"mt-6\"><button type=\"submit\" class=\"text-sm text-fg border border-fg px-4 py-2 hover:bg-fg hover:text-bg transition-colors\">Save</button></div></form><span class=\"error\"></span></div>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -689,14 +689,14 @@ func NotifierForm(form NotifierFormView) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 65, "\">Telegram</a></div><form hx-post=\"/settings/notifiers\" hx-target=\"body\" hx-swap=\"outerHTML\" class=\"p-4\"><input type=\"hidden\" name=\"type\" value=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 65, "\">Telegram</a></div><form hx-post=\"/settings/notifiers\" hx-target=\"next .error\" class=\"p-4\"><input type=\"hidden\" name=\"type\" value=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var31 string
 		templ_7745c5c3_Var31, templ_7745c5c3_Err = templ.ResolveAttributeValue(form.ActiveType)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/settings.templ`, Line: 342, Col: 59}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/settings.templ`, Line: 341, Col: 59}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var31)
 		if templ_7745c5c3_Err != nil {
@@ -719,7 +719,7 @@ func NotifierForm(form NotifierFormView) templ.Component {
 			var templ_7745c5c3_Var32 string
 			templ_7745c5c3_Var32, templ_7745c5c3_Err = templ.ResolveAttributeValue(form.NtfyURL)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/settings.templ`, Line: 359, Col: 74}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/settings.templ`, Line: 358, Col: 74}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var32)
 			if templ_7745c5c3_Err != nil {
@@ -732,7 +732,7 @@ func NotifierForm(form NotifierFormView) templ.Component {
 			var templ_7745c5c3_Var33 string
 			templ_7745c5c3_Var33, templ_7745c5c3_Err = templ.ResolveAttributeValue(form.NtfyTopic)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/settings.templ`, Line: 364, Col: 81}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/settings.templ`, Line: 363, Col: 81}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var33)
 			if templ_7745c5c3_Err != nil {
@@ -743,7 +743,7 @@ func NotifierForm(form NotifierFormView) templ.Component {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 71, "</div><button type=\"submit\" class=\"text-sm text-fg border border-fg px-4 py-2 hover:bg-fg hover:text-bg transition-colors\">Add Notifier</button></form></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 71, "</div><button type=\"submit\" class=\"text-sm text-fg border border-fg px-4 py-2 hover:bg-fg hover:text-bg transition-colors\">Add Notifier</button></form><span class=\"error\"></span></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
