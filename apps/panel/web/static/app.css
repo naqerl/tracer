@@ -1,0 +1,89 @@
+/* Application-specific styles */
+
+/* Pulse animation for live indicators */
+@keyframes pulse {
+	0%, 100% { opacity: 1; }
+	50% { opacity: 0.5; }
+}
+.animate-pulse {
+	animation: pulse 2s infinite;
+}
+
+/* uPlot chart container styles */
+.uplot {
+	margin: 1.5rem 0;
+	touch-action: pan-y pinch-zoom;
+}
+
+/* Range tabs for time selection */
+.range-tabs {
+	display: flex;
+	gap: 0.5rem;
+	margin-bottom: 1.5rem;
+	flex-wrap: wrap;
+}
+
+.range-tab {
+	padding: 0.5rem 1rem;
+	background: #1E1E1E;
+	color: #EEEEEE;
+	cursor: pointer;
+	transition: all 0.2s;
+	text-decoration: none;
+	display: inline-block;
+	font-size: 0.875rem;
+}
+
+.range-tab:hover {
+	background: #2A2A2A;
+}
+
+.range-tab.active {
+	background: #5C9CF5;
+	color: #0A0A0A;
+	font-weight: 600;
+}
+
+/* Stats table styles */
+.stats-table {
+	width: 100%;
+	border-collapse: collapse;
+	margin-top: 2rem;
+	overflow-x: auto;
+	display: block;
+	-webkit-overflow-scrolling: touch;
+}
+
+.stats-table th,
+.stats-table td {
+	padding: 0.5rem;
+	text-align: left;
+	border-bottom: 1px solid #1E1E1E;
+	white-space: nowrap;
+}
+
+.stats-table th {
+	font-weight: 500;
+	color: #808080;
+	font-size: 0.875rem;
+}
+
+.stats-table tr:hover {
+	background-color: #1E1E1E;
+}
+
+/* Mobile responsiveness */
+@media (max-width: 640px) {
+	.uplot {
+		margin: 1rem 0;
+	}
+
+	.range-tab {
+		padding: 0.4rem 0.75rem;
+		font-size: 0.8rem;
+	}
+
+	.stats-table {
+		font-size: 0.75rem;
+	}
+}

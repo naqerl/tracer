@@ -108,11 +108,11 @@ templ LogGroupsTable(props LogGroupsProps) {
 					<td class="w-full align-top">
 						<a href={ "/panel/collectors/" + props.Collector + "/apps/" + props.App + "/logs/groups/" + strconv.FormatInt(g.ID, 10) } class="block py-2 sm:py-1 capitalize break-all">{ g.Message }</a>
 					</td>
-					<td class="w-[1%] whitespace-nowrap align-top pr-2 pt-2 sm:pt-1">
-						if props.Level == "all" {
-							<span class={ "inline-block w-1.5 h-1.5 mt-1.5 rounded-full " + levelDotClass(g.Level) }></span>
-						}
-					</td>
+				<td class="w-[1%] whitespace-nowrap align-top pr-2 pt-2 sm:pt-1">
+					if props.Level == "all" {
+						<span class={ "inline-block w-1.5 h-1.5 mt-1.5 rounded-full " + levelDotClass(g.Level) }></span>
+					}
+				</td>
 					<td class="w-[1%] whitespace-nowrap align-top text-fg-secondary text-right pt-2 sm:pt-1">
 						<span class="text-xs sm:text-sm">{ strconv.FormatInt(g.Count, 10) }</span>
 					</td>

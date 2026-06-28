@@ -1,7 +1,6 @@
 package view
 
 import (
-	"strconv"
 	"tracer/apps/panel/web/templates"
 )
 
@@ -15,10 +14,6 @@ type CollectorOverviewProps struct {
 // CollectorOverview renders the collector overview page
 templ CollectorOverview(props CollectorOverviewProps) {
 	@templates.Layout(props.Title, templates.NavData{Since: props.Since}) {
-		<style>
-			@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
-			.animate-pulse { animation: pulse 2s infinite; }
-		</style>
 		<div class="max-w-5xl mx-auto p-6">
 			@CollectorOverviewContent(props)
 		</div>
@@ -59,25 +54,8 @@ templ CollectorOverviewData(props CollectorOverviewProps) {
 			<span class="text-xs text-fg-secondary ml-1">]</span>
 		</div>
 
-		<!-- Stats Row -->
-		if props.Stats != nil {
-			<div class="flex flex-wrap items-center gap-4 mb-4 text-xs">
-				<div class="flex items-center gap-1">
-					<span class="text-fg-secondary">CPU:</span>
-					<span class={ cpuClass(props.Stats.CPUUsagePercent) }>{ strconv.FormatFloat(props.Stats.CPUUsagePercent, 'f', 0, 64) }%</span>
-				</div>
-				<div class="flex items-center gap-1">
-					<span class="text-fg-secondary">RAM:</span>
-					<span class={ memClass(memPercent(props.Stats.MemUsedMB, props.Stats.MemTotalMB)) }>{ strconv.FormatFloat(memPercent(props.Stats.MemUsedMB, props.Stats.MemTotalMB), 'f', 0, 64) }%</span>
-				</div>
-				<div class="flex items-center gap-1">
-					<span class="text-fg-secondary">Disk:</span>
-					<span class={ diskClass(diskPercent(props.Stats.DiskUsedGB, props.Stats.DiskTotalGB)) }>{ strconv.FormatFloat(diskPercent(props.Stats.DiskUsedGB, props.Stats.DiskTotalGB), 'f', 0, 64) }%</span>
-				</div>
-			</div>
-		} else {
-			<div class="text-fg-secondary text-xs mb-4">No stats available</div>
-		}
+	<!-- Stats Row -->
+	@StatsRow(props.Stats, false, props.CollectorName)
 
 		<!-- Apps Grid -->
 		<div

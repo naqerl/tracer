@@ -94,7 +94,9 @@ templ SettingsPage(props SettingsPageProps) {
 				<h2 class="text-xl font-medium mb-6">API Keys</h2>
 				<p class="text-base text-fg-secondary mb-6">Generate API keys to access logs programmatically.</p>
 				<div class="mb-8 w-full border border-bg-secondary/70 p-4">
-					<form action="/settings/api-keys" method="POST">
+					<form hx-post="/settings/api-keys"
+						  hx-target="body"
+						  hx-swap="outerHTML">
 						<div class="mb-4 w-full">
 							<input type="text" id="key_name" name="name" placeholder="Key name" required="required" maxlength="64"
 								   class="w-full max-w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg placeholder:text-fg-secondary/50 md:w-[40ch]"/>
@@ -165,7 +167,9 @@ templ SettingsPage(props SettingsPageProps) {
 						</div>
 					}
 					<div class="mb-8 w-full border border-bg-secondary/70 p-4">
-						<form action="/settings/admin/collector-api-keys" method="POST">
+						<form hx-post="/settings/admin/collector-api-keys"
+							  hx-target="body"
+							  hx-swap="outerHTML">
 							<div class="mb-4 w-full">
 								<input type="text" id="collector_key_name" name="name" placeholder="Collector key name" required="required" maxlength="64"
 									   class="w-full max-w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg placeholder:text-fg-secondary/50 md:w-[40ch]"/>
@@ -178,7 +182,9 @@ templ SettingsPage(props SettingsPageProps) {
 				<div class="mb-10">
 					<h2 class="text-xl font-medium mb-6">Users</h2>
 					<div class="mb-8 w-full border border-bg-secondary/70 p-4">
-						<form action="/settings/users" method="POST">
+						<form hx-post="/settings/users"
+							  hx-target="body"
+							  hx-swap="outerHTML">
 							<div class="mb-4 w-full space-y-4">
 								<div class="w-full">
 									<input type="text" id="username" name="username" placeholder="Username" required="required" maxlength="32"
@@ -226,7 +232,10 @@ templ SettingsPage(props SettingsPageProps) {
 				</div>
 				<div class="mb-10">
 					<h2 class="text-xl font-medium mb-6">Configuration</h2>
-					<form action="/settings/config" method="POST" class="max-w-lg border border-bg-secondary/70 p-6">
+					<form hx-post="/settings/config"
+						  hx-target="body"
+						  hx-swap="outerHTML"
+						  class="max-w-lg border border-bg-secondary/70 p-6">
 						<h3 class="text-lg font-medium mb-4">Stats Period Thresholds</h3>
 						<p class="text-sm text-fg-secondary mb-6">
 							Minimum change required to create a new stats period. Changes below these thresholds are ignored.
@@ -326,7 +335,10 @@ templ NotifierForm(form NotifierFormView) {
 				Telegram
 			</a>
 		</div>
-		<form action="/settings/notifiers" method="POST" class="p-4">
+		<form hx-post="/settings/notifiers"
+			  hx-target="body"
+			  hx-swap="outerHTML"
+			  class="p-4">
 			<input type="hidden" name="type" value={ form.ActiveType }/>
 			<div class="mb-4 space-y-4">
 				<div class="w-full">

@@ -1,7 +1,6 @@
 package view
 
 import (
-	"strconv"
 	"time"
 	"tracer/apps/panel/web/templates"
 )
@@ -99,40 +98,7 @@ templ Dashboard(p DashboardProps) {
 							</a>
 						</div>
 
-						if c.Stats != nil {
-							<div class="flex flex-wrap items-center gap-4 mb-4 text-xs">
-								<div class="flex items-center gap-1">
-									<span class="text-fg-secondary">CPU:</span>
-									<span class={ cpuClass(c.Stats.CPUUsagePercent) }>{ strconv.FormatFloat(c.Stats.CPUUsagePercent, 'f', 0, 64) }%</span>
-								</div>
-								<div class="flex items-center gap-1">
-									<span class="text-fg-secondary">RAM:</span>
-									<span class={ memClass(memPercent(c.Stats.MemUsedMB, c.Stats.MemTotalMB)) }>{ strconv.FormatFloat(memPercent(c.Stats.MemUsedMB, c.Stats.MemTotalMB), 'f', 0, 64) }%</span>
-								</div>
-								<div class="flex items-center gap-1">
-									<span class="text-fg-secondary">Disk:</span>
-									<span class={ diskClass(diskPercent(c.Stats.DiskUsedGB, c.Stats.DiskTotalGB)) }>{ strconv.FormatFloat(diskPercent(c.Stats.DiskUsedGB, c.Stats.DiskTotalGB), 'f', 0, 64) }%</span>
-								</div>
-								<a hx-get={ "/panel/collectors/" + c.Name + "/resources" }
-								   hx-target="body"
-								   hx-push-url="true"
-								   class="text-fg-secondary hover:text-fg cursor-pointer ml-auto"
-								   title="View metrics history">
-									Metrics <span class="text-fg-secondary">&rarr;</span>
-								</a>
-							</div>
-						} else {
-							<div class="flex items-center justify-between mb-4">
-								<span class="text-fg-secondary text-xs">No stats available</span>
-								<a hx-get={ "/panel/collectors/" + c.Name + "/resources" }
-								   hx-target="body"
-								   hx-push-url="true"
-								   class="text-xs text-fg-secondary hover:text-fg cursor-pointer"
-								   title="View metrics history">
-									Metrics <span class="text-fg-secondary">&rarr;</span>
-								</a>
-							</div>
-						}
+					@StatsRow(c.Stats, true, c.Name)
 
 						<!-- Apps Grid -->
 						<div

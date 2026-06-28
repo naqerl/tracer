@@ -16,25 +16,6 @@ type AppProps struct {
 // App renders the app detail page.
 templ App(props AppProps) {
 	@templates.Layout(props.App+" Analytics", templates.NavData{Since: props.Since}) {
-		<style>
-			.uplot { margin: 1.5rem 0; touch-action: pan-y pinch-zoom; }
-			.range-tabs { display: flex; gap: 0.5rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
-			.range-tab {
-				padding: 0.5rem 1rem;
-				background: #1E1E1E;
-				color: #EEEEEE;
-				cursor: pointer;
-				transition: all 0.2s;
-				text-decoration: none;
-				display: inline-block;
-				font-size: 0.875rem;
-			}
-			.range-tab:hover { background: #2A2A2A; }
-			.range-tab.active { background: #5C9CF5; color: #0A0A0A; font-weight: 600; }
-			@media (max-width: 640px) {
-				.range-tab { padding: 0.4rem 0.75rem; font-size: 0.8rem; }
-			}
-		</style>
 		<div class="max-w-5xl mx-auto p-6">
 			<h1 class="text-3xl font-semibold mb-6">{ props.App }</h1>
 

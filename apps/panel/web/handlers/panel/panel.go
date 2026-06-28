@@ -89,7 +89,7 @@ func (h *handler) getDashboard(w http.ResponseWriter, r *http.Request) {
 	sinceLabel := ensureSinceCookie(w, r)
 	collectors, err := h.svc.ListCollectors(r.Context(), userID)
 	if err != nil {
-		templates.ErrorPage("Error", "Failed to get collectors", http.StatusInternalServerError, templates.NavData{Since: "24h"}).Render(r.Context(), w)
+		templates.RenderError(w, r, "Error", "Failed to get collectors", http.StatusInternalServerError)
 		return
 	}
 
@@ -113,7 +113,7 @@ func (h *handler) getCollector(w http.ResponseWriter, r *http.Request) {
 		CollectorName: r.PathValue("collector"),
 	}
 	if err := req.Validate(); err != nil {
-		templates.ErrorPage("Error", err.Error(), http.StatusBadRequest, templates.NavData{Since: "24h"}).Render(r.Context(), w)
+		templates.RenderError(w, r, "Error", err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -121,11 +121,11 @@ func (h *handler) getCollector(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		case errors.Is(err, panelsvc.ErrCollectorNotFound):
-			templates.ErrorPage("Error", "Collector not found", http.StatusNotFound, templates.NavData{Since: "24h"}).Render(r.Context(), w)
+			templates.RenderError(w, r, "Error", "Collector not found", http.StatusNotFound)
 		case errors.Is(err, panelsvc.ErrAccessDenied):
-			templates.ErrorPage("Forbidden", "You don't have access to this collector", http.StatusForbidden, templates.NavData{Since: "24h"}).Render(r.Context(), w)
+			templates.RenderError(w, r, "Forbidden", "You don't have access to this collector", http.StatusForbidden)
 		default:
-			templates.ErrorPage("Error", "Failed to get collector", http.StatusInternalServerError, templates.NavData{Since: "24h"}).Render(r.Context(), w)
+			templates.RenderError(w, r, "Error", "Failed to get collector", http.StatusInternalServerError)
 		}
 		return
 	}
@@ -163,21 +163,21 @@ func (h *handler) getCollectorApps(w http.ResponseWriter, r *http.Request) {
 		CollectorName: r.PathValue("collector"),
 	}
 	if err := req.Validate(); err != nil {
-		templates.ErrorPage("Error", err.Error(), http.StatusBadRequest, templates.NavData{Since: "24h"}).Render(r.Context(), w)
+		templates.RenderError(w, r, "Error", err.Error(), http.StatusBadRequest)
 		return
 	}
 	apps, err := h.svc.ListCollectorApps(r.Context(), req)
 	if err != nil {
 		switch {
 		case errors.Is(err, panelsvc.ErrCollectorNotFound):
-			templates.ErrorPage("Error", "Collector not found", http.StatusNotFound, templates.NavData{Since: "24h"}).Render(r.Context(), w)
+			templates.RenderError(w, r, "Error", "Collector not found", http.StatusNotFound)
 		case errors.Is(err, panelsvc.ErrAccessDenied):
 			view.CollectorApps(view.CollectorAppsProps{
 				CollectorName: req.CollectorName,
 				Apps:          []view.AppView{},
 			}).Render(r.Context(), w)
 		default:
-			templates.ErrorPage("Error", "Failed to get collector apps", http.StatusInternalServerError, templates.NavData{Since: "24h"}).Render(r.Context(), w)
+			templates.RenderError(w, r, "Error", "Failed to get collector apps", http.StatusInternalServerError)
 		}
 		return
 	}
@@ -206,7 +206,7 @@ func (h *handler) getCollectorResources(w http.ResponseWriter, r *http.Request) 
 		Since:         since,
 	}
 	if err := req.Validate(); err != nil {
-		templates.ErrorPage("Error", err.Error(), http.StatusBadRequest, templates.NavData{Since: "24h"}).Render(r.Context(), w)
+		templates.RenderError(w, r, "Error", err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -214,11 +214,11 @@ func (h *handler) getCollectorResources(w http.ResponseWriter, r *http.Request) 
 	if err != nil {
 		switch {
 		case errors.Is(err, panelsvc.ErrCollectorNotFound):
-			templates.ErrorPage("Error", "Collector not found", http.StatusNotFound, templates.NavData{Since: "24h"}).Render(r.Context(), w)
+			templates.RenderError(w, r, "Error", "Collector not found", http.StatusNotFound)
 		case errors.Is(err, panelsvc.ErrAccessDenied):
-			templates.ErrorPage("Forbidden", "You don't have access to this collector", http.StatusForbidden, templates.NavData{Since: "24h"}).Render(r.Context(), w)
+			templates.RenderError(w, r, "Forbidden", "You don't have access to this collector", http.StatusForbidden)
 		default:
-			templates.ErrorPage("Error", "Failed to get stats history", http.StatusInternalServerError, templates.NavData{Since: "24h"}).Render(r.Context(), w)
+			templates.RenderError(w, r, "Error", "Failed to get stats history", http.StatusInternalServerError)
 		}
 		return
 	}
@@ -291,7 +291,7 @@ func (h *handler) getDashboardAppHealth(w http.ResponseWriter, r *http.Request) 
 		Since:         since,
 	}
 	if err := req.Validate(); err != nil {
-		templates.ErrorPage("Error", err.Error(), http.StatusBadRequest, templates.NavData{Since: "24h"}).Render(r.Context(), w)
+		templates.RenderError(w, r, "Error", err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -299,13 +299,13 @@ func (h *handler) getDashboardAppHealth(w http.ResponseWriter, r *http.Request) 
 	if err != nil {
 		switch {
 		case errors.Is(err, panelsvc.ErrCollectorNotFound):
-			templates.ErrorPage("Error", "Collector not found", http.StatusNotFound, templates.NavData{Since: "24h"}).Render(r.Context(), w)
+			templates.RenderError(w, r, "Error", "Collector not found", http.StatusNotFound)
 		case errors.Is(err, panelsvc.ErrAccessDenied):
-			templates.ErrorPage("Forbidden", "You don't have access to this app", http.StatusForbidden, templates.NavData{Since: "24h"}).Render(r.Context(), w)
+			templates.RenderError(w, r, "Forbidden", "You don't have access to this app", http.StatusForbidden)
 		case errors.Is(err, panelsvc.ErrAppNotFound):
-			templates.ErrorPage("Error", "App not found", http.StatusNotFound, templates.NavData{Since: "24h"}).Render(r.Context(), w)
+			templates.RenderError(w, r, "Error", "App not found", http.StatusNotFound)
 		default:
-			templates.ErrorPage("Error", "Failed to fetch app health", http.StatusInternalServerError, templates.NavData{Since: "24h"}).Render(r.Context(), w)
+			templates.RenderError(w, r, "Error", "Failed to fetch app health", http.StatusInternalServerError)
 		}
 		return
 	}
@@ -332,7 +332,7 @@ func (h *handler) getDashboardAppErrorCount(w http.ResponseWriter, r *http.Reque
 		Since:         since,
 	}
 	if err := req.Validate(); err != nil {
-		templates.ErrorPage("Error", err.Error(), http.StatusBadRequest, templates.NavData{Since: "24h"}).Render(r.Context(), w)
+		templates.RenderError(w, r, "Error", err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -340,13 +340,13 @@ func (h *handler) getDashboardAppErrorCount(w http.ResponseWriter, r *http.Reque
 	if err != nil {
 		switch {
 		case errors.Is(err, panelsvc.ErrCollectorNotFound):
-			templates.ErrorPage("Error", "Collector not found", http.StatusNotFound, templates.NavData{Since: "24h"}).Render(r.Context(), w)
+			templates.RenderError(w, r, "Error", "Collector not found", http.StatusNotFound)
 		case errors.Is(err, panelsvc.ErrAccessDenied):
-			templates.ErrorPage("Forbidden", "You don't have access to this app", http.StatusForbidden, templates.NavData{Since: "24h"}).Render(r.Context(), w)
+			templates.RenderError(w, r, "Forbidden", "You don't have access to this app", http.StatusForbidden)
 		case errors.Is(err, panelsvc.ErrAppNotFound):
-			templates.ErrorPage("Error", "App not found", http.StatusNotFound, templates.NavData{Since: "24h"}).Render(r.Context(), w)
+			templates.RenderError(w, r, "Error", "App not found", http.StatusNotFound)
 		default:
-			templates.ErrorPage("Error", "Failed to fetch app error count", http.StatusInternalServerError, templates.NavData{Since: "24h"}).Render(r.Context(), w)
+			templates.RenderError(w, r, "Error", "Failed to fetch app error count", http.StatusInternalServerError)
 		}
 		return
 	}
@@ -386,7 +386,7 @@ func (h *handler) getApp(w http.ResponseWriter, r *http.Request) {
 		Since:         since,
 	}
 	if err := healthReq.Validate(); err != nil {
-		templates.ErrorPage("Error", err.Error(), http.StatusBadRequest, templates.NavData{Since: "24h"}).Render(r.Context(), w)
+		templates.RenderError(w, r, "Error", err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -394,13 +394,13 @@ func (h *handler) getApp(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		case errors.Is(err, panelsvc.ErrCollectorNotFound):
-			templates.ErrorPage("Error", "Collector not found", http.StatusNotFound, templates.NavData{Since: "24h"}).Render(r.Context(), w)
+			templates.RenderError(w, r, "Error", "Collector not found", http.StatusNotFound)
 		case errors.Is(err, panelsvc.ErrAccessDenied):
-			templates.ErrorPage("Forbidden", "You don't have access to this app", http.StatusForbidden, templates.NavData{Since: "24h"}).Render(r.Context(), w)
+			templates.RenderError(w, r, "Forbidden", "You don't have access to this app", http.StatusForbidden)
 		case errors.Is(err, panelsvc.ErrAppNotFound):
-			templates.ErrorPage("Error", "App not found", http.StatusNotFound, templates.NavData{Since: "24h"}).Render(r.Context(), w)
+			templates.RenderError(w, r, "Error", "App not found", http.StatusNotFound)
 		default:
-			templates.ErrorPage("Error", "Failed to fetch uptime", http.StatusInternalServerError, templates.NavData{Since: "24h"}).Render(r.Context(), w)
+			templates.RenderError(w, r, "Error", "Failed to fetch uptime", http.StatusInternalServerError)
 		}
 		return
 	}
@@ -429,7 +429,7 @@ func (h *handler) getAppStats(w http.ResponseWriter, r *http.Request) {
 		Since:         since,
 	}
 	if err := req.Validate(); err != nil {
-		templates.ErrorPage("Error", err.Error(), http.StatusBadRequest, templates.NavData{Since: "24h"}).Render(r.Context(), w)
+		templates.RenderError(w, r, "Error", err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -437,13 +437,13 @@ func (h *handler) getAppStats(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		case errors.Is(err, panelsvc.ErrCollectorNotFound):
-			templates.ErrorPage("Error", "Collector not found", http.StatusNotFound, templates.NavData{Since: "24h"}).Render(r.Context(), w)
+			templates.RenderError(w, r, "Error", "Collector not found", http.StatusNotFound)
 		case errors.Is(err, panelsvc.ErrAccessDenied):
-			templates.ErrorPage("Forbidden", "You don't have access to this app", http.StatusForbidden, templates.NavData{Since: "24h"}).Render(r.Context(), w)
+			templates.RenderError(w, r, "Forbidden", "You don't have access to this app", http.StatusForbidden)
 		case errors.Is(err, panelsvc.ErrAppNotFound):
-			templates.ErrorPage("Error", "App not found", http.StatusNotFound, templates.NavData{Since: "24h"}).Render(r.Context(), w)
+			templates.RenderError(w, r, "Error", "App not found", http.StatusNotFound)
 		default:
-			templates.ErrorPage("Error", "Failed to fetch stats", http.StatusInternalServerError, templates.NavData{Since: "24h"}).Render(r.Context(), w)
+			templates.RenderError(w, r, "Error", "Failed to fetch stats", http.StatusInternalServerError)
 		}
 		return
 	}
@@ -646,7 +646,7 @@ func (h *handler) getLogGroups(w http.ResponseWriter, r *http.Request) {
 		Limit:         50,
 	}
 	if err := req.Validate(); err != nil {
-		templates.ErrorPage("Error", err.Error(), http.StatusBadRequest, templates.NavData{Since: "24h"}).Render(r.Context(), w)
+		templates.RenderError(w, r, "Error", err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -655,13 +655,13 @@ func (h *handler) getLogGroups(w http.ResponseWriter, r *http.Request) {
 		slog.Error("GetLogGroups failed", "error", err, "collector", req.CollectorName, "app", req.AppName)
 		switch {
 		case errors.Is(err, panelsvc.ErrCollectorNotFound):
-			templates.ErrorPage("Error", "Collector not found", http.StatusNotFound, templates.NavData{Since: "24h"}).Render(r.Context(), w)
+			templates.RenderError(w, r, "Error", "Collector not found", http.StatusNotFound)
 		case errors.Is(err, panelsvc.ErrAccessDenied):
-			templates.ErrorPage("Forbidden", "You don't have access to this app", http.StatusForbidden, templates.NavData{Since: "24h"}).Render(r.Context(), w)
+			templates.RenderError(w, r, "Forbidden", "You don't have access to this app", http.StatusForbidden)
 		case errors.Is(err, panelsvc.ErrAppNotFound):
-			templates.ErrorPage("Error", "App not found", http.StatusNotFound, templates.NavData{Since: "24h"}).Render(r.Context(), w)
+			templates.RenderError(w, r, "Error", "App not found", http.StatusNotFound)
 		default:
-			templates.ErrorPage("Error", "Failed to fetch log groups", http.StatusInternalServerError, templates.NavData{Since: "24h"}).Render(r.Context(), w)
+			templates.RenderError(w, r, "Error", "Failed to fetch log groups", http.StatusInternalServerError)
 		}
 		return
 	}
@@ -707,7 +707,7 @@ func (h *handler) getLogGroupByID(w http.ResponseWriter, r *http.Request) {
 
 	groupID, err := strconv.ParseInt(r.PathValue("groupID"), 10, 64)
 	if err != nil {
-		templates.ErrorPage("Error", "Invalid group ID", http.StatusBadRequest, templates.NavData{Since: "24h"}).Render(r.Context(), w)
+		templates.RenderError(w, r, "Error", "Invalid group ID", http.StatusBadRequest)
 		return
 	}
 
@@ -718,7 +718,7 @@ func (h *handler) getLogGroupByID(w http.ResponseWriter, r *http.Request) {
 		GroupID:       groupID,
 	}
 	if err := req.Validate(); err != nil {
-		templates.ErrorPage("Error", err.Error(), http.StatusBadRequest, templates.NavData{Since: "24h"}).Render(r.Context(), w)
+		templates.RenderError(w, r, "Error", err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -726,13 +726,13 @@ func (h *handler) getLogGroupByID(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		case errors.Is(err, panelsvc.ErrCollectorNotFound):
-			templates.ErrorPage("Error", "Collector not found", http.StatusNotFound, templates.NavData{Since: "24h"}).Render(r.Context(), w)
+			templates.RenderError(w, r, "Error", "Collector not found", http.StatusNotFound)
 		case errors.Is(err, panelsvc.ErrAccessDenied):
-			templates.ErrorPage("Forbidden", "You don't have access to this app", http.StatusForbidden, templates.NavData{Since: "24h"}).Render(r.Context(), w)
+			templates.RenderError(w, r, "Forbidden", "You don't have access to this app", http.StatusForbidden)
 		case errors.Is(err, panelsvc.ErrAppNotFound), errors.Is(err, panelsvc.ErrLogNotFound):
-			templates.ErrorPage("Error", "Group not found", http.StatusNotFound, templates.NavData{Since: "24h"}).Render(r.Context(), w)
+			templates.RenderError(w, r, "Error", "Group not found", http.StatusNotFound)
 		default:
-			templates.ErrorPage("Error", "Failed to fetch logs", http.StatusInternalServerError, templates.NavData{Since: "24h"}).Render(r.Context(), w)
+			templates.RenderError(w, r, "Error", "Failed to fetch logs", http.StatusInternalServerError)
 		}
 		return
 	}
@@ -763,7 +763,7 @@ func (h *handler) getLogGroupEntries(w http.ResponseWriter, r *http.Request) {
 
 	groupID, err := strconv.ParseInt(r.PathValue("groupID"), 10, 64)
 	if err != nil {
-		templates.ErrorPage("Error", "Invalid group ID", http.StatusBadRequest, templates.NavData{Since: "24h"}).Render(r.Context(), w)
+		templates.RenderError(w, r, "Error", "Invalid group ID", http.StatusBadRequest)
 		return
 	}
 
@@ -781,7 +781,7 @@ func (h *handler) getLogGroupEntries(w http.ResponseWriter, r *http.Request) {
 		Limit:         limit + 1,
 	}
 	if err := req.Validate(); err != nil {
-		templates.ErrorPage("Error", err.Error(), http.StatusBadRequest, templates.NavData{Since: "24h"}).Render(r.Context(), w)
+		templates.RenderError(w, r, "Error", err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -789,14 +789,14 @@ func (h *handler) getLogGroupEntries(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		case errors.Is(err, panelsvc.ErrCollectorNotFound):
-			templates.ErrorPage("Error", "Collector not found", http.StatusNotFound, templates.NavData{Since: "24h"}).Render(r.Context(), w)
+			templates.RenderError(w, r, "Error", "Collector not found", http.StatusNotFound)
 		case errors.Is(err, panelsvc.ErrAccessDenied):
-			templates.ErrorPage("Forbidden", "You don't have access to this app", http.StatusForbidden, templates.NavData{Since: "24h"}).Render(r.Context(), w)
+			templates.RenderError(w, r, "Forbidden", "You don't have access to this app", http.StatusForbidden)
 		case errors.Is(err, panelsvc.ErrAppNotFound), errors.Is(err, panelsvc.ErrLogNotFound):
-			templates.ErrorPage("Error", "Group not found", http.StatusNotFound, templates.NavData{Since: "24h"}).Render(r.Context(), w)
+			templates.RenderError(w, r, "Error", "Group not found", http.StatusNotFound)
 		default:
 			slog.Error("Failed to list group logs", "error", err, "groupID", req.GroupID, "collector", req.CollectorName, "app", req.AppName)
-			templates.ErrorPage("Error", "Failed to fetch log entries", http.StatusInternalServerError, templates.NavData{Since: "24h"}).Render(r.Context(), w)
+			templates.RenderError(w, r, "Error", "Failed to fetch log entries", http.StatusInternalServerError)
 		}
 		return
 	}
@@ -841,7 +841,7 @@ func (h *handler) deleteLogGroup(w http.ResponseWriter, r *http.Request) {
 
 	groupID, err := strconv.ParseInt(r.PathValue("groupID"), 10, 64)
 	if err != nil {
-		templates.ErrorPage("Error", "Invalid group ID", http.StatusBadRequest, templates.NavData{Since: "24h"}).Render(r.Context(), w)
+		templates.RenderError(w, r, "Error", "Invalid group ID", http.StatusBadRequest)
 		return
 	}
 
@@ -852,21 +852,21 @@ func (h *handler) deleteLogGroup(w http.ResponseWriter, r *http.Request) {
 		GroupID:       groupID,
 	}
 	if err := req.Validate(); err != nil {
-		templates.ErrorPage("Error", err.Error(), http.StatusBadRequest, templates.NavData{Since: "24h"}).Render(r.Context(), w)
+		templates.RenderError(w, r, "Error", err.Error(), http.StatusBadRequest)
 		return
 	}
 
 	if err := h.svc.DeleteLogGroup(r.Context(), req); err != nil {
 		switch {
 		case errors.Is(err, panelsvc.ErrCollectorNotFound):
-			templates.ErrorPage("Error", "Collector not found", http.StatusNotFound, templates.NavData{Since: "24h"}).Render(r.Context(), w)
+			templates.RenderError(w, r, "Error", "Collector not found", http.StatusNotFound)
 		case errors.Is(err, panelsvc.ErrAccessDenied):
-			templates.ErrorPage("Forbidden", "You don't have access to this app", http.StatusForbidden, templates.NavData{Since: "24h"}).Render(r.Context(), w)
+			templates.RenderError(w, r, "Forbidden", "You don't have access to this app", http.StatusForbidden)
 		case errors.Is(err, panelsvc.ErrAppNotFound), errors.Is(err, panelsvc.ErrLogNotFound):
-			templates.ErrorPage("Error", "Group not found", http.StatusNotFound, templates.NavData{Since: "24h"}).Render(r.Context(), w)
+			templates.RenderError(w, r, "Error", "Group not found", http.StatusNotFound)
 		default:
 			slog.Error("Failed to delete log group", "error", err, "groupID", req.GroupID, "collector", req.CollectorName, "app", req.AppName)
-			templates.ErrorPage("Error", "Failed to delete log group", http.StatusInternalServerError, templates.NavData{Since: "24h"}).Render(r.Context(), w)
+			templates.RenderError(w, r, "Error", "Failed to delete log group", http.StatusInternalServerError)
 		}
 		return
 	}
@@ -889,7 +889,7 @@ func (h *handler) getLogByID(w http.ResponseWriter, r *http.Request) {
 
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
-		templates.ErrorPage("Error", "Invalid log ID", http.StatusBadRequest, templates.NavData{Since: "24h"}).Render(r.Context(), w)
+		templates.RenderError(w, r, "Error", "Invalid log ID", http.StatusBadRequest)
 		return
 	}
 
@@ -900,7 +900,7 @@ func (h *handler) getLogByID(w http.ResponseWriter, r *http.Request) {
 		ID:            id,
 	}
 	if err := req.Validate(); err != nil {
-		templates.ErrorPage("Error", err.Error(), http.StatusBadRequest, templates.NavData{Since: "24h"}).Render(r.Context(), w)
+		templates.RenderError(w, r, "Error", err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -908,15 +908,15 @@ func (h *handler) getLogByID(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		case errors.Is(err, panelsvc.ErrCollectorNotFound):
-			templates.ErrorPage("Error", "Collector not found", http.StatusNotFound, templates.NavData{Since: "24h"}).Render(r.Context(), w)
+			templates.RenderError(w, r, "Error", "Collector not found", http.StatusNotFound)
 		case errors.Is(err, panelsvc.ErrAccessDenied):
-			templates.ErrorPage("Forbidden", "You don't have access to this app", http.StatusForbidden, templates.NavData{Since: "24h"}).Render(r.Context(), w)
+			templates.RenderError(w, r, "Forbidden", "You don't have access to this app", http.StatusForbidden)
 		case errors.Is(err, panelsvc.ErrAppNotFound):
-			templates.ErrorPage("Error", "App not found", http.StatusNotFound, templates.NavData{Since: "24h"}).Render(r.Context(), w)
+			templates.RenderError(w, r, "Error", "App not found", http.StatusNotFound)
 		case errors.Is(err, panelsvc.ErrLogNotFound):
-			templates.ErrorPage("Error", "Log not found", http.StatusNotFound, templates.NavData{Since: "24h"}).Render(r.Context(), w)
+			templates.RenderError(w, r, "Error", "Log not found", http.StatusNotFound)
 		default:
-			templates.ErrorPage("Error", "Failed to get log", http.StatusInternalServerError, templates.NavData{Since: "24h"}).Render(r.Context(), w)
+			templates.RenderError(w, r, "Error", "Failed to get log", http.StatusInternalServerError)
 		}
 		return
 	}
