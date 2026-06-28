@@ -4,216 +4,106 @@
 
 Lightweight, self-hosted log aggregation and alerting for small to mid-sized projects.
 
-## What problem does it solve
+OpenTelemetry is overkill for small projects. Tracer is a single binary that collects logs, stores them in per-app SQLite databases, and sends error alerts via Telegram.
 
-*OpenTelemetry* setup for small to mid projects is insanely expensive overkill.
-
-## How tracer helps
-
-Simplicity.
-
-- Run logs collector as a single binary
-- Self host logs and analytics panel
-- Get error alerts via Telegram
-- View logs grouped by trace ID
-
-### Philosophy
-
-In production logs I care about two main things:
-
-1. Get error alert from infrastructure and not the client
-2. Get all the context about the error so tests and fixes could be written right away
-
-Also I hate to setup infrastructure for each project to get these two simple things done.
-
-Any other logs may show some performance degradation or health status but in both cases do not require persistence. `tracer` uses single SQLite database to store all info about errors and only selected percent of other logs (chosen randomly)
-
-## Installation
-
-### Quick Install
-
-**Full install (panel + collector):**
+## Quick Install
 
 ```bash
 curl -fsSL https://git.naqerl.com/naqerl/tracer/raw/main/install.sh | sudo bash
 ```
 
-**Collector only (for remote servers):**
+**Collector only** (for remote servers that should not run the panel):
 
 ```bash
 export TRACER_COLLECTOR_ONLY=1
 curl -fsSL https://git.naqerl.com/naqerl/tracer/raw/main/install.sh | sudo bash
 ```
 
-### Build from Source
-
-```bash
-git clone https://git.naqerl.com/naqerl/tracer.git
-cd tracer
-
-# Build
-make build
-
-# Install (requires root)
-sudo make install
-```
-
-#### Build Configuration
-
-The build is configured via environment variables (set via Makefile defaults or overridden):
-
-```bash
-# Override defaults when building
-make WITH_SYSTEMD=no BINDIR=/opt/tracer/bin build
-
-# Key variables:
-#   WITH_SYSTEMD   - "yes", "no", or "auto" (default: auto, detects at runtime)
-#   BINDIR         - binary installation directory (default: /usr/local/bin)
-#   PANEL_USER     - system user for panel (default: tracer-panel)
-#   COLLECTOR_USER - system user for collector (default: tracer-collector)
-#   TRACER_GROUP   - system group for both services (default: tracer)
-```
-
-After installation, start services manually if systemd is not used:
-
-```bash
-sudo -u tracer-collector /usr/local/bin/tracer-collector -config /etc/tracer/collector.yaml
-sudo -u tracer-panel /usr/local/bin/tracer-panel -config /etc/tracer/panel.yaml
-```
+The script downloads pre-built binaries, creates system users (`tracer-panel`, `tracer-collector`, group `tracer`), installs systemd services, and creates default configs at `/etc/tracer/panel.yaml` and `/etc/tracer/collector.yaml`.
 
 ### Configure collector
 
-`tracer-collector` automatically detects log formats (JSON, slog text) and field mappings. See [format-guessing.md](./docs/format-guessing.md) for detailed documentation.
+`tracer-collector` automatically detects log formats (JSON, slog text) and field mappings:
 
-**Quick start:**
 ```bash
-# Add a systemd service
+# Add a systemd unit as a log source
 tracer-collector add myapp
 
 # Add a log file
 tracer-collector add /var/log/myapp.log
 ```
 
-The collector will:
-1. Read sample logs from the source
-2. Detect the format and field mappings
-3. Show a preview of the detected configuration
-4. Ask for confirmation before saving
-
-**Resolving format conflicts:**
-If your logs use inconsistent field names (e.g., some lines use `level`, others use `status`), the collector will report a conflict. Use `--favour` to specify which field to use:
+If logs use inconsistent field names, resolve conflicts iteratively with `--favour`:
 
 ```bash
-# First attempt shows the conflict
-tracer-collector add myapp
-# Error: inconsistent level_field: found both 'level' and 'status'
-
-# Resolve by favouring the 'status' field
 tracer-collector add myapp --favour 'level_field:"status"'
 ```
 
-Fix conflicts one at a time - each error message suggests the exact `--favour` value to use.
+See [format-guessing.md](./docs/format-guessing.md) for details.
 
-### Start Services
+### Start services
 
 ```bash
 sudo systemctl enable --now tracer-panel
 sudo systemctl enable --now tracer-collector
 ```
 
-Access the panel at http://localhost:8080
+Access the panel at **http://localhost:8080**.
 
 ## Features
 
-### Collector
-
-- **Multiple log formats**
-  - JSON with customizable field mappings
-  - User-defined regex patterns
-  - Journalctl (systemd services) with optional MESSAGE field parsing
-- **Automatic timestamp parsing** - RFC3339, ISO, Unix timestamps
-- **Field extraction** - timestamp, level, trace_id, message, context
-- **WebSocket transport** - low-latency streaming to panel with ping/pong keepalive
-- **Reconnection** - automatic reconnect with exponential backoff
-- **Named collectors** - identify collectors by name or auto-detect via outbound IP
-- **System stats collection** - CPU, RAM, disk usage sent to panel at configurable intervals
-- **Startup detection** - optional pattern matching to mark application restarts
-
-### Panel
-
-- **Authentication**
-  - Session-based auth with secure cookies
-  - Configurable session duration
-  - Admin and regular user roles
-  - Per-app access control for non-admin users
-  - Multiple collector API keys with per-key revocation and one-time plaintext display
-
-- **User management** (admin only)
-  - Create/delete users
-  - Assign admin privileges
-  - Per-user app access control
-
-- **Log management**
-  - Per-app SQLite databases (WAL mode)
-  - Configurable sample rate for non-error logs (errors always persisted at 100%)
-  - Automatic retention cleanup (configurable days)
-  - Trace ID grouping for request tracking
-  - Log detail view with raw message and context
-  - Filter logs by level
-
-- **Analytics dashboard**
-  - Error/warning/info counts (24h)
-  - Real-time collector status monitoring with system stats (CPU, RAM, disk)
-  - Per-app analytics views
-  - Configurable auto-refresh interval (default: 10s)
-
-- **Notifications**
-  - Telegram alerts for errors
-  - Per-user notifier configuration
-  - App-specific or global (admin) notifications
-  - Enable/disable notifiers without deleting
-  - Multiple notifiers per user
+- Multiple log formats (JSON, regex, journalctl)
+- Automatic timestamp parsing — RFC3339, ISO, Unix
+- WebSocket transport with reconnection and exponential backoff
+- Per-app SQLite databases (WAL mode)
+- Configurable sample rate for non-error logs (default: 10%; errors always 100%)
+- Automatic retention cleanup (default: 90 days)
+- Trace ID grouping
+- Session-based auth with admin/regular user roles and per-app access control
+- Collector API keys with per-key revocation
+- Telegram alerts for errors, per-user notifier configuration
+- Analytics dashboard with error/warning/info counts and collector system stats (CPU, RAM, disk)
+- Real-time collector status monitoring
+- Startup pattern detection for application restarts
 
 ## Architecture
 
-### Data isolation
-
-- Flat list of applications (no organization/project hierarchy)
-- Each application has its own SQLite database
-- SQLite databases use WAL mode for concurrent read/write performance
-
-### Data retention
-
-- Configurable retention period (default: 3 months)
-- Automatic daily cleanup of old logs
-- Errors always persisted, other logs sampled
-
-### Transport
-
-- Collector communicates with Panel via WebSocket
-- Collectors register their apps on connect
-- Keep-alive ping/pong for connection health
+- Collectors connect to the panel via WebSocket, register their apps, and stream log events
+- Each application gets its own SQLite database
+- System stats (CPU, RAM, disk) are periodically sent to the panel
+- Panel stores collector API keys and user data in a separate panel database
 
 ## Development
 
-### Build from Source
+### Build from source
 
 ```bash
-# Build binaries
+# Build both binaries
 make build
 
-# Run tests
+# Run tests and lint
 make test
-
-# Lint
 make vet
+
+# Install (requires root)
+sudo make install
 ```
 
-### Manual Installation (without curl script)
+Build configuration (defaults can be overridden):
+
+| Variable | Default | Description |
+|---|---|---|
+| `WITH_SYSTEMD` | `auto` | `yes`, `no`, or `auto` (detect at runtime) |
+| `BINDIR` | `/usr/local/bin` | Binary installation directory |
+| `PANEL_USER` | `tracer-panel` | System user for panel service |
+| `COLLECTOR_USER` | `tracer-collector` | System user for collector service |
+| `TRACER_GROUP` | `tracer` | System group for both services |
+| `VERSION` | `unknown` | Build version (injected by CI) |
+
+Override example:
 
 ```bash
-make build
-sudo make install
+make WITH_SYSTEMD=no BINDIR=/opt/tracer/bin build
 ```
 
 ### Uninstall
@@ -222,20 +112,13 @@ sudo make install
 sudo make uninstall
 ```
 
-### Container Images
+### Container image
 
-The panel is published as a minimal Docker image (~15 MB, scratch-based) on the Forgejo
-container registry at `git.naqerl.com/naqerl/panel`.
-
-**Pull the latest image:**
+The panel is published as a minimal scratch-based Docker image (~15 MB):
 
 ```bash
 docker pull git.naqerl.com/naqerl/panel:latest
-```
 
-**Run the panel:**
-
-```bash
 docker run -d \
   --name tracer-panel \
   -p 8080:8080 \
@@ -243,75 +126,25 @@ docker run -d \
   git.naqerl.com/naqerl/panel:latest
 ```
 
-The panel expects a config file at `/etc/tracer/panel.yaml`. You can provide
-one via bind mount or use environment variables.
-
-**Build locally:**
+Build locally:
 
 ```bash
-make docker-build-panel   # Creates git.naqerl.com/naqerl/panel:latest
+make docker-build-panel
 ```
 
-**Tag and push to the registry:**
+Images are automatically built and pushed on every `v*` tag by CI.
 
-```bash
-make docker-tag-panel TAG=v1.2.3
-make docker-push-panel TAG=v1.2.3
-```
+### End-to-end testing
 
-**Docker images are automatically built and pushed on every `v*` tag by the
-CI workflow** (see `.forgejo/workflows/release.yml`).
-
-### End-to-End Testing
-
-The `e2e/` directory contains a full integration test environment using a
-mock log generator. See [e2e/README.md](./e2e/README.md)
-for details.
-
-## Deployment
-
-See `install.sh` for unattended installation. The install script:
-
-- Detects the system package manager and architecture
-- Downloads the latest release binaries from the Forgejo releases page
-- Installs systemd service files (when systemd is detected)
-- Creates required system users and directories
-
-Manual deployment artefacts (systemd units, configuration templates) are
-generated by `make install` using the shared `libs/shared/install/` package.
+See [e2e/README.md](./e2e/README.md) for integration test setup using a mock log generator.
 
 ## Releasing
 
-A new release is triggered by pushing a `v*` tag:
+Push a `v*` tag to trigger the CI release workflow:
 
 ```bash
 git tag v1.2.3
 git push origin v1.2.3
 ```
 
-The CI workflow (`.forgejo/workflows/release.yml`) will:
-
-1. Build binaries for `linux/amd64`
-2. Run tests and lint
-3. Create a Forgejo release with attached archives and checksums
-4. Build and push the panel Docker image to `git.naqerl.com/naqerl/panel`
-   (both `:latest` and `:vX.Y.Z` tags)
-
-## Roadmap
-
-- [x] Multiple log formats (JSON, regex, journalctl)
-- [x] WebSocket transport with reconnection
-- [x] Per-app SQLite databases
-- [x] Authentication and user management
-- [x] Per-user app access control
-- [x] Telegram notifications
-- [x] Analytics dashboard
-- [x] Collector status monitoring with system stats
-- [x] Trace ID grouping
-- [x] Log retention cleanup
-- [x] API key authentication
-- [x] Journalctl MESSAGE field parsing
-- [x] Configurable refresh intervals
-- [x] Startup pattern detection
-- [ ] Log search with full-text
-- [x] Metrics collection (beyond logs)
+The workflow builds `linux/amd64` binaries, runs tests and lint, creates a Forgejo release with archives and checksums, and pushes the Docker image to `git.naqerl.com/naqerl/panel` (both `:latest` and `:vX.Y.Z`).
