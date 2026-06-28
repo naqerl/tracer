@@ -4,7 +4,20 @@
 
 Lightweight, self-hosted log aggregation and alerting for small to mid-sized projects.
 
-OpenTelemetry is overkill for small projects. Tracer is a single binary that collects logs, stores them in per-app SQLite databases, and sends error alerts via Telegram.
+OpenTelemetry is overkill for small projects. Tracer is a single binary that collects logs, stores them in per-app SQLite databases, and sends error alerts via Telegram or ntfy.sh.
+
+Demo: [tracer.naqel.com](https://tracer.naqel.com) &middot; Landing: [naqerl.com/projects/tracer](https://naqerl.com/projects/tracer/index.html)
+
+## Features
+
+- **One-command install** &mdash; `curl ... | sudo bash` gets you a running panel and collector
+- **Multi-user & role-based access** &mdash; admin and regular user roles with per-app access control, session-based auth with secure cookies
+- **Telegram & ntfy.sh notifications** &mdash; per-user notifier configuration, enable/disable without deleting, multiple notifiers per user
+- **Resource monitoring** &mdash; collects CPU, RAM, and disk usage from each collector; real-time status on the dashboard
+- **API access for agents** &mdash; collector API keys for machine-to-machine auth, per-user API keys for scripted access, both with per-key revocation
+- **Multiple log formats** &mdash; JSON with customizable field mappings, Go slog text, user-defined regex, journalctl
+- **Per-app SQLite databases** &mdash; WAL mode, automatic retention cleanup (default: 90 days), configurable sample rate for non-error logs (default: 10%; errors always 100%)
+- **Interactive log source setup** &mdash; auto-detect log format and field mappings from a sample, resolve conflicts with `--favour`
 
 ## Quick Install
 
@@ -49,22 +62,6 @@ sudo systemctl enable --now tracer-collector
 ```
 
 Access the panel at **http://localhost:8080**.
-
-## Features
-
-- Multiple log formats (JSON, regex, journalctl)
-- Automatic timestamp parsing — RFC3339, ISO, Unix
-- WebSocket transport with reconnection and exponential backoff
-- Per-app SQLite databases (WAL mode)
-- Configurable sample rate for non-error logs (default: 10%; errors always 100%)
-- Automatic retention cleanup (default: 90 days)
-- Trace ID grouping
-- Session-based auth with admin/regular user roles and per-app access control
-- Collector API keys with per-key revocation
-- Telegram alerts for errors, per-user notifier configuration
-- Analytics dashboard with error/warning/info counts and collector system stats (CPU, RAM, disk)
-- Real-time collector status monitoring
-- Startup pattern detection for application restarts
 
 ## Architecture
 
