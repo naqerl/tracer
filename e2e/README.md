@@ -1,51 +1,51 @@
 # E2E Demo
 
-This demo runs a full end-to-end test that mirrors the actual user installation flow:
-`make build && make install`
-
-The container starts with the source code and runs the standard installation at boot,
-ensuring the actual installation process works correctly on end-user systems.
-
-Three systemd-managed mock apps provide logs for testing.
+End-to-end test environment that runs a full tracer stack inside a Debian container with systemd. Three mock services (`demo-api`, `demo-worker`, `demo-cron`) continuously generate log traffic.
 
 ## Usage
 
 ```bash
+# Build image and start container (panel at localhost:18081)
 make -C e2e up
-```
 
-```bash
+# Run health checks against the running container
 make -C e2e check
 ```
 
-The panel is exposed on `http://localhost:18081` by default.
-The default login is `demo / demo123`.
+Default login: `demo` / `demo123`.
 
-## Load toggle
+## Log profiles
 
-The three mock systemd services (`tracer-demo-api`, `tracer-demo-worker`, `tracer-demo-cron`)
-can be switched into a higher-volume logging profile in the running container:
+Switch the mock services between logging profiles:
 
 ```bash
-make -C e2e mock-logs-high
-make -C e2e mock-logs-status
-make -C e2e mock-logs-normal
+make -C e2e mock-logs-high     # higher volume, ~1-3s intervals
+make -C e2e mock-logs-normal   # default low volume
+make -C e2e mock-logs-status   # show current profile
 ```
-
-`mock-logs-high` increases the startup burst slightly, then switches the demo services into
-a jittered steady mode that emits single flows every 1-3 seconds at random so you can observe
-continuous traffic on the topology page without rebuilding the image.
 
 ## Live reload
 
-To rebuild and hot-swap the panel binary into the running e2e container whenever
-panel code changes:
+Rebuild the panel binary and hot-swap it into the running container on code changes:
 
 ```bash
 make -C e2e live-reload
 ```
 
-This target uses `entr` to watch panel-related source files on the host, rebuilds
-`tracer-panel`, copies the new binary into the running `tracer-e2e` container,
-and restarts `tracer-panel.service` with systemd. Start the demo container first
-with `make -C e2e up`.
+Uses `entr` to watch panel source files, rebuilds `tracer-panel`, copies it into the container, and restarts the service.
+
+## Release mode
+
+To test the release install flow (downloads pre-built binaries instead of using local ones):
+
+```bash
+make -C e2e up-release
+```
+
+## Other commands
+
+```bash
+make -C e2e logs     # follow container logs
+make -C e2e shell    # open bash in the container
+make -C e2e down     # stop and remove the container
+```

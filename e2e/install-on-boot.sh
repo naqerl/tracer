@@ -10,7 +10,7 @@ export TRACER_PANEL_HOST=http://localhost:8080
 if [ "${E2E_INSTALL_MODE:-build}" = "release" ]; then
     echo "[e2e] Installing tracer from release..."
     export TRACER_ADMIN_USERNAME=demo
-    export TRACER_ADMIN_PASSWORD=demodemo123
+    export TRACER_ADMIN_PASSWORD=demo123
     curl -fsSL https://git.naqerl.com/naqerl/tracer/raw/branch/main/install.sh | bash
 else
     echo "[e2e] Installing from pre-built binaries..."
@@ -37,9 +37,9 @@ sleep 3
 if [ "${E2E_INSTALL_MODE:-build}" = "release" ]; then
     # In release mode, install script already ran -init and set the api key.
     # Re-init if needed (will exit 2 = already initialized, which is fine).
-    tracer-panel -init -username demo -password demodemo123 2>/dev/null || true
+    tracer-panel -init -username demo -password demo123 2>/dev/null || true
 else
-    api_key=$(tracer-panel -init -username demo -password demodemo123 2>/dev/null | grep '^collector_api_key=' | cut -d= -f2) || true
+    api_key=$(tracer-panel -init -username demo -password demo123 2>/dev/null | grep '^collector_api_key=' | cut -d= -f2) || true
     if [ -n "$api_key" ]; then
         tracer-collector set api-key "$api_key"
     fi
