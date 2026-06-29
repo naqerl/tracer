@@ -31,11 +31,11 @@ build: build-collector build-panel
 
 build-collector:
 	go build -ldflags="$(LDFLAGS)" -o bin/tracer-collector ./apps/collector/cmd/tracer-collector
-	sha256sum "bin/tracer-collector" >> /bin/checksums.txt
+	sha256sum "bin/tracer-collector" >> bin/checksums.txt
 
 build-panel:
 	go build -ldflags="$(LDFLAGS)" -o bin/tracer-panel ./apps/panel/cmd/tracer-panel
-	sha256sum "bin/tracer-panel" >> /tmp/checksums.txt
+	sha256sum "bin/tracer-panel" >> bin/checksums.txt
 clean:
 	rm -rf bin/
 
