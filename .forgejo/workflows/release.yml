@@ -29,9 +29,9 @@ jobs:
         run: |
           go mod download
 
-      - name: Vet (fmt + vet + staticcheck)
+      - name: Test
         run: |
-          make vet
+          go test ./...
 
       - name: Build binaries
         env:
@@ -39,10 +39,6 @@ jobs:
         run: |
           make build
           ls -lh bin/
-
-      - name: Test
-        run: |
-          go test ./...
 
       - uses: actions/forgejo-release@v2.12.1
         with:

@@ -25,16 +25,17 @@ LDFLAGS := -s -w \
 	-X tracer/build.TracerGroup=$(TRACER_GROUP)
 
 .PHONY: build build-collector build-panel clean test vet dev-setup generate sqlc install \
-        docker-build-panel docker-tag-panel docker-push-panel
+	docker-build-panel docker-tag-panel docker-push-panel
 
 build: build-collector build-panel
 
 build-collector:
-	CGO_ENABLED=$(CGO_ENABLED) go build -ldflags="$(LDFLAGS)" -o bin/tracer-collector ./apps/collector/cmd/tracer-collector
+	go build -ldflags="$(LDFLAGS)" -o bin/tracer-collector ./apps/collector/cmd/tracer-collector
+	sha256sum "/bin/tracer-collector" >> /bin/checksums.txt
 
 build-panel:
-	CGO_ENABLED=$(CGO_ENABLED) go build -ldflags="$(LDFLAGS)" -o bin/tracer-panel ./apps/panel/cmd/tracer-panel
-
+	go build -ldflags="$(LDFLAGS)" -o bin/tracer-panel ./apps/panel/cmd/tracer-panel
+	sha256sum "/tmp/tracer-collector" >> /tmp/checksums.txt
 clean:
 	rm -rf bin/
 
