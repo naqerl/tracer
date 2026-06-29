@@ -9,10 +9,6 @@ on:
   push:
     tags: ["v*"]
 
-env:
-  BINARY_COLLECTOR: tracer-collector
-  BINARY_PANEL: tracer-panel
-
 jobs:
   build:
     name: Build and Lint
@@ -20,7 +16,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # ── Go ──────────────────────────────────────────────────────
       - name: Install Go
         run: |
           echo "Installing Go 1.26.4..."
@@ -49,7 +44,7 @@ jobs:
         run: |
           go test ./...
 
-     - uses: actions/forgejo-release@v2.12.1
+      - uses: actions/forgejo-release@v2.12.1
         with:
           direction: upload
           release-dir: bin/
