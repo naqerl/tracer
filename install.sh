@@ -38,7 +38,7 @@ if [ "$(id -u)" -ne 0 ]; then
 	die "This script must be run as root. Try: curl ... | sudo bash"
 fi
 
-for cmd in curl sha256sum uname chmod cp tar; do
+for cmd in curl sha256sum uname chmod cp; do
 	if ! command -v "$cmd" >/dev/null 2>&1; then
 		die "Required command not found: $cmd"
 	fi
@@ -78,21 +78,17 @@ TMPDIR=$(mktemp -d) || die "Failed to create temporary directory"
 trap 'rm -rf "$TMPDIR"' EXIT
 
 for bin in "${BINARIES[@]}"; do
-	ARCHIVE="${bin}-linux-${ARCH}.tar.gz"
-	URL="${DOWNLOAD_URL}/${TRACER_VERSION}/${ARCHIVE}"
+	URL="${DOWNLOAD_URL}/${TRACER_VERSION}/${bin}"
 	log "Downloading ${bin}..."
-	curl -fsSL "$URL" -o "$TMPDIR/$ARCHIVE" || die "Failed to download ${bin} from ${URL}"
+	curl -fsSL "$URL" -o "$TMPDIR/$bin" || die "Failed to download ${bin} from ${URL}"
 done
 
 log "Verifying checksums..."
 curl -fsSL "${DOWNLOAD_URL}/${TRACER_VERSION}/checksums.txt" -o "$TMPDIR/checksums.txt" || die "Failed to download checksums"
-awk -v dir="$TMPDIR" '{split($2,a,"/"); $2=dir"/"a[length(a)]; print}' "$TMPDIR/checksums.txt" > "$TMPDIR/checksums.fixed.txt"
-(cd "$TMPDIR" && sha256sum -c "checksums.fixed.txt") || die "Checksum verification failed"
+(cd "$TMPDIR" && sha256sum -c "checksums.txt") || die "Checksum verification failed"
 
-log "Extracting binaries..."
+log "Setting permissions..."
 for bin in "${BINARIES[@]}"; do
-	ARCHIVE="${bin}-linux-${ARCH}.tar.gz"
-	tar -xzf "$TMPDIR/$ARCHIVE" -C "$TMPDIR"
 	chmod 0755 "$TMPDIR/$bin"
 done
 
