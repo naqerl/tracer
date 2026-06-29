@@ -18,44 +18,26 @@ jobs:
     name: Build and Lint
     runs-on: ubuntu-latest
     steps:
-      # ── Checkout ────────────────────────────────────────────────
-      # Uses the Forgejo API directly to avoid depending on git
-      # or environment variables that may not be set on the runner.
-      - name: Checkout repository
-        run: |
-          set -e
-          curl -sL "https://git.naqerl.com/api/v1/repos/naqerl/tracer/archive/${GITHUB_REF_NAME:-main}.tar.gz" \
-            -o /tmp/repo.tar.gz
-          mkdir -p /tmp/checkout
-          tar -C /tmp/checkout -xzf /tmp/repo.tar.gz
-          mv /tmp/checkout/*/* "${GITHUB_WORKSPACE}/"
+      - uses: actions/checkout@v4
 
       # ── Go ──────────────────────────────────────────────────────
       - name: Install Go
         run: |
-          if ! command -v go &>/dev/null || ! go version | grep -q 'go1\.26\.4'; then
-            echo "Installing Go 1.26.4..."
-            curl -fsSL "https://go.dev/dl/go1.26.4.linux-amd64.tar.gz" -o /tmp/go.tar.gz
-            rm -rf /usr/local/go
-            tar -C /usr/local -xzf /tmp/go.tar.gz
-          else
-            echo "Go 1.26.4 already installed"
-          fi
+          echo "Installing Go 1.26.4..."
+          curl -fsSL "https://go.dev/dl/go1.26.4.linux-amd64.tar.gz" -o /tmp/go.tar.gz
+          rm -rf /usr/local/go
+          tar -C /usr/local -xzf /tmp/go.tar.gz
           echo "/usr/local/go/bin" >> "$GITHUB_PATH"
           echo "${HOME}/go/bin" >> "$GITHUB_PATH"
-          export PATH="/usr/local/go/bin:$HOME/go/bin:$PATH"
-          go version
 
       - name: Download dependencies
         run: |
           go mod download
 
-      # ── Lint ────────────────────────────────────────────────────
       - name: Vet (fmt + vet + staticcheck)
         run: |
           make vet
 
-      # ── Build ───────────────────────────────────────────────────
       - name: Build binaries
         env:
           VERSION: ${{ github.ref_name }}
@@ -63,142 +45,27 @@ jobs:
           make build
           ls -lh bin/
 
-      # ── Test ────────────────────────────────────────────────────
       - name: Test
         run: |
           go test ./...
 
-      # ── Package ─────────────────────────────────────────────────
-      - name: Package binaries
+     - uses: actions/forgejo-release@v2.12.1
+        with:
+          direction: upload
+          release-dir: bin/
+
+      - name: Install Docker CLI
         run: |
-          chmod +x bin/tracer-collector bin/tracer-panel
-
-          COLLECTOR_ARCHIVE="tracer-collector-linux-amd64.tar.gz"
-          PANEL_ARCHIVE="tracer-panel-linux-amd64.tar.gz"
-
-          tar -czf "/tmp/${COLLECTOR_ARCHIVE}" -C bin tracer-collector
-          tar -czf "/tmp/${PANEL_ARCHIVE}" -C bin tracer-panel
-
-          ls -lh "/tmp/${COLLECTOR_ARCHIVE}" "/tmp/${PANEL_ARCHIVE}"
-
-          sha256sum "/tmp/${COLLECTOR_ARCHIVE}" >> /tmp/checksums.txt
-          sha256sum "/tmp/${PANEL_ARCHIVE}" >> /tmp/checksums.txt
-
-          echo "COLLECTOR_ARCHIVE=/tmp/${COLLECTOR_ARCHIVE}" >> "$GITHUB_ENV"
-          echo "PANEL_ARCHIVE=/tmp/${PANEL_ARCHIVE}" >> "$GITHUB_ENV"
-
-      - name: Show checksums
-        run: |
-          echo "--- Checksums ---"
-          cat /tmp/checksums.txt
-
-      # ── Release ────────────────────────────────────────────────
-      - name: Create release
-        run: |
-          set -e
-
-          TAG="${GITHUB_REF_NAME}"
-          API="${GITHUB_API_URL%/api/v1}/api/v1"
-          REPO="${GITHUB_REPOSITORY}"
-          SERVER_URL="${GITHUB_SERVER_URL}"
-
-          cat > /tmp/release_notes.md << NOTESEOF
-          Release %TAG%
-
-          - **tracer-collector**: %SERVER%/%REPO%/releases/download/%TAG%/tracer-collector-linux-amd64.tar.gz
-          - **tracer-panel**: %SERVER%/%REPO%/releases/download/%TAG%/tracer-panel-linux-amd64.tar.gz
-          - **Docker**: docker pull git.naqerl.com/naqerl/panel:%TAG%
-          NOTESEOF
-
-          sed -i 's/^          //' /tmp/release_notes.md
-
-          sed -i "s|%TAG%|${TAG}|g; s|%SERVER%|${SERVER_URL}|g; s|%REPO%|${REPO}|g" /tmp/release_notes.md
-
-          ESCAPED_NOTES=$(sed 's/\\/\\\\/g; s/"/\\"/g' /tmp/release_notes.md | awk '{printf "%s\\n", $0}')
-          ESCAPED_NOTES="${ESCAPED_NOTES%\\n}"
-
-          echo "Creating release for tag ${TAG}..."
-
-          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
-            "${API}/repos/${REPO}/releases" \
-            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-            -H "Content-Type: application/json" \
-            -d "{\"tag_name\":\"${TAG}\",\"name\":\"${TAG}\",\"body\":\"${ESCAPED_NOTES}\",\"draft\":false,\"prerelease\":false}")
-
-          HTTP_CODE=$(echo "$RESPONSE" | tail -1)
-          BODY=$(echo "$RESPONSE" | sed '$d')
-
-          echo "HTTP status: ${HTTP_CODE}"
-          echo "Response body:"
-          echo "${BODY}"
-
-          if [ "$HTTP_CODE" != "201" ] && [ "$HTTP_CODE" != "200" ]; then
-            echo "FAILED to create release"
-            exit 1
-          fi
-
-          RELEASE_ID=$(echo "$BODY" | grep -o '"id":[0-9]*' | head -1 | cut -d: -f2)
-          echo "Release ID: ${RELEASE_ID}"
-          echo "RELEASE_ID=${RELEASE_ID}" >> "$GITHUB_ENV"
-
-      - name: Upload tracer-collector asset
-        run: |
-          curl -s -X POST \
-            "${GITHUB_API_URL%/api/v1}/api/v1/repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}/assets" \
-            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-            -F "attachment=@${COLLECTOR_ARCHIVE}" \
-            -F "name=tracer-collector-linux-amd64.tar.gz"
-          echo "Uploaded tracer-collector asset"
-
-      - name: Upload tracer-panel asset
-        run: |
-          curl -s -X POST \
-            "${GITHUB_API_URL%/api/v1}/api/v1/repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}/assets" \
-            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-            -F "attachment=@${PANEL_ARCHIVE}" \
-            -F "name=tracer-panel-linux-amd64.tar.gz"
-          echo "Uploaded tracer-panel asset"
-
-      - name: Upload checksums
-        run: |
-          curl -s -X POST \
-            "${GITHUB_API_URL%/api/v1}/api/v1/repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}/assets" \
-            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-            -F "attachment=@/tmp/checksums.txt" \
-            -F "name=checksums.txt"
-          echo "Uploaded checksums"
-
-      # ── Docker image (only on tag) ───────────────────────────────
-      # Uses plain docker CLI.  If docker is not available on the
-      # runner (default Forgejo runner containers lack it), the
-      # steps below are marked continue-on-error so the release
-      # itself still succeeds.
-      - name: Show CI context
-        run: |
-          echo "github.actor: ${{ github.actor }}"
-          echo "github.repository_owner: ${{ github.repository_owner }}"
-          echo "github.repository: ${{ github.repository }}"
-          echo "github.ref_name: ${{ github.ref_name }}"
-          echo "github.ref: ${{ github.ref }}"
-          echo "github.sha: ${{ github.sha }}"
-          echo "github.workspace: ${{ github.workspace }}"
-
-      - name: Install Docker CLI (if missing)
-        run: |
-          if ! command -v docker &>/dev/null; then
-            echo "Docker CLI not found, installing..."
-            apt-get update -qq
-            apt-get install -y -qq docker.io 2>&1
-          else
-            echo "Docker CLI already installed"
-          fi
-          docker version --format '{{.Client.Version}}'
+          apt-get update && apt-get install -y curl
+          curl -fsSL https://download.docker.com/linux/static/stable/x86_64/docker-27.0.3.tgz | tar -xz -C /tmp
+          mv /tmp/docker/docker /usr/local/bin/
+          rm -rf /tmp/docker
 
       - name: Build panel image
         run: |
           docker build \
-            -t git.naqerl.com/naqerl/panel:${{ github.ref_name }} \
-            -t git.naqerl.com/naqerl/panel:latest \
+            -t git.naqerl.com/naqerl/tracer-panel:${{ github.ref_name }} \
+            -t git.naqerl.com/naqerl/tracer-panel:latest \
             -f apps/panel/Dockerfile \
             .
 
@@ -209,5 +76,5 @@ jobs:
 
       - name: Push panel image
         run: |
-          docker push git.naqerl.com/naqerl/panel:${{ github.ref_name }}
-          docker push git.naqerl.com/naqerl/panel:latest
+          docker push git.naqerl.com/naqerl/tracer-panel:${{ github.ref_name }}
+          docker push git.naqerl.com/naqerl/tracer-panel:latest
