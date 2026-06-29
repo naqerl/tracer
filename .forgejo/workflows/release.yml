@@ -44,6 +44,8 @@ jobs:
         with:
           direction: upload
           release-dir: bin/
+          release-notes: >-
+            Image available at https://git.naqerl.com/naqerl/-/packages/container/tracer-panel/latest
 
       - name: Install Docker CLI
         run: |
