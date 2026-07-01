@@ -46,8 +46,8 @@ jobs:
           release-dir: bin/
           release-notes: |-
             Images:
-            - https://git.naqerl.com/naqerl/-/packages/container/tracer-panel/latest
-            - https://git.naqerl.com/naqerl/-/packages/container/tracer-demo/latest
+            - https://git.naqerl.com/naqerl/-/packages/container/tracer-panel/${{ github.ref_name }}
+            - https://git.naqerl.com/naqerl/-/packages/container/tracer-demo/${{ github.ref_name }}
 
       - name: Install Docker CLI
         run: |
@@ -60,7 +60,6 @@ jobs:
         run: |
           docker build \
             -t git.naqerl.com/naqerl/tracer-panel:${{ github.ref_name }} \
-            -t git.naqerl.com/naqerl/tracer-panel:latest \
             -f apps/panel/Dockerfile \
             .
 
@@ -68,7 +67,6 @@ jobs:
         run: |
           docker build \
             -t git.naqerl.com/naqerl/tracer-demo:${{ github.ref_name }} \
-            -t git.naqerl.com/naqerl/tracer-demo:latest \
             -f e2e/Dockerfile \
             .
 
@@ -80,9 +78,7 @@ jobs:
       - name: Push panel image
         run: |
           docker push git.naqerl.com/naqerl/tracer-panel:${{ github.ref_name }}
-          docker push git.naqerl.com/naqerl/tracer-panel:latest
 
       - name: Push demo image
         run: |
           docker push git.naqerl.com/naqerl/tracer-demo:${{ github.ref_name }}
-          docker push git.naqerl.com/naqerl/tracer-demo:latest
