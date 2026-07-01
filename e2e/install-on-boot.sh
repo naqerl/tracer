@@ -32,8 +32,6 @@ systemctl daemon-reload
 systemctl start demo-api demo-worker demo-cron
 systemctl start tracer-collector tracer-panel
 
-sleep 3
-
 if [ "${E2E_INSTALL_MODE:-build}" = "release" ]; then
     # In release mode, install script already ran -init and set the api key.
     # Re-init if needed (will exit 2 = already initialized, which is fine).
@@ -45,10 +43,10 @@ else
     fi
 fi
 
-tracer-collector add demo-api.service || true
-tracer-collector add demo-worker.service || true
-tracer-collector add demo-cron.service || true
-tracer-collector add -health "http://localhost:8080/auth/login" tracer-panel.service || true
-tracer-collector add tracer-collector.service || true
+tracer-collector add demo-api.service
+tracer-collector add demo-worker.service
+tracer-collector add demo-cron.service
+tracer-collector add -health "${TRACER_PANEL_HOST}/auth/login" tracer-panel.service
+tracer-collector add tracer-collector.service
 
 systemctl restart tracer-collector
