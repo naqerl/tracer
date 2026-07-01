@@ -1,4 +1,4 @@
-FROM docker.io/library/golang:1.25-bookworm AS build
+FROM golang:1.25-bookworm AS build
 
 WORKDIR /src
 COPY go.mod go.sum ./
@@ -11,7 +11,7 @@ ARG E2E_INSTALL_MODE=build
 RUN WITH_SYSTEMD=yes make build && \
     CGO_ENABLED=0 go build -ldflags="-s -w" -o /out/tracer-demo-loggen ./e2e/mocklog/main.go
 
-FROM docker.io/library/debian:bookworm
+FROM debian:bookworm
 
 LABEL org.opencontainers.image.title="tracer-demo"
 LABEL org.opencontainers.image.description="Full-stack tracer demo with systemd, mock services, and pre-configured collector/panel"

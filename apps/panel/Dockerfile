@@ -33,7 +33,7 @@ FROM scratch
 
 LABEL org.opencontainers.image.title="tracer-panel"
 LABEL org.opencontainers.image.description="Log aggregation & alerting panel"
-LABEL org.opencontainers.image.source="https://git.naqerl.com/eco/tracer"
+LABEL org.opencontainers.image.source="https://git.naqerl.com/naqerl/tracer"
 LABEL org.opencontainers.image.licenses="MIT"
 
 COPY --from=build /src/bin/tracer-panel /tracer-panel
