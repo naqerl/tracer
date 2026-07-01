@@ -11,21 +11,21 @@ import (
 
 func BuildNoAuthMiddleware(userService *usersvc.Service) func(http.Handler) http.Handler {
 	var (
+		mu          sync.Mutex
 		adminUserID int64
-		once        sync.Once
 	)
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			once.Do(func() {
+			mu.Lock()
+			if adminUserID == 0 {
 				adminUserID = resolveAdminUserID(userService)
-				if adminUserID == 0 {
-					once = sync.Once{}
-				}
-			})
+			}
+			userID := adminUserID
+			mu.Unlock()
 
-			if adminUserID != 0 {
-				r = SetUserID(r, adminUserID)
+			if userID != 0 {
+				r = SetUserID(r, userID)
 			}
 
 			next.ServeHTTP(w, r)

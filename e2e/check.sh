@@ -9,7 +9,7 @@ DEMO_CONTAINER="${DEMO_CONTAINER:-tracer-e2e}"
 DEMO_PORT="${DEMO_PORT:-18081}"
 DEMO_URL="${DEMO_URL:-http://127.0.0.1:${DEMO_PORT}}"
 DEMO_USER="${DEMO_USER:-demo}"
-DEMO_PASSWORD="${DEMO_PASSWORD:-demo123}"
+DEMO_PASSWORD="${DEMO_PASSWORD:-demo1234}"
 
 expected_units=(
   install-on-boot.service

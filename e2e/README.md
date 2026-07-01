@@ -12,7 +12,7 @@ make -C e2e up
 make -C e2e check
 ```
 
-Default login: `demo` / `demo123`.
+Default login: `demo` / `demo1234`.
 
 ## Log profiles
 

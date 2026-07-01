@@ -35,7 +35,7 @@ systemctl start tracer-collector tracer-panel
 if [ "${E2E_INSTALL_MODE:-build}" = "release" ]; then
     # In release mode, install script already ran -init and set the api key.
     # Re-init if needed (will exit 2 = already initialized, which is fine).
-    tracer-panel -init -username demo -password demo123 2>/dev/null || true
+    tracer-panel -init -username demo -password demo1234 2>/dev/null || true
 else
     api_key=$(tracer-panel -init -username demo -password demo123 2>/dev/null | grep '^collector_api_key=' | cut -d= -f2) || true
     if [ -n "$api_key" ]; then
