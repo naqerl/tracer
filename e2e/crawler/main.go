@@ -37,7 +37,7 @@ func main() {
 	var noAuth bool
 	flag.StringVar(&baseURL, "url", "http://localhost:18081", "Base URL to crawl")
 	flag.StringVar(&username, "username", "demo", "Username for login")
-	flag.StringVar(&password, "password", "demo123", "Password for login")
+	flag.StringVar(&password, "password", "demo1234", "Password for login")
 	flag.StringVar(&startPath, "start", "/panel/", "Path to start crawling from")
 	flag.IntVar(&maxDepth, "depth", 100, "Maximum crawl depth")
 	flag.BoolVar(&noAuth, "no-auth", false, "Skip login (panel in no-auth mode)")
