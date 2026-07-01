@@ -13,10 +13,10 @@ DEMO_PANEL_URL ?= http://localhost:$(DEMO_PORT)
 DEMO_UNITS := demo-api.service demo-worker.service demo-cron.service
 
 build:
-	docker build -t $(DEMO_IMAGE) -f $(DEMO_DIR)/Containerfile $(ROOT_DIR)
+	docker build -t $(DEMO_IMAGE) -f $(DEMO_DIR)/Dockerfile $(ROOT_DIR)
 
 build-release:
-	docker build -t $(DEMO_IMAGE) --build-arg E2E_INSTALL_MODE=release -f $(DEMO_DIR)/Containerfile $(ROOT_DIR)
+	docker build -t $(DEMO_IMAGE) --build-arg E2E_INSTALL_MODE=release -f $(DEMO_DIR)/Dockerfile $(ROOT_DIR)
 
 up: down build
 	docker run -d --name $(DEMO_CONTAINER) \

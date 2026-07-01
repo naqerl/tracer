@@ -10,6 +10,7 @@ CGO_ENABLED ?= 0
 REGISTRY ?= git.naqerl.com
 OWNER   ?= naqerl
 IMAGE_PANEL  ?= $(REGISTRY)/$(OWNER)/panel
+IMAGE_DEMO   ?= $(REGISTRY)/$(OWNER)/tracer-demo
 
 # Build version (set VERSION env var to inject, e.g. `make build VERSION=v1.2.3`)
 # Defaults to "unknown" when not set (CI passes github.ref_name via VERSION).
@@ -25,7 +26,8 @@ LDFLAGS := -s -w \
 	-X tracer/build.TracerGroup=$(TRACER_GROUP)
 
 .PHONY: build build-collector build-panel clean test vet dev-setup generate sqlc install \
-	docker-build-panel docker-tag-panel docker-push-panel
+	docker-build-panel docker-tag-panel docker-push-panel \
+	docker-build-demo docker-tag-demo docker-push-demo
 
 build: build-collector build-panel
 
@@ -109,4 +111,23 @@ docker-push-panel:
 	docker push $(IMAGE_PANEL):latest
 ifneq ($(TAG),)
 	docker push $(IMAGE_PANEL):$(TAG)
+endif
+
+# ── Demo / E2E container image ─────────────────────────────────────────────────
+docker-build-demo:
+	docker build \
+		-t $(IMAGE_DEMO):latest \
+		-f e2e/Dockerfile \
+		.
+
+docker-tag-demo:
+ifndef TAG
+	$(error TAG is required. Usage: make docker-tag-demo TAG=v1.2.3)
+endif
+	docker tag $(IMAGE_DEMO):latest $(IMAGE_DEMO):$(TAG)
+
+docker-push-demo:
+	docker push $(IMAGE_DEMO):latest
+ifneq ($(TAG),)
+	docker push $(IMAGE_DEMO):$(TAG)
 endif

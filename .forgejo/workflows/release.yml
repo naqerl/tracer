@@ -44,8 +44,10 @@ jobs:
         with:
           direction: upload
           release-dir: bin/
-          release-notes: >-
-            Image available at https://git.naqerl.com/naqerl/-/packages/container/tracer-panel/latest
+          release-notes: |-
+            Images:
+            - https://git.naqerl.com/naqerl/-/packages/container/tracer-panel/latest
+            - https://git.naqerl.com/naqerl/-/packages/container/tracer-demo/latest
 
       - name: Install Docker CLI
         run: |
@@ -62,6 +64,14 @@ jobs:
             -f apps/panel/Dockerfile \
             .
 
+      - name: Build demo image
+        run: |
+          docker build \
+            -t git.naqerl.com/naqerl/tracer-demo:${{ github.ref_name }} \
+            -t git.naqerl.com/naqerl/tracer-demo:latest \
+            -f e2e/Dockerfile \
+            .
+
       - name: Log in to Forgejo Container Registry
         run: |
           echo "${{ secrets.PACKAGE_PAT }}" | \
@@ -71,3 +81,8 @@ jobs:
         run: |
           docker push git.naqerl.com/naqerl/tracer-panel:${{ github.ref_name }}
           docker push git.naqerl.com/naqerl/tracer-panel:latest
+
+      - name: Push demo image
+        run: |
+          docker push git.naqerl.com/naqerl/tracer-demo:${{ github.ref_name }}
+          docker push git.naqerl.com/naqerl/tracer-demo:latest

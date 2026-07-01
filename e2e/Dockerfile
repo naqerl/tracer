@@ -13,6 +13,11 @@ RUN WITH_SYSTEMD=yes make build && \
 
 FROM docker.io/library/debian:bookworm
 
+LABEL org.opencontainers.image.title="tracer-demo"
+LABEL org.opencontainers.image.description="Full-stack tracer demo with systemd, mock services, and pre-configured collector/panel"
+LABEL org.opencontainers.image.source="https://git.naqerl.com/eco/tracer"
+LABEL org.opencontainers.image.licenses="MIT"
+
 ENV container=docker
 ARG E2E_INSTALL_MODE=build
 ENV E2E_INSTALL_MODE=${E2E_INSTALL_MODE}
