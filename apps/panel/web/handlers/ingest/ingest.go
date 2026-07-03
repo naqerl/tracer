@@ -63,7 +63,6 @@ func (h *handler) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		slog.Error("WebSocket upgrade failed", "error", err)
 		return
 	}
-	defer conn.Close()
 
 	// Generate unique connection ID
 	connID := uuid.New().String()
@@ -81,10 +80,15 @@ func (h *handler) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		return nil
 	})
 
-	// Clean up connection manager on disconnect
+	// Clean up connection on disconnect.
+	// If the collector registered, connManager.Unregister will close the
+	// underlying connection via its connWriter wrapper. Otherwise we close
+	// it directly here.
 	defer func() {
 		if collectorName != "" {
 			h.connManager.Unregister(collectorName)
+		} else {
+			conn.Close()
 		}
 		h.tracker.Disconnect(connID)
 		slog.Info("WebSocket disconnected", "remote", remoteAddr, "conn_id", connID)

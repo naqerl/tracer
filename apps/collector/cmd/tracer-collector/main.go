@@ -31,6 +31,7 @@ import (
 	"tracer/build"
 	"tracer/libs/logx"
 	sysinstall "tracer/libs/shared/install"
+	"tracer/libs/shared/runtime"
 	"tracer/libs/shared/update"
 	"tracer/libs/types"
 )
@@ -170,14 +171,27 @@ func serve(ctx context.Context, cfg config.Config) error {
 	statsMonitor := stats.New(cfg.Stats)
 
 	// Transport
-	transport := transport.New(cfg.Transport, appNames, mpsc)
+	svc := transport.New(cfg.Transport, appNames, mpsc)
+	svc.OnUpdate = func() {
+		slog.Info("Panel requested collector update")
+		if err := update.Update(update.Options{
+			BinaryName: update.BinaryCollector,
+			VerifyFn:   verifyBinaryUpdate,
+			PostUpdate: func() error {
+				slog.Info("Collector binary updated, restarting...")
+				return runtime.DefaultManager.Restart("tracer-collector")
+			},
+		}); err != nil {
+			slog.Error("Collector update from panel failed", "error", err)
+		}
+	}
 
 	// Run
 	wg.Go(func() {
 		slog.Info("starting transport")
 		defer slog.Info("transport stopped")
 
-		transport.Start(ctx)
+		svc.Start(ctx)
 	})
 	wg.Go(func() {
 		slog.Info("starting stats monitor")
@@ -455,15 +469,31 @@ func handleSet(path string, cfg config.Config, setCmd *flag.FlagSet) {
 func handleUpdate() {
 	if err := update.Update(update.Options{
 		BinaryName: update.BinaryCollector,
-		PostUpdate: func() {
-			fmt.Println("Please restart the collector to apply the update:")
-			fmt.Println()
-			fmt.Println("  sudo systemctl restart tracer-collector")
-			fmt.Println()
+		VerifyFn:   verifyBinaryUpdate,
+		PostUpdate: func() error {
+			fmt.Println("Restarting collector to apply update...")
+			return runtime.DefaultManager.Restart("tracer-collector")
 		},
 	}); err != nil {
 		log.Fatalf("Update failed: %v", err)
 	}
+}
+
+// verifyBinaryUpdate checks the binary is functional before replacing.
+func verifyBinaryUpdate(path string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, path, "--version")
+	output, err := cmd.Output()
+	if err != nil {
+		return fmt.Errorf("binary verification failed (exit: %w, output: %s)", err, string(output))
+	}
+	if len(output) == 0 {
+		return fmt.Errorf("binary produced no output for --version")
+	}
+	fmt.Printf("Verified binary: %s\n", strings.TrimSpace(string(output)))
+	return nil
 }
 
 func handleInstall() {

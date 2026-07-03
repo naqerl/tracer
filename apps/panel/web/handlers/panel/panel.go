@@ -1,6 +1,7 @@
 package panel
 
 import (
+	"context"
 	"database/sql"
 	_ "embed"
 	"errors"
@@ -10,6 +11,7 @@ import (
 	"net/http"
 	"os/exec"
 	"strconv"
+	"strings"
 	"time"
 
 	"tracer/apps/panel/internal/services/ingest"
@@ -17,6 +19,7 @@ import (
 	"tracer/apps/panel/web/handlers/panel/view"
 	"tracer/apps/panel/web/middleware/auth"
 	"tracer/apps/panel/web/templates"
+	"tracer/libs/shared/runtime"
 	"tracer/libs/shared/update"
 )
 
@@ -76,9 +79,9 @@ func InitMux(svc *panelsvc.Service, connManager *ingest.ConnManager) *http.Serve
 	m.HandleFunc("DELETE /collectors/{collector}/apps/{app}/logs/groups/{groupID}", h.deleteLogGroup)
 	m.HandleFunc("GET /collectors/{collector}/apps/{app}/logs/{id}", h.getLogByID)
 
-	// Update
-	m.HandleFunc("POST /update", h.postUpdatePanel)
-	m.HandleFunc("POST /update/collectors", h.postUpdateCollectors)
+	// Update — single endpoint that triggers panel self-update AND sends
+	// update commands to all connected collectors.
+	m.HandleFunc("POST /update", h.postUpdate)
 
 	// Static assets
 	m.HandleFunc("GET /logs/groups/plot", h.getLogGroupPlot)
@@ -969,42 +972,52 @@ func parseOffset(offsetParam string) int {
 	return offset
 }
 
-// postUpdatePanel updates the panel binary and restarts the service.
-// This is an async operation — the process will be replaced by systemd.
-func (h *handler) postUpdatePanel(w http.ResponseWriter, r *http.Request) {
+// postUpdate handles the update-all endpoint.
+// It sends update commands to all connected collectors, then triggers a
+// panel self-update (async). The response includes how many collectors
+// received the update signal.
+func (h *handler) postUpdate(w http.ResponseWriter, r *http.Request) {
 	userID, err := auth.RequireOrRedirect(w, r)
 	if err != nil {
 		return
 	}
-	// Only admin users can trigger updates
+	// Only admin users can trigger updates.
+	// TODO: replace with proper role-based access control.
 	if userID != 1 {
 		http.Error(w, "Forbidden: admin access required", http.StatusForbidden)
 		return
 	}
 
-	slog.Info("Panel update requested")
+	slog.Info("Update requested by admin", "user_id", userID)
 
-	// Respond immediately, then update in background
-	w.Header().Set("Content-Type", "text/plain")
+	// 1. Send update commands to all connected collectors (synchronous).
+	collectorCount := 0
+	if h.connManager != nil {
+		collectorCount = h.connManager.SendUpdate()
+	}
+
+	slog.Info("Update signal sent to collectors", "count", collectorCount)
+
+	// 2. Respond immediately, then update panel in background.
+	msg := fmt.Sprintf(`{"collectors_notified":%d,"message":"Update sent to %d collector(s); panel restarting."}`,
+		collectorCount, collectorCount)
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusAccepted)
-	_, _ = w.Write([]byte("Update started. Panel will restart shortly.\n"))
+	_, _ = w.Write([]byte(msg))
 
-	// Flush the response before the process potentially exits
 	if f, ok := w.(interface{ Flush() }); ok {
 		f.Flush()
 	}
 
-	// Run update in background — this will replace the binary and restart
+	// 3. Panel self-update in background.
 	go func() {
 		slog.Info("Running panel self-update...")
 		if err := update.Update(update.Options{
 			BinaryName: update.BinaryPanel,
-			PostUpdate: func() {
+			VerifyFn:   verifyPanelBinary,
+			PostUpdate: func() error {
 				slog.Info("Panel binary updated, restarting service...")
-				// Restart via systemd — this kills the current process
-				if err := exec.Command("systemctl", "restart", "tracer-panel").Run(); err != nil {
-					slog.Error("Failed to restart tracer-panel", "error", err)
-				}
+				return runtime.DefaultManager.Restart("tracer-panel")
 			},
 		}); err != nil {
 			slog.Error("Panel update failed", "error", err)
@@ -1012,28 +1025,19 @@ func (h *handler) postUpdatePanel(w http.ResponseWriter, r *http.Request) {
 	}()
 }
 
-// postUpdateCollectors sends an update message to all connected collectors.
-func (h *handler) postUpdateCollectors(w http.ResponseWriter, r *http.Request) {
-	userID, err := auth.RequireOrRedirect(w, r)
+// verifyPanelBinary runs a quick sanity check on the newly built panel binary.
+func verifyPanelBinary(path string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, path, "--version")
+	output, err := cmd.Output()
 	if err != nil {
-		return
+		return fmt.Errorf("binary verification failed (exit: %w, output: %s)", err, string(output))
 	}
-	// Only admin users can trigger updates
-	if userID != 1 {
-		http.Error(w, "Forbidden: admin access required", http.StatusForbidden)
-		return
+	if len(output) == 0 {
+		return fmt.Errorf("binary produced no output for --version")
 	}
-
-	slog.Info("Collector update requested")
-
-	if h.connManager == nil {
-		http.Error(w, "Connection manager not available", http.StatusInternalServerError)
-		return
-	}
-
-	sent := h.connManager.SendUpdateAll()
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte(fmt.Sprintf(`{"sent":%d,"message":"Update sent to %d collector(s)"}`, sent, sent)))
+	slog.Info("Binary verification passed", "output", strings.TrimSpace(string(output)))
+	return nil
 }

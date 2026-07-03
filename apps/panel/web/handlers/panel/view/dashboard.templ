@@ -92,16 +92,7 @@ templ Dashboard(p DashboardProps) {
 					hx-swap="innerHTML"
 					class="text-xs px-3 py-1.5 border border-bg-secondary rounded hover:bg-bg-secondary transition-colors"
 				>
-					Update Panel
-				</button>
-				<button
-					type="button"
-					hx-post="/panel/update/collectors"
-					hx-target="#update-status"
-					hx-swap="innerHTML"
-					class="text-xs px-3 py-1.5 border border-bg-secondary rounded hover:bg-bg-secondary transition-colors"
-				>
-					Update Collectors
+					Update Panel &amp; Collectors
 				</button>
 				<span id="update-status" class="text-xs text-fg-secondary"></span>
 			</div>

@@ -6,14 +6,16 @@ package update
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
+	goRuntime "runtime"
 	"strings"
 	"time"
 
 	"tracer/build"
+	"tracer/libs/shared/runtime"
 )
 
 const (
@@ -32,7 +34,16 @@ const (
 // Options configures the update process.
 type Options struct {
 	BinaryName BinaryType
-	PostUpdate func()
+
+	// PostUpdate is called after the binary has been successfully installed.
+	// It should trigger a restart or notify the user. If nil, a default
+	// message is printed.
+	PostUpdate func() error
+
+	// VerifyFn is called with the path to the newly built binary before it
+	// replaces the running binary. If it returns an error, the update is
+	// aborted and the old binary is restored.
+	VerifyFn func(binaryPath string) error
 }
 
 // Update performs a self-update by rebuilding from source.
@@ -53,7 +64,9 @@ func Update(opts Options) error {
 	}
 
 	// Change to source directory
-	os.Chdir(srcDir)
+	if err := os.Chdir(srcDir); err != nil {
+		return fmt.Errorf("change to source dir: %w", err)
+	}
 
 	// Build the binary
 	fmt.Println("Building from source...")
@@ -75,17 +88,54 @@ func Update(opts Options) error {
 		return fmt.Errorf("build failed: %w", err)
 	}
 
-	// Install the binary
-	fmt.Println("Installing...")
+	// Locate source and destination paths
 	binaryPath := filepath.Join(srcDir, "bin", string(opts.BinaryName))
-	destPath := filepath.Join("/usr/local/bin", string(opts.BinaryName))
+	destDir := runtime.DefaultManager.BinaryDir()
+	destPath := filepath.Join(destDir, string(opts.BinaryName))
 
-	cmd = exec.Command("cp", binaryPath, destPath)
-	if err := cmd.Run(); err != nil {
+	// Verify the built binary before installing
+	if opts.VerifyFn != nil {
+		fmt.Println("Verifying binary...")
+		if err := opts.VerifyFn(binaryPath); err != nil {
+			os.RemoveAll(srcDir)
+			return fmt.Errorf("binary verification failed: %w", err)
+		}
+	}
+
+	// Backup existing binary if present
+	backupPath := destPath + ".bak"
+	if _, err := os.Stat(destPath); err == nil {
+		fmt.Println("Backing up existing binary...")
+		if err := copyFile(destPath, backupPath); err != nil {
+			os.RemoveAll(srcDir)
+			return fmt.Errorf("backup failed: %w", err)
+		}
+		// Schedule backup removal on success
+		defer func() {
+			if err := os.Remove(backupPath); err != nil && !os.IsNotExist(err) {
+				fmt.Printf("Warning: could not remove backup: %v\n", err)
+			}
+		}()
+	}
+
+	// Install the new binary
+	fmt.Printf("Installing to %s...\n", destPath)
+	if err := copyFile(binaryPath, destPath); err != nil {
+		// Restore backup
+		if _, e := os.Stat(backupPath); e == nil {
+			fmt.Println("Restoring previous binary from backup...")
+			if restoreErr := os.Rename(backupPath, destPath); restoreErr != nil {
+				fmt.Printf("CRITICAL: failed to restore backup: %v\n", restoreErr)
+			}
+		}
+		os.RemoveAll(srcDir)
 		return fmt.Errorf("install failed: %w", err)
 	}
 
-	// Cleanup
+	// Make executable (copyFile preserves mode, but ensure it's executable)
+	os.Chmod(destPath, 0755)
+
+	// Cleanup temp source
 	os.RemoveAll(srcDir)
 
 	fmt.Println()
@@ -94,8 +144,13 @@ func Update(opts Options) error {
 	fmt.Println("========================================")
 	fmt.Println()
 
+	// Run post-update callback (e.g., restart)
 	if opts.PostUpdate != nil {
-		opts.PostUpdate()
+		fmt.Println("Triggering post-update action...")
+		if err := opts.PostUpdate(); err != nil {
+			// Log but don't fail — binary is already installed
+			fmt.Printf("Warning: post-update action failed: %v\n", err)
+		}
 	}
 
 	return nil
@@ -105,7 +160,9 @@ func Update(opts Options) error {
 func downloadSnapshot(destDir string) error {
 	snapshotURL := repoURL + "/snapshot/tracer-" + stableRef + ".tar.gz"
 
-	os.MkdirAll(destDir, 0755)
+	if err := os.MkdirAll(destDir, 0755); err != nil {
+		return fmt.Errorf("create dest dir: %w", err)
+	}
 
 	cmd := exec.Command("curl", "-fsSL", snapshotURL)
 	cmd2 := exec.Command("tar", "-xz", "-C", destDir, "--strip-components=1")
@@ -187,11 +244,42 @@ func getRemoteCommit() (string, error) {
 
 // DetectArchitecture returns the system architecture.
 func DetectArchitecture() string {
-	arch := runtime.GOARCH
+	arch := goRuntime.GOARCH
 	switch arch {
 	case "amd64", "arm64":
 		return arch
 	default:
 		return arch
 	}
+}
+
+// copyFile copies a file from src to dst, preserving permissions.
+func copyFile(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+
+	// Create parent directory if needed
+	if err := os.MkdirAll(filepath.Dir(dst), 0755); err != nil {
+		return err
+	}
+
+	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0755)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+
+	if _, err := io.Copy(out, in); err != nil {
+		return err
+	}
+
+	// Preserve source file permissions
+	fi, err := os.Stat(src)
+	if err != nil {
+		return err
+	}
+	return os.Chmod(dst, fi.Mode())
 }

@@ -7,18 +7,14 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
-	"os/exec"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
 
 	"tracer/libs/types"
 )
-
-// UpdateFn is called when the collector receives an update message from the panel.
-// It replaces s.conn and restarts via systemctl.
-var UpdateFn func()
 
 const (
 	writeTimeout     = 10 * time.Second
@@ -34,14 +30,30 @@ type Service struct {
 	appNames []string
 	conn     *websocket.Conn
 	events   <-chan types.Event
+
+	// OnUpdate is called when the panel sends an update command.
+	// If nil, the default update handler (self-update + restart) is used.
+	OnUpdate func()
+
+	// write serialization
+	writeCh   chan writeMsg
+	writeDone chan struct{}
+	writeOnce sync.Once
+}
+
+type writeMsg struct {
+	data []byte
+	err  chan error
 }
 
 // New creates a WebSocket client service.
 func New(spec Spec, appNames []string, events <-chan types.Event) Service {
 	return Service{
-		spec:     spec,
-		appNames: appNames,
-		events:   events,
+		spec:      spec,
+		appNames:  appNames,
+		events:    events,
+		writeCh:   make(chan writeMsg, 64),
+		writeDone: make(chan struct{}),
 	}
 }
 
@@ -66,14 +78,44 @@ func (s *Service) Start(ctx context.Context) {
 		reconnectWait = reconnectDelay
 		slog.Info("Connected to panel", "host", s.spec.PanelHost)
 
+		s.startWriteLoop()
 		s.sendRegistration()
 
 		if err := s.run(ctx); err != nil {
 			slog.Warn("Connection lost", "error", err)
 		}
 
+		s.stopWriteLoop()
 		s.close()
 	}
+}
+
+func (s *Service) startWriteLoop() {
+	go func() {
+		defer func() {
+			s.writeOnce.Do(func() {
+				close(s.writeDone)
+			})
+		}()
+		for msg := range s.writeCh {
+			s.conn.SetWriteDeadline(time.Now().Add(writeTimeout))
+			err := s.conn.WriteMessage(websocket.TextMessage, msg.data)
+			msg.err <- err
+			if err != nil {
+				slog.Debug("Write loop exiting", "error", err)
+				return
+			}
+		}
+	}()
+}
+
+func (s *Service) stopWriteLoop() {
+	// Closing writeCh causes the write loop to exit (range loop ends)
+	s.writeOnce.Do(func() {
+		close(s.writeCh)
+	})
+	// Wait for write loop to finish
+	<-s.writeDone
 }
 
 func (s *Service) connect() error {
@@ -101,6 +143,10 @@ func (s *Service) connect() error {
 	})
 
 	s.conn = conn
+	// Reset write channel and done for new connection
+	s.writeCh = make(chan writeMsg, 64)
+	s.writeDone = make(chan struct{})
+	s.writeOnce = sync.Once{}
 	return nil
 }
 
@@ -170,8 +216,6 @@ func (s *Service) readMessages(ch chan<- []byte) {
 			close(ch)
 			return
 		}
-		// Ping/pong messages are handled by the connection's pong handler,
-		// so any message here is a panel command.
 		select {
 		case ch <- message:
 		default:
@@ -193,43 +237,14 @@ func (s *Service) handlePanelMessage(message []byte) {
 	switch hdr.Type {
 	case types.EventTypeUpdate:
 		slog.Info("Received update command from panel")
-		go func() {
-			if UpdateFn != nil {
-				UpdateFn()
-			} else {
-				slog.Warn("No update function configured, running default update")
-				s.handleUpdate()
-			}
-		}()
+		if s.OnUpdate != nil {
+			go s.OnUpdate()
+		} else {
+			slog.Warn("No OnUpdate handler configured — update not available")
+		}
 	default:
 		slog.Debug("Received unknown message type from panel", "type", hdr.Type)
 	}
-}
-
-// handleUpdate runs the collector self-update and restarts.
-func (s *Service) handleUpdate() {
-	slog.Info("Running collector self-update...")
-
-	// The update will download source, build, and replace the binary
-	if err := runUpdateBinary(); err != nil {
-		slog.Error("Collector update failed", "error", err)
-		return
-	}
-
-	slog.Info("Collector binary updated, restarting service...")
-
-	// Restart via systemd — this kills the current process
-	if err := exec.Command("systemctl", "restart", "tracer-collector").Run(); err != nil {
-		slog.Error("Failed to restart tracer-collector", "error", err)
-	}
-}
-
-// runUpdateBinary executes the tracer-collector update command.
-func runUpdateBinary() error {
-	cmd := exec.Command("tracer-collector", "update")
-	cmd.Stdout = nil
-	cmd.Stderr = nil
-	return cmd.Run()
 }
 
 func (s *Service) sendRegistration() {
@@ -256,9 +271,21 @@ func (s *Service) sendEvent(evt types.Event) error {
 	return s.sendJSON(msg)
 }
 
+// sendJSON marshals v and sends it through the write channel.
+// The write loop goroutine handles the actual write to the WebSocket.
 func (s *Service) sendJSON(v any) error {
-	s.conn.SetWriteDeadline(time.Now().Add(writeTimeout))
-	return s.conn.WriteJSON(v)
+	data, err := json.Marshal(v)
+	if err != nil {
+		return fmt.Errorf("marshal failed: %w", err)
+	}
+
+	ch := make(chan error, 1)
+	select {
+	case s.writeCh <- writeMsg{data: data, err: ch}:
+		return <-ch
+	case <-s.writeDone:
+		return fmt.Errorf("write loop stopped")
+	}
 }
 
 func (s *Service) close() {

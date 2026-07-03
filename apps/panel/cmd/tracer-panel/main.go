@@ -32,6 +32,7 @@ import (
 	"tracer/build"
 	"tracer/libs/logx"
 	sysinstall "tracer/libs/shared/install"
+	"tracer/libs/shared/runtime"
 	"tracer/libs/shared/update"
 )
 
@@ -315,11 +316,9 @@ func serve(ctx context.Context, cfg *config.Config, noAuth, readOnly bool) error
 func handleUpdate() {
 	if err := update.Update(update.Options{
 		BinaryName: update.BinaryPanel,
-		PostUpdate: func() {
-			fmt.Println("Please restart the panel to apply the update:")
-			fmt.Println()
-			fmt.Println("  sudo systemctl restart tracer-panel")
-			fmt.Println()
+		PostUpdate: func() error {
+			fmt.Println("Restarting panel to apply update...")
+			return runtime.DefaultManager.Restart("tracer-panel")
 		},
 	}); err != nil {
 		log.Fatalf("Update failed: %v", err)
