@@ -33,6 +33,11 @@ type Service struct {
 
 	onUpdate func()
 
+	// updateMu prevents concurrent onUpdate calls (e.g. update commands
+	// arriving while a self-update is already in progress). The pointer
+	// avoids copying the mutex when Service is returned by value from New().
+	updateMu *sync.Mutex
+
 	// write serialization
 	writeCh   chan writeMsg
 	writeDone chan struct{}
@@ -51,6 +56,7 @@ func New(spec Spec, appNames []string, events <-chan types.Event, onUpdate func(
 		appNames:  appNames,
 		events:    events,
 		onUpdate:  onUpdate,
+		updateMu:  &sync.Mutex{},
 		writeCh:   make(chan writeMsg, 64),
 		writeDone: make(chan struct{}),
 	}
@@ -236,7 +242,14 @@ func (s *Service) handlePanelMessage(message []byte) {
 	switch hdr.Type {
 	case types.EventTypeUpdate:
 		slog.Info("Received update command from panel")
-		go s.onUpdate()
+		go func() {
+			if !s.updateMu.TryLock() {
+				slog.Warn("Update already in progress, skipping duplicate update command")
+				return
+			}
+			defer s.updateMu.Unlock()
+			s.onUpdate()
+		}()
 	default:
 		slog.Debug("Received unknown message type from panel", "type", hdr.Type)
 	}

@@ -67,10 +67,6 @@ func (m *dockerManager) BinaryDir() string {
 
 func (m *dockerManager) Slug() Slug { return m.slug }
 
-// DefaultManager is the runtime manager selected based on build-time
-// configuration and runtime detection.
-var DefaultManager Manager
-
 // selectedManager returns the appropriate manager implementation based on
 // build-time configuration and runtime detection.
 func selectedManager() (systemd bool) {
@@ -82,10 +78,6 @@ func selectedManager() (systemd bool) {
 	default: // "auto"
 		return install.SystemdDetected()
 	}
-}
-
-func init() {
-	DefaultManager = NewManager(SlugCollector)
 }
 
 // NewManager creates a new Manager for the given service slug.

@@ -128,6 +128,8 @@ func (cm *ConnManager) Unregister(connID string) bool {
 
 // SendUpdate sends an update command to all connected collectors.
 // Returns the number of collectors the message was sent to.
+// The read lock is held for the entire iteration to prevent concurrent
+// modification of the connection map by Register/Unregister.
 func (cm *ConnManager) SendUpdate() int {
 	msg := struct {
 		Type string `json:"type"`
@@ -136,31 +138,19 @@ func (cm *ConnManager) SendUpdate() int {
 	}
 
 	cm.mu.RLock()
-	names := make([]string, 0, len(cm.conns))
-	for name := range cm.conns {
-		names = append(names, name)
-	}
-	cm.mu.RUnlock()
+	defer cm.mu.RUnlock()
 
-	if len(names) == 0 {
+	if len(cm.conns) == 0 {
 		slog.Debug("No connected collectors to send update")
 		return 0
 	}
 
-	slog.Info("Sending update command to collectors", "count", len(names))
+	slog.Info("Sending update command to collectors", "count", len(cm.conns))
 
 	sent := 0
-	for _, name := range names {
-		cm.mu.RLock()
-		cw, ok := cm.conns[name]
-		cm.mu.RUnlock()
-
-		if !ok {
-			continue
-		}
-
+	for _, cw := range cm.conns {
 		if err := cw.WriteJSON(msg); err != nil {
-			slog.Error("Failed to send update to collector", "collector", name, "error", err)
+			slog.Error("Failed to send update to collector", "error", err)
 			continue
 		}
 		sent++

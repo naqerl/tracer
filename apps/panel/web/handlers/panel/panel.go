@@ -989,7 +989,7 @@ func (h *handler) postUpdate(w http.ResponseWriter, r *http.Request) {
 	slog.Info("Update requested by admin", "user_id", userID)
 
 	// 1. Send update commands to all connected collectors (synchronous).
-	collectorCount := h.updateSvc.NotifyCollectors(h.connManager)
+	collectorCount := h.connManager.SendUpdate()
 
 	slog.Info("Update signal sent to collectors", "count", collectorCount)
 

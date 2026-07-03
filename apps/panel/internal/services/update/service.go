@@ -1,10 +1,9 @@
-// Package update provides panel self-update and collector notification capability.
+// Package update provides panel self-update capability.
 // It encapsulates the update pipeline invariants:
-//  1. Notify collectors of pending update
-//  2. Build the new panel binary from source
-//  3. Verify the built binary is functional
-//  4. Install (backup old, copy new, restore on failure)
-//  5. Restart the panel service
+//  1. Build the new panel binary from source
+//  2. Verify the built binary is functional
+//  3. Install (backup old, copy new, restore on failure)
+//  4. Restart the panel service
 package update
 
 import (
@@ -15,12 +14,11 @@ import (
 	"strings"
 	"time"
 
-	"tracer/apps/panel/internal/services/ingest"
 	"tracer/libs/shared/runtime"
 	"tracer/libs/shared/update"
 )
 
-// Service handles panel self-updates and sending update signals to collectors.
+// Service handles panel self-updates.
 type Service struct{}
 
 // New creates a new panel update service.
@@ -28,25 +26,18 @@ func New() *Service {
 	return &Service{}
 }
 
-// NotifyCollectors sends an update command to all connected collectors and
-// returns the number of collectors notified.
-func (s *Service) NotifyCollectors(connManager *ingest.ConnManager) int {
-	if connManager == nil {
-		return 0
-	}
-	return connManager.SendUpdate()
-}
-
 // UpdatePanel performs a panel self-update: builds, verifies, installs, and
 // restarts the panel service.
 func (s *Service) UpdatePanel() error {
 	slog.Info("Panel self-update started")
+	mgr := runtime.NewManager(runtime.SlugPanel)
 	err := update.Update(update.Options{
 		BinaryName: update.BinaryPanel,
+		BinaryDir:  mgr.BinaryDir(),
 		VerifyFn:   verifyPanelBinary,
 		PostUpdate: func() error {
 			slog.Info("Panel binary updated, restarting service...")
-			return runtime.NewManager(runtime.SlugPanel).Restart()
+			return mgr.Restart()
 		},
 	})
 	if err != nil {
