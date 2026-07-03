@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -30,6 +31,33 @@ const (
 	BinaryCollector BinaryType = "tracer-collector"
 	BinaryPanel     BinaryType = "tracer-panel"
 )
+
+// SelfUpdate performs a self-update for the given binary type.
+func SelfUpdate(binary BinaryType) error {
+	return Update(Options{
+		BinaryName: binary,
+		VerifyFn:   VerifyBinary,
+		PostUpdate: func() error {
+			return runtime.NewManager(string(binary)).Restart()
+		},
+	})
+}
+
+// VerifyBinary verifies a newly built binary by running it with --version.
+func VerifyBinary(path string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, path, "--version")
+	output, err := cmd.Output()
+	if err != nil {
+		return fmt.Errorf("binary verification failed (exit: %w, output: %s)", err, string(output))
+	}
+	if len(output) == 0 {
+		return fmt.Errorf("binary produced no output for --version")
+	}
+	slog.Info("Binary verified", "path", path, "output", strings.TrimSpace(string(output)))
+	return nil
+}
 
 // Options configures the update process.
 type Options struct {

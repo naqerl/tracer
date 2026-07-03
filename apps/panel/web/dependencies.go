@@ -8,7 +8,6 @@ import (
 	"tracer/apps/panel/internal/services/notify"
 	panelsvc "tracer/apps/panel/internal/services/panel"
 	topologysvc "tracer/apps/panel/internal/services/topology"
-	"tracer/apps/panel/internal/services/update"
 	"tracer/apps/panel/internal/services/user"
 )
 
@@ -21,6 +20,5 @@ type Dependencies struct {
 	Tracker      *ingest.Tracker
 	Topology     *topologysvc.Service
 	PanelService *panelsvc.Service
-	UpdateSvc    *update.Service
 	Config       *config.Config
 }

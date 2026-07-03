@@ -13,10 +13,10 @@ import (
 
 	"tracer/apps/panel/internal/services/ingest"
 	panelsvc "tracer/apps/panel/internal/services/panel"
-	panelsvcupdate "tracer/apps/panel/internal/services/update"
 	"tracer/apps/panel/web/handlers/panel/view"
 	"tracer/apps/panel/web/middleware/auth"
 	"tracer/apps/panel/web/templates"
+	"tracer/libs/shared/update"
 )
 
 //go:embed views/log-group-plot.js
@@ -25,7 +25,6 @@ var logGroupPlotJS []byte
 type handler struct {
 	svc         *panelsvc.Service
 	connManager *ingest.ConnManager
-	updateSvc   *panelsvcupdate.Service
 }
 
 // LevelFilter represents a log level filter option
@@ -49,12 +48,11 @@ const (
 	defaultSinceLabel = "24h"
 )
 
-func InitMux(svc *panelsvc.Service, connManager *ingest.ConnManager, updateSvc *panelsvcupdate.Service) *http.ServeMux {
+func InitMux(svc *panelsvc.Service, connManager *ingest.ConnManager) *http.ServeMux {
 	m := http.NewServeMux()
 	h := handler{
 		svc:         svc,
 		connManager: connManager,
-		updateSvc:   updateSvc,
 	}
 
 	// Dashboard
@@ -1008,7 +1006,7 @@ func (h *handler) postUpdate(w http.ResponseWriter, r *http.Request) {
 
 	// 3. Panel self-update in background.
 	go func() {
-		if err := h.updateSvc.UpdatePanel(); err != nil {
+		if err := update.SelfUpdate(update.BinaryPanel); err != nil {
 			slog.Error("Panel update failed", "error", err)
 		}
 	}()

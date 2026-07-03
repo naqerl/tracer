@@ -27,12 +27,12 @@ import (
 	"tracer/apps/panel/internal/services/notify/telegram"
 	panelsvc "tracer/apps/panel/internal/services/panel"
 	topologysvc "tracer/apps/panel/internal/services/topology"
-	panelsvcupdate "tracer/apps/panel/internal/services/update"
 	"tracer/apps/panel/internal/services/user"
 	"tracer/apps/panel/web"
 	"tracer/build"
 	"tracer/libs/logx"
 	sysinstall "tracer/libs/shared/install"
+	"tracer/libs/shared/update"
 )
 
 func main() {
@@ -82,14 +82,11 @@ func main() {
 		return
 	}
 
-	// Create the update service once and inject it.
-	updateSvc := panelsvcupdate.New()
-
 	// Handle subcommands
 	if flag.NArg() > 0 {
 		switch flag.Arg(0) {
 		case "update":
-			handleUpdate(updateSvc)
+			handleUpdate()
 			return
 		case "install":
 			handleInstall(flag.Args()[1:])
@@ -125,7 +122,7 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	if err := serve(ctx, cfgObj, *noAuth, *readOnly, updateSvc); err != nil {
+	if err := serve(ctx, cfgObj, *noAuth, *readOnly); err != nil {
 		log.Fatalf("failed to serve: %s", err)
 	}
 }
@@ -169,7 +166,7 @@ func initPanelCmd(username, password string) error {
 	return nil
 }
 
-func serve(ctx context.Context, cfg *config.Config, noAuth, readOnly bool, updateSvc *panelsvcupdate.Service) error {
+func serve(ctx context.Context, cfg *config.Config, noAuth, readOnly bool) error {
 	var wg sync.WaitGroup
 
 	// Initialize database manager
@@ -283,7 +280,6 @@ func serve(ctx context.Context, cfg *config.Config, noAuth, readOnly bool, updat
 		Tracker:      tracker,
 		Topology:     topologyService,
 		PanelService: panelService,
-		UpdateSvc:    updateSvc,
 		Config:       cfg,
 	}
 	server := web.NewServer(deps, cfg.GetPort(), noAuth, readOnly)
@@ -316,8 +312,8 @@ func serve(ctx context.Context, cfg *config.Config, noAuth, readOnly bool, updat
 	return nil
 }
 
-func handleUpdate(updateSvc *panelsvcupdate.Service) {
-	if err := updateSvc.UpdatePanel(); err != nil {
+func handleUpdate() {
+	if err := update.SelfUpdate(update.BinaryPanel); err != nil {
 		log.Fatalf("Update failed: %v", err)
 	}
 }

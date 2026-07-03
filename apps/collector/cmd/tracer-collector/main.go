@@ -25,13 +25,13 @@ import (
 	"tracer/apps/collector/internal/install"
 	"tracer/apps/collector/internal/lifecycle"
 	"tracer/apps/collector/internal/parser"
-	"tracer/apps/collector/internal/services/update"
 	"tracer/apps/collector/internal/source"
 	"tracer/apps/collector/internal/stats"
 	"tracer/apps/collector/internal/transport"
 	"tracer/build"
 	"tracer/libs/logx"
 	sysinstall "tracer/libs/shared/install"
+	"tracer/libs/shared/update"
 	"tracer/libs/types"
 )
 
@@ -62,9 +62,6 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	// Create the update service once and inject it.
-	collectorUpdater := update.New()
-
 	if flag.NArg() > 0 {
 		switch flag.Arg(0) {
 		case "add":
@@ -82,7 +79,7 @@ func main() {
 			handleSet(cfgPath, cfg, setCmd)
 			return
 		case "update":
-			handleUpdate(collectorUpdater)
+			handleUpdate()
 			return
 		case "install":
 			handleInstall()
@@ -106,7 +103,7 @@ func main() {
 		"apps", len(cfg.Apps),
 	)
 
-	if err := serve(ctx, cfg, collectorUpdater); err != nil {
+	if err := serve(ctx, cfg); err != nil {
 		log.Fatalf("failed to serve: %s", err)
 	}
 }
@@ -121,7 +118,7 @@ func printDefaultsCmd() error {
 	return nil
 }
 
-func serve(ctx context.Context, cfg config.Config, collectorUpdater *update.Service) error {
+func serve(ctx context.Context, cfg config.Config) error {
 	var wg sync.WaitGroup
 	mpsc := make(chan types.Event, 1000)
 
@@ -175,7 +172,7 @@ func serve(ctx context.Context, cfg config.Config, collectorUpdater *update.Serv
 	// Transport
 	svc := transport.New(cfg.Transport, appNames, mpsc, func() {
 		slog.Info("Triggering collector update from panel command")
-		if err := collectorUpdater.Run(); err != nil {
+		if err := update.SelfUpdate(update.BinaryCollector); err != nil {
 			slog.Error("Collector update failed", "error", err)
 		}
 	})
@@ -460,8 +457,8 @@ func handleSet(path string, cfg config.Config, setCmd *flag.FlagSet) {
 	fmt.Printf("Set %s successfully\n", key)
 }
 
-func handleUpdate(collectorUpdater *update.Service) {
-	if err := collectorUpdater.Run(); err != nil {
+func handleUpdate() {
+	if err := update.SelfUpdate(update.BinaryCollector); err != nil {
 		log.Fatalf("Update failed: %v", err)
 	}
 }

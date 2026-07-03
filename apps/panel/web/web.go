@@ -37,7 +37,7 @@ func NewServer(deps Dependencies, port string, noAuth bool, readOnly bool) *http
 	})
 	mux.Handle("/static/", http.StripPrefix("/static", static.Handler()))
 	mux.Handle("/ingest/", http.StripPrefix("/ingest", ingestMux))
-	mux.Handle("/panel/", http.StripPrefix("/panel", panel.InitMux(deps.PanelService, connManager, deps.UpdateSvc)))
+	mux.Handle("/panel/", http.StripPrefix("/panel", panel.InitMux(deps.PanelService, connManager)))
 	mux.Handle("/topology/", http.StripPrefix("/topology", topology.InitMux(deps.Topology, deps.User)))
 	mux.Handle("/auth/", http.StripPrefix("/auth", authMux))
 	mux.Handle("/llm", llm.InitMux())
