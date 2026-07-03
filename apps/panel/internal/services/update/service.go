@@ -33,7 +33,6 @@ func (s *Service) UpdatePanel() error {
 	mgr := runtime.NewManager(runtime.SlugPanel)
 	err := update.Update(update.Options{
 		BinaryName: update.BinaryPanel,
-		BinaryDir:  mgr.BinaryDir(),
 		VerifyFn:   verifyPanelBinary,
 		PostUpdate: func() error {
 			slog.Info("Panel binary updated, restarting service...")

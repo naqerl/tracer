@@ -33,10 +33,12 @@ type Service struct {
 
 	onUpdate func()
 
-	// updateMu prevents concurrent onUpdate calls (e.g. update commands
-	// arriving while a self-update is already in progress). The pointer
-	// avoids copying the mutex when Service is returned by value from New().
-	updateMu *sync.Mutex
+	// updateCh serializes onUpdate calls: a buffered channel (capacity 1)
+	// allows one pending update signal at a time. Duplicates are dropped
+	// non-blocking to avoid blocking the panel message handler.
+	updateCh   chan struct{}
+	updateDone chan struct{}
+	updateOnce sync.Once
 
 	// write serialization
 	writeCh   chan writeMsg
@@ -52,13 +54,14 @@ type writeMsg struct {
 // New creates a WebSocket client service.
 func New(spec Spec, appNames []string, events <-chan types.Event, onUpdate func()) Service {
 	return Service{
-		spec:      spec,
-		appNames:  appNames,
-		events:    events,
-		onUpdate:  onUpdate,
-		updateMu:  &sync.Mutex{},
-		writeCh:   make(chan writeMsg, 64),
-		writeDone: make(chan struct{}),
+		spec:       spec,
+		appNames:   appNames,
+		events:     events,
+		onUpdate:   onUpdate,
+		updateCh:   make(chan struct{}, 1),
+		updateDone: make(chan struct{}),
+		writeCh:    make(chan writeMsg, 64),
+		writeDone:  make(chan struct{}),
 	}
 }
 
@@ -84,12 +87,14 @@ func (s *Service) Start(ctx context.Context) {
 		slog.Info("Connected to panel", "host", s.spec.PanelHost)
 
 		s.startWriteLoop()
+		s.startUpdateLoop()
 		s.sendRegistration()
 
 		if err := s.run(ctx); err != nil {
 			slog.Warn("Connection lost", "error", err)
 		}
 
+		s.stopUpdateLoop()
 		s.stopWriteLoop()
 		s.close()
 	}
@@ -123,6 +128,30 @@ func (s *Service) stopWriteLoop() {
 	<-s.writeDone
 }
 
+// startUpdateLoop launches a goroutine that processes update signals.
+// It runs until updateCh is closed.
+func (s *Service) startUpdateLoop() {
+	go func() {
+		defer func() {
+			s.updateOnce.Do(func() {
+				close(s.updateDone)
+			})
+		}()
+		for range s.updateCh {
+			s.onUpdate()
+		}
+	}()
+}
+
+func (s *Service) stopUpdateLoop() {
+	// Closing updateCh causes the loop to exit.
+	s.updateOnce.Do(func() {
+		close(s.updateCh)
+	})
+	// Wait for the loop to finish.
+	<-s.updateDone
+}
+
 func (s *Service) connect() error {
 	if s.conn != nil {
 		s.conn.Close()
@@ -148,7 +177,10 @@ func (s *Service) connect() error {
 	})
 
 	s.conn = conn
-	// Reset write channel and done for new connection
+	// Reset channels and done for new connection
+	s.updateCh = make(chan struct{}, 1)
+	s.updateDone = make(chan struct{})
+	s.updateOnce = sync.Once{}
 	s.writeCh = make(chan writeMsg, 64)
 	s.writeDone = make(chan struct{})
 	s.writeOnce = sync.Once{}
@@ -242,14 +274,11 @@ func (s *Service) handlePanelMessage(message []byte) {
 	switch hdr.Type {
 	case types.EventTypeUpdate:
 		slog.Info("Received update command from panel")
-		go func() {
-			if !s.updateMu.TryLock() {
-				slog.Warn("Update already in progress, skipping duplicate update command")
-				return
-			}
-			defer s.updateMu.Unlock()
-			s.onUpdate()
-		}()
+		select {
+		case s.updateCh <- struct{}{}:
+		default:
+			slog.Warn("Update already queued, skipping duplicate update command")
+		}
 	default:
 		slog.Debug("Received unknown message type from panel", "type", hdr.Type)
 	}

@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"tracer/build"
+	"tracer/libs/shared/runtime"
 )
 
 const (
@@ -33,10 +34,6 @@ const (
 // Options configures the update process.
 type Options struct {
 	BinaryName BinaryType
-
-	// BinaryDir is the destination directory where the binary will be installed.
-	// If empty, /usr/local/bin is used.
-	BinaryDir string
 
 	// PostUpdate is called after the binary has been successfully installed.
 	// It should trigger a restart or notify the user. If nil, a default
@@ -100,11 +97,8 @@ func Update(opts Options) error {
 
 	// Locate source and destination paths
 	binaryPath := filepath.Join(srcDir, "bin", string(opts.BinaryName))
-	destDir := opts.BinaryDir
-	if destDir == "" {
-		destDir = "/usr/local/bin"
-	}
-	destPath := filepath.Join(destDir, string(opts.BinaryName))
+	mgr := runtime.NewManager(string(opts.BinaryName))
+	destPath := filepath.Join(mgr.BinaryDir(), string(opts.BinaryName))
 
 	// Verify the built binary before installing
 	if opts.VerifyFn != nil {

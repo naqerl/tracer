@@ -82,11 +82,14 @@ func main() {
 		return
 	}
 
+	// Create the update service once and inject it.
+	updateSvc := panelsvcupdate.New()
+
 	// Handle subcommands
 	if flag.NArg() > 0 {
 		switch flag.Arg(0) {
 		case "update":
-			handleUpdate()
+			handleUpdate(updateSvc)
 			return
 		case "install":
 			handleInstall(flag.Args()[1:])
@@ -122,7 +125,7 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	if err := serve(ctx, cfgObj, *noAuth, *readOnly); err != nil {
+	if err := serve(ctx, cfgObj, *noAuth, *readOnly, updateSvc); err != nil {
 		log.Fatalf("failed to serve: %s", err)
 	}
 }
@@ -166,7 +169,7 @@ func initPanelCmd(username, password string) error {
 	return nil
 }
 
-func serve(ctx context.Context, cfg *config.Config, noAuth, readOnly bool) error {
+func serve(ctx context.Context, cfg *config.Config, noAuth, readOnly bool, updateSvc *panelsvcupdate.Service) error {
 	var wg sync.WaitGroup
 
 	// Initialize database manager
@@ -280,6 +283,7 @@ func serve(ctx context.Context, cfg *config.Config, noAuth, readOnly bool) error
 		Tracker:      tracker,
 		Topology:     topologyService,
 		PanelService: panelService,
+		UpdateSvc:    updateSvc,
 		Config:       cfg,
 	}
 	server := web.NewServer(deps, cfg.GetPort(), noAuth, readOnly)
@@ -312,8 +316,8 @@ func serve(ctx context.Context, cfg *config.Config, noAuth, readOnly bool) error
 	return nil
 }
 
-func handleUpdate() {
-	if err := panelsvcupdate.New().UpdatePanel(); err != nil {
+func handleUpdate(updateSvc *panelsvcupdate.Service) {
+	if err := updateSvc.UpdatePanel(); err != nil {
 		log.Fatalf("Update failed: %v", err)
 	}
 }

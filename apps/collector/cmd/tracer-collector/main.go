@@ -62,6 +62,9 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
+	// Create the update service once and inject it.
+	collectorUpdater := update.New()
+
 	if flag.NArg() > 0 {
 		switch flag.Arg(0) {
 		case "add":
@@ -79,7 +82,7 @@ func main() {
 			handleSet(cfgPath, cfg, setCmd)
 			return
 		case "update":
-			handleUpdate()
+			handleUpdate(collectorUpdater)
 			return
 		case "install":
 			handleInstall()
@@ -103,7 +106,7 @@ func main() {
 		"apps", len(cfg.Apps),
 	)
 
-	if err := serve(ctx, cfg); err != nil {
+	if err := serve(ctx, cfg, collectorUpdater); err != nil {
 		log.Fatalf("failed to serve: %s", err)
 	}
 }
@@ -118,7 +121,7 @@ func printDefaultsCmd() error {
 	return nil
 }
 
-func serve(ctx context.Context, cfg config.Config) error {
+func serve(ctx context.Context, cfg config.Config, collectorUpdater *update.Service) error {
 	var wg sync.WaitGroup
 	mpsc := make(chan types.Event, 1000)
 
@@ -170,7 +173,6 @@ func serve(ctx context.Context, cfg config.Config) error {
 	statsMonitor := stats.New(cfg.Stats)
 
 	// Transport
-	collectorUpdater := update.New()
 	svc := transport.New(cfg.Transport, appNames, mpsc, func() {
 		slog.Info("Triggering collector update from panel command")
 		if err := collectorUpdater.Run(); err != nil {
@@ -458,8 +460,8 @@ func handleSet(path string, cfg config.Config, setCmd *flag.FlagSet) {
 	fmt.Printf("Set %s successfully\n", key)
 }
 
-func handleUpdate() {
-	if err := update.New().Run(); err != nil {
+func handleUpdate(collectorUpdater *update.Service) {
+	if err := collectorUpdater.Run(); err != nil {
 		log.Fatalf("Update failed: %v", err)
 	}
 }

@@ -35,7 +35,6 @@ func (s *Service) Run() error {
 	slog.Info("Collector self-update started")
 	err := update.Update(update.Options{
 		BinaryName: update.BinaryCollector,
-		BinaryDir:  s.mgr.BinaryDir(),
 		VerifyFn:   s.verify,
 		PostUpdate: func() error {
 			slog.Info("Collector binary updated, restarting service...")

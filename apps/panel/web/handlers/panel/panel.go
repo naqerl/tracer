@@ -49,12 +49,12 @@ const (
 	defaultSinceLabel = "24h"
 )
 
-func InitMux(svc *panelsvc.Service, connManager *ingest.ConnManager) *http.ServeMux {
+func InitMux(svc *panelsvc.Service, connManager *ingest.ConnManager, updateSvc *panelsvcupdate.Service) *http.ServeMux {
 	m := http.NewServeMux()
 	h := handler{
 		svc:         svc,
 		connManager: connManager,
-		updateSvc:   panelsvcupdate.New(),
+		updateSvc:   updateSvc,
 	}
 
 	// Dashboard
