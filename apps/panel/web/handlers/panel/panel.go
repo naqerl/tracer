@@ -1,7 +1,6 @@
 package panel
 
 import (
-	"context"
 	"database/sql"
 	_ "embed"
 	"errors"
@@ -9,9 +8,7 @@ import (
 	"log/slog"
 	"math"
 	"net/http"
-	"os/exec"
 	"strconv"
-	"strings"
 	"time"
 
 	"tracer/apps/panel/internal/services/ingest"
@@ -19,8 +16,6 @@ import (
 	"tracer/apps/panel/web/handlers/panel/view"
 	"tracer/apps/panel/web/middleware/auth"
 	"tracer/apps/panel/web/templates"
-	"tracer/libs/shared/runtime"
-	"tracer/libs/shared/update"
 )
 
 //go:embed views/log-group-plot.js
@@ -991,10 +986,7 @@ func (h *handler) postUpdate(w http.ResponseWriter, r *http.Request) {
 	slog.Info("Update requested by admin", "user_id", userID)
 
 	// 1. Send update commands to all connected collectors (synchronous).
-	collectorCount := 0
-	if h.connManager != nil {
-		collectorCount = h.connManager.SendUpdate()
-	}
+	collectorCount := h.svc.NotifyCollectors(h.connManager)
 
 	slog.Info("Update signal sent to collectors", "count", collectorCount)
 
@@ -1003,41 +995,14 @@ func (h *handler) postUpdate(w http.ResponseWriter, r *http.Request) {
 		collectorCount, collectorCount)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusAccepted)
-	_, _ = w.Write([]byte(msg))
+	if _, err := w.Write([]byte(msg)); err != nil {
+		slog.Error("Failed to write update response", "error", err)
+	}
 
 	if f, ok := w.(interface{ Flush() }); ok {
 		f.Flush()
 	}
 
 	// 3. Panel self-update in background.
-	go func() {
-		slog.Info("Running panel self-update...")
-		if err := update.Update(update.Options{
-			BinaryName: update.BinaryPanel,
-			VerifyFn:   verifyPanelBinary,
-			PostUpdate: func() error {
-				slog.Info("Panel binary updated, restarting service...")
-				return runtime.DefaultManager.Restart("tracer-panel")
-			},
-		}); err != nil {
-			slog.Error("Panel update failed", "error", err)
-		}
-	}()
-}
-
-// verifyPanelBinary runs a quick sanity check on the newly built panel binary.
-func verifyPanelBinary(path string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, path, "--version")
-	output, err := cmd.Output()
-	if err != nil {
-		return fmt.Errorf("binary verification failed (exit: %w, output: %s)", err, string(output))
-	}
-	if len(output) == 0 {
-		return fmt.Errorf("binary produced no output for --version")
-	}
-	slog.Info("Binary verification passed", "output", strings.TrimSpace(string(output)))
-	return nil
+	go h.svc.UpdatePanel()
 }

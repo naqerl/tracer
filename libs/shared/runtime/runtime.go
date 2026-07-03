@@ -7,40 +7,56 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
-	"strings"
 
 	"tracer/build"
+	"tracer/libs/shared/install"
+)
+
+// Slug identifies the tracer service type.
+type Slug = string
+
+const (
+	SlugCollector Slug = "tracer-collector"
+	SlugPanel     Slug = "tracer-panel"
 )
 
 // Manager handles service lifecycle operations.
-// Different implementations exist for systemd, Docker, and testing.
 type Manager interface {
-	// Restart restarts the named service. In Docker/exec mode this exits the
+	// Restart restarts the service. In Docker/exec mode this exits the
 	// current process so the container orchestrator can restart it.
-	Restart(serviceName string) error
+	Restart() error
 
 	// BinaryDir returns the canonical directory where binaries are installed.
 	BinaryDir() string
+
+	// Slug returns the service slug this manager was created for.
+	Slug() Slug
 }
 
 // systemdManager implements Manager via systemctl.
-type systemdManager struct{}
+type systemdManager struct {
+	slug Slug
+}
 
-func (m *systemdManager) Restart(serviceName string) error {
-	return exec.Command("systemctl", "restart", serviceName).Run()
+func (m *systemdManager) Restart() error {
+	return exec.Command("systemctl", "restart", m.slug).Run()
 }
 
 func (m *systemdManager) BinaryDir() string {
 	return "/usr/local/bin"
 }
 
+func (m *systemdManager) Slug() Slug { return m.slug }
+
 // dockerManager implements Manager for container environments (Docker, k8s, etc).
 // Restart logs and exits — the container orchestrator handles the restart.
-type dockerManager struct{}
+type dockerManager struct {
+	slug Slug
+}
 
-func (m *dockerManager) Restart(serviceName string) error {
+func (m *dockerManager) Restart() error {
 	slog.Info("Binary updated; exiting for container/process manager to restart",
-		"service", serviceName)
+		"service", m.slug)
 	os.Exit(0)
 	panic("unreachable")
 }
@@ -49,39 +65,37 @@ func (m *dockerManager) BinaryDir() string {
 	return build.Bindir
 }
 
+func (m *dockerManager) Slug() Slug { return m.slug }
+
 // DefaultManager is the runtime manager selected based on build-time
 // configuration and runtime detection.
 var DefaultManager Manager
 
-func init() {
+// selectedManager returns the appropriate manager implementation based on
+// build-time configuration and runtime detection.
+func selectedManager() (systemd bool) {
 	switch build.WithSystemd {
 	case "yes":
-		DefaultManager = &systemdManager{}
-		slog.Debug("runtime: using systemd manager (build-time override)")
+		return true
 	case "no":
-		DefaultManager = &dockerManager{}
-		slog.Debug("runtime: using docker/exec manager (build-time override)")
+		return false
 	default: // "auto"
-		if hasSystemd() {
-			DefaultManager = &systemdManager{}
-			slog.Debug("runtime: detected systemd, using systemd manager")
-		} else {
-			DefaultManager = &dockerManager{}
-			slog.Debug("runtime: no systemd detected, using docker/exec manager")
-		}
+		return install.SystemdDetected()
 	}
 }
 
-// hasSystemd checks whether systemd is available and running on this system.
-func hasSystemd() bool {
-	if _, err := exec.LookPath("systemctl"); err != nil {
-		return false
+func init() {
+	DefaultManager = NewManager(SlugCollector)
+}
+
+// NewManager creates a new Manager for the given service slug.
+// The manager implementation is selected based on build-time configuration
+// and runtime detection.
+func NewManager(slug Slug) Manager {
+	if selectedManager() {
+		slog.Debug("runtime: using systemd manager", "slug", slug)
+		return &systemdManager{slug: slug}
 	}
-	// Check if systemd is actually the init system (not just installed)
-	out, err := exec.Command("systemctl", "is-system-running").Output()
-	if err != nil {
-		return false
-	}
-	status := strings.TrimSpace(string(out))
-	return status != "offline" && !strings.HasPrefix(status, "off")
+	slog.Debug("runtime: using docker/exec manager", "slug", slug)
+	return &dockerManager{slug: slug}
 }

@@ -94,32 +94,36 @@ func NewConnManager() *ConnManager {
 	}
 }
 
-// Register stores or replaces a collector connection. If a connection for
-// this collector already exists, it is closed.
-func (cm *ConnManager) Register(collector string, conn *websocket.Conn) {
+// Register stores or replaces a connection keyed by connID. If a connection
+// for this connID already exists, it is closed.
+func (cm *ConnManager) Register(connID string, conn *websocket.Conn) {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 
-	if existing, ok := cm.conns[collector]; ok {
-		slog.Debug("Replacing existing collector connection", "collector", collector)
+	if existing, ok := cm.conns[connID]; ok {
+		slog.Debug("Replacing existing connection", "conn_id", connID)
 		existing.Close()
 	}
 
 	cw := newConnWriter(conn)
-	cm.conns[collector] = cw
-	slog.Debug("Collector registered", "collector", collector)
+	cm.conns[connID] = cw
+	slog.Debug("Connection registered", "conn_id", connID)
 }
 
-// Unregister removes a collector's connection. It is safe to call multiple times.
-func (cm *ConnManager) Unregister(collector string) {
+// Unregister removes a connection by connID and closes it.
+// It returns true if a registered connection was found and closed.
+// It is safe to call multiple times.
+func (cm *ConnManager) Unregister(connID string) bool {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 
-	if cw, ok := cm.conns[collector]; ok {
+	if cw, ok := cm.conns[connID]; ok {
 		cw.Close()
-		delete(cm.conns, collector)
-		slog.Debug("Collector unregistered", "collector", collector)
+		delete(cm.conns, connID)
+		slog.Debug("Connection unregistered", "conn_id", connID)
+		return true
 	}
+	return false
 }
 
 // SendUpdate sends an update command to all connected collectors.

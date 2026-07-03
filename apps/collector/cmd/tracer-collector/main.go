@@ -173,15 +173,7 @@ func serve(ctx context.Context, cfg config.Config) error {
 	// Transport
 	svc := transport.New(cfg.Transport, appNames, mpsc)
 	svc.OnUpdate = func() {
-		slog.Info("Panel requested collector update")
-		if err := update.Update(update.Options{
-			BinaryName: update.BinaryCollector,
-			VerifyFn:   verifyBinaryUpdate,
-			PostUpdate: func() error {
-				slog.Info("Collector binary updated, restarting...")
-				return runtime.DefaultManager.Restart("tracer-collector")
-			},
-		}); err != nil {
+		if err := doCollectorUpdate(); err != nil {
 			slog.Error("Collector update from panel failed", "error", err)
 		}
 	}
@@ -467,16 +459,23 @@ func handleSet(path string, cfg config.Config, setCmd *flag.FlagSet) {
 }
 
 func handleUpdate() {
-	if err := update.Update(update.Options{
+	if err := doCollectorUpdate(); err != nil {
+		log.Fatalf("Update failed: %v", err)
+	}
+}
+
+// doCollectorUpdate performs the collector self-update: build, verify, install,
+// and restart. It is used both for on-demand CLI updates and panel-triggered updates.
+func doCollectorUpdate() error {
+	collectorMgr := runtime.NewManager(runtime.SlugCollector)
+	return update.Update(update.Options{
 		BinaryName: update.BinaryCollector,
 		VerifyFn:   verifyBinaryUpdate,
 		PostUpdate: func() error {
-			fmt.Println("Restarting collector to apply update...")
-			return runtime.DefaultManager.Restart("tracer-collector")
+			slog.Info("Collector binary updated, restarting...")
+			return collectorMgr.Restart()
 		},
-	}); err != nil {
-		log.Fatalf("Update failed: %v", err)
-	}
+	})
 }
 
 // verifyBinaryUpdate checks the binary is functional before replacing.

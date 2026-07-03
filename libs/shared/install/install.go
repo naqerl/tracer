@@ -13,8 +13,8 @@ import (
 	"tracer/build"
 )
 
-// systemdDetected returns true if systemd appears to be the init system.
-func systemdDetected() bool {
+// SystemdDetected returns true if systemd appears to be the init system.
+func SystemdDetected() bool {
 	if _, err := exec.LookPath("systemctl"); err != nil {
 		return false
 	}
@@ -105,7 +105,7 @@ func InstallService(unitPath string, content []byte) error {
 	case "yes":
 		// proceed
 	case "auto":
-		if !systemdDetected() {
+		if !SystemdDetected() {
 			fmt.Fprintln(os.Stderr, "Systemd not detected, skipping service installation")
 			return nil
 		}

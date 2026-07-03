@@ -314,11 +314,12 @@ func serve(ctx context.Context, cfg *config.Config, noAuth, readOnly bool) error
 }
 
 func handleUpdate() {
+	panelMgr := runtime.NewManager(runtime.SlugPanel)
 	if err := update.Update(update.Options{
 		BinaryName: update.BinaryPanel,
 		PostUpdate: func() error {
 			fmt.Println("Restarting panel to apply update...")
-			return runtime.DefaultManager.Restart("tracer-panel")
+			return panelMgr.Restart()
 		},
 	}); err != nil {
 		log.Fatalf("Update failed: %v", err)
