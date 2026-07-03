@@ -58,6 +58,17 @@ func New(spec Spec) (Source, error) {
 		return NewJournalctl(JournalctlConfig{
 			Unit: unit,
 		}), nil
+	case "kubectl":
+		resource, err := getParam(spec, "resource")
+		if err != nil {
+			return nil, fmt.Errorf("kubectl source: %w", err)
+		}
+		return NewKubectl(KubectlConfig{
+			Resource:   resource,
+			Namespace:  getParamDefault(spec, "namespace", "default"),
+			Container:  getParamDefault(spec, "container", ""),
+			Kubeconfig: getParamDefault(spec, "kubeconfig", ""),
+		}), nil
 	default:
 		return nil, fmt.Errorf("source: unknown source type %q", spec.Type)
 	}
@@ -72,4 +83,15 @@ func getParam(spec Spec, key string) (string, error) {
 		return v, nil
 	}
 	return "", fmt.Errorf("missing params.%s", key)
+}
+
+// getParamDefault retrieves a parameter from the spec, returning a default if missing or empty.
+func getParamDefault(spec Spec, key, def string) string {
+	if spec.Params == nil {
+		return def
+	}
+	if v := strings.TrimSpace(spec.Params[key]); v != "" {
+		return v
+	}
+	return def
 }

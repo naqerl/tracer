@@ -168,4 +168,79 @@ log "checking panel and collector journals"
 assert_no_errors tracer-panel.service
 assert_no_errors tracer-collector.service
 
+# ---------------------------------------------------------------------------
+# Layer 5 – kubectl source E2E (uses a fake kubectl script inside the container)
+# ---------------------------------------------------------------------------
+log "kubectl source e2e test"
+
+# Install a fake kubectl that returns mock logs
+docker exec "${DEMO_CONTAINER}" bash -c '
+cat > /usr/local/bin/kubectl <<"SCRIPT"
+#!/bin/bash
+# Validate resource argument in get: only succeed if the argument
+# looks like a valid k8s resource reference (contains a slash, e.g. "deployment/myapp").
+# Bare names like "demo-api" or absolute paths like "/var/log/..." are NOT valid k8s resources.
+case "${1:-}" in
+    get)
+        shift
+        resource="${1:-}"
+        # Require at least one slash (type/name pattern)
+        if [[ "$resource" != */* ]]; then
+            echo "error: resource $resource not found"
+            exit 1
+        fi
+        echo "pod/myapp-xxxxx"
+        ;;
+    logs)
+        shift
+        follow=false
+        tail_val=""
+        while [ $# -gt 0 ]; do
+            case "$1" in -f) follow=true ;; --tail=*) tail_val="${1#--tail=}" ;; esac
+            shift
+        done
+        if [ -n "$tail_val" ] && [ "$tail_val" != "0" ]; then
+            for i in $(seq 1 "$tail_val"); do
+                echo "{\"level\":\"info\",\"msg\":\"kubectl-history-$i\",\"ts\":\"2025-03-30T10:00:00Z\"}"
+            done
+        fi
+        if [ "$follow" = true ]; then
+            exec cat "${KUBECTL_LOG_FILE:-/dev/null}"
+        fi
+        ;;
+    *)
+        echo "unknown command: $1"
+        exit 1
+        ;;
+esac
+SCRIPT
+chmod 0755 /usr/local/bin/kubectl
+'
+
+# Add a kubectl source for a deployment
+docker exec "${DEMO_CONTAINER}" tracer-collector add deployment/myapp --no-confirm -n default
+
+# Verify the config was updated
+config="$(docker exec "${DEMO_CONTAINER}" cat /etc/tracer/collector.yaml)"
+if ! grep -q 'myapp' <<<"${config}"; then
+  fail "kubectl source not found in collector config"
+fi
+if ! grep -q 'kubectl' <<<"${config}"; then
+  fail "kubectl source type not found in collector config"
+fi
+
+log "kubectl config validated, restarting collector"
+
+# Restart collector to pick up the new config
+docker exec "${DEMO_CONTAINER}" systemctl restart tracer-collector
+sleep 2
+
+# Verify the kubectl app appears in the dashboard
+apps_page="$(curl -fsS "${DEMO_URL}/panel/collectors/${collector_name}/apps" -H "Cookie: ${COOKIE}")"
+if ! grep -Fq 'myapp' <<<"${apps_page}"; then
+  fail "kubectl app 'myapp' not found in collector apps after restart"
+fi
+
+log "kubectl e2e test passed"
+
 log "e2e checks passed"

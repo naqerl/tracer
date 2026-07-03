@@ -9,12 +9,14 @@ import (
 	"log"
 	"log/slog"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 
 	"tracer/apps/collector/internal/app"
 	"tracer/apps/collector/internal/config"
@@ -233,19 +235,25 @@ func handleAdd(ctx context.Context, path string, cfg config.Config, addCmd *flag
 	healthURL := addCmd.String("health", "", "health check URL to attach as an HTTP health probe")
 	favourRaw := addCmd.String("favour", "", `favour specific parser settings when conflicts occur (e.g., 'type:"json",level_field:"status"')`)
 	noConfirm := addCmd.Bool("no-confirm", false, "skip confirmation prompt and save immediately")
+	namespace := addCmd.String("n", "default", "Kubernetes namespace (for kubectl sources)")
 	addCmd.Parse(flag.Args()[1:])
 	remaining := addCmd.Args()
 
 	if len(remaining) == 0 {
-		log.Fatal("Missing source path or systemd unit")
+		log.Fatal("Missing source: must be a file path, kubectl resource, or systemd unit name")
 	}
-	name, spec := inferSourceSpec(remaining[0])
+	name, spec := inferSourceSpec(remaining[0], *namespace)
 
 	fmt.Printf("Adding log source: %s\n", remaining[0])
-	if spec.Type == "file" {
-		fmt.Printf("  Type: file path\n")
+	switch spec.Type {
+	case "file":
+		fmt.Printf("  Type: file\n")
 		fmt.Printf("  Path: %s\n", spec.Params["path"])
-	} else {
+	case "kubectl":
+		fmt.Printf("  Type: Kubernetes resource\n")
+		fmt.Printf("  Resource: %s\n", spec.Params["resource"])
+		fmt.Printf("  Namespace: %s\n", spec.Params["namespace"])
+	default:
 		fmt.Printf("  Type: systemd unit\n")
 		fmt.Printf("  Unit: %s\n", spec.Params["unit"])
 	}
@@ -464,8 +472,20 @@ func handleInstall() {
 	}
 }
 
-func inferSourceSpec(raw string) (string, source.Spec) {
-	if looksLikePath(raw) {
+func inferSourceSpec(raw string, namespace string) (string, source.Spec) {
+	// 1. If kubectl is available, check if this resource exists in Kubernetes
+	if kubectlAvailable() && kubectlResolves(raw, namespace) {
+		return extractResourceName(raw), source.Spec{
+			Type: "kubectl",
+			Params: map[string]string{
+				"resource":  raw,
+				"namespace": namespace,
+			},
+		}
+	}
+
+	// 2. Check if the path exists as a file on disk
+	if fileExists(raw) {
 		return filepath.Base(raw), source.Spec{
 			Type: "file",
 			Params: map[string]string{
@@ -475,6 +495,7 @@ func inferSourceSpec(raw string) (string, source.Spec) {
 		}
 	}
 
+	// 3. Fallback: treat as a systemd unit
 	return trimSystemdUnitSuffix(raw), source.Spec{
 		Type: "journalctl",
 		Params: map[string]string{
@@ -491,8 +512,31 @@ func trimSystemdUnitSuffix(raw string) string {
 	return trimmed
 }
 
-func looksLikePath(raw string) bool {
-	return strings.ContainsRune(raw, '/') || strings.HasPrefix(raw, ".")
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
+
+func kubectlAvailable() bool {
+	_, err := exec.LookPath("kubectl")
+	return err == nil
+}
+
+func kubectlResolves(resource, namespace string) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "kubectl", "get", resource, "-n", namespace, "--no-headers", "-o", "name")
+	out, err := cmd.Output()
+	return err == nil && len(out) > 0
+}
+
+// extractResourceName returns the part after the last "/" in a resource reference,
+// or the full string if there is no "/".
+func extractResourceName(raw string) string {
+	if idx := strings.LastIndex(raw, "/"); idx >= 0 {
+		return raw[idx+1:]
+	}
+	return raw
 }
 
 func attachHTTPHealth(cfg *config.Config, name string, spec source.Spec, url string) {
@@ -502,9 +546,30 @@ func attachHTTPHealth(cfg *config.Config, name string, spec source.Spec, url str
 
 	for i := range cfg.Apps {
 		app := &cfg.Apps[i]
-		if app.Name == name || (app.Source.Type == spec.Type && app.Source.Params["unit"] == spec.Params["unit"] && app.Source.Params["path"] == spec.Params["path"]) {
+		if app.Name == name {
 			app.Health = &healthSpec
 			return
+		}
+		// Also match by source spec in case the app name was generated
+		if app.Source.Type == spec.Type {
+			switch spec.Type {
+			case "kubectl":
+				if app.Source.Params["resource"] == spec.Params["resource"] &&
+					app.Source.Params["namespace"] == spec.Params["namespace"] {
+					app.Health = &healthSpec
+					return
+				}
+			case "file":
+				if app.Source.Params["path"] == spec.Params["path"] {
+					app.Health = &healthSpec
+					return
+				}
+			default:
+				if app.Source.Params["unit"] == spec.Params["unit"] {
+					app.Health = &healthSpec
+					return
+				}
+			}
 		}
 	}
 
