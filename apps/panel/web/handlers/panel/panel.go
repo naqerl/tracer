@@ -13,6 +13,7 @@ import (
 
 	"tracer/apps/panel/internal/services/ingest"
 	panelsvc "tracer/apps/panel/internal/services/panel"
+	panelsvcupdate "tracer/apps/panel/internal/services/update"
 	"tracer/apps/panel/web/handlers/panel/view"
 	"tracer/apps/panel/web/middleware/auth"
 	"tracer/apps/panel/web/templates"
@@ -24,6 +25,7 @@ var logGroupPlotJS []byte
 type handler struct {
 	svc         *panelsvc.Service
 	connManager *ingest.ConnManager
+	updateSvc   *panelsvcupdate.Service
 }
 
 // LevelFilter represents a log level filter option
@@ -52,6 +54,7 @@ func InitMux(svc *panelsvc.Service, connManager *ingest.ConnManager) *http.Serve
 	h := handler{
 		svc:         svc,
 		connManager: connManager,
+		updateSvc:   panelsvcupdate.New(),
 	}
 
 	// Dashboard
@@ -986,7 +989,7 @@ func (h *handler) postUpdate(w http.ResponseWriter, r *http.Request) {
 	slog.Info("Update requested by admin", "user_id", userID)
 
 	// 1. Send update commands to all connected collectors (synchronous).
-	collectorCount := h.svc.NotifyCollectors(h.connManager)
+	collectorCount := h.updateSvc.NotifyCollectors(h.connManager)
 
 	slog.Info("Update signal sent to collectors", "count", collectorCount)
 
@@ -1004,5 +1007,9 @@ func (h *handler) postUpdate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 3. Panel self-update in background.
-	go h.svc.UpdatePanel()
+	go func() {
+		if err := h.updateSvc.UpdatePanel(); err != nil {
+			slog.Error("Panel update failed", "error", err)
+		}
+	}()
 }

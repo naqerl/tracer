@@ -25,14 +25,13 @@ import (
 	"tracer/apps/collector/internal/install"
 	"tracer/apps/collector/internal/lifecycle"
 	"tracer/apps/collector/internal/parser"
+	"tracer/apps/collector/internal/services/update"
 	"tracer/apps/collector/internal/source"
 	"tracer/apps/collector/internal/stats"
 	"tracer/apps/collector/internal/transport"
 	"tracer/build"
 	"tracer/libs/logx"
 	sysinstall "tracer/libs/shared/install"
-	"tracer/libs/shared/runtime"
-	"tracer/libs/shared/update"
 	"tracer/libs/types"
 )
 
@@ -172,10 +171,10 @@ func serve(ctx context.Context, cfg config.Config) error {
 
 	// Transport
 	svc := transport.New(cfg.Transport, appNames, mpsc)
+	collectorUpdater := update.New()
 	svc.OnUpdate = func() {
-		if err := doCollectorUpdate(); err != nil {
-			slog.Error("Collector update from panel failed", "error", err)
-		}
+		slog.Info("Triggering collector update from panel command")
+		collectorUpdater.Run()
 	}
 
 	// Run
@@ -459,40 +458,9 @@ func handleSet(path string, cfg config.Config, setCmd *flag.FlagSet) {
 }
 
 func handleUpdate() {
-	if err := doCollectorUpdate(); err != nil {
+	if err := update.New().Run(); err != nil {
 		log.Fatalf("Update failed: %v", err)
 	}
-}
-
-// doCollectorUpdate performs the collector self-update: build, verify, install,
-// and restart. It is used both for on-demand CLI updates and panel-triggered updates.
-func doCollectorUpdate() error {
-	collectorMgr := runtime.NewManager(runtime.SlugCollector)
-	return update.Update(update.Options{
-		BinaryName: update.BinaryCollector,
-		VerifyFn:   verifyBinaryUpdate,
-		PostUpdate: func() error {
-			slog.Info("Collector binary updated, restarting...")
-			return collectorMgr.Restart()
-		},
-	})
-}
-
-// verifyBinaryUpdate checks the binary is functional before replacing.
-func verifyBinaryUpdate(path string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, path, "--version")
-	output, err := cmd.Output()
-	if err != nil {
-		return fmt.Errorf("binary verification failed (exit: %w, output: %s)", err, string(output))
-	}
-	if len(output) == 0 {
-		return fmt.Errorf("binary produced no output for --version")
-	}
-	fmt.Printf("Verified binary: %s\n", strings.TrimSpace(string(output)))
-	return nil
 }
 
 func handleInstall() {

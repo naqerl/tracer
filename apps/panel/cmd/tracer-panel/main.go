@@ -27,13 +27,12 @@ import (
 	"tracer/apps/panel/internal/services/notify/telegram"
 	panelsvc "tracer/apps/panel/internal/services/panel"
 	topologysvc "tracer/apps/panel/internal/services/topology"
+	panelsvcupdate "tracer/apps/panel/internal/services/update"
 	"tracer/apps/panel/internal/services/user"
 	"tracer/apps/panel/web"
 	"tracer/build"
 	"tracer/libs/logx"
 	sysinstall "tracer/libs/shared/install"
-	"tracer/libs/shared/runtime"
-	"tracer/libs/shared/update"
 )
 
 func main() {
@@ -314,14 +313,7 @@ func serve(ctx context.Context, cfg *config.Config, noAuth, readOnly bool) error
 }
 
 func handleUpdate() {
-	panelMgr := runtime.NewManager(runtime.SlugPanel)
-	if err := update.Update(update.Options{
-		BinaryName: update.BinaryPanel,
-		PostUpdate: func() error {
-			fmt.Println("Restarting panel to apply update...")
-			return panelMgr.Restart()
-		},
-	}); err != nil {
+	if err := panelsvcupdate.New().UpdatePanel(); err != nil {
 		log.Fatalf("Update failed: %v", err)
 	}
 }
