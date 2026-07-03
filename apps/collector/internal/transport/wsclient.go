@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -33,17 +32,19 @@ type Service struct {
 
 	onUpdate func()
 
+	// connCtx is cancelled when the current connection shuts down.
+	// On reconnect a fresh context is created so new goroutines can
+	// be signalled independently of the previous connection's goroutines.
+	connCtx    context.Context
+	connCancel context.CancelFunc
+
 	// updateCh serializes onUpdate calls: a buffered channel (capacity 1)
 	// allows one pending update signal at a time. Duplicates are dropped
 	// non-blocking to avoid blocking the panel message handler.
-	updateCh   chan struct{}
-	updateDone chan struct{}
-	updateOnce sync.Once
+	updateCh chan struct{}
 
 	// write serialization
-	writeCh   chan writeMsg
-	writeDone chan struct{}
-	writeOnce sync.Once
+	writeCh chan writeMsg
 }
 
 type writeMsg struct {
@@ -53,15 +54,17 @@ type writeMsg struct {
 
 // New creates a WebSocket client service.
 func New(spec Spec, appNames []string, events <-chan types.Event, onUpdate func()) Service {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // cancelled by default; connect() creates a fresh one
 	return Service{
 		spec:       spec,
 		appNames:   appNames,
 		events:     events,
 		onUpdate:   onUpdate,
+		connCtx:    ctx,
+		connCancel: cancel,
 		updateCh:   make(chan struct{}, 1),
-		updateDone: make(chan struct{}),
 		writeCh:    make(chan writeMsg, 64),
-		writeDone:  make(chan struct{}),
 	}
 }
 
@@ -102,60 +105,63 @@ func (s *Service) Start(ctx context.Context) {
 
 func (s *Service) startWriteLoop() {
 	go func() {
-		defer func() {
-			s.writeOnce.Do(func() {
-				close(s.writeDone)
-			})
-		}()
-		for msg := range s.writeCh {
-			s.conn.SetWriteDeadline(time.Now().Add(writeTimeout))
-			err := s.conn.WriteMessage(websocket.TextMessage, msg.data)
-			msg.err <- err
-			if err != nil {
-				slog.Debug("Write loop exiting", "error", err)
+		for {
+			select {
+			case <-s.connCtx.Done():
 				return
+			case msg, ok := <-s.writeCh:
+				if !ok {
+					return
+				}
+				s.conn.SetWriteDeadline(time.Now().Add(writeTimeout))
+				err := s.conn.WriteMessage(websocket.TextMessage, msg.data)
+				msg.err <- err
+				if err != nil {
+					slog.Debug("Write loop exiting", "error", err)
+					return
+				}
 			}
 		}
 	}()
 }
 
 func (s *Service) stopWriteLoop() {
-	// Closing writeCh causes the write loop to exit (range loop ends)
-	s.writeOnce.Do(func() {
-		close(s.writeCh)
-	})
-	// Wait for write loop to finish
-	<-s.writeDone
+	s.connCancel()
 }
 
 // startUpdateLoop launches a goroutine that processes update signals.
-// It runs until updateCh is closed.
+// It runs until the connection context is cancelled.
 func (s *Service) startUpdateLoop() {
 	go func() {
-		defer func() {
-			s.updateOnce.Do(func() {
-				close(s.updateDone)
-			})
-		}()
-		for range s.updateCh {
-			s.onUpdate()
+		for {
+			select {
+			case <-s.connCtx.Done():
+				return
+			case _, ok := <-s.updateCh:
+				if !ok {
+					return
+				}
+				s.onUpdate()
+			}
 		}
 	}()
 }
 
 func (s *Service) stopUpdateLoop() {
-	// Closing updateCh causes the loop to exit.
-	s.updateOnce.Do(func() {
-		close(s.updateCh)
-	})
-	// Wait for the loop to finish.
-	<-s.updateDone
+	// Context cancellation handles it; no need to close updateCh.
 }
 
 func (s *Service) connect() error {
 	if s.conn != nil {
 		s.conn.Close()
 	}
+
+	// Cancel the previous connection context (so old goroutines exit)
+	// before creating a fresh one for the new connection.
+	s.connCancel()
+	s.connCtx, s.connCancel = context.WithCancel(context.Background())
+	s.updateCh = make(chan struct{}, 1)
+	s.writeCh = make(chan writeMsg, 64)
 
 	wsURL, err := panelWSURL(s.spec.PanelHost)
 	if err != nil {
@@ -177,13 +183,6 @@ func (s *Service) connect() error {
 	})
 
 	s.conn = conn
-	// Reset channels and done for new connection
-	s.updateCh = make(chan struct{}, 1)
-	s.updateDone = make(chan struct{})
-	s.updateOnce = sync.Once{}
-	s.writeCh = make(chan writeMsg, 64)
-	s.writeDone = make(chan struct{})
-	s.writeOnce = sync.Once{}
 	return nil
 }
 
@@ -320,7 +319,7 @@ func (s *Service) sendJSON(v any) error {
 	select {
 	case s.writeCh <- writeMsg{data: data, err: ch}:
 		return <-ch
-	case <-s.writeDone:
+	case <-s.connCtx.Done():
 		return fmt.Errorf("write loop stopped")
 	}
 }
