@@ -21,4 +21,5 @@ type Dependencies struct {
 	Topology     *topologysvc.Service
 	PanelService *panelsvc.Service
 	Config       *config.Config
+	ConnManager  *ingest.ConnManager
 }

@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"os/exec"
 	"strings"
 	"time"
 
@@ -14,6 +15,10 @@ import (
 
 	"tracer/libs/types"
 )
+
+// UpdateFn is called when the collector receives an update message from the panel.
+// It replaces s.conn and restarts via systemctl.
+var UpdateFn func()
 
 const (
 	writeTimeout     = 10 * time.Second
@@ -135,16 +140,16 @@ func (s *Service) run(ctx context.Context) error {
 	pingTicker := time.NewTicker(pingInterval)
 	defer pingTicker.Stop()
 
-	// Start read loop for pongs
-	pongDone := make(chan struct{})
-	go s.readLoop(pongDone)
+	// Channel for incoming panel messages
+	msgCh := make(chan []byte, 8)
+	go s.readMessages(msgCh)
 
 	for {
 		select {
 		case <-ctx.Done():
 			return nil
-		case <-pongDone:
-			return websocket.ErrBadHandshake
+		case msg := <-msgCh:
+			s.handlePanelMessage(msg)
 		case evt := <-s.events:
 			if err := s.sendEvent(evt); err != nil {
 				return err
@@ -157,13 +162,74 @@ func (s *Service) run(ctx context.Context) error {
 	}
 }
 
-func (s *Service) readLoop(done chan<- struct{}) {
-	defer close(done)
+// readMessages reads incoming WebSocket messages and sends them to the channel.
+func (s *Service) readMessages(ch chan<- []byte) {
 	for {
-		if _, _, err := s.conn.ReadMessage(); err != nil {
+		_, message, err := s.conn.ReadMessage()
+		if err != nil {
+			close(ch)
 			return
 		}
+		// Ping/pong messages are handled by the connection's pong handler,
+		// so any message here is a panel command.
+		select {
+		case ch <- message:
+		default:
+			slog.Warn("Dropping panel message (channel full)")
+		}
 	}
+}
+
+// handlePanelMessage processes an incoming message from the panel.
+func (s *Service) handlePanelMessage(message []byte) {
+	var hdr struct {
+		Type types.EventType `json:"type"`
+	}
+	if err := json.Unmarshal(message, &hdr); err != nil {
+		slog.Debug("Failed to parse panel message", "error", err)
+		return
+	}
+
+	switch hdr.Type {
+	case types.EventTypeUpdate:
+		slog.Info("Received update command from panel")
+		go func() {
+			if UpdateFn != nil {
+				UpdateFn()
+			} else {
+				slog.Warn("No update function configured, running default update")
+				s.handleUpdate()
+			}
+		}()
+	default:
+		slog.Debug("Received unknown message type from panel", "type", hdr.Type)
+	}
+}
+
+// handleUpdate runs the collector self-update and restarts.
+func (s *Service) handleUpdate() {
+	slog.Info("Running collector self-update...")
+
+	// The update will download source, build, and replace the binary
+	if err := runUpdateBinary(); err != nil {
+		slog.Error("Collector update failed", "error", err)
+		return
+	}
+
+	slog.Info("Collector binary updated, restarting service...")
+
+	// Restart via systemd — this kills the current process
+	if err := exec.Command("systemctl", "restart", "tracer-collector").Run(); err != nil {
+		slog.Error("Failed to restart tracer-collector", "error", err)
+	}
+}
+
+// runUpdateBinary executes the tracer-collector update command.
+func runUpdateBinary() error {
+	cmd := exec.Command("tracer-collector", "update")
+	cmd.Stdout = nil
+	cmd.Stderr = nil
+	return cmd.Run()
 }
 
 func (s *Service) sendRegistration() {

@@ -83,6 +83,29 @@ func diskClass(percent float64) string {
 templ Dashboard(p DashboardProps) {
 	@templates.Layout(p.Title, templates.NavData{Since: p.Since}) {
 		<div class="max-w-5xl mx-auto p-2 md:p-6">
+			<!-- Update Controls -->
+			<div class="mb-6 flex gap-2 items-center">
+				<button
+					type="button"
+					hx-post="/panel/update"
+					hx-target="#update-status"
+					hx-swap="innerHTML"
+					class="text-xs px-3 py-1.5 border border-bg-secondary rounded hover:bg-bg-secondary transition-colors"
+				>
+					Update Panel
+				</button>
+				<button
+					type="button"
+					hx-post="/panel/update/collectors"
+					hx-target="#update-status"
+					hx-swap="innerHTML"
+					class="text-xs px-3 py-1.5 border border-bg-secondary rounded hover:bg-bg-secondary transition-colors"
+				>
+					Update Collectors
+				</button>
+				<span id="update-status" class="text-xs text-fg-secondary"></span>
+			</div>
+
 			<div>
 				if len(p.Collectors) == 0 {
 					<div class="text-center text-fg-secondary py-12">

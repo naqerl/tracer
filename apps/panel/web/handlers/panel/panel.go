@@ -8,20 +8,24 @@ import (
 	"log/slog"
 	"math"
 	"net/http"
+	"os/exec"
 	"strconv"
 	"time"
 
+	"tracer/apps/panel/internal/services/ingest"
 	panelsvc "tracer/apps/panel/internal/services/panel"
 	"tracer/apps/panel/web/handlers/panel/view"
 	"tracer/apps/panel/web/middleware/auth"
 	"tracer/apps/panel/web/templates"
+	"tracer/libs/shared/update"
 )
 
 //go:embed views/log-group-plot.js
 var logGroupPlotJS []byte
 
 type handler struct {
-	svc *panelsvc.Service
+	svc         *panelsvc.Service
+	connManager *ingest.ConnManager
 }
 
 // LevelFilter represents a log level filter option
@@ -45,11 +49,11 @@ const (
 	defaultSinceLabel = "24h"
 )
 
-func InitMux(svc *panelsvc.Service) *http.ServeMux {
+func InitMux(svc *panelsvc.Service, connManager *ingest.ConnManager) *http.ServeMux {
 	m := http.NewServeMux()
 	h := handler{
-
-		svc: svc,
+		svc:         svc,
+		connManager: connManager,
 	}
 
 	// Dashboard
@@ -71,6 +75,10 @@ func InitMux(svc *panelsvc.Service) *http.ServeMux {
 	m.HandleFunc("GET /collectors/{collector}/apps/{app}/logs/groups/{groupID}/entries", h.getLogGroupEntries)
 	m.HandleFunc("DELETE /collectors/{collector}/apps/{app}/logs/groups/{groupID}", h.deleteLogGroup)
 	m.HandleFunc("GET /collectors/{collector}/apps/{app}/logs/{id}", h.getLogByID)
+
+	// Update
+	m.HandleFunc("POST /update", h.postUpdatePanel)
+	m.HandleFunc("POST /update/collectors", h.postUpdateCollectors)
 
 	// Static assets
 	m.HandleFunc("GET /logs/groups/plot", h.getLogGroupPlot)
@@ -959,4 +967,73 @@ func parseOffset(offsetParam string) int {
 		return 0
 	}
 	return offset
+}
+
+// postUpdatePanel updates the panel binary and restarts the service.
+// This is an async operation — the process will be replaced by systemd.
+func (h *handler) postUpdatePanel(w http.ResponseWriter, r *http.Request) {
+	userID, err := auth.RequireOrRedirect(w, r)
+	if err != nil {
+		return
+	}
+	// Only admin users can trigger updates
+	if userID != 1 {
+		http.Error(w, "Forbidden: admin access required", http.StatusForbidden)
+		return
+	}
+
+	slog.Info("Panel update requested")
+
+	// Respond immediately, then update in background
+	w.Header().Set("Content-Type", "text/plain")
+	w.WriteHeader(http.StatusAccepted)
+	_, _ = w.Write([]byte("Update started. Panel will restart shortly.\n"))
+
+	// Flush the response before the process potentially exits
+	if f, ok := w.(interface{ Flush() }); ok {
+		f.Flush()
+	}
+
+	// Run update in background — this will replace the binary and restart
+	go func() {
+		slog.Info("Running panel self-update...")
+		if err := update.Update(update.Options{
+			BinaryName: update.BinaryPanel,
+			PostUpdate: func() {
+				slog.Info("Panel binary updated, restarting service...")
+				// Restart via systemd — this kills the current process
+				if err := exec.Command("systemctl", "restart", "tracer-panel").Run(); err != nil {
+					slog.Error("Failed to restart tracer-panel", "error", err)
+				}
+			},
+		}); err != nil {
+			slog.Error("Panel update failed", "error", err)
+		}
+	}()
+}
+
+// postUpdateCollectors sends an update message to all connected collectors.
+func (h *handler) postUpdateCollectors(w http.ResponseWriter, r *http.Request) {
+	userID, err := auth.RequireOrRedirect(w, r)
+	if err != nil {
+		return
+	}
+	// Only admin users can trigger updates
+	if userID != 1 {
+		http.Error(w, "Forbidden: admin access required", http.StatusForbidden)
+		return
+	}
+
+	slog.Info("Collector update requested")
+
+	if h.connManager == nil {
+		http.Error(w, "Connection manager not available", http.StatusInternalServerError)
+		return
+	}
+
+	sent := h.connManager.SendUpdateAll()
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(fmt.Sprintf(`{"sent":%d,"message":"Update sent to %d collector(s)"}`, sent, sent)))
 }

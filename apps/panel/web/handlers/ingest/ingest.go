@@ -32,20 +32,23 @@ type handler struct {
 	ingestService *ingest.Service
 	tracker       *ingest.Tracker
 	topology      *topologysvc.Service
+	connManager   *ingest.ConnManager
 }
 
-func InitMux(authService *auth.Service, ingestService *ingest.Service, tracker *ingest.Tracker, topology *topologysvc.Service) *http.ServeMux {
+func InitMux(authService *auth.Service, ingestService *ingest.Service, tracker *ingest.Tracker, topology *topologysvc.Service) (*http.ServeMux, *ingest.ConnManager) {
 	m := http.NewServeMux()
+	connManager := ingest.NewConnManager()
 	h := &handler{
 		authService:   authService,
 		ingestService: ingestService,
 		tracker:       tracker,
 		topology:      topology,
+		connManager:   connManager,
 	}
 
 	m.HandleFunc("GET /ws", h.handleWebSocket)
 
-	return m
+	return m, connManager
 }
 
 // Handlers
@@ -65,6 +68,7 @@ func (h *handler) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	// Generate unique connection ID
 	connID := uuid.New().String()
 	remoteAddr := extractIP(r.RemoteAddr)
+	var collectorName string // set after registration message
 
 	slog.Info("WebSocket connected", "remote", remoteAddr, "conn_id", connID)
 
@@ -77,8 +81,11 @@ func (h *handler) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		return nil
 	})
 
-	// Mark as disconnected when connection closes
+	// Clean up connection manager on disconnect
 	defer func() {
+		if collectorName != "" {
+			h.connManager.Unregister(collectorName)
+		}
 		h.tracker.Disconnect(connID)
 		slog.Info("WebSocket disconnected", "remote", remoteAddr, "conn_id", connID)
 	}()
@@ -100,23 +107,26 @@ func (h *handler) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 
-		h.processMessage(r.Context(), connID, remoteAddr, message)
+		result := h.processMessage(r.Context(), connID, remoteAddr, message, conn)
+		if result != "" {
+			collectorName = result
+		}
 	}
 }
 
 // Helpers
 
-func (h *handler) processMessage(ctx context.Context, connID, remoteAddr string, message []byte) {
+func (h *handler) processMessage(ctx context.Context, connID, remoteAddr string, message []byte, conn *websocket.Conn) string {
 	var hdr struct {
 		Type types.EventType `json:"type"`
 	}
 	if err := json.Unmarshal(message, &hdr); err != nil {
 		slog.Error("Failed to parse websocket message header", "error", err)
-		return
+		return ""
 	}
 	if err := hdr.Type.Validate(); err != nil {
 		slog.Error("Invalid websocket message type", "error", err)
-		return
+		return ""
 	}
 
 	switch hdr.Type {
@@ -124,19 +134,21 @@ func (h *handler) processMessage(ctx context.Context, connID, remoteAddr string,
 		var reg types.RegisterMessage
 		if err := json.Unmarshal(message, &reg); err != nil {
 			slog.Error("Failed to parse collector registration", "error", err)
-			return
+			return ""
 		}
 		h.topology.Publish(topologysvc.Message{
 			Register: &reg,
 		})
-		h.handleRegistration(ctx, connID, remoteAddr, reg)
+		h.handleRegistration(ctx, connID, remoteAddr, reg, conn)
+		return reg.Collector
 	default:
 		var env types.Envelope
 		if err := json.Unmarshal(message, &env); err != nil {
 			slog.Error("Failed to parse ingest envelope", "error", err)
-			return
+			return ""
 		}
 		h.handleEnvelope(ctx, env)
+		return ""
 	}
 }
 
@@ -193,7 +205,7 @@ func (h *handler) handleEnvelope(ctx context.Context, env types.Envelope) {
 	}
 }
 
-func (h *handler) handleRegistration(ctx context.Context, connID, remoteAddr string, msg types.RegisterMessage) {
+func (h *handler) handleRegistration(ctx context.Context, connID, remoteAddr string, msg types.RegisterMessage, conn *websocket.Conn) {
 	if len(msg.Apps) == 0 {
 		slog.Info("Skipping empty collector registration", "collector", msg.Collector, "remote", remoteAddr, "conn_id", connID)
 		return
@@ -212,6 +224,9 @@ func (h *handler) handleRegistration(ctx context.Context, connID, remoteAddr str
 	}
 
 	slog.Info("Received app registration", "ingest", req.CollectorName, "remote", remoteAddr, "apps", req.Apps, "count", len(req.Apps))
+
+	// Register connection for bidirectional communication
+	h.connManager.Register(req.CollectorName, conn)
 
 	// Register ingest with tracker
 	h.tracker.Register(connID, req.CollectorName, remoteAddr, req.Apps)

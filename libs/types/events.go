@@ -15,11 +15,12 @@ const (
 	EventTypeStats     EventType = "stats"
 	EventTypeError     EventType = "error"
 	EventTypeHealth    EventType = "health"
+	EventTypeUpdate    EventType = "update"
 )
 
 func (t EventType) Validate() error {
 	switch t {
-	case EventTypeRegister, EventTypeLog, EventTypeLifecycle, EventTypeStats, EventTypeError, EventTypeHealth:
+	case EventTypeRegister, EventTypeLog, EventTypeLifecycle, EventTypeStats, EventTypeError, EventTypeHealth, EventTypeUpdate:
 		return nil
 	}
 	return fmt.Errorf("invalid event type: %q", t)
@@ -112,3 +113,9 @@ type HealthEvent struct {
 
 func (e HealthEvent) EventType() EventType { return EventTypeHealth }
 func (e HealthEvent) Timestamp() time.Time { return e.Time }
+
+// UpdateMessage is sent from panel to collectors to trigger a self-update.
+type UpdateMessage struct {
+	Type    EventType `json:"type"`
+	Version string    `json:"version,omitempty"`
+}

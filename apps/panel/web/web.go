@@ -20,6 +20,7 @@ import (
 func NewServer(deps Dependencies, port string, noAuth bool, readOnly bool) *http.Server {
 	mux := http.NewServeMux()
 	authMux := auth.InitMux(deps.Auth, deps.User)
+	ingestMux, connManager := ingest.InitMux(deps.Auth, deps.Ingest, deps.Tracker, deps.Topology)
 
 	// Health check endpoint for k8s/load balancer probes (no auth required)
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
@@ -35,8 +36,8 @@ func NewServer(deps Dependencies, port string, noAuth bool, readOnly bool) *http
 		}
 	})
 	mux.Handle("/static/", http.StripPrefix("/static", static.Handler()))
-	mux.Handle("/ingest/", http.StripPrefix("/ingest", ingest.InitMux(deps.Auth, deps.Ingest, deps.Tracker, deps.Topology)))
-	mux.Handle("/panel/", http.StripPrefix("/panel", panel.InitMux(deps.PanelService)))
+	mux.Handle("/ingest/", http.StripPrefix("/ingest", ingestMux))
+	mux.Handle("/panel/", http.StripPrefix("/panel", panel.InitMux(deps.PanelService, connManager)))
 	mux.Handle("/topology/", http.StripPrefix("/topology", topology.InitMux(deps.Topology, deps.User)))
 	mux.Handle("/auth/", http.StripPrefix("/auth", authMux))
 	mux.Handle("/llm", llm.InitMux())
