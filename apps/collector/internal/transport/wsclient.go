@@ -31,9 +31,7 @@ type Service struct {
 	conn     *websocket.Conn
 	events   <-chan types.Event
 
-	// OnUpdate is called when the panel sends an update command.
-	// If nil, the default update handler (self-update + restart) is used.
-	OnUpdate func()
+	onUpdate func()
 
 	// write serialization
 	writeCh   chan writeMsg
@@ -47,11 +45,12 @@ type writeMsg struct {
 }
 
 // New creates a WebSocket client service.
-func New(spec Spec, appNames []string, events <-chan types.Event) Service {
+func New(spec Spec, appNames []string, events <-chan types.Event, onUpdate func()) Service {
 	return Service{
 		spec:      spec,
 		appNames:  appNames,
 		events:    events,
+		onUpdate:  onUpdate,
 		writeCh:   make(chan writeMsg, 64),
 		writeDone: make(chan struct{}),
 	}
@@ -237,11 +236,7 @@ func (s *Service) handlePanelMessage(message []byte) {
 	switch hdr.Type {
 	case types.EventTypeUpdate:
 		slog.Info("Received update command from panel")
-		if s.OnUpdate != nil {
-			go s.OnUpdate()
-		} else {
-			slog.Warn("No OnUpdate handler configured — update not available")
-		}
+		go s.onUpdate()
 	default:
 		slog.Debug("Received unknown message type from panel", "type", hdr.Type)
 	}

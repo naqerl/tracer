@@ -170,12 +170,13 @@ func serve(ctx context.Context, cfg config.Config) error {
 	statsMonitor := stats.New(cfg.Stats)
 
 	// Transport
-	svc := transport.New(cfg.Transport, appNames, mpsc)
 	collectorUpdater := update.New()
-	svc.OnUpdate = func() {
+	svc := transport.New(cfg.Transport, appNames, mpsc, func() {
 		slog.Info("Triggering collector update from panel command")
-		collectorUpdater.Run()
-	}
+		if err := collectorUpdater.Run(); err != nil {
+			slog.Error("Collector update failed", "error", err)
+		}
+	})
 
 	// Run
 	wg.Go(func() {

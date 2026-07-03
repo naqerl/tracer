@@ -1,9 +1,7 @@
 // Package update provides collector self-update capability.
-// It encapsulates the update pipeline invariants:
-//  1. Build the new binary from source
-//  2. Verify the built binary is functional
-//  3. Install (backup old, copy new, restore on failure)
-//  4. Restart the service
+// It encapsulates the full update pipeline: building the new binary
+// from source, verifying it is functional, installing it with rollback
+// support, and restarting the service.
 package update
 
 import (
@@ -31,8 +29,8 @@ func New() *Service {
 }
 
 // Run performs the full collector update pipeline: build, verify, install, and
-// restart. It is safe to call concurrently from the CLI or from a panel-triggered
-// OnUpdate callback — the underlying update.Update is sequential internally.
+// restart. It is safe to call concurrently — the underlying update.Update is
+// sequential internally.
 func (s *Service) Run() error {
 	slog.Info("Collector self-update started")
 	err := update.Update(update.Options{
