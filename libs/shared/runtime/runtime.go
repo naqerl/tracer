@@ -12,14 +12,6 @@ import (
 	"tracer/libs/shared/install"
 )
 
-// Slug identifies the tracer service type.
-type Slug = string
-
-const (
-	SlugCollector Slug = "tracer-collector"
-	SlugPanel     Slug = "tracer-panel"
-)
-
 // Manager handles service lifecycle operations.
 type Manager interface {
 	// Restart restarts the service. In Docker/exec mode this exits the
@@ -30,12 +22,12 @@ type Manager interface {
 	BinaryDir() string
 
 	// Slug returns the service slug this manager was created for.
-	Slug() Slug
+	Slug() string
 }
 
 // systemdManager implements Manager via systemctl.
 type systemdManager struct {
-	slug Slug
+	slug string
 }
 
 func (m *systemdManager) Restart() error {
@@ -46,12 +38,12 @@ func (m *systemdManager) BinaryDir() string {
 	return "/usr/local/bin"
 }
 
-func (m *systemdManager) Slug() Slug { return m.slug }
+func (m *systemdManager) Slug() string { return m.slug }
 
 // dockerManager implements Manager for container environments (Docker, k8s, etc).
 // Restart logs and exits — the container orchestrator handles the restart.
 type dockerManager struct {
-	slug Slug
+	slug string
 }
 
 func (m *dockerManager) Restart() error {
@@ -65,7 +57,7 @@ func (m *dockerManager) BinaryDir() string {
 	return build.Bindir
 }
 
-func (m *dockerManager) Slug() Slug { return m.slug }
+func (m *dockerManager) Slug() string { return m.slug }
 
 // selectedManager returns the appropriate manager implementation based on
 // build-time configuration and runtime detection.
@@ -83,7 +75,7 @@ func selectedManager() (systemd bool) {
 // NewManager creates a new Manager for the given service slug.
 // The manager implementation is selected based on build-time configuration
 // and runtime detection.
-func NewManager(slug Slug) Manager {
+func NewManager(slug string) Manager {
 	if selectedManager() {
 		slog.Debug("runtime: using systemd manager", "slug", slug)
 		return &systemdManager{slug: slug}

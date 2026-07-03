@@ -34,10 +34,10 @@ const (
 
 // SelfUpdate performs a self-update for the given binary type.
 func SelfUpdate(binary BinaryType) error {
-	return Update(Options{
+	return update(options{
 		BinaryName: binary,
-		VerifyFn:   VerifyBinary,
-		PostUpdate: func() error {
+		verifyFn:   VerifyBinary,
+		postUpdate: func() error {
 			return runtime.NewManager(string(binary)).Restart()
 		},
 	})
@@ -59,23 +59,23 @@ func VerifyBinary(path string) error {
 	return nil
 }
 
-// Options configures the update process.
-type Options struct {
+// options configures the update process.
+type options struct {
 	BinaryName BinaryType
 
-	// PostUpdate is called after the binary has been successfully installed.
+	// postUpdate is called after the binary has been successfully installed.
 	// It should trigger a restart or notify the user. If nil, a default
 	// message is printed.
-	PostUpdate func() error
+	postUpdate func() error
 
-	// VerifyFn is called with the path to the newly built binary before it
+	// verifyFn is called with the path to the newly built binary before it
 	// replaces the running binary. If it returns an error, the update is
 	// aborted and the old binary is restored.
-	VerifyFn func(binaryPath string) error
+	verifyFn func(binaryPath string) error
 }
 
-// Update performs a self-update by rebuilding from source.
-func Update(opts Options) error {
+// update performs a self-update by rebuilding from source.
+func update(opts options) error {
 	// Check if we have the source available
 	srcDir := "/tmp/tracer-update"
 
@@ -129,9 +129,9 @@ func Update(opts Options) error {
 	destPath := filepath.Join(mgr.BinaryDir(), string(opts.BinaryName))
 
 	// Verify the built binary before installing
-	if opts.VerifyFn != nil {
+	if opts.verifyFn != nil {
 		fmt.Println("Verifying binary...")
-		if err := opts.VerifyFn(binaryPath); err != nil {
+		if err := opts.verifyFn(binaryPath); err != nil {
 			os.RemoveAll(srcDir)
 			return fmt.Errorf("binary verification failed: %w", err)
 		}
@@ -180,9 +180,9 @@ func Update(opts Options) error {
 	fmt.Println()
 
 	// Run post-update callback (e.g., restart)
-	if opts.PostUpdate != nil {
+	if opts.postUpdate != nil {
 		fmt.Println("Triggering post-update action...")
-		if err := opts.PostUpdate(); err != nil {
+		if err := opts.postUpdate(); err != nil {
 			// Log but don't fail — binary is already installed
 			fmt.Printf("Warning: post-update action failed: %v\n", err)
 		}
