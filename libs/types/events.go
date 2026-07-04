@@ -9,18 +9,19 @@ import (
 type EventType string
 
 const (
-	EventTypeRegister  EventType = "register"
-	EventTypeLog       EventType = "log"
-	EventTypeLifecycle EventType = "lifecycle"
-	EventTypeStats     EventType = "stats"
-	EventTypeError     EventType = "error"
-	EventTypeHealth    EventType = "health"
-	EventTypeUpdate    EventType = "update"
+	EventTypeRegister   EventType = "register"
+	EventTypeLog        EventType = "log"
+	EventTypeLifecycle  EventType = "lifecycle"
+	EventTypeStats      EventType = "stats"
+	EventTypeError      EventType = "error"
+	EventTypeHealth     EventType = "health"
+	EventTypeUpdate     EventType = "update"
+	EventTypeSelfUpdate EventType = "self_update"
 )
 
 func (t EventType) Validate() error {
 	switch t {
-	case EventTypeRegister, EventTypeLog, EventTypeLifecycle, EventTypeStats, EventTypeError, EventTypeHealth, EventTypeUpdate:
+	case EventTypeRegister, EventTypeLog, EventTypeLifecycle, EventTypeStats, EventTypeError, EventTypeHealth, EventTypeUpdate, EventTypeSelfUpdate:
 		return nil
 	}
 	return fmt.Errorf("invalid event type: %q", t)
@@ -113,6 +114,15 @@ type HealthEvent struct {
 
 func (e HealthEvent) EventType() EventType { return EventTypeHealth }
 func (e HealthEvent) Timestamp() time.Time { return e.Time }
+
+// SelfUpdateEvent is emitted when the collector needs to update itself.
+type SelfUpdateEvent struct {
+	Time    time.Time `json:"timestamp"`
+	Version string    `json:"version,omitempty"`
+}
+
+func (e SelfUpdateEvent) EventType() EventType { return EventTypeSelfUpdate }
+func (e SelfUpdateEvent) Timestamp() time.Time { return e.Time }
 
 // UpdateMessage is sent from panel to collectors to trigger a self-update.
 type UpdateMessage struct {

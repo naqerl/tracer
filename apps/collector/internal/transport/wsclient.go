@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -29,42 +30,20 @@ type Service struct {
 	appNames []string
 	conn     *websocket.Conn
 	events   <-chan types.Event
+	commands chan<- types.Event
 
-	onUpdate func()
-
-	// connCtx is cancelled when the current connection shuts down.
-	// On reconnect a fresh context is created so new goroutines can
-	// be signalled independently of the previous connection's goroutines.
-	connCtx    context.Context
-	connCancel context.CancelFunc
-
-	// updateCh serializes onUpdate calls: a buffered channel (capacity 1)
-	// allows one pending update signal at a time. Duplicates are dropped
-	// non-blocking to avoid blocking the panel message handler.
-	updateCh chan struct{}
-
-	// write serialization
-	writeCh chan writeMsg
-}
-
-type writeMsg struct {
-	data []byte
-	err  chan error
+	// mu serializes writes to conn (gorilla/websocket requires single writer).
+	mu sync.Mutex
 }
 
 // New creates a WebSocket client service.
-func New(spec Spec, appNames []string, events <-chan types.Event, onUpdate func()) Service {
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel() // cancelled by default; connect() creates a fresh one
+// The commands channel receives events triggered by panel messages (e.g. SelfUpdateEvent).
+func New(spec Spec, appNames []string, events <-chan types.Event, commands chan<- types.Event) Service {
 	return Service{
-		spec:       spec,
-		appNames:   appNames,
-		events:     events,
-		onUpdate:   onUpdate,
-		connCtx:    ctx,
-		connCancel: cancel,
-		updateCh:   make(chan struct{}, 1),
-		writeCh:    make(chan writeMsg, 64),
+		spec:     spec,
+		appNames: appNames,
+		events:   events,
+		commands: commands,
 	}
 }
 
@@ -89,79 +68,20 @@ func (s *Service) Start(ctx context.Context) {
 		reconnectWait = reconnectDelay
 		slog.Info("Connected to panel", "host", s.spec.PanelHost)
 
-		s.startWriteLoop()
-		s.startUpdateLoop()
 		s.sendRegistration()
 
 		if err := s.run(ctx); err != nil {
 			slog.Warn("Connection lost", "error", err)
 		}
 
-		s.stopUpdateLoop()
-		s.stopWriteLoop()
 		s.close()
 	}
-}
-
-func (s *Service) startWriteLoop() {
-	go func() {
-		for {
-			select {
-			case <-s.connCtx.Done():
-				return
-			case msg, ok := <-s.writeCh:
-				if !ok {
-					return
-				}
-				s.conn.SetWriteDeadline(time.Now().Add(writeTimeout))
-				err := s.conn.WriteMessage(websocket.TextMessage, msg.data)
-				msg.err <- err
-				if err != nil {
-					slog.Debug("Write loop exiting", "error", err)
-					return
-				}
-			}
-		}
-	}()
-}
-
-func (s *Service) stopWriteLoop() {
-	s.connCancel()
-}
-
-// startUpdateLoop launches a goroutine that processes update signals.
-// It runs until the connection context is cancelled.
-func (s *Service) startUpdateLoop() {
-	go func() {
-		for {
-			select {
-			case <-s.connCtx.Done():
-				return
-			case _, ok := <-s.updateCh:
-				if !ok {
-					return
-				}
-				s.onUpdate()
-			}
-		}
-	}()
-}
-
-func (s *Service) stopUpdateLoop() {
-	// Context cancellation handles it; no need to close updateCh.
 }
 
 func (s *Service) connect() error {
 	if s.conn != nil {
 		s.conn.Close()
 	}
-
-	// Cancel the previous connection context (so old goroutines exit)
-	// before creating a fresh one for the new connection.
-	s.connCancel()
-	s.connCtx, s.connCancel = context.WithCancel(context.Background())
-	s.updateCh = make(chan struct{}, 1)
-	s.writeCh = make(chan writeMsg, 64)
 
 	wsURL, err := panelWSURL(s.spec.PanelHost)
 	if err != nil {
@@ -237,7 +157,10 @@ func (s *Service) run(ctx context.Context) error {
 				return err
 			}
 		case <-pingTicker.C:
-			if err := s.conn.WriteControl(websocket.PingMessage, nil, time.Now().Add(writeTimeout)); err != nil {
+			s.mu.Lock()
+			err := s.conn.WriteControl(websocket.PingMessage, nil, time.Now().Add(writeTimeout))
+			s.mu.Unlock()
+			if err != nil {
 				return err
 			}
 		}
@@ -274,9 +197,9 @@ func (s *Service) handlePanelMessage(message []byte) {
 	case types.EventTypeUpdate:
 		slog.Info("Received update command from panel")
 		select {
-		case s.updateCh <- struct{}{}:
+		case s.commands <- types.SelfUpdateEvent{Time: time.Now()}:
 		default:
-			slog.Warn("Update already queued, skipping duplicate update command")
+			slog.Warn("Command channel full, dropping update command")
 		}
 	default:
 		slog.Debug("Received unknown message type from panel", "type", hdr.Type)
@@ -307,31 +230,31 @@ func (s *Service) sendEvent(evt types.Event) error {
 	return s.sendJSON(msg)
 }
 
-// sendJSON marshals v and sends it through the write channel.
-// The write loop goroutine handles the actual write to the WebSocket.
+// sendJSON marshals v and writes it to the WebSocket connection.
+// Uses a mutex to serialize writes (gorilla/websocket requires single writer).
 func (s *Service) sendJSON(v any) error {
 	data, err := json.Marshal(v)
 	if err != nil {
 		return fmt.Errorf("marshal failed: %w", err)
 	}
 
-	ch := make(chan error, 1)
-	select {
-	case s.writeCh <- writeMsg{data: data, err: ch}:
-		return <-ch
-	case <-s.connCtx.Done():
-		return fmt.Errorf("write loop stopped")
-	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.conn.SetWriteDeadline(time.Now().Add(writeTimeout))
+	return s.conn.WriteMessage(websocket.TextMessage, data)
 }
 
 func (s *Service) close() {
 	if s.conn != nil {
+		s.mu.Lock()
 		s.conn.WriteControl(
 			websocket.CloseMessage,
 			websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""),
 			time.Now().Add(writeTimeout),
 		)
 		s.conn.Close()
+		s.mu.Unlock()
 		s.conn = nil
 	}
 }
