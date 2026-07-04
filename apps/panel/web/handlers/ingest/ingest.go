@@ -14,6 +14,7 @@ import (
 	"tracer/apps/panel/internal/services/auth"
 	"tracer/apps/panel/internal/services/ingest"
 	topologysvc "tracer/apps/panel/internal/services/topology"
+	"tracer/libs/shared/wsconn"
 	"tracer/libs/types"
 )
 
@@ -69,50 +70,30 @@ func (h *handler) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 
 	slog.Info("WebSocket connected", "remote", remoteAddr, "conn_id", connID)
 
-	// Configure connection with generous timeout and max message size
-	conn.SetReadLimit(10 * 1024 * 1024) // 10 MB max message size
-	conn.SetReadDeadline(time.Now().Add(5 * time.Minute))
-	conn.SetPongHandler(func(string) error {
-		conn.SetReadDeadline(time.Now().Add(5 * time.Minute))
-		h.tracker.UpdateLastSeen(connID)
-		return nil
-	})
+	// Wrap in shared Conn for channel-based I/O.
+	ws := wsconn.New(conn)
 
-	// Clean up connection on disconnect. If the collector registered,
-	// connManager.Unregister will close the underlying connection via
-	// its connWriter wrapper. Otherwise we close it directly here.
+	// Clean up connection on disconnect.
 	defer func() {
 		if !h.connManager.Unregister(connID) {
-			conn.Close()
+			ws.Close()
 		}
 		h.tracker.Disconnect(connID)
 		slog.Info("WebSocket disconnected", "remote", remoteAddr, "conn_id", connID)
 	}()
 
 	// Start ping ticker
-	go h.pingLoop(conn)
+	go h.pingLoop(ws)
 
-	// Read loop
-	for {
-		_, message, err := conn.ReadMessage()
-		if err != nil {
-			if websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
-				slog.Debug("WebSocket closed", "error", err)
-			} else if websocket.IsUnexpectedCloseError(err, websocket.CloseAbnormalClosure) {
-				slog.Error("WebSocket read error", "error", err)
-			} else {
-				slog.Warn("WebSocket read closed", "error", err)
-			}
-			break
-		}
-
-		h.processMessage(r.Context(), connID, remoteAddr, message, conn)
+	// Read loop using wsconn.Incoming
+	for msg := range ws.Incoming() {
+		h.processMessage(r.Context(), connID, remoteAddr, msg, ws)
 	}
 }
 
 // Helpers
 
-func (h *handler) processMessage(ctx context.Context, connID, remoteAddr string, message []byte, conn *websocket.Conn) {
+func (h *handler) processMessage(ctx context.Context, connID, remoteAddr string, message []byte, ws *wsconn.Conn) {
 	var hdr struct {
 		Type types.EventType `json:"type"`
 	}
@@ -135,7 +116,7 @@ func (h *handler) processMessage(ctx context.Context, connID, remoteAddr string,
 		h.topology.Publish(topologysvc.Message{
 			Register: &reg,
 		})
-		h.handleRegistration(ctx, connID, remoteAddr, reg, conn)
+		h.handleRegistration(ctx, connID, remoteAddr, reg, ws)
 	default:
 		var env types.Envelope
 		if err := json.Unmarshal(message, &env); err != nil {
@@ -199,7 +180,7 @@ func (h *handler) handleEnvelope(ctx context.Context, env types.Envelope) {
 	}
 }
 
-func (h *handler) handleRegistration(ctx context.Context, connID, remoteAddr string, msg types.RegisterMessage, conn *websocket.Conn) {
+func (h *handler) handleRegistration(ctx context.Context, connID, remoteAddr string, msg types.RegisterMessage, ws *wsconn.Conn) {
 	if len(msg.Apps) == 0 {
 		slog.Info("Skipping empty collector registration", "collector", msg.Collector, "remote", remoteAddr, "conn_id", connID)
 		return
@@ -219,8 +200,10 @@ func (h *handler) handleRegistration(ctx context.Context, connID, remoteAddr str
 
 	slog.Info("Received app registration", "ingest", req.CollectorName, "remote", remoteAddr, "apps", req.Apps, "count", len(req.Apps))
 
-	// Register connection for bidirectional communication, keyed by connID
-	h.connManager.Register(connID, conn)
+	// Register connection for bidirectional communication, keyed by connID.
+	// This must happen before RegisterCollector so the Conn is available for
+	// any outgoing messages.
+	h.connManager.Register(connID, ws)
 
 	// Register ingest with tracker
 	h.tracker.Register(connID, req.CollectorName, remoteAddr, req.Apps)
@@ -327,12 +310,12 @@ func (h *handler) handleHealth(ctx context.Context, collector string, evt types.
 
 }
 
-func (h *handler) pingLoop(conn *websocket.Conn) {
+func (h *handler) pingLoop(ws *wsconn.Conn) {
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
 
 	for range ticker.C {
-		if err := conn.WriteControl(websocket.PingMessage, nil, time.Now().Add(10*time.Second)); err != nil {
+		if err := ws.Ping(); err != nil {
 			return
 		}
 	}

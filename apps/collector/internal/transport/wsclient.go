@@ -8,19 +8,17 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
 
+	"tracer/libs/shared/wsconn"
 	"tracer/libs/types"
 )
 
 const (
-	writeTimeout     = 10 * time.Second
 	reconnectDelay   = 5 * time.Second
 	pingInterval     = 30 * time.Second
-	pongWait         = 60 * time.Second
 	maxReconnectWait = 5 * time.Minute
 )
 
@@ -28,16 +26,14 @@ const (
 type Service struct {
 	spec     Spec
 	appNames []string
-	conn     *websocket.Conn
+	conn     *wsconn.Conn
 	events   <-chan types.Event
 	commands chan<- types.Event
-
-	// mu serializes writes to conn (gorilla/websocket requires single writer).
-	mu sync.Mutex
 }
 
 // New creates a WebSocket client service.
-// The commands channel receives events triggered by panel messages (e.g. SelfUpdateEvent).
+// events: incoming events from local producers to send to panel.
+// commands: outgoing events triggered by panel messages (e.g. SelfUpdateEvent).
 func New(spec Spec, appNames []string, events <-chan types.Event, commands chan<- types.Event) Service {
 	return Service{
 		spec:     spec,
@@ -74,7 +70,8 @@ func (s *Service) Start(ctx context.Context) {
 			slog.Warn("Connection lost", "error", err)
 		}
 
-		s.close()
+		s.conn.Close()
+		s.conn = nil
 	}
 }
 
@@ -96,13 +93,7 @@ func (s *Service) connect() error {
 		return err
 	}
 
-	conn.SetReadDeadline(time.Now().Add(pongWait))
-	conn.SetPongHandler(func(string) error {
-		conn.SetReadDeadline(time.Now().Add(pongWait))
-		return nil
-	})
-
-	s.conn = conn
+	s.conn = wsconn.New(conn)
 	return nil
 }
 
@@ -142,43 +133,23 @@ func (s *Service) run(ctx context.Context) error {
 	pingTicker := time.NewTicker(pingInterval)
 	defer pingTicker.Stop()
 
-	// Channel for incoming panel messages
-	msgCh := make(chan []byte, 8)
-	go s.readMessages(msgCh)
-
 	for {
 		select {
 		case <-ctx.Done():
 			return nil
-		case msg := <-msgCh:
+		case msg, ok := <-s.conn.Incoming():
+			if !ok {
+				return fmt.Errorf("connection closed")
+			}
 			s.handlePanelMessage(msg)
 		case evt := <-s.events:
 			if err := s.sendEvent(evt); err != nil {
 				return err
 			}
 		case <-pingTicker.C:
-			s.mu.Lock()
-			err := s.conn.WriteControl(websocket.PingMessage, nil, time.Now().Add(writeTimeout))
-			s.mu.Unlock()
-			if err != nil {
+			if err := s.conn.Ping(); err != nil {
 				return err
 			}
-		}
-	}
-}
-
-// readMessages reads incoming WebSocket messages and sends them to the channel.
-func (s *Service) readMessages(ch chan<- []byte) {
-	for {
-		_, message, err := s.conn.ReadMessage()
-		if err != nil {
-			close(ch)
-			return
-		}
-		select {
-		case ch <- message:
-		default:
-			slog.Warn("Dropping panel message (channel full)")
 		}
 	}
 }
@@ -230,31 +201,17 @@ func (s *Service) sendEvent(evt types.Event) error {
 	return s.sendJSON(msg)
 }
 
-// sendJSON marshals v and writes it to the WebSocket connection.
-// Uses a mutex to serialize writes (gorilla/websocket requires single writer).
+// sendJSON marshals v and sends it through the connection's outgoing channel.
 func (s *Service) sendJSON(v any) error {
 	data, err := json.Marshal(v)
 	if err != nil {
 		return fmt.Errorf("marshal failed: %w", err)
 	}
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	s.conn.SetWriteDeadline(time.Now().Add(writeTimeout))
-	return s.conn.WriteMessage(websocket.TextMessage, data)
-}
-
-func (s *Service) close() {
-	if s.conn != nil {
-		s.mu.Lock()
-		s.conn.WriteControl(
-			websocket.CloseMessage,
-			websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""),
-			time.Now().Add(writeTimeout),
-		)
-		s.conn.Close()
-		s.mu.Unlock()
-		s.conn = nil
+	select {
+	case s.conn.Outgoing() <- data:
+		return nil
+	case <-s.conn.Closed():
+		return fmt.Errorf("connection closed")
 	}
 }

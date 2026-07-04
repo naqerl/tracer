@@ -2,101 +2,29 @@ package ingest
 
 import (
 	"encoding/json"
-	"fmt"
 	"log/slog"
 	"sync"
-	"time"
 
-	"github.com/gorilla/websocket"
-)
-
-const (
-	writeChanCapacity = 32
-	writeTimeout      = 10 * time.Second
+	"tracer/libs/shared/wsconn"
 )
 
 // ConnManager tracks collector WebSocket connections so the panel can
 // send messages back to collectors (e.g., update commands).
-// All writes are serialized through per-connection write channels
-// to satisfy gorilla/websocket's single-writer requirement.
 type ConnManager struct {
 	mu    sync.RWMutex
-	conns map[string]*connWriter
-}
-
-// connWriter wraps a WebSocket connection with a write channel that
-// serializes all outgoing messages through a single goroutine.
-type connWriter struct {
-	conn    *websocket.Conn
-	writeCh chan []byte
-	done    chan struct{}
-	once    sync.Once
-}
-
-func newConnWriter(conn *websocket.Conn) *connWriter {
-	cw := &connWriter{
-		conn:    conn,
-		writeCh: make(chan []byte, writeChanCapacity),
-		done:    make(chan struct{}),
-	}
-	go cw.writeLoop()
-	return cw
-}
-
-// writeLoop is the single goroutine that writes to the underlying conn.
-func (cw *connWriter) writeLoop() {
-	defer close(cw.done)
-	for data := range cw.writeCh {
-		cw.conn.SetWriteDeadline(time.Now().Add(writeTimeout))
-		if err := cw.conn.WriteMessage(websocket.TextMessage, data); err != nil {
-			slog.Error("WebSocket write failed", "error", err)
-			return
-		}
-	}
-}
-
-// WriteJSON marshals v and sends it through the write channel.
-func (cw *connWriter) WriteJSON(v any) error {
-	msg, err := json.Marshal(v)
-	if err != nil {
-		return fmt.Errorf("marshal failed: %w", err)
-	}
-	select {
-	case cw.writeCh <- msg:
-		return nil
-	case <-cw.done:
-		return fmt.Errorf("connection closed")
-	default:
-		// Non-blocking: drop if buffer full to avoid blocking the sender.
-		slog.Warn("Write buffer full, dropping message")
-		return nil
-	}
-}
-
-// Close gracefully shuts down the writer and closes the underlying conn.
-func (cw *connWriter) Close() {
-	cw.once.Do(func() {
-		close(cw.writeCh)
-		<-cw.done // wait for writeLoop to exit
-		cw.conn.WriteControl(
-			websocket.CloseMessage,
-			websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""),
-			time.Now().Add(writeTimeout),
-		)
-		cw.conn.Close()
-	})
+	conns map[string]*wsconn.Conn
 }
 
 // NewConnManager creates a new ConnManager.
 func NewConnManager() *ConnManager {
 	return &ConnManager{
-		conns: make(map[string]*connWriter),
+		conns: make(map[string]*wsconn.Conn),
 	}
 }
 
-// Register stores or replaces a connection keyed by connID. If a connection
+// Register stores a connection keyed by connID. If a connection
 // for this connID already exists, it is closed.
-func (cm *ConnManager) Register(connID string, conn *websocket.Conn) {
+func (cm *ConnManager) Register(connID string, c *wsconn.Conn) {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 
@@ -105,8 +33,7 @@ func (cm *ConnManager) Register(connID string, conn *websocket.Conn) {
 		existing.Close()
 	}
 
-	cw := newConnWriter(conn)
-	cm.conns[connID] = cw
+	cm.conns[connID] = c
 	slog.Debug("Connection registered", "conn_id", connID)
 }
 
@@ -117,8 +44,8 @@ func (cm *ConnManager) Unregister(connID string) bool {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 
-	if cw, ok := cm.conns[connID]; ok {
-		cw.Close()
+	if c, ok := cm.conns[connID]; ok {
+		c.Close()
 		delete(cm.conns, connID)
 		slog.Debug("Connection unregistered", "conn_id", connID)
 		return true
@@ -137,6 +64,12 @@ func (cm *ConnManager) SendUpdate() int {
 		Type: "update",
 	}
 
+	payload, err := json.Marshal(msg)
+	if err != nil {
+		slog.Error("Failed to marshal update message", "error", err)
+		return 0
+	}
+
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
 
@@ -148,12 +81,13 @@ func (cm *ConnManager) SendUpdate() int {
 	slog.Info("Sending update command to collectors", "count", len(cm.conns))
 
 	sent := 0
-	for _, cw := range cm.conns {
-		if err := cw.WriteJSON(msg); err != nil {
-			slog.Error("Failed to send update to collector", "error", err)
-			continue
+	for _, c := range cm.conns {
+		select {
+		case c.Outgoing() <- payload:
+			sent++
+		default:
+			slog.Warn("Write buffer full, dropping update for collector")
 		}
-		sent++
 	}
 
 	return sent
