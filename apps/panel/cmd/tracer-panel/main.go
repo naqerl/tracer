@@ -235,7 +235,11 @@ func serve(ctx context.Context, cfg *config.Config, noAuth, readOnly bool) error
 
 	// Initialize collector tracker
 	tracker := ingest.NewTracker()
-	panelService := panelsvc.New(dbManager, ingestService, tracker, userService)
+
+	// Connection manager for WebSocket-based collector communication
+	connManager := ingest.NewConnManager()
+
+	panelService := panelsvc.New(dbManager, ingestService, tracker, userService, connManager)
 	topologyService := topologysvc.NewService(panelService)
 
 	// Run services
@@ -280,6 +284,7 @@ func serve(ctx context.Context, cfg *config.Config, noAuth, readOnly bool) error
 		Tracker:      tracker,
 		Topology:     topologyService,
 		PanelService: panelService,
+		ConnManager:  connManager,
 		Config:       cfg,
 	}
 	server := web.NewServer(deps, cfg.GetPort(), noAuth, readOnly)

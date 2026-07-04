@@ -20,5 +20,6 @@ type Dependencies struct {
 	Tracker      *ingest.Tracker
 	Topology     *topologysvc.Service
 	PanelService *panelsvc.Service
+	ConnManager  *ingest.ConnManager
 	Config       *config.Config
 }

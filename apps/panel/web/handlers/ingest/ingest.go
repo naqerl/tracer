@@ -35,9 +35,8 @@ type handler struct {
 	connManager   *ingest.ConnManager
 }
 
-func InitMux(authService *auth.Service, ingestService *ingest.Service, tracker *ingest.Tracker, topology *topologysvc.Service) (*http.ServeMux, *ingest.ConnManager) {
+func InitMux(authService *auth.Service, ingestService *ingest.Service, tracker *ingest.Tracker, topology *topologysvc.Service, connManager *ingest.ConnManager) *http.ServeMux {
 	m := http.NewServeMux()
-	connManager := ingest.NewConnManager()
 	h := &handler{
 		authService:   authService,
 		ingestService: ingestService,
@@ -48,7 +47,7 @@ func InitMux(authService *auth.Service, ingestService *ingest.Service, tracker *
 
 	m.HandleFunc("GET /ws", h.handleWebSocket)
 
-	return m, connManager
+	return m
 }
 
 // Handlers

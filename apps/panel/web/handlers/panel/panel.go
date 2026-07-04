@@ -3,6 +3,7 @@ package panel
 import (
 	"database/sql"
 	_ "embed"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -11,20 +12,17 @@ import (
 	"strconv"
 	"time"
 
-	"tracer/apps/panel/internal/services/ingest"
 	panelsvc "tracer/apps/panel/internal/services/panel"
 	"tracer/apps/panel/web/handlers/panel/view"
 	"tracer/apps/panel/web/middleware/auth"
 	"tracer/apps/panel/web/templates"
-	"tracer/libs/shared/update"
 )
 
 //go:embed views/log-group-plot.js
 var logGroupPlotJS []byte
 
 type handler struct {
-	svc         *panelsvc.Service
-	connManager *ingest.ConnManager
+	svc *panelsvc.Service
 }
 
 // LevelFilter represents a log level filter option
@@ -48,11 +46,10 @@ const (
 	defaultSinceLabel = "24h"
 )
 
-func InitMux(svc *panelsvc.Service, connManager *ingest.ConnManager) *http.ServeMux {
+func InitMux(svc *panelsvc.Service) *http.ServeMux {
 	m := http.NewServeMux()
 	h := handler{
-		svc:         svc,
-		connManager: connManager,
+		svc: svc,
 	}
 
 	// Dashboard
@@ -969,9 +966,8 @@ func parseOffset(offsetParam string) int {
 }
 
 // postUpdate handles the update-all endpoint.
-// It sends update commands to all connected collectors, then triggers a
-// panel self-update (async). The response includes how many collectors
-// received the update signal.
+// It triggers a full update: notifies connected collectors and starts a
+// panel self-update in the background.
 func (h *handler) postUpdate(w http.ResponseWriter, r *http.Request) {
 	userID, err := auth.RequireOrRedirect(w, r)
 	if err != nil {
@@ -984,30 +980,16 @@ func (h *handler) postUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	slog.Info("Update requested by admin", "user_id", userID)
+	result, err := h.svc.UpdateAll(r.Context())
+	if err != nil {
+		slog.Error("Update failed", "error", err)
+		http.Error(w, "Update failed", http.StatusInternalServerError)
+		return
+	}
 
-	// 1. Send update commands to all connected collectors (synchronous).
-	collectorCount := h.connManager.SendUpdate()
-
-	slog.Info("Update signal sent to collectors", "count", collectorCount)
-
-	// 2. Respond immediately, then update panel in background.
-	msg := fmt.Sprintf(`{"collectors_notified":%d,"message":"Update sent to %d collector(s); panel restarting."}`,
-		collectorCount, collectorCount)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusAccepted)
-	if _, err := w.Write([]byte(msg)); err != nil {
+	if err := json.NewEncoder(w).Encode(result); err != nil {
 		slog.Error("Failed to write update response", "error", err)
 	}
-
-	if f, ok := w.(interface{ Flush() }); ok {
-		f.Flush()
-	}
-
-	// 3. Panel self-update in background.
-	go func() {
-		if err := update.SelfUpdate(update.BinaryPanel); err != nil {
-			slog.Error("Panel update failed", "error", err)
-		}
-	}()
 }

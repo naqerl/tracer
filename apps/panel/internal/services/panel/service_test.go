@@ -120,7 +120,7 @@ func setupTestService(t *testing.T) (*Service, *dbmanager.DBHandle, int64, strin
 	}
 
 	// --- Create the panel service ---
-	svc := New(mgr, ingestSvc, tracker, userSvc)
+	svc := New(mgr, ingestSvc, tracker, userSvc, ingestsvc.NewConnManager())
 
 	return svc, panelDB, user.ID, "test-collector", "test-app"
 }
@@ -158,7 +158,7 @@ func setupTestServiceNoAccess(t *testing.T) (*Service, int64) {
 		t.Fatalf("register user: %v", err)
 	}
 
-	svc := New(mgr, ingestSvc, tracker, userSvc)
+	svc := New(mgr, ingestSvc, tracker, userSvc, ingestsvc.NewConnManager())
 	return svc, user.ID
 }
 
