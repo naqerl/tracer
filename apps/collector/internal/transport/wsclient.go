@@ -12,6 +12,7 @@ import (
 
 	"github.com/gorilla/websocket"
 
+	"tracer/libs/shared/update"
 	"tracer/libs/shared/wsconn"
 	"tracer/libs/types"
 )
@@ -28,18 +29,14 @@ type Service struct {
 	appNames []string
 	conn     *wsconn.Conn
 	events   <-chan types.Event
-	commands chan<- types.Event
 }
 
 // New creates a WebSocket client service.
-// events: incoming events from local producers to send to panel.
-// commands: outgoing events triggered by panel messages (e.g. SelfUpdateEvent).
-func New(spec Spec, appNames []string, events <-chan types.Event, commands chan<- types.Event) Service {
+func New(spec Spec, appNames []string, events <-chan types.Event) Service {
 	return Service{
 		spec:     spec,
 		appNames: appNames,
 		events:   events,
-		commands: commands,
 	}
 }
 
@@ -166,12 +163,12 @@ func (s *Service) handlePanelMessage(message []byte) {
 
 	switch hdr.Type {
 	case types.EventTypeUpdate:
-		slog.Info("Received update command from panel")
-		select {
-		case s.commands <- types.SelfUpdateEvent{Time: time.Now()}:
-		default:
-			slog.Warn("Command channel full, dropping update command")
-		}
+		slog.Info("Received update command from panel, triggering self-update")
+		go func() {
+			if err := update.SelfUpdate(update.BinaryCollector); err != nil {
+				slog.Error("Collector update failed", "error", err)
+			}
+		}()
 	default:
 		slog.Debug("Received unknown message type from panel", "type", hdr.Type)
 	}

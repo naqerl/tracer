@@ -169,11 +169,8 @@ func serve(ctx context.Context, cfg config.Config) error {
 	// Resource monitor
 	statsMonitor := stats.New(cfg.Stats)
 
-	// Commands channel: receives events triggered by panel messages (e.g. self-update).
-	commands := make(chan types.Event, 8)
-
 	// Transport
-	svc := transport.New(cfg.Transport, appNames, mpsc, commands)
+	svc := transport.New(cfg.Transport, appNames, mpsc)
 
 	// Run
 	wg.Go(func() {
@@ -181,30 +178,6 @@ func serve(ctx context.Context, cfg config.Config) error {
 		defer slog.Info("transport stopped")
 
 		svc.Start(ctx)
-	})
-	wg.Go(func() {
-		slog.Info("starting command handler")
-		defer slog.Info("command handler stopped")
-
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case cmd, ok := <-commands:
-				if !ok {
-					return
-				}
-				switch cmd.EventType() {
-				case types.EventTypeSelfUpdate:
-					slog.Info("Triggering collector self-update from panel command")
-					if err := update.SelfUpdate(update.BinaryCollector); err != nil {
-						slog.Error("Collector update failed", "error", err)
-					}
-				default:
-					slog.Warn("Unknown command event type", "type", cmd.EventType())
-				}
-			}
-		}
 	})
 	wg.Go(func() {
 		slog.Info("starting stats monitor")
