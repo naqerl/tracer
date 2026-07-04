@@ -7,11 +7,12 @@ import (
 	"testing"
 	"time"
 
+	"git.naqerl.com/goext/rwdb"
 	_ "modernc.org/sqlite"
 )
 
-// newTestDB creates an in-memory SQLite DB and returns a DBHandle.
-func newTestDB(t *testing.T) *DBHandle {
+// newTestDB creates an in-memory SQLite DB and returns a *rwdb.DBHandle.
+func newTestDB(t *testing.T) *rwdb.DBHandle {
 	t.Helper()
 	d, err := sql.Open("sqlite", "file::memory:?cache=shared")
 	if err != nil {
@@ -25,7 +26,7 @@ func newTestDB(t *testing.T) *DBHandle {
 		t.Fatal(err)
 	}
 
-	return NewDBHandle(d, "test")
+	return rwdb.New(d)
 }
 
 // TestReadWrite exercises basic Read and Write operations.

@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"git.naqerl.com/goext/rwdb"
 	_ "modernc.org/sqlite"
 
 	"tracer/apps/panel/db"
@@ -36,7 +37,7 @@ func (c *testIngestConfig) GetDiskDeltaKB() int         { return c.diskDeltaKB }
 func (c *testIngestConfig) GetSampleRate() float64      { return c.sampleRate }
 
 // newTestPanelDB creates an in-memory panel database with migrations applied.
-func newTestPanelDB(t *testing.T) *dbmanager.DBHandle {
+func newTestPanelDB(t *testing.T) *rwdb.DBHandle {
 	t.Helper()
 
 	db, err := sql.Open("sqlite", "file::memory:?cache=shared")
@@ -53,7 +54,7 @@ func newTestPanelDB(t *testing.T) *dbmanager.DBHandle {
 		t.Fatalf("run migrations: %v", err)
 	}
 
-	return dbmanager.NewDBHandle(db, "test-panel")
+	return rwdb.New(db)
 }
 
 // newTestDBManager creates a dbmanager.Manager backed by a temp directory.
@@ -70,7 +71,7 @@ func newTestDBManager(t *testing.T) *dbmanager.Manager {
 
 // setupTestService creates a fully wired panel Service for testing.
 // It creates a test user (admin), registers a collector+app DB, and grants access.
-func setupTestService(t *testing.T) (*Service, *dbmanager.DBHandle, int64, string, string) {
+func setupTestService(t *testing.T) (*Service, *rwdb.DBHandle, int64, string, string) {
 	t.Helper()
 	ctx := context.Background()
 

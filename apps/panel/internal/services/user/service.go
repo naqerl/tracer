@@ -7,8 +7,9 @@ import (
 	"fmt"
 	"time"
 
+	"git.naqerl.com/goext/rwdb"
+
 	"tracer/apps/panel/db"
-	"tracer/apps/panel/internal/dbmanager"
 )
 
 var (
@@ -16,10 +17,10 @@ var (
 )
 
 type Service struct {
-	handle *dbmanager.DBHandle
+	handle *rwdb.DBHandle
 }
 
-func NewService(handle *dbmanager.DBHandle) *Service {
+func NewService(handle *rwdb.DBHandle) *Service {
 	return &Service{
 		handle: handle,
 	}

@@ -7,8 +7,9 @@ import (
 	"log/slog"
 	"sync"
 
+	"git.naqerl.com/goext/rwdb"
+
 	"tracer/apps/panel/db"
-	"tracer/apps/panel/internal/dbmanager"
 	"tracer/apps/panel/internal/services/user"
 )
 
@@ -19,13 +20,13 @@ const maxWorkers = 5
 type Dispatcher struct {
 	ch        chan Notification
 	semaphore chan struct{}
-	handle    *dbmanager.DBHandle
+	handle    *rwdb.DBHandle
 	factories map[string]FromRawJSON
 	userSvc   *user.Service
 }
 
 // NewDispatcher creates a new notification dispatcher.
-func NewDispatcher(handle *dbmanager.DBHandle, factories map[string]FromRawJSON, ch chan Notification, userSvc *user.Service) *Dispatcher {
+func NewDispatcher(handle *rwdb.DBHandle, factories map[string]FromRawJSON, ch chan Notification, userSvc *user.Service) *Dispatcher {
 	return &Dispatcher{
 		ch:        ch,
 		semaphore: make(chan struct{}, maxWorkers),

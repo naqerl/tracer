@@ -10,6 +10,8 @@ import (
 	"math/rand"
 	"time"
 
+	"git.naqerl.com/goext/rwdb"
+
 	"tracer/apps/panel/db"
 	"tracer/apps/panel/internal/dbmanager"
 	"tracer/apps/panel/internal/domain"
@@ -29,10 +31,10 @@ var (
 type DBManager interface {
 	ListCollectors() ([]string, error)
 	ListApps(collector string) ([]string, error)
-	GetCollectorDB(collectorName string) (*dbmanager.DBHandle, error)
-	CreateCollectorDB(collectorName string) (*dbmanager.DBHandle, error)
-	GetAppDB(collectorName, appName string) (*dbmanager.DBHandle, error)
-	CreateAppDB(collectorName, appName string) (*dbmanager.DBHandle, error)
+	GetCollectorDB(collectorName string) (*rwdb.DBHandle, error)
+	CreateCollectorDB(collectorName string) (*rwdb.DBHandle, error)
+	GetAppDB(collectorName, appName string) (*rwdb.DBHandle, error)
+	CreateAppDB(collectorName, appName string) (*rwdb.DBHandle, error)
 }
 
 // Service manages ingest operations using dbmanager for all DB access.

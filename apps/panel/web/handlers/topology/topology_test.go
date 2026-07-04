@@ -11,10 +11,10 @@ import (
 	"testing"
 	"time"
 
+	"git.naqerl.com/goext/rwdb"
 	"github.com/pressly/goose/v3"
 	_ "modernc.org/sqlite"
 
-	"tracer/apps/panel/internal/dbmanager"
 	authsvc "tracer/apps/panel/internal/services/auth"
 	topologysvc "tracer/apps/panel/internal/services/topology"
 	usersvc "tracer/apps/panel/internal/services/user"
@@ -23,7 +23,7 @@ import (
 	"tracer/libs/types"
 )
 
-func newTestDB(t *testing.T) *dbmanager.DBHandle {
+func newTestDB(t *testing.T) *rwdb.DBHandle {
 	t.Helper()
 
 	db, err := sql.Open("sqlite", "file::memory:?cache=shared")
@@ -39,7 +39,7 @@ func newTestDB(t *testing.T) *dbmanager.DBHandle {
 		t.Fatalf("run migrations: %v", err)
 	}
 
-	return dbmanager.NewDBHandle(db, "test-panel")
+	return rwdb.New(db)
 }
 
 func newAuthedHandler(t *testing.T) (http.Handler, *topologysvc.Service, string) {

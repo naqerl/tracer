@@ -8,8 +8,9 @@ import (
 	"log/slog"
 	"time"
 
+	"git.naqerl.com/goext/rwdb"
+
 	"tracer/apps/panel/db"
-	"tracer/apps/panel/internal/dbmanager"
 	"tracer/apps/panel/internal/domain"
 	"tracer/apps/panel/internal/services/user"
 )
@@ -63,13 +64,13 @@ func (r AddNotifierRequest) Validate() error {
 
 // Service manages notifications and handles database operations.
 type Service struct {
-	handle    *dbmanager.DBHandle
+	handle    *rwdb.DBHandle
 	userSvc   *user.Service
 	factories map[string]FromRawJSON
 }
 
 // New creates a new notification service.
-func New(handle *dbmanager.DBHandle, userSvc *user.Service, factories map[string]FromRawJSON) *Service {
+func New(handle *rwdb.DBHandle, userSvc *user.Service, factories map[string]FromRawJSON) *Service {
 	return &Service{
 		handle:    handle,
 		userSvc:   userSvc,

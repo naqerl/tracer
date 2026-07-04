@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"git.naqerl.com/goext/rwdb"
 	_ "modernc.org/sqlite"
 )
 
@@ -34,7 +35,7 @@ func TestConcurrentReadsDuringWrite(t *testing.T) {
 		}
 	}
 
-	h := NewDBHandle(d, "test-concurrent")
+	h := rwdb.New(d)
 
 	var wg sync.WaitGroup
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
@@ -100,7 +101,7 @@ func TestConcurrentWritesAreSerialized(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	h := NewDBHandle(d, "test-counter")
+	h := rwdb.New(d)
 	const goroutines = 20
 	const incrementsPerGoroutine = 50
 

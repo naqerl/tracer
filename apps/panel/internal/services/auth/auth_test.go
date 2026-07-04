@@ -6,15 +6,15 @@ import (
 	"testing"
 	"time"
 
+	"git.naqerl.com/goext/rwdb"
 	"github.com/pressly/goose/v3"
 	_ "modernc.org/sqlite"
 
 	paneldb "tracer/apps/panel/db"
-	"tracer/apps/panel/internal/dbmanager"
 	panelmigrations "tracer/apps/panel/sql/panel"
 )
 
-func newTestDB(t *testing.T) *dbmanager.DBHandle {
+func newTestDB(t *testing.T) *rwdb.DBHandle {
 	t.Helper()
 
 	db, err := sql.Open("sqlite", "file::memory:?cache=shared")
@@ -31,7 +31,7 @@ func newTestDB(t *testing.T) *dbmanager.DBHandle {
 		t.Fatalf("run migrations: %v", err)
 	}
 
-	return dbmanager.NewDBHandle(db, "test-panel")
+	return rwdb.New(db)
 }
 
 func TestGenerateAndValidateCollectorAPIKey(t *testing.T) {

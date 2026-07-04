@@ -12,10 +12,10 @@ import (
 	"strings"
 	"time"
 
+	"git.naqerl.com/goext/rwdb"
 	"golang.org/x/crypto/bcrypt"
 
 	"tracer/apps/panel/db"
-	"tracer/apps/panel/internal/dbmanager"
 	"tracer/apps/panel/internal/domain"
 	userpkg "tracer/apps/panel/internal/services/user"
 )
@@ -36,7 +36,7 @@ var (
 )
 
 type Service struct {
-	handle *dbmanager.DBHandle
+	handle *rwdb.DBHandle
 }
 
 type RegisterRequest struct {
@@ -88,7 +88,7 @@ func (r GenerateUserAPIKeyRequest) Validate() error {
 	return domain.ValidateAPIKeyName(r.Name)
 }
 
-func New(handle *dbmanager.DBHandle) *Service {
+func New(handle *rwdb.DBHandle) *Service {
 	return &Service{handle: handle}
 }
 
