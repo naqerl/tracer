@@ -769,8 +769,8 @@ func (s *Service) DeleteLogGroup(ctx context.Context, req DeleteLogGroupRequest)
 		return err
 	}
 
-	return handle.Write(ctx, func(tx db.DBTX) error {
-		rowsAffected, err := db.New(tx).DeleteLogGroup(ctx, req.GroupID)
+	return handle.Write(ctx, func(wctx context.Context, tx *sql.Tx) error {
+		rowsAffected, err := db.New(tx).DeleteLogGroup(wctx, req.GroupID)
 		if err != nil {
 			return fmt.Errorf("delete log group: %w", err)
 		}
@@ -801,7 +801,7 @@ func (s *Service) queriesForApp(collectorName, appName string) (*db.Queries, err
 		}
 		return nil, err
 	}
-	return db.New(handle.Read()), nil
+	return db.New(handle.Read(context.Background())), nil
 }
 
 func formatCollectorStats(stats ingest.SystemStat) *CollectorStats {

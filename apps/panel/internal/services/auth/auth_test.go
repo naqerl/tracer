@@ -133,7 +133,7 @@ func TestValidateCollectorAPIKeyUpdatesLastUsedAt(t *testing.T) {
 		t.Fatal("expected collector key to validate")
 	}
 
-	updated, err := paneldb.New(db.Read()).GetCollectorAPIKeyByName(ctx, row.Name)
+	updated, err := paneldb.New(db.Read(ctx)).GetCollectorAPIKeyByName(ctx, row.Name)
 	if err != nil {
 		t.Fatalf("get collector api key by name: %v", err)
 	}

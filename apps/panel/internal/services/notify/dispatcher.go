@@ -74,7 +74,7 @@ func (d *Dispatcher) Start(ctx context.Context) {
 
 // getNotifiers queries the database for matching notifiers and creates instances.
 func (d *Dispatcher) getNotifiers(ctx context.Context, collectorName, appName string) ([]Notifier, error) {
-	queries := db.New(d.handle.Read())
+	queries := db.New(d.handle.Read(ctx))
 	rows, err := queries.GetMatchingNotifiers(ctx, db.GetMatchingNotifiersParams{
 		CollectorName: collectorName,
 		AppName:       appName,

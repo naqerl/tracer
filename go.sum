@@ -1,3 +1,7 @@
+git.naqerl.com/goext/rwdb v0.0.0-20260703191457-49a30db3ce7c h1:1DSbvPF4wzXIBkTP/+JIG++oYGap4BaXIRT7QShrnSQ=
+git.naqerl.com/goext/rwdb v0.0.0-20260703191457-49a30db3ce7c/go.mod h1:0vQKv9+CW/yI7LOYKmcLrM3XVEKmsQNrdBIJ2oyF+3k=
+git.naqerl.com/goext/rwdb v0.0.0-20260704093747-f694663fd757 h1:Yi7TTxImUVF4xyGKAQ9mMyOhJejOGZYQBgQrx4hkVys=
+git.naqerl.com/goext/rwdb v0.0.0-20260704093747-f694663fd757/go.mod h1:0vQKv9+CW/yI7LOYKmcLrM3XVEKmsQNrdBIJ2oyF+3k=
 github.com/BurntSushi/toml v1.4.1-0.20240526193622-a339e1f7089c h1:pxW6RcqyfI9/kWtOwnv/G+AzdKuy2ZrqINhenH4HyNs=
 github.com/BurntSushi/toml v1.4.1-0.20240526193622-a339e1f7089c/go.mod h1:ukJfTF/6rtPPRCnwkur4qwRxa8vTRFBF0uk2lLoLwho=
 github.com/a-h/parse v0.0.0-20250122154542-74294addb73e h1:HjVbSQHy+dnlS6C3XajZ69NYAb5jbGNfHanvm1+iYlo=

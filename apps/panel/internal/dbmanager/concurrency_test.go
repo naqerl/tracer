@@ -7,8 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"tracer/apps/panel/db"
-
 	_ "modernc.org/sqlite"
 )
 
@@ -48,7 +46,7 @@ func TestConcurrentReadsDuringWrite(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for ctx.Err() == nil {
-				ro := h.Read()
+				ro := h.Read(ctx)
 				rows, err := ro.QueryContext(ctx, "SELECT COUNT(*) FROM test")
 				if err != nil {
 					// Context cancellation is expected
@@ -66,8 +64,8 @@ func TestConcurrentReadsDuringWrite(t *testing.T) {
 		go func(id int) {
 			defer wg.Done()
 			for ctx.Err() == nil {
-				err := h.Write(ctx, func(tx db.DBTX) error {
-					_, err := tx.ExecContext(ctx, "INSERT INTO test (val) VALUES (?)", id)
+				err := h.Write(ctx, func(wctx context.Context, tx *sql.Tx) error {
+					_, err := tx.ExecContext(wctx, "INSERT INTO test (val) VALUES (?)", id)
 					return err
 				})
 				if err != nil {
@@ -114,15 +112,15 @@ func TestConcurrentWritesAreSerialized(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for j := 0; j < incrementsPerGoroutine; j++ {
-				err := h.Write(ctx, func(tx db.DBTX) error {
+				err := h.Write(ctx, func(wctx context.Context, tx *sql.Tx) error {
 					// Read current value
 					var current int
-					err := tx.QueryRowContext(ctx, "SELECT val FROM counter WHERE id = 1").Scan(&current)
+					err := tx.QueryRowContext(wctx, "SELECT val FROM counter WHERE id = 1").Scan(&current)
 					if err != nil {
 						return err
 					}
 					// Update it
-					_, err = tx.ExecContext(ctx, "UPDATE counter SET val = ? WHERE id = 1", current+1)
+					_, err = tx.ExecContext(wctx, "UPDATE counter SET val = ? WHERE id = 1", current+1)
 					return err
 				})
 				if err != nil {
@@ -136,7 +134,8 @@ func TestConcurrentWritesAreSerialized(t *testing.T) {
 	wg.Wait()
 
 	var final int
-	err = h.pool.QueryRowContext(context.Background(), "SELECT val FROM counter WHERE id = 1").Scan(&final)
+	ro := h.Read(context.Background())
+	err = ro.QueryRowContext(context.Background(), "SELECT val FROM counter WHERE id = 1").Scan(&final)
 	if err != nil {
 		t.Fatal(err)
 	}

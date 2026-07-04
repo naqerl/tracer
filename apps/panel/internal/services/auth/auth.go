@@ -140,8 +140,8 @@ func (s *Service) Register(ctx context.Context, req RegisterRequest) (*db.User, 
 	}
 
 	var user *db.User
-	err = s.handle.Write(ctx, func(tx db.DBTX) error {
-		result, err := db.New(tx).CreateUser(ctx, db.CreateUserParams{
+	err = s.handle.Write(ctx, func(wctx context.Context, tx *sql.Tx) error {
+		result, err := db.New(tx).CreateUser(wctx, db.CreateUserParams{
 			Username:     req.Username,
 			PasswordHash: hash,
 			IsAdmin:      adminInt,
@@ -162,7 +162,7 @@ func (s *Service) Register(ctx context.Context, req RegisterRequest) (*db.User, 
 }
 
 func (s *Service) HasAnyUsers(ctx context.Context) (bool, error) {
-	queries := db.New(s.handle.Read())
+	queries := db.New(s.handle.Read(ctx))
 	count, err := queries.CountUsers(ctx)
 	if err != nil {
 		return false, fmt.Errorf("check users existence: %w", err)
@@ -180,8 +180,8 @@ func (s *Service) CreateSession(ctx context.Context, userID int64) (string, erro
 	}
 
 	expiresAt := time.Now().Add(SessionDuration).Unix()
-	err = s.handle.Write(ctx, func(tx db.DBTX) error {
-		return db.New(tx).CreateSession(ctx, db.CreateSessionParams{
+	err = s.handle.Write(ctx, func(wctx context.Context, tx *sql.Tx) error {
+		return db.New(tx).CreateSession(wctx, db.CreateSessionParams{
 			ID:        token,
 			UserID:    userID,
 			ExpiresAt: expiresAt,
@@ -196,7 +196,7 @@ func (s *Service) CreateSession(ctx context.Context, userID int64) (string, erro
 }
 
 func (s *Service) ValidateSession(ctx context.Context, token string) (int64, error) {
-	session, err := db.New(s.handle.Read()).GetSession(ctx, token)
+	session, err := db.New(s.handle.Read(ctx)).GetSession(ctx, token)
 	if errors.Is(err, sql.ErrNoRows) {
 		return 0, ErrSessionExpired
 	}
@@ -205,8 +205,8 @@ func (s *Service) ValidateSession(ctx context.Context, token string) (int64, err
 	}
 
 	if time.Now().Unix() > session.ExpiresAt {
-		err = s.handle.Write(ctx, func(tx db.DBTX) error {
-			return db.New(tx).DeleteSession(ctx, token)
+		err = s.handle.Write(ctx, func(wctx context.Context, tx *sql.Tx) error {
+			return db.New(tx).DeleteSession(wctx, token)
 		})
 		if err != nil {
 			return 0, fmt.Errorf("could not delete session: %w", err)
@@ -218,21 +218,21 @@ func (s *Service) ValidateSession(ctx context.Context, token string) (int64, err
 }
 
 func (s *Service) DeleteSession(ctx context.Context, token string) error {
-	return s.handle.Write(ctx, func(tx db.DBTX) error {
-		return db.New(tx).DeleteSession(ctx, token)
+	return s.handle.Write(ctx, func(wctx context.Context, tx *sql.Tx) error {
+		return db.New(tx).DeleteSession(wctx, token)
 	})
 }
 
 func (s *Service) CleanupExpiredSessions(ctx context.Context) error {
-	return s.handle.Write(ctx, func(tx db.DBTX) error {
-		return db.New(tx).DeleteExpiredSessions(ctx, time.Now().Unix())
+	return s.handle.Write(ctx, func(wctx context.Context, tx *sql.Tx) error {
+		return db.New(tx).DeleteExpiredSessions(wctx, time.Now().Unix())
 	})
 }
 
 // Login
 
 func (s *Service) Login(ctx context.Context, username, password string) (string, error) {
-	queries := db.New(s.handle.Read())
+	queries := db.New(s.handle.Read(ctx))
 	user, err := queries.FindUserCredsByUsername(ctx, username)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -276,8 +276,8 @@ func (s *Service) GenerateCollectorAPIKey(ctx context.Context, req GenerateColle
 	}
 
 	var row db.CollectorApiKey
-	err = s.handle.Write(ctx, func(tx db.DBTX) error {
-		result, err := db.New(tx).CreateCollectorAPIKey(ctx, db.CreateCollectorAPIKeyParams{
+	err = s.handle.Write(ctx, func(wctx context.Context, tx *sql.Tx) error {
+		result, err := db.New(tx).CreateCollectorAPIKey(wctx, db.CreateCollectorAPIKeyParams{
 			Name:      req.Name,
 			KeyHash:   hashAPIKey(key),
 			KeySuffix: key[max(0, len(key)-6):],
@@ -298,16 +298,16 @@ func (s *Service) GenerateCollectorAPIKey(ctx context.Context, req GenerateColle
 }
 
 func (s *Service) ListCollectorAPIKeys(ctx context.Context) ([]db.GetCollectorAPIKeysRow, error) {
-	return db.New(s.handle.Read()).GetCollectorAPIKeys(ctx)
+	return db.New(s.handle.Read(ctx)).GetCollectorAPIKeys(ctx)
 }
 
 func (s *Service) GetCollectorAPIKeyByName(ctx context.Context, name string) (db.CollectorApiKey, error) {
-	return db.New(s.handle.Read()).GetCollectorAPIKeyByName(ctx, name)
+	return db.New(s.handle.Read(ctx)).GetCollectorAPIKeyByName(ctx, name)
 }
 
 func (s *Service) DeleteCollectorAPIKey(ctx context.Context, name string) error {
-	return s.handle.Write(ctx, func(tx db.DBTX) error {
-		return db.New(tx).DeleteCollectorAPIKey(ctx, name)
+	return s.handle.Write(ctx, func(wctx context.Context, tx *sql.Tx) error {
+		return db.New(tx).DeleteCollectorAPIKey(wctx, name)
 	})
 }
 
@@ -317,8 +317,8 @@ func (s *Service) ValidateCollectorAPIKey(ctx context.Context, key string) (bool
 	}
 
 	var rows int64
-	err := s.handle.Write(ctx, func(tx db.DBTX) error {
-		result, err := db.New(tx).ValidateAndUpdateCollectorAPIKey(ctx, db.ValidateAndUpdateCollectorAPIKeyParams{
+	err := s.handle.Write(ctx, func(wctx context.Context, tx *sql.Tx) error {
+		result, err := db.New(tx).ValidateAndUpdateCollectorAPIKey(wctx, db.ValidateAndUpdateCollectorAPIKeyParams{
 			LastUsedAt: sql.NullInt64{Int64: time.Now().UTC().Unix(), Valid: true},
 			KeyHash:    hashAPIKey(key),
 		})
@@ -357,8 +357,8 @@ func (s *Service) GenerateUserAPIKey(ctx context.Context, req GenerateUserAPIKey
 	}
 
 	var userKey db.UserApiKey
-	err = s.handle.Write(ctx, func(tx db.DBTX) error {
-		result, err := db.New(tx).CreateUserAPIKey(ctx, db.CreateUserAPIKeyParams{
+	err = s.handle.Write(ctx, func(wctx context.Context, tx *sql.Tx) error {
+		result, err := db.New(tx).CreateUserAPIKey(wctx, db.CreateUserAPIKeyParams{
 			UserID:    req.UserID,
 			KeyHash:   hashAPIKey(key),
 			KeySuffix: key[max(0, len(key)-6):],
@@ -381,8 +381,8 @@ func (s *Service) GenerateUserAPIKey(ctx context.Context, req GenerateUserAPIKey
 
 func (s *Service) ValidateUserAPIKey(ctx context.Context, key string, userService *userpkg.Service) (int64, error) {
 	var userID int64
-	err := s.handle.Write(ctx, func(tx db.DBTX) error {
-		result, err := db.New(tx).ValidateAndUpdateUserAPIKey(ctx, db.ValidateAndUpdateUserAPIKeyParams{
+	err := s.handle.Write(ctx, func(wctx context.Context, tx *sql.Tx) error {
+		result, err := db.New(tx).ValidateAndUpdateUserAPIKey(wctx, db.ValidateAndUpdateUserAPIKeyParams{
 			LastUsedAt: sql.NullInt64{Int64: time.Now().UTC().Unix(), Valid: true},
 			KeyHash:    hashAPIKey(key),
 		})
@@ -401,11 +401,11 @@ func (s *Service) ValidateUserAPIKey(ctx context.Context, key string, userServic
 }
 
 func (s *Service) ListUserAPIKeys(ctx context.Context, userID int64) ([]db.GetUserAPIKeysByUserRow, error) {
-	return db.New(s.handle.Read()).GetUserAPIKeysByUser(ctx, userID)
+	return db.New(s.handle.Read(ctx)).GetUserAPIKeysByUser(ctx, userID)
 }
 
 func (s *Service) DeleteUserAPIKey(ctx context.Context, id int64) error {
-	return s.handle.Write(ctx, func(tx db.DBTX) error {
-		return db.New(tx).DeleteUserAPIKey(ctx, id)
+	return s.handle.Write(ctx, func(wctx context.Context, tx *sql.Tx) error {
+		return db.New(tx).DeleteUserAPIKey(wctx, id)
 	})
 }

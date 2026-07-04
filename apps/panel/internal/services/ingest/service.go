@@ -112,7 +112,7 @@ func (s *Service) SaveSystemStats(ctx context.Context, req SaveSystemStatsReques
 	}
 	nowUnix := req.Stats.Timestamp.Unix()
 
-	return handle.Write(ctx, func(tx db.DBTX) error {
+	return handle.Write(ctx, func(wctx context.Context, tx *sql.Tx) error {
 		q := db.New(tx)
 
 		// --- CPU ---
@@ -266,7 +266,7 @@ func (s *Service) GetLatestStats(ctx context.Context, collector string) (SystemS
 	if err != nil {
 		return SystemStat{}, err
 	}
-	queries := db.New(handle.Read())
+	queries := db.New(handle.Read(ctx))
 
 	var stat SystemStat
 	var maxTs int64
@@ -324,7 +324,7 @@ func (s *Service) GetStatsHistory(ctx context.Context, collector string, since t
 	if err != nil {
 		return StatsHistoryResult{}, err
 	}
-	queries := db.New(handle.Read())
+	queries := db.New(handle.Read(ctx))
 
 	sinceUnix := sql.NullInt64{Int64: since.UTC().Unix(), Valid: true}
 
@@ -368,15 +368,15 @@ func (s *Service) DeleteOldStats(ctx context.Context, before time.Time) error {
 			}
 			return err
 		}
-		if err := handle.Write(ctx, func(tx db.DBTX) error {
+		if err := handle.Write(ctx, func(wctx context.Context, tx *sql.Tx) error {
 			q := db.New(tx)
-			if err := q.DeleteOldCPUPeriods(ctx, beforeUnix); err != nil {
+			if err := q.DeleteOldCPUPeriods(wctx, beforeUnix); err != nil {
 				return err
 			}
-			if err := q.DeleteOldMemPeriods(ctx, beforeUnix); err != nil {
+			if err := q.DeleteOldMemPeriods(wctx, beforeUnix); err != nil {
 				return err
 			}
-			return q.DeleteOldDiskPeriods(ctx, beforeUnix)
+			return q.DeleteOldDiskPeriods(wctx, beforeUnix)
 		}); err != nil {
 			return err
 		}
@@ -514,11 +514,11 @@ func (s *Service) StoreLog(ctx context.Context, req StoreLogRequest) (int64, err
 
 	var logID int64
 	var logGroupID int64
-	err = handle.Write(ctx, func(tx db.DBTX) error {
+	err = handle.Write(ctx, func(wctx context.Context, tx *sql.Tx) error {
 		q := db.New(tx)
 
 		// Get or create log group for this message and level
-		logGroup, err := q.GetOrCreateLogGroup(ctx, db.GetOrCreateLogGroupParams{
+		logGroup, err := q.GetOrCreateLogGroup(wctx, db.GetOrCreateLogGroupParams{
 			Message: req.Entry.Message,
 			Level:   string(req.Entry.Level),
 		})
@@ -529,7 +529,7 @@ func (s *Service) StoreLog(ctx context.Context, req StoreLogRequest) (int64, err
 
 		// Store log entry as Unix timestamp
 		ts := req.Entry.Timestamp.Unix()
-		log, err := q.InsertLog(ctx, db.InsertLogParams{
+		log, err := q.InsertLog(wctx, db.InsertLogParams{
 			TraceID:   sql.NullString{String: req.Entry.TraceID, Valid: true},
 			Level:     string(req.Entry.Level),
 			Message:   req.Entry.Message,
@@ -543,7 +543,7 @@ func (s *Service) StoreLog(ctx context.Context, req StoreLogRequest) (int64, err
 		logID = log.ID
 
 		// Increment the log group counter
-		return q.IncrementLogGroupCounter(ctx, db.IncrementLogGroupCounterParams{
+		return q.IncrementLogGroupCounter(wctx, db.IncrementLogGroupCounterParams{
 			ID:        logGroup.ID,
 			LastLogAt: ts,
 		})
@@ -591,8 +591,8 @@ func (s *Service) StoreLifecycle(ctx context.Context, req StoreLifecycleRequest)
 		return err
 	}
 
-	if err := handle.Write(ctx, func(tx db.DBTX) error {
-		_, err := db.New(tx).InsertLifecycleEvent(ctx, db.InsertLifecycleEventParams{
+	if err := handle.Write(ctx, func(wctx context.Context, tx *sql.Tx) error {
+		_, err := db.New(tx).InsertLifecycleEvent(wctx, db.InsertLifecycleEventParams{
 			Kind:      string(req.Kind),
 			RawLine:   req.RawLine,
 			CreatedAt: req.Timestamp.Unix(),
@@ -649,16 +649,16 @@ func (s *Service) SaveHealthPeriod(ctx context.Context, req StoreHealthRequest) 
 		return err
 	}
 
-	return handle.Write(ctx, func(tx db.DBTX) error {
+	return handle.Write(ctx, func(wctx context.Context, tx *sql.Tx) error {
 		q := db.New(tx)
 
-		current, err := q.GetOpenHealthPeriod(ctx)
+		current, err := q.GetOpenHealthPeriod(wctx)
 		switch {
 		case err == nil:
 			if current.Status == string(req.Status) {
 				return nil
 			}
-			if err := q.CloseHealthPeriod(ctx, db.CloseHealthPeriodParams{
+			if err := q.CloseHealthPeriod(wctx, db.CloseHealthPeriodParams{
 				EndedAt: sql.NullInt64{Int64: req.Time.Unix(), Valid: true},
 				ID:      current.ID,
 			}); err != nil {
@@ -669,7 +669,7 @@ func (s *Service) SaveHealthPeriod(ctx context.Context, req StoreHealthRequest) 
 			return err
 		}
 
-		return q.SaveHealthPeriod(ctx, db.SaveHealthPeriodParams{
+		return q.SaveHealthPeriod(wctx, db.SaveHealthPeriodParams{
 			Status:    string(req.Status),
 			StartedAt: req.Time.Unix(),
 			EndedAt:   sql.NullInt64{},

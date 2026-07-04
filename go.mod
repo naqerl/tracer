@@ -3,6 +3,7 @@ module tracer
 go 1.25.5
 
 require (
+	git.naqerl.com/goext/rwdb v0.0.0-20260704093747-f694663fd757
 	github.com/a-h/templ v0.3.1020
 	github.com/ai-shift/tgmd v0.1.8
 	github.com/go-telegram-bot-api/telegram-bot-api/v5 v5.5.1

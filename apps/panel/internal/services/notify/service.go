@@ -101,8 +101,8 @@ func (s *Service) Add(ctx context.Context, req AddNotifierRequest) error {
 	slog.Info("Sent welcome notification", "notifier", req.Name)
 
 	// 3. Save to database only after welcome notification succeeded
-	err = s.handle.Write(ctx, func(tx db.DBTX) error {
-		_, err := db.New(tx).CreateNotifier(ctx, db.CreateNotifierParams{
+	err = s.handle.Write(ctx, func(wctx context.Context, tx *sql.Tx) error {
+		_, err := db.New(tx).CreateNotifier(wctx, db.CreateNotifierParams{
 			UserID:    req.UserID,
 			Name:      req.Name,
 			Type:      req.Type,
@@ -126,7 +126,7 @@ func (s *Service) Add(ctx context.Context, req AddNotifierRequest) error {
 // Returns ErrAccessDenied if the user doesn't have access to the notifier.
 func (s *Service) SetSubscriptions(ctx context.Context, user user.User, notifierID int64, subscriptions []Subscription) error {
 	// 1. Verify notifier exists and user has access
-	notifier, err := db.New(s.handle.Read()).GetNotifier(ctx, notifierID)
+	notifier, err := db.New(s.handle.Read(ctx)).GetNotifier(ctx, notifierID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return ErrNotifierNotFound
@@ -152,7 +152,7 @@ func (s *Service) SetSubscriptions(ctx context.Context, user user.User, notifier
 // Returns ErrAccessDenied if the user doesn't have access to the notifier.
 func (s *Service) GetSetup(ctx context.Context, user user.User, notifierID int64) (Setup, error) {
 	var setup Setup
-	notifier, err := db.New(s.handle.Read()).GetNotifier(ctx, notifierID)
+	notifier, err := db.New(s.handle.Read(ctx)).GetNotifier(ctx, notifierID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return setup, ErrNotifierNotFound
@@ -178,7 +178,7 @@ func (s *Service) GetSetup(ctx context.Context, user user.User, notifierID int64
 // Returns ErrNotifierNotFound if the notifier doesn't exist.
 // Returns ErrAccessDenied if the user doesn't have access to the notifier.
 func (s *Service) GetSubscriptions(ctx context.Context, user user.User, notifierID int64) ([]Subscription, error) {
-	queries := db.New(s.handle.Read())
+	queries := db.New(s.handle.Read(ctx))
 	notifier, err := queries.GetNotifier(ctx, notifierID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -212,7 +212,7 @@ func (s *Service) GetSubscriptions(ctx context.Context, user user.User, notifier
 // Returns ErrAccessDenied if the user doesn't have access to the notifier.
 func (s *Service) Delete(ctx context.Context, user user.User, notifierID int64) error {
 	// Verify notifier exists and user has access
-	notifier, err := db.New(s.handle.Read()).GetNotifier(ctx, notifierID)
+	notifier, err := db.New(s.handle.Read(ctx)).GetNotifier(ctx, notifierID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return ErrNotifierNotFound
@@ -224,8 +224,8 @@ func (s *Service) Delete(ctx context.Context, user user.User, notifierID int64) 
 		return ErrAccessDenied
 	}
 
-	return s.handle.Write(ctx, func(tx db.DBTX) error {
-		return db.New(tx).DeleteNotifier(ctx, notifierID)
+	return s.handle.Write(ctx, func(wctx context.Context, tx *sql.Tx) error {
+		return db.New(tx).DeleteNotifier(wctx, notifierID)
 	})
 }
 
@@ -234,7 +234,7 @@ func (s *Service) Delete(ctx context.Context, user user.User, notifierID int64) 
 // Returns ErrAccessDenied if the user doesn't have access to the notifier.
 func (s *Service) Toggle(ctx context.Context, user user.User, notifierID int64, enable bool) error {
 	// Verify notifier exists and user has access
-	notifier, err := db.New(s.handle.Read()).GetNotifier(ctx, notifierID)
+	notifier, err := db.New(s.handle.Read(ctx)).GetNotifier(ctx, notifierID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return ErrNotifierNotFound
@@ -246,18 +246,18 @@ func (s *Service) Toggle(ctx context.Context, user user.User, notifierID int64, 
 		return ErrAccessDenied
 	}
 
-	return s.handle.Write(ctx, func(tx db.DBTX) error {
+	return s.handle.Write(ctx, func(wctx context.Context, tx *sql.Tx) error {
 		if enable {
-			return db.New(tx).EnableNotifier(ctx, notifierID)
+			return db.New(tx).EnableNotifier(wctx, notifierID)
 		}
-		return db.New(tx).DisableNotifier(ctx, notifierID)
+		return db.New(tx).DisableNotifier(wctx, notifierID)
 	})
 }
 
 // List returns notifiers for the given user.
 // Admins see all notifiers, non-admins see only their own.
 func (s *Service) List(ctx context.Context, user user.User) ([]db.Notifier, error) {
-	queries := db.New(s.handle.Read())
+	queries := db.New(s.handle.Read(ctx))
 	if user.IsAdmin {
 		return queries.ListAllNotifiers(ctx)
 	}
@@ -268,10 +268,10 @@ func (s *Service) List(ctx context.Context, user user.User) ([]db.Notifier, erro
 
 // setSubscriptions sets all subscriptions for a notifier (replaces existing).
 func (s *Service) setSubscriptions(ctx context.Context, notifierID int64, subscriptions []Subscription) error {
-	return s.handle.Write(ctx, func(tx db.DBTX) error {
+	return s.handle.Write(ctx, func(wctx context.Context, tx *sql.Tx) error {
 		queries := db.New(tx)
 
-		if err := queries.RemoveAllNotifierSubscriptions(ctx, notifierID); err != nil {
+		if err := queries.RemoveAllNotifierSubscriptions(wctx, notifierID); err != nil {
 			return fmt.Errorf("delete old apps: %w", err)
 		}
 
@@ -283,7 +283,7 @@ func (s *Service) setSubscriptions(ctx context.Context, notifierID int64, subscr
 				return fmt.Errorf("collector_name cannot be empty (use '*' for wildcard)")
 			}
 
-			if err := queries.AddNotifierSubscription(ctx, db.AddNotifierSubscriptionParams{
+			if err := queries.AddNotifierSubscription(wctx, db.AddNotifierSubscriptionParams{
 				NotifierID:    notifierID,
 				AppName:       sub.AppName,
 				CollectorName: sub.CollectorName,

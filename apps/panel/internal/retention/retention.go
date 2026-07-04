@@ -80,13 +80,13 @@ func (s *Service) runCleanup(ctx context.Context) {
 				continue
 			}
 
-			if err := handle.Write(ctx, func(tx db.DBTX) error {
+			if err := handle.Write(ctx, func(wctx context.Context, tx *sql.Tx) error {
 				q := db.New(tx)
-				if err := q.DeleteOldLogs(ctx, cutoff.Unix()); err != nil {
+				if err := q.DeleteOldLogs(wctx, cutoff.Unix()); err != nil {
 					return err
 				}
 				// Recalculate counters after deletion to keep them accurate
-				if err := q.RecalculateLogGroupCounters(ctx); err != nil {
+				if err := q.RecalculateLogGroupCounters(wctx); err != nil {
 					return err
 				}
 				return q.DeleteOldHealthPeriods(ctx, sql.NullInt64{Int64: cutoff.Unix(), Valid: true})
