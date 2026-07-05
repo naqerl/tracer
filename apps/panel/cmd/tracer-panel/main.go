@@ -25,16 +25,16 @@ import (
 	"tracer/apps/panel/internal/services/notify"
 	"tracer/apps/panel/internal/services/notify/ntfy"
 	"tracer/apps/panel/internal/services/notify/telegram"
-	panelsvc "tracer/apps/panel/internal/services/panel"
-	topologysvc "tracer/apps/panel/internal/services/topology"
-	updatesvc "tracer/apps/panel/internal/services/update"
+	"tracer/apps/panel/internal/services/panel"
+	"tracer/apps/panel/internal/services/topology"
+	"tracer/apps/panel/internal/services/update"
 	"tracer/apps/panel/internal/services/user"
 	"tracer/apps/panel/web"
 	"tracer/build"
 	"tracer/libs/logx"
-	sysinstall "tracer/libs/shared/install"
-	"tracer/libs/shared/runtime"
-	"tracer/libs/shared/update"
+	"tracer/libs/shared/installx"
+	"tracer/libs/shared/runtimex"
+	"tracer/libs/shared/updatex"
 )
 
 func main() {
@@ -245,7 +245,7 @@ func serve(ctx context.Context, cfg *config.Config, noAuth, readOnly bool) error
 	connManager := ingest.NewConnManager()
 
 	panelService := panelsvc.New(dbManager, ingestService, tracker, userService)
-	updateService := updatesvc.New(connManager, progressTracker)
+	updateService := update.New(connManager, progressTracker)
 	topologyService := topologysvc.NewService(panelService)
 
 	// Run services
@@ -287,9 +287,11 @@ func serve(ctx context.Context, cfg *config.Config, noAuth, readOnly bool) error
 		Notify:          notifyService,
 		Auth:            authService,
 		User:            userService,
+		// TODO: What's the diff between tracker and progress tracker?
 		Tracker:         tracker,
 		ProgressTracker: progressTracker,
 		Topology:        topologyService,
+		// TODO: Remove Service or Svc postfixes, keep naming consistent
 		PanelService:    panelService,
 		UpdateSvc:       updateService,
 		ConnManager:     connManager,
