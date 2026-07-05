@@ -6,6 +6,24 @@ import (
 	"tracer/libs/types"
 )
 
+// Stage names emitted in progress events.
+const (
+	StageDownload = "download"
+	StageBuild    = "build"
+	StageVerify   = "verify"
+	StageInstall  = "install"
+	StageRestart  = "restart"
+	StageComplete = "complete"
+)
+
+// Status constants exported for convenience. These alias the types package
+// values so that update package users don't need to import types separately.
+const (
+	StatusInProgress = types.ProgressInProgress
+	StatusDone       = types.ProgressDone
+	StatusFailed     = types.ProgressFailed
+)
+
 // ProgressEvent carries the status of a single update stage.
 type ProgressEvent struct {
 	Stage   string               `json:"stage"`

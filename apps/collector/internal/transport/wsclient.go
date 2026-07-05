@@ -13,6 +13,7 @@ import (
 
 	"github.com/gorilla/websocket"
 
+	"tracer/libs/shared/update"
 	"tracer/libs/shared/wsconn"
 	"tracer/libs/types"
 )
@@ -29,17 +30,17 @@ type Service struct {
 	peer     *wsconn.Peer
 	peerMu   sync.Mutex
 	events   <-chan types.Event
-	handler  types.EventHandler
+	updateFn func() *update.Report
 }
 
 // New creates a WebSocket client service.
-// handler is called for every event received from the panel.
-func New(spec Spec, appNames []string, events <-chan types.Event, handler types.EventHandler) *Service {
+// updateFn is called when an update command is received from the panel.
+func New(spec Spec, appNames []string, events <-chan types.Event, updateFn func() *update.Report) *Service {
 	return &Service{
 		spec:     spec,
 		appNames: appNames,
 		events:   events,
-		handler:  handler,
+		updateFn: updateFn,
 	}
 }
 
@@ -100,7 +101,7 @@ func (s *Service) connect() error {
 	}
 
 	ws := wsconn.New(conn)
-	s.peer = wsconn.NewPeer(ws, s.handler)
+	s.peer = wsconn.NewPeer(ws, s.handleEvent)
 	return nil
 }
 
@@ -173,6 +174,27 @@ func (s *Service) sendEvent(evt types.Event) error {
 		Data:      payload,
 	}
 	return s.peer.Send(msg)
+}
+
+// handleEvent processes an event received from the panel.
+// For UpdateRequestedEvent it starts a self-update and forwards progress
+// events back through the WebSocket.
+func (s *Service) handleEvent(evt types.Event) {
+	switch msg := evt.(type) {
+	case types.UpdateRequestedEvent:
+		slog.Info("Received update command from panel", "version", msg.Version)
+		go func() {
+			report := s.updateFn()
+			for pe := range report.Events {
+				s.SendProgress(pe.Stage, pe.Status, pe.Message)
+			}
+			if err := report.Wait(); err != nil {
+				slog.Error("Collector update failed", "error", err)
+			}
+		}()
+	default:
+		slog.Debug("Received unknown message type from panel", "type", evt.EventType())
+	}
 }
 
 // SendProgress sends an update progress event to the panel.

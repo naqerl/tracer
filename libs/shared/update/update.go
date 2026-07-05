@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	goRuntime "runtime"
 	"strings"
 	"time"
 
@@ -161,4 +162,15 @@ func copyFile(src, dst string) error {
 		return err
 	}
 	return os.Chmod(dst, fi.Mode())
+}
+
+// DetectArchitecture returns the system architecture.
+func DetectArchitecture() string {
+	arch := goRuntime.GOARCH
+	switch arch {
+	case "amd64", "arm64":
+		return arch
+	default:
+		return arch
+	}
 }

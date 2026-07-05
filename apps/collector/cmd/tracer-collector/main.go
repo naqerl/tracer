@@ -21,7 +21,6 @@ import (
 	"tracer/apps/collector/internal/app"
 	"tracer/apps/collector/internal/config"
 	"tracer/apps/collector/internal/formatguesser"
-	"tracer/apps/collector/internal/handler"
 	"tracer/apps/collector/internal/health"
 	"tracer/apps/collector/internal/install"
 	"tracer/apps/collector/internal/lifecycle"
@@ -172,16 +171,9 @@ func serve(ctx context.Context, cfg config.Config) error {
 	statsMonitor := stats.New(cfg.Stats)
 
 	// Transport
-	// Create the event processor with a no-op sender — it will be wired to the
-	// transport after the service is created (avoids circular dependency).
-	processor := handler.NewEventProcessor(func() *update.Report {
+	svc := transport.New(cfg.Transport, appNames, mpsc, func() *update.Report {
 		return update.NewUpdater(runtime.SlugCollector).Run()
 	})
-
-	svc := transport.New(cfg.Transport, appNames, mpsc, processor.HandleEvent)
-
-	// Wire progress events to the WebSocket sender now that the service exists.
-	processor.SetProgressSender(svc.SendProgress)
 
 	// Run
 	wg.Go(func() {
