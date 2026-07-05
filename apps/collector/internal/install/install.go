@@ -11,7 +11,7 @@ import (
 
 	"tracer/apps/collector/internal/config"
 	"tracer/build"
-	tracerinstall "tracer/libs/shared/install"
+	tracerinstall "tracer/libs/shared/installx"
 )
 
 const (

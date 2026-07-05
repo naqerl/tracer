@@ -30,9 +30,9 @@ import (
 	"tracer/apps/collector/internal/transport"
 	"tracer/build"
 	"tracer/libs/logx"
-	sysinstall "tracer/libs/shared/install"
-	"tracer/libs/shared/runtime"
-	"tracer/libs/shared/update"
+	sysinstall "tracer/libs/shared/installx"
+	"tracer/libs/shared/runtimex"
+	"tracer/libs/shared/updatex"
 	"tracer/libs/types"
 )
 
@@ -171,8 +171,8 @@ func serve(ctx context.Context, cfg config.Config) error {
 	statsMonitor := stats.New(cfg.Stats)
 
 	// Transport
-	svc := transport.New(cfg.Transport, appNames, mpsc, func() *update.Report {
-		return update.NewUpdater(runtime.SlugCollector).Run()
+	svc := transport.New(cfg.Transport, appNames, mpsc, func() *updatex.Report {
+		return updatex.NewUpdater(runtimex.SlugCollector).Run()
 	})
 
 	// Run
@@ -456,7 +456,7 @@ func handleSet(path string, cfg config.Config, setCmd *flag.FlagSet) {
 }
 
 func handleUpdate() {
-	report := update.SelfUpdate(runtime.SlugCollector)
+	report := updatex.SelfUpdate(runtimex.SlugCollector)
 	if err := report.Wait(); err != nil {
 		log.Fatalf("Update failed: %v", err)
 	}

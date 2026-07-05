@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"tracer/apps/panel/internal/services/ingest"
-	"tracer/libs/shared/runtime"
-	"tracer/libs/shared/update"
+	"tracer/libs/shared/runtimex"
+	"tracer/libs/shared/updatex"
 	"tracer/libs/types"
 )
 
@@ -63,7 +63,7 @@ func (s *Service) UpdateAll() (*UpdateResult, error) {
 		defer s.progTracker.FinishUpdate()
 		time.Sleep(100 * time.Millisecond) // brief delay so SSE client can connect
 
-		report := update.NewUpdater(runtime.SlugPanel).Run()
+		report := updatex.NewUpdater(runtimex.SlugPanel).Run()
 
 		// Forward every progress event to the tracker
 		go func() {

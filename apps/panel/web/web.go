@@ -20,7 +20,7 @@ import (
 func NewServer(deps Dependencies, port string, noAuth bool, readOnly bool) *http.Server {
 	mux := http.NewServeMux()
 	authMux := auth.InitMux(deps.Auth, deps.User)
-	ingestMux := ingest.InitMux(deps.Auth, deps.Ingest, deps.Tracker, deps.Topology, deps.ConnManager, deps.ProgressTracker)
+	ingestMux := ingest.InitMux(deps.Auth, deps.Ingest, deps.Tracker, deps.Topology, deps.ConnManager, deps.UpdateTracker)
 
 	// Health check endpoint for k8s/load balancer probes (no auth required)
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
@@ -37,11 +37,11 @@ func NewServer(deps Dependencies, port string, noAuth bool, readOnly bool) *http
 	})
 	mux.Handle("/static/", http.StripPrefix("/static", static.Handler()))
 	mux.Handle("/ingest/", http.StripPrefix("/ingest", ingestMux))
-	mux.Handle("/panel/", http.StripPrefix("/panel", panel.InitMux(deps.PanelService, deps.UpdateSvc, deps.ProgressTracker)))
+	mux.Handle("/panel/", http.StripPrefix("/panel", panel.InitMux(deps.Panel, deps.Update, deps.UpdateTracker)))
 	mux.Handle("/topology/", http.StripPrefix("/topology", topology.InitMux(deps.Topology, deps.User)))
 	mux.Handle("/auth/", http.StripPrefix("/auth", authMux))
 	mux.Handle("/llm", llm.InitMux())
-	mux.Handle("/settings/", http.StripPrefix("/settings", settings.InitMux(deps.Auth, deps.User, deps.Ingest, deps.DBManagerx, deps.Notify, deps.Config)))
+	mux.Handle("/settings/", http.StripPrefix("/settings", settings.InitMux(deps.Auth, deps.User, deps.Ingest, deps.DBManager, deps.Notify, deps.Config)))
 
 	markdownMiddleware := middleware.BuildMarkdownMiddleware()
 	loginPathMiddleware := authmw.BuildLoginPathMiddleware("/auth/login")

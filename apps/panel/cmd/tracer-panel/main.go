@@ -111,7 +111,7 @@ func main() {
 	}
 	cfgObj := config.New(cfg, cfgPath)
 
-	sysinstall.RequireServiceUser(build.PanelUser, build.TracerGroup)
+	installx.RequireServiceUser(build.PanelUser, build.TracerGroup)
 
 	slog.Info("Starting panel",
 		"port", cfg.Port,
@@ -244,9 +244,9 @@ func serve(ctx context.Context, cfg *config.Config, noAuth, readOnly bool) error
 	// Connection manager for WebSocket-based collector communication
 	connManager := ingest.NewConnManager()
 
-	panelService := panelsvc.New(dbManager, ingestService, tracker, userService)
+	panelService := panel.New(dbManager, ingestService, tracker, userService)
 	updateService := update.New(connManager, progressTracker)
-	topologyService := topologysvc.NewService(panelService)
+	topologyService := topology.NewService(panelService)
 
 	// Run services
 	wg.Go(func() {
@@ -282,20 +282,20 @@ func serve(ctx context.Context, cfg *config.Config, noAuth, readOnly bool) error
 
 	// Initialize HTTP server
 	deps := web.Dependencies{
-		DBManagerx:      dbManager,
-		Ingest:          ingestService,
-		Notify:          notifyService,
-		Auth:            authService,
-		User:            userService,
-		// TODO: What's the diff between tracker and progress tracker?
-		Tracker:         tracker,
-		ProgressTracker: progressTracker,
-		Topology:        topologyService,
-		// TODO: Remove Service or Svc postfixes, keep naming consistent
-		PanelService:    panelService,
-		UpdateSvc:       updateService,
-		ConnManager:     connManager,
-		Config:          cfg,
+		DBManager: dbManager,
+		Ingest:    ingestService,
+		Notify:    notifyService,
+		Auth:      authService,
+		User:      userService,
+		// Tracker tracks connected collectors (WebSocket peers).
+		Tracker: tracker,
+		// UpdateTracker tracks per-entity update progress.
+		UpdateTracker: progressTracker,
+		Topology:      topologyService,
+		Panel:         panelService,
+		Update:        updateService,
+		ConnManager:   connManager,
+		Config:        cfg,
 	}
 	server := web.NewServer(deps, cfg.GetPort(), noAuth, readOnly)
 
@@ -328,7 +328,7 @@ func serve(ctx context.Context, cfg *config.Config, noAuth, readOnly bool) error
 }
 
 func handleUpdate() {
-	report := update.SelfUpdate(runtime.SlugPanel)
+	report := updatex.SelfUpdate(runtimex.SlugPanel)
 	if err := report.Wait(); err != nil {
 		log.Fatalf("Update failed: %v", err)
 	}

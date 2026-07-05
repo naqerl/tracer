@@ -13,7 +13,7 @@ import (
 
 	"github.com/gorilla/websocket"
 
-	"tracer/libs/shared/update"
+	"tracer/libs/shared/updatex"
 	"tracer/libs/shared/wsconn"
 	"tracer/libs/types"
 )
@@ -30,12 +30,12 @@ type Service struct {
 	peer     *wsconn.Peer
 	peerMu   sync.Mutex
 	events   <-chan types.Event
-	updateFn func() *update.Report
+	updateFn func() *updatex.Report
 }
 
 // New creates a WebSocket client service.
 // updateFn is called when an update command is received from the panel.
-func New(spec Spec, appNames []string, events <-chan types.Event, updateFn func() *update.Report) *Service {
+func New(spec Spec, appNames []string, events <-chan types.Event, updateFn func() *updatex.Report) *Service {
 	return &Service{
 		spec:     spec,
 		appNames: appNames,

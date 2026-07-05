@@ -1,7 +1,7 @@
 // Package runtime provides platform abstraction for service lifecycle operations.
 // It detects the runtime environment (systemd, Docker, etc.) and provides
 // the appropriate implementation for restarting services and locating binaries.
-package runtime
+package runtimex
 
 import (
 	"log/slog"
@@ -9,7 +9,7 @@ import (
 	"os/exec"
 
 	"tracer/build"
-	"tracer/libs/shared/install"
+	"tracer/libs/shared/installx"
 )
 
 // Slug identifies a tracer service for lifecycle operations.
@@ -76,7 +76,7 @@ func selectedManager() (systemd bool) {
 	case "no":
 		return false
 	default: // "auto"
-		return install.SystemdDetected()
+		return installx.SystemdDetected()
 	}
 }
 

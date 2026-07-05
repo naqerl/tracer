@@ -1,4 +1,4 @@
-package update
+package updatex
 
 import (
 	"context"
@@ -8,7 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 
-	"tracer/libs/shared/runtime"
+	"tracer/libs/shared/runtimex"
 )
 
 // Command represents a single, executable step of the update process.
@@ -54,16 +54,16 @@ func (c *downloadCommand) Execute(ctx context.Context) error {
 // buildCommand executes the build stage of the update.
 type buildCommand struct {
 	srcDir string
-	slug   runtime.Slug
+	slug   runtimex.Slug
 }
 
 func (c *buildCommand) Name() string { return StageBuild }
 func (c *buildCommand) Execute(ctx context.Context) error {
 	var buildTarget string
 	switch c.slug {
-	case runtime.SlugCollector:
+	case runtimex.SlugCollector:
 		buildTarget = "build-collector"
-	case runtime.SlugPanel:
+	case runtimex.SlugPanel:
 		buildTarget = "build-panel"
 	default:
 		return errUnknownSlug(c.slug)
@@ -114,7 +114,7 @@ func (c *installCommand) Execute(ctx context.Context) error {
 
 // restartCommand executes the restart stage of the update.
 type restartCommand struct {
-	mgr runtime.Manager
+	mgr runtimex.Manager
 }
 
 func (c *restartCommand) Name() string { return StageRestart }
@@ -125,12 +125,12 @@ func (c *restartCommand) Execute(ctx context.Context) error {
 // Updater orchestrates the stages of a self-update (download, build, verify,
 // install, restart) and reports progress via a Report.
 type Updater struct {
-	slug  runtime.Slug
+	slug  runtimex.Slug
 	runFn func(chan<- ProgressEvent) error // injectable for testing; defaults to u.run
 }
 
 // NewUpdater creates an Updater for the given service slug.
-func NewUpdater(slug runtime.Slug) *Updater {
+func NewUpdater(slug runtimex.Slug) *Updater {
 	u := &Updater{slug: slug}
 	u.runFn = u.run
 	return u
@@ -169,7 +169,7 @@ func (u *Updater) run(events chan<- ProgressEvent) error {
 	fmt.Println("Updating tracer from source...")
 	fmt.Printf("Repository: %s\n", repoURL)
 
-	mgr := runtime.NewManager(u.slug)
+	mgr := runtimex.NewManager(u.slug)
 
 	// List of mandatory stages
 	commands := []Command{
@@ -199,15 +199,15 @@ func (u *Updater) run(events chan<- ProgressEvent) error {
 }
 
 // binaryPath returns the path to the built binary for the given slug.
-func binaryPath(srcDir string, slug runtime.Slug) string {
+func binaryPath(srcDir string, slug runtimex.Slug) string {
 	return filepath.Join(srcDir, "bin", string(slug))
 }
 
 // destPath returns the canonical install destination for the given slug.
-func destPath(mgr runtime.Manager, slug runtime.Slug) string {
+func destPath(mgr runtimex.Manager, slug runtimex.Slug) string {
 	return filepath.Join(mgr.BinaryDir(), string(slug))
 }
 
-func errUnknownSlug(slug runtime.Slug) error {
+func errUnknownSlug(slug runtimex.Slug) error {
 	return fmt.Errorf("unknown service slug: %s", slug)
 }

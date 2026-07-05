@@ -1,7 +1,7 @@
 // Package update provides self-update functionality for tracer binaries.
 // Note: Self-updates work by rebuilding from source. The main branch always
 // contains the latest stable version.
-package update
+package updatex
 
 import (
 	"context"
@@ -16,7 +16,7 @@ import (
 	"time"
 
 	"tracer/build"
-	"tracer/libs/shared/runtime"
+	"tracer/libs/shared/runtimex"
 )
 
 const (
@@ -27,7 +27,7 @@ const (
 // SelfUpdate performs a self-update for the given service slug.
 // It returns a Report whose Events channel emits progress at each stage.
 // Call Wait() on the Report to block until the update completes.
-func SelfUpdate(slug runtime.Slug) *Report {
+func SelfUpdate(slug runtimex.Slug) *Report {
 	return NewUpdater(slug).Run()
 }
 

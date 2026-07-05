@@ -1,5 +1,5 @@
 // Package install provides shared installation infrastructure for tracer services.
-package install
+package installx
 
 import (
 	"errors"
