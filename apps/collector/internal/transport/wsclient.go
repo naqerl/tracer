@@ -22,23 +22,26 @@ const (
 	maxReconnectWait = 5 * time.Minute
 )
 
+// EventHandler processes events received from the panel.
+type EventHandler func(types.Event)
+
 // Service handles WebSocket connection to panel.
 type Service struct {
 	spec     Spec
 	appNames []string
 	conn     *wsconn.Conn
 	events   <-chan types.Event
-	updateFn func() error
+	handler  EventHandler
 }
 
 // New creates a WebSocket client service.
-// updateFn is called when the panel sends an update command. It must not be nil.
-func New(spec Spec, appNames []string, events <-chan types.Event, updateFn func() error) Service {
+// handler is called for every event received from the panel.
+func New(spec Spec, appNames []string, events <-chan types.Event, handler EventHandler) Service {
 	return Service{
 		spec:     spec,
 		appNames: appNames,
 		events:   events,
-		updateFn: updateFn,
+		handler:  handler,
 	}
 }
 
@@ -153,30 +156,9 @@ func (s *Service) run(ctx context.Context) error {
 	}
 }
 
-// handlePanelMessage processes an incoming message from the panel.
+// handlePanelMessage delegates incoming messages to the configured handler.
 func (s *Service) handlePanelMessage(evt types.Event) {
-	switch msg := evt.(type) {
-	case types.UpdateRequestedEvent:
-		slog.Info("Received update command from panel", "version", msg.Version)
-		go func() {
-			if err := s.updateFn(); err != nil {
-				slog.Error("Collector update failed", "error", err)
-			}
-		}()
-	case types.MessageHeader:
-		if msg.Type == types.EventTypeUpdate {
-			slog.Info("Received update command from panel, triggering self-update")
-			go func() {
-				if err := s.updateFn(); err != nil {
-					slog.Error("Collector update failed", "error", err)
-				}
-			}()
-		} else {
-			slog.Debug("Received unknown message type from panel", "type", msg.Type)
-		}
-	default:
-		slog.Debug("Received unknown message type from panel", "type", evt.EventType())
-	}
+	s.handler(evt)
 }
 
 func (s *Service) sendRegistration() {

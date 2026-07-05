@@ -21,6 +21,7 @@ import (
 	"tracer/apps/collector/internal/app"
 	"tracer/apps/collector/internal/config"
 	"tracer/apps/collector/internal/formatguesser"
+	"tracer/apps/collector/internal/handler"
 	"tracer/apps/collector/internal/health"
 	"tracer/apps/collector/internal/install"
 	"tracer/apps/collector/internal/lifecycle"
@@ -171,9 +172,9 @@ func serve(ctx context.Context, cfg config.Config) error {
 	statsMonitor := stats.New(cfg.Stats)
 
 	// Transport
-	svc := transport.New(cfg.Transport, appNames, mpsc, func() error {
+	svc := transport.New(cfg.Transport, appNames, mpsc, handler.NewEventProcessor(func() error {
 		return update.SelfUpdate(runtime.SlugCollector)
-	})
+	}))
 
 	// Run
 	wg.Go(func() {
