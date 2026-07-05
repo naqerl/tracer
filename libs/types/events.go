@@ -26,6 +26,12 @@ func (t EventType) Validate() error {
 	return fmt.Errorf("invalid event type: %q", t)
 }
 
+// MessageHeader is the JSON envelope used for incoming WebSocket messages
+// to identify the event type. It is shared between collector and panel.
+type MessageHeader struct {
+	Type EventType `json:"type"`
+}
+
 // Event is the base collector event interface.
 type Event interface {
 	EventType() EventType

@@ -12,7 +12,6 @@ import (
 
 	"github.com/gorilla/websocket"
 
-	"tracer/libs/shared/update"
 	"tracer/libs/shared/wsconn"
 	"tracer/libs/types"
 )
@@ -29,14 +28,17 @@ type Service struct {
 	appNames []string
 	conn     *wsconn.Conn
 	events   <-chan types.Event
+	updateFn func() error
 }
 
 // New creates a WebSocket client service.
-func New(spec Spec, appNames []string, events <-chan types.Event) Service {
+// updateFn is called when the panel sends an update command. It must not be nil.
+func New(spec Spec, appNames []string, events <-chan types.Event, updateFn func() error) Service {
 	return Service{
 		spec:     spec,
 		appNames: appNames,
 		events:   events,
+		updateFn: updateFn,
 	}
 }
 
@@ -153,11 +155,9 @@ func (s *Service) run(ctx context.Context) error {
 
 // handlePanelMessage processes an incoming message from the panel.
 func (s *Service) handlePanelMessage(message []byte) {
-	var hdr struct {
-		Type types.EventType `json:"type"`
-	}
+	var hdr types.MessageHeader
 	if err := json.Unmarshal(message, &hdr); err != nil {
-		slog.Debug("Failed to parse panel message", "error", err)
+		slog.Error("Failed to parse panel message", "error", err)
 		return
 	}
 
@@ -165,7 +165,7 @@ func (s *Service) handlePanelMessage(message []byte) {
 	case types.EventTypeUpdate:
 		slog.Info("Received update command from panel, triggering self-update")
 		go func() {
-			if err := update.SelfUpdate(update.BinaryCollector); err != nil {
+			if err := s.updateFn(); err != nil {
 				slog.Error("Collector update failed", "error", err)
 			}
 		}()

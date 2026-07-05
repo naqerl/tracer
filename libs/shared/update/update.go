@@ -24,21 +24,13 @@ const (
 	stableRef = "main" // main branch contains latest stable release
 )
 
-// BinaryType represents the type of tracer binary.
-type BinaryType string
-
-const (
-	BinaryCollector BinaryType = "tracer-collector"
-	BinaryPanel     BinaryType = "tracer-panel"
-)
-
-// SelfUpdate performs a self-update for the given binary type.
-func SelfUpdate(binary BinaryType) error {
+// SelfUpdate performs a self-update for the given service slug.
+func SelfUpdate(slug runtime.Slug) error {
 	return update(options{
-		BinaryName: binary,
-		verifyFn:   VerifyBinary,
+		Slug:     slug,
+		verifyFn: VerifyBinary,
 		postUpdate: func() error {
-			return runtime.NewManager(string(binary)).Restart()
+			return runtime.NewManager(slug).Restart()
 		},
 	})
 }
@@ -61,7 +53,7 @@ func VerifyBinary(path string) error {
 
 // options configures the update process.
 type options struct {
-	BinaryName BinaryType
+	Slug runtime.Slug
 
 	// postUpdate is called after the binary has been successfully installed.
 	// It should trigger a restart or notify the user. If nil, a default
@@ -107,13 +99,13 @@ func update(opts options) error {
 	fmt.Println("Building from source...")
 
 	var buildTarget string
-	switch opts.BinaryName {
-	case BinaryCollector:
+	switch opts.Slug {
+	case runtime.SlugCollector:
 		buildTarget = "build-collector"
-	case BinaryPanel:
+	case runtime.SlugPanel:
 		buildTarget = "build-panel"
 	default:
-		return fmt.Errorf("unknown binary type: %s", opts.BinaryName)
+		return fmt.Errorf("unknown service slug: %s", opts.Slug)
 	}
 
 	cmd := exec.Command("make", buildTarget)
@@ -124,9 +116,9 @@ func update(opts options) error {
 	}
 
 	// Locate source and destination paths
-	binaryPath := filepath.Join(srcDir, "bin", string(opts.BinaryName))
-	mgr := runtime.NewManager(string(opts.BinaryName))
-	destPath := filepath.Join(mgr.BinaryDir(), string(opts.BinaryName))
+	binaryPath := filepath.Join(srcDir, "bin", string(opts.Slug))
+	mgr := runtime.NewManager(opts.Slug)
+	destPath := filepath.Join(mgr.BinaryDir(), string(opts.Slug))
 
 	// Verify the built binary before installing
 	if opts.verifyFn != nil {

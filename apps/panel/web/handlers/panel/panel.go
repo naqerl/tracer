@@ -13,6 +13,7 @@ import (
 	"time"
 
 	panelsvc "tracer/apps/panel/internal/services/panel"
+	updatesvc "tracer/apps/panel/internal/services/update"
 	"tracer/apps/panel/web/handlers/panel/view"
 	"tracer/apps/panel/web/middleware/auth"
 	"tracer/apps/panel/web/templates"
@@ -22,7 +23,8 @@ import (
 var logGroupPlotJS []byte
 
 type handler struct {
-	svc *panelsvc.Service
+	svc       *panelsvc.Service
+	updateSvc *updatesvc.Service
 }
 
 // LevelFilter represents a log level filter option
@@ -46,10 +48,11 @@ const (
 	defaultSinceLabel = "24h"
 )
 
-func InitMux(svc *panelsvc.Service) *http.ServeMux {
+func InitMux(svc *panelsvc.Service, updateSvc *updatesvc.Service) *http.ServeMux {
 	m := http.NewServeMux()
 	h := handler{
-		svc: svc,
+		svc:       svc,
+		updateSvc: updateSvc,
 	}
 
 	// Dashboard
@@ -980,7 +983,7 @@ func (h *handler) postUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := h.svc.UpdateAll(r.Context())
+	result, err := h.updateSvc.UpdateAll()
 	if err != nil {
 		slog.Error("Update failed", "error", err)
 		http.Error(w, "Update failed", http.StatusInternalServerError)

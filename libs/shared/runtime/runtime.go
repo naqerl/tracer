@@ -12,6 +12,14 @@ import (
 	"tracer/libs/shared/install"
 )
 
+// Slug identifies a tracer service for lifecycle operations.
+type Slug = string
+
+const (
+	SlugPanel     Slug = "tracer-panel"
+	SlugCollector Slug = "tracer-collector"
+)
+
 // Manager handles service lifecycle operations.
 type Manager interface {
 	// Restart restarts the service. In Docker/exec mode this exits the
@@ -75,7 +83,7 @@ func selectedManager() (systemd bool) {
 // NewManager creates a new Manager for the given service slug.
 // The manager implementation is selected based on build-time configuration
 // and runtime detection.
-func NewManager(slug string) Manager {
+func NewManager(slug Slug) Manager {
 	if selectedManager() {
 		slog.Debug("runtime: using systemd manager", "slug", slug)
 		return &systemdManager{slug: slug}

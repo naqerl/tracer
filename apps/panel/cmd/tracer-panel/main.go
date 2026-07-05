@@ -27,11 +27,13 @@ import (
 	"tracer/apps/panel/internal/services/notify/telegram"
 	panelsvc "tracer/apps/panel/internal/services/panel"
 	topologysvc "tracer/apps/panel/internal/services/topology"
+	updatesvc "tracer/apps/panel/internal/services/update"
 	"tracer/apps/panel/internal/services/user"
 	"tracer/apps/panel/web"
 	"tracer/build"
 	"tracer/libs/logx"
 	sysinstall "tracer/libs/shared/install"
+	"tracer/libs/shared/runtime"
 	"tracer/libs/shared/update"
 )
 
@@ -239,7 +241,8 @@ func serve(ctx context.Context, cfg *config.Config, noAuth, readOnly bool) error
 	// Connection manager for WebSocket-based collector communication
 	connManager := ingest.NewConnManager()
 
-	panelService := panelsvc.New(dbManager, ingestService, tracker, userService, connManager)
+	panelService := panelsvc.New(dbManager, ingestService, tracker, userService)
+	updateService := updatesvc.New(connManager)
 	topologyService := topologysvc.NewService(panelService)
 
 	// Run services
@@ -284,6 +287,7 @@ func serve(ctx context.Context, cfg *config.Config, noAuth, readOnly bool) error
 		Tracker:      tracker,
 		Topology:     topologyService,
 		PanelService: panelService,
+		UpdateSvc:    updateService,
 		ConnManager:  connManager,
 		Config:       cfg,
 	}
@@ -318,7 +322,7 @@ func serve(ctx context.Context, cfg *config.Config, noAuth, readOnly bool) error
 }
 
 func handleUpdate() {
-	if err := update.SelfUpdate(update.BinaryPanel); err != nil {
+	if err := update.SelfUpdate(runtime.SlugPanel); err != nil {
 		log.Fatalf("Update failed: %v", err)
 	}
 }

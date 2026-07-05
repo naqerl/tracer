@@ -94,9 +94,7 @@ func (h *handler) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 // Helpers
 
 func (h *handler) processMessage(ctx context.Context, connID, remoteAddr string, message []byte, ws *wsconn.Conn) {
-	var hdr struct {
-		Type types.EventType `json:"type"`
-	}
+	var hdr types.MessageHeader
 	if err := json.Unmarshal(message, &hdr); err != nil {
 		slog.Error("Failed to parse websocket message header", "error", err)
 		return

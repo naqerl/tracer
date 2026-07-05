@@ -31,6 +31,7 @@ import (
 	"tracer/build"
 	"tracer/libs/logx"
 	sysinstall "tracer/libs/shared/install"
+	"tracer/libs/shared/runtime"
 	"tracer/libs/shared/update"
 	"tracer/libs/types"
 )
@@ -170,7 +171,9 @@ func serve(ctx context.Context, cfg config.Config) error {
 	statsMonitor := stats.New(cfg.Stats)
 
 	// Transport
-	svc := transport.New(cfg.Transport, appNames, mpsc)
+	svc := transport.New(cfg.Transport, appNames, mpsc, func() error {
+		return update.SelfUpdate(runtime.SlugCollector)
+	})
 
 	// Run
 	wg.Go(func() {
@@ -453,7 +456,7 @@ func handleSet(path string, cfg config.Config, setCmd *flag.FlagSet) {
 }
 
 func handleUpdate() {
-	if err := update.SelfUpdate(update.BinaryCollector); err != nil {
+	if err := update.SelfUpdate(runtime.SlugCollector); err != nil {
 		log.Fatalf("Update failed: %v", err)
 	}
 }

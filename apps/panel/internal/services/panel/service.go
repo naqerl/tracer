@@ -14,7 +14,6 @@ import (
 	"tracer/apps/panel/internal/domain"
 	"tracer/apps/panel/internal/services/ingest"
 	"tracer/apps/panel/internal/services/user"
-	"tracer/libs/shared/update"
 	sharedtypes "tracer/libs/types"
 )
 
@@ -36,47 +35,20 @@ const (
 	sinceValidationSkew = time.Second
 )
 
-func New(dbManager *dbmanager.Manager, ingestSvc *ingest.Service, tracker *ingest.Tracker, userSvc *user.Service, connManager *ingest.ConnManager) *Service {
+func New(dbManager *dbmanager.Manager, ingestSvc *ingest.Service, tracker *ingest.Tracker, userSvc *user.Service) *Service {
 	return &Service{
-		dbManager:   dbManager,
-		ingestSvc:   ingestSvc,
-		userSvc:     userSvc,
-		tracker:     tracker,
-		connManager: connManager,
+		dbManager: dbManager,
+		ingestSvc: ingestSvc,
+		userSvc:   userSvc,
+		tracker:   tracker,
 	}
 }
 
-// UpdateResult describes the outcome of an update-all request.
-type UpdateResult struct {
-	CollectorsNotified int    `json:"collectors_notified"`
-	Message            string `json:"message"`
-}
-
-// UpdateAll sends update commands to all connected collectors and starts a
-// panel self-update in the background. It returns immediately with the number
-// of collectors notified.
-func (s *Service) UpdateAll(ctx context.Context) (*UpdateResult, error) {
-	collectorCount := s.connManager.SendUpdate()
-	slog.Info("Update signal sent to collectors", "count", collectorCount)
-
-	go func() {
-		if err := update.SelfUpdate(update.BinaryPanel); err != nil {
-			slog.Error("Panel update failed", "error", err)
-		}
-	}()
-
-	return &UpdateResult{
-		CollectorsNotified: collectorCount,
-		Message:            fmt.Sprintf("Update sent to %d collector(s); panel restarting.", collectorCount),
-	}, nil
-}
-
 type Service struct {
-	dbManager   *dbmanager.Manager
-	ingestSvc   *ingest.Service
-	userSvc     *user.Service
-	tracker     *ingest.Tracker
-	connManager *ingest.ConnManager
+	dbManager *dbmanager.Manager
+	ingestSvc *ingest.Service
+	userSvc   *user.Service
+	tracker   *ingest.Tracker
 }
 
 // Collector provides a complete view of a collector for display,
