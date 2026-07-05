@@ -53,21 +53,31 @@ func (s *Service) UpdateAll() (*UpdateResult, error) {
 			"No collectors connected")
 	}
 
-	// Build a progress reporter that sends progress to the tracker
 	panelEntity := "panel"
-	progReporter := update.ProgressReporter(func(stage string, status types.ProgressStatus, message string) {
-		s.progTracker.ReportProgress(panelEntity, stage, status, message)
-	})
 
-	// Run panel self-update in background
+	// Run panel self-update in background.
+	// The Report's Events channel feeds the progress tracker; Wait() tells
+	// us whether the update succeeded (it will only return on failure since
+	// a successful update triggers a restart).
 	go func() {
 		defer s.progTracker.FinishUpdate()
 		time.Sleep(100 * time.Millisecond) // brief delay so SSE client can connect
-		if err := update.SelfUpdate(runtime.SlugPanel, progReporter); err != nil {
+
+		report := update.NewUpdater(runtime.SlugPanel).Run()
+
+		// Forward every progress event to the tracker
+		go func() {
+			for pe := range report.Events {
+				s.progTracker.ReportProgress(panelEntity, pe.Stage, pe.Status, pe.Message)
+			}
+		}()
+
+		if err := report.Wait(); err != nil {
 			slog.Error("Panel update failed", "error", err)
 			s.progTracker.ReportProgress(panelEntity, "complete", types.ProgressFailed,
 				fmt.Sprintf("Update failed: %v", err))
 		}
+		// NOTE: on success the process restarts, so we never reach here.
 	}()
 
 	return &UpdateResult{

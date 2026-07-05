@@ -8,40 +8,45 @@ import (
 	"tracer/libs/types"
 )
 
-// EventProcessor handles events from the panel and manages the update lifecycle.
-// Progress reporting is injected after construction via SetProgressReporter
-// to break the circular dependency between handler and transport.
+// EventProcessor handles events from the panel. Update progress is forwarded
+// to the transport layer through a channel-based Report from the update
+// package, completely decoupling progress reporting from the update logic.
 type EventProcessor struct {
-	updateFn     func(update.ProgressReporter) error
-	progReporter update.ProgressReporter
+	updateFn func() *update.Report
+	sendFn   func(string, types.ProgressStatus, string)
 }
 
 // NewEventProcessor creates an EventProcessor.
-// updateFn is called when the panel requests a collector self-update.
-// The progress reporter starts as a no-op and can be set later via SetProgressReporter.
-func NewEventProcessor(updateFn func(update.ProgressReporter) error) *EventProcessor {
+// runUpdate is called to start a self-update and returns a Report whose
+// Events channel is forwarded to the transport layer.
+func NewEventProcessor(runUpdate func() *update.Report) *EventProcessor {
 	return &EventProcessor{
-		updateFn:     updateFn,
-		progReporter: func(string, types.ProgressStatus, string) {},
+		updateFn: runUpdate,
+		sendFn:   func(string, types.ProgressStatus, string) {},
 	}
 }
 
-// SetProgressReporter sets the callback used to report update progress
-// back to the panel over the WebSocket connection. Must be called before
-// the first update request arrives, typically right after the transport
-// service is created.
-func (ep *EventProcessor) SetProgressReporter(r update.ProgressReporter) {
-	ep.progReporter = r
+// SetProgressSender sets the function used to send progress events back to
+// the panel over the WebSocket. Must be called before the first update
+// request arrives, typically right after the transport service is created.
+func (ep *EventProcessor) SetProgressSender(sendFn func(string, types.ProgressStatus, string)) {
+	ep.sendFn = sendFn
 }
 
 // HandleEvent processes an incoming event from the panel.
-// It satisfies types.EventHandler.
+// For UpdateRequestedEvent it starts a self-update and reads progress from
+// the Report's Events channel, forwarding each event to sendFn.
 func (ep *EventProcessor) HandleEvent(evt types.Event) {
 	switch msg := evt.(type) {
 	case types.UpdateRequestedEvent:
 		slog.Info("Received update command from panel", "version", msg.Version)
 		go func() {
-			if err := ep.updateFn(ep.progReporter); err != nil {
+			report := ep.updateFn()
+			// Forward every progress event to the WebSocket sender
+			for pe := range report.Events {
+				ep.sendFn(pe.Stage, pe.Status, pe.Message)
+			}
+			if err := report.Wait(); err != nil {
 				slog.Error("Collector update failed", "error", err)
 			}
 		}()

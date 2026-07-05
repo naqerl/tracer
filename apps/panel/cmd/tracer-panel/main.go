@@ -326,7 +326,8 @@ func serve(ctx context.Context, cfg *config.Config, noAuth, readOnly bool) error
 }
 
 func handleUpdate() {
-	if err := update.SelfUpdate(runtime.SlugPanel); err != nil {
+	report := update.SelfUpdate(runtime.SlugPanel)
+	if err := report.Wait(); err != nil {
 		log.Fatalf("Update failed: %v", err)
 	}
 }

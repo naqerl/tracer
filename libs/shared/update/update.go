@@ -11,13 +11,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	goRuntime "runtime"
 	"strings"
 	"time"
 
 	"tracer/build"
 	"tracer/libs/shared/runtime"
-	"tracer/libs/types"
 )
 
 const (
@@ -26,19 +24,10 @@ const (
 )
 
 // SelfUpdate performs a self-update for the given service slug.
-// If a ProgressReporter is provided, it will be called at each stage.
-func SelfUpdate(slug runtime.Slug, reporter ...ProgressReporter) error {
-	opts := options{
-		Slug:     slug,
-		verifyFn: VerifyBinary,
-		postUpdate: func() error {
-			return runtime.NewManager(slug).Restart()
-		},
-	}
-	if len(reporter) > 0 {
-		opts.progressReporter = reporter[0]
-	}
-	return update(opts)
+// It returns a Report whose Events channel emits progress at each stage.
+// Call Wait() on the Report to block until the update completes.
+func SelfUpdate(slug runtime.Slug) *Report {
+	return NewUpdater(slug).Run()
 }
 
 // VerifyBinary verifies a newly built binary by running it with --version.
@@ -54,219 +43,6 @@ func VerifyBinary(path string) error {
 		return fmt.Errorf("binary produced no output for --version")
 	}
 	slog.Info("Binary verified", "path", path, "output", strings.TrimSpace(string(output)))
-	return nil
-}
-
-// ProgressReporter is called throughout the update process to report progress.
-// stage is one of "download", "build", "verify", "install", "restart", "complete"
-type ProgressReporter func(stage string, status types.ProgressStatus, message string)
-
-// options configures the update process.
-type options struct {
-	Slug runtime.Slug
-
-	// postUpdate is called after the binary has been successfully installed.
-	// It should trigger a restart or notify the user. If nil, a default
-	// message is printed.
-	postUpdate func() error
-
-	// verifyFn is called with the path to the newly built binary before it
-	// replaces the running binary. If it returns an error, the update is
-	// aborted and the old binary is restored.
-	verifyFn func(binaryPath string) error
-
-	// progressReporter is called at each stage of the update process.
-	progressReporter ProgressReporter
-}
-
-// update performs a self-update by rebuilding from source.
-func update(opts options) error {
-	// Check if we have the source available
-	srcDir := "/tmp/tracer-update"
-
-	if opts.progressReporter != nil {
-		opts.progressReporter("download", types.ProgressInProgress, "Downloading source snapshot...")
-	}
-	fmt.Println("Updating tracer from source...")
-	fmt.Printf("Repository: %s\n", repoURL)
-
-	// Clean up previous attempts
-	os.RemoveAll(srcDir)
-
-	// Download source from cgit snapshot
-	fmt.Println("Downloading source snapshot...")
-	if err := downloadSnapshot(srcDir); err != nil {
-		if opts.progressReporter != nil {
-			opts.progressReporter("download", types.ProgressFailed, err.Error())
-		}
-		return fmt.Errorf("download source: %w", err)
-	}
-	if opts.progressReporter != nil {
-		opts.progressReporter("download", types.ProgressDone, "")
-		opts.progressReporter("build", types.ProgressInProgress, "Building from source...")
-	}
-
-	// Save and change to source directory
-	origDir, err := os.Getwd()
-	if err != nil {
-		os.RemoveAll(srcDir)
-		return fmt.Errorf("get current dir: %w", err)
-	}
-	if err := os.Chdir(srcDir); err != nil {
-		os.RemoveAll(srcDir)
-		return fmt.Errorf("change to source dir: %w", err)
-	}
-	defer os.Chdir(origDir) // restore working directory on return
-
-	// Build the binary
-	fmt.Println("Building from source...")
-
-	var buildTarget string
-	switch opts.Slug {
-	case runtime.SlugCollector:
-		buildTarget = "build-collector"
-	case runtime.SlugPanel:
-		buildTarget = "build-panel"
-	default:
-		return fmt.Errorf("unknown service slug: %s", opts.Slug)
-	}
-
-	cmd := exec.Command("make", buildTarget)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
-		if opts.progressReporter != nil {
-			opts.progressReporter("build", types.ProgressFailed, err.Error())
-		}
-		return fmt.Errorf("build failed: %w", err)
-	}
-	if opts.progressReporter != nil {
-		opts.progressReporter("build", types.ProgressDone, "")
-		opts.progressReporter("verify", types.ProgressInProgress, "Verifying binary...")
-	}
-
-	// Locate source and destination paths
-	binaryPath := filepath.Join(srcDir, "bin", string(opts.Slug))
-	mgr := runtime.NewManager(opts.Slug)
-	destPath := filepath.Join(mgr.BinaryDir(), string(opts.Slug))
-
-	// Verify the built binary before installing
-	if opts.verifyFn != nil {
-		fmt.Println("Verifying binary...")
-		if err := opts.verifyFn(binaryPath); err != nil {
-			os.RemoveAll(srcDir)
-			if opts.progressReporter != nil {
-				opts.progressReporter("verify", types.ProgressFailed, err.Error())
-			}
-			return fmt.Errorf("binary verification failed: %w", err)
-		}
-	}
-	if opts.progressReporter != nil {
-		opts.progressReporter("verify", types.ProgressDone, "")
-		opts.progressReporter("install", types.ProgressInProgress, "Installing binary...")
-	}
-
-	// Backup existing binary if present
-	backupPath := destPath + ".bak"
-	if _, err := os.Stat(destPath); err == nil {
-		fmt.Println("Backing up existing binary...")
-		if err := copyFile(destPath, backupPath); err != nil {
-			os.RemoveAll(srcDir)
-			return fmt.Errorf("backup failed: %w", err)
-		}
-		// Schedule backup removal on success
-		defer func() {
-			if err := os.Remove(backupPath); err != nil && !os.IsNotExist(err) {
-				fmt.Printf("Warning: could not remove backup: %v\n", err)
-			}
-		}()
-	}
-
-	// Install the new binary
-	fmt.Printf("Installing to %s...\n", destPath)
-	if err := copyFile(binaryPath, destPath); err != nil {
-		// Restore backup
-		if _, e := os.Stat(backupPath); e == nil {
-			fmt.Println("Restoring previous binary from backup...")
-			if restoreErr := os.Rename(backupPath, destPath); restoreErr != nil {
-				fmt.Printf("CRITICAL: failed to restore backup: %v\n", restoreErr)
-			}
-		}
-		os.RemoveAll(srcDir)
-		if opts.progressReporter != nil {
-			opts.progressReporter("install", types.ProgressFailed, err.Error())
-		}
-		return fmt.Errorf("install failed: %w", err)
-	}
-	if opts.progressReporter != nil {
-		opts.progressReporter("install", types.ProgressDone, "")
-	}
-
-	// Make executable (copyFile preserves mode, but ensure it's executable)
-	os.Chmod(destPath, 0755)
-
-	// Cleanup temp source
-	os.RemoveAll(srcDir)
-
-	if opts.progressReporter != nil {
-		opts.progressReporter("complete", types.ProgressDone, "Update successful!")
-	}
-
-	fmt.Println()
-	fmt.Println("========================================")
-	fmt.Println("Update successful!")
-	fmt.Println("========================================")
-	fmt.Println()
-
-	// Run post-update callback (e.g., restart)
-	if opts.postUpdate != nil {
-		fmt.Println("Triggering post-update action...")
-		if opts.progressReporter != nil {
-			opts.progressReporter("restart", types.ProgressInProgress, "Triggering restart...")
-		}
-		if err := opts.postUpdate(); err != nil {
-			// Log but don't fail — binary is already installed
-			fmt.Printf("Warning: post-update action failed: %v\n", err)
-			if opts.progressReporter != nil {
-				opts.progressReporter("restart", types.ProgressFailed, err.Error())
-			}
-		} else if opts.progressReporter != nil {
-			opts.progressReporter("restart", types.ProgressDone, "Restart triggered")
-		}
-	}
-
-	return nil
-}
-
-// downloadSnapshot downloads source tarball from cgit (main branch - stable)
-func downloadSnapshot(destDir string) error {
-	snapshotURL := repoURL + "/snapshot/tracer-" + stableRef + ".tar.gz"
-
-	if err := os.MkdirAll(destDir, 0755); err != nil {
-		return fmt.Errorf("create dest dir: %w", err)
-	}
-
-	cmd := exec.Command("curl", "-fsSL", snapshotURL)
-	cmd2 := exec.Command("tar", "-xz", "-C", destDir, "--strip-components=1")
-
-	pipe, err := cmd.StdoutPipe()
-	if err != nil {
-		return err
-	}
-	cmd2.Stdin = pipe
-	cmd2.Stdout = os.Stdout
-	cmd2.Stderr = os.Stderr
-
-	if err := cmd2.Start(); err != nil {
-		return err
-	}
-	if err := cmd.Run(); err != nil {
-		return err
-	}
-	if err := cmd2.Wait(); err != nil {
-		return err
-	}
-
 	return nil
 }
 
@@ -324,15 +100,36 @@ func getRemoteCommit() (string, error) {
 	return fields[0], nil
 }
 
-// DetectArchitecture returns the system architecture.
-func DetectArchitecture() string {
-	arch := goRuntime.GOARCH
-	switch arch {
-	case "amd64", "arm64":
-		return arch
-	default:
-		return arch
+// downloadSnapshot downloads source tarball from cgit (main branch - stable)
+func downloadSnapshot(destDir string) error {
+	snapshotURL := repoURL + "/snapshot/tracer-" + stableRef + ".tar.gz"
+
+	if err := os.MkdirAll(destDir, 0755); err != nil {
+		return fmt.Errorf("create dest dir: %w", err)
 	}
+
+	cmd := exec.Command("curl", "-fsSL", snapshotURL)
+	cmd2 := exec.Command("tar", "-xz", "-C", destDir, "--strip-components=1")
+
+	pipe, err := cmd.StdoutPipe()
+	if err != nil {
+		return err
+	}
+	cmd2.Stdin = pipe
+	cmd2.Stdout = os.Stdout
+	cmd2.Stderr = os.Stderr
+
+	if err := cmd2.Start(); err != nil {
+		return err
+	}
+	if err := cmd.Run(); err != nil {
+		return err
+	}
+	if err := cmd2.Wait(); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // copyFile copies a file from src to dst, preserving permissions.
