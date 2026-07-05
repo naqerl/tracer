@@ -17,6 +17,7 @@ import (
 
 	"tracer/build"
 	"tracer/libs/shared/runtime"
+	"tracer/libs/types"
 )
 
 const (
@@ -25,14 +26,19 @@ const (
 )
 
 // SelfUpdate performs a self-update for the given service slug.
-func SelfUpdate(slug runtime.Slug) error {
-	return update(options{
+// If a ProgressReporter is provided, it will be called at each stage.
+func SelfUpdate(slug runtime.Slug, reporter ...ProgressReporter) error {
+	opts := options{
 		Slug:     slug,
 		verifyFn: VerifyBinary,
 		postUpdate: func() error {
 			return runtime.NewManager(slug).Restart()
 		},
-	})
+	}
+	if len(reporter) > 0 {
+		opts.progressReporter = reporter[0]
+	}
+	return update(opts)
 }
 
 // VerifyBinary verifies a newly built binary by running it with --version.
@@ -51,6 +57,10 @@ func VerifyBinary(path string) error {
 	return nil
 }
 
+// ProgressReporter is called throughout the update process to report progress.
+// stage is one of "download", "build", "verify", "install", "restart", "complete"
+type ProgressReporter func(stage string, status types.ProgressStatus, message string)
+
 // options configures the update process.
 type options struct {
 	Slug runtime.Slug
@@ -64,6 +74,9 @@ type options struct {
 	// replaces the running binary. If it returns an error, the update is
 	// aborted and the old binary is restored.
 	verifyFn func(binaryPath string) error
+
+	// progressReporter is called at each stage of the update process.
+	progressReporter ProgressReporter
 }
 
 // update performs a self-update by rebuilding from source.
@@ -71,6 +84,9 @@ func update(opts options) error {
 	// Check if we have the source available
 	srcDir := "/tmp/tracer-update"
 
+	if opts.progressReporter != nil {
+		opts.progressReporter("download", types.ProgressInProgress, "Downloading source snapshot...")
+	}
 	fmt.Println("Updating tracer from source...")
 	fmt.Printf("Repository: %s\n", repoURL)
 
@@ -80,7 +96,14 @@ func update(opts options) error {
 	// Download source from cgit snapshot
 	fmt.Println("Downloading source snapshot...")
 	if err := downloadSnapshot(srcDir); err != nil {
+		if opts.progressReporter != nil {
+			opts.progressReporter("download", types.ProgressFailed, err.Error())
+		}
 		return fmt.Errorf("download source: %w", err)
+	}
+	if opts.progressReporter != nil {
+		opts.progressReporter("download", types.ProgressDone, "")
+		opts.progressReporter("build", types.ProgressInProgress, "Building from source...")
 	}
 
 	// Save and change to source directory
@@ -112,7 +135,14 @@ func update(opts options) error {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
+		if opts.progressReporter != nil {
+			opts.progressReporter("build", types.ProgressFailed, err.Error())
+		}
 		return fmt.Errorf("build failed: %w", err)
+	}
+	if opts.progressReporter != nil {
+		opts.progressReporter("build", types.ProgressDone, "")
+		opts.progressReporter("verify", types.ProgressInProgress, "Verifying binary...")
 	}
 
 	// Locate source and destination paths
@@ -125,8 +155,15 @@ func update(opts options) error {
 		fmt.Println("Verifying binary...")
 		if err := opts.verifyFn(binaryPath); err != nil {
 			os.RemoveAll(srcDir)
+			if opts.progressReporter != nil {
+				opts.progressReporter("verify", types.ProgressFailed, err.Error())
+			}
 			return fmt.Errorf("binary verification failed: %w", err)
 		}
+	}
+	if opts.progressReporter != nil {
+		opts.progressReporter("verify", types.ProgressDone, "")
+		opts.progressReporter("install", types.ProgressInProgress, "Installing binary...")
 	}
 
 	// Backup existing binary if present
@@ -156,7 +193,13 @@ func update(opts options) error {
 			}
 		}
 		os.RemoveAll(srcDir)
+		if opts.progressReporter != nil {
+			opts.progressReporter("install", types.ProgressFailed, err.Error())
+		}
 		return fmt.Errorf("install failed: %w", err)
+	}
+	if opts.progressReporter != nil {
+		opts.progressReporter("install", types.ProgressDone, "")
 	}
 
 	// Make executable (copyFile preserves mode, but ensure it's executable)
@@ -164,6 +207,10 @@ func update(opts options) error {
 
 	// Cleanup temp source
 	os.RemoveAll(srcDir)
+
+	if opts.progressReporter != nil {
+		opts.progressReporter("complete", types.ProgressDone, "Update successful!")
+	}
 
 	fmt.Println()
 	fmt.Println("========================================")
@@ -174,9 +221,17 @@ func update(opts options) error {
 	// Run post-update callback (e.g., restart)
 	if opts.postUpdate != nil {
 		fmt.Println("Triggering post-update action...")
+		if opts.progressReporter != nil {
+			opts.progressReporter("restart", types.ProgressInProgress, "Triggering restart...")
+		}
 		if err := opts.postUpdate(); err != nil {
 			// Log but don't fail — binary is already installed
 			fmt.Printf("Warning: post-update action failed: %v\n", err)
+			if opts.progressReporter != nil {
+				opts.progressReporter("restart", types.ProgressFailed, err.Error())
+			}
+		} else if opts.progressReporter != nil {
+			opts.progressReporter("restart", types.ProgressDone, "Restart triggered")
 		}
 	}
 

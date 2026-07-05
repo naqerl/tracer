@@ -3,6 +3,7 @@ package panel
 import (
 	"database/sql"
 	_ "embed"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -11,6 +12,7 @@ import (
 	"strconv"
 	"time"
 
+	"tracer/apps/panel/internal/services/ingest"
 	panelsvc "tracer/apps/panel/internal/services/panel"
 	updatesvc "tracer/apps/panel/internal/services/update"
 	"tracer/apps/panel/web/handlers/panel/view"
@@ -22,8 +24,9 @@ import (
 var logGroupPlotJS []byte
 
 type handler struct {
-	svc       *panelsvc.Service
-	updateSvc *updatesvc.Service
+	svc             *panelsvc.Service
+	updateSvc       *updatesvc.Service
+	progressTracker *ingest.UpdateProgressTracker
 }
 
 // LevelFilter represents a log level filter option
@@ -47,16 +50,18 @@ const (
 	defaultSinceLabel = "24h"
 )
 
-func InitMux(svc *panelsvc.Service, updateSvc *updatesvc.Service) *http.ServeMux {
+func InitMux(svc *panelsvc.Service, updateSvc *updatesvc.Service, progressTracker *ingest.UpdateProgressTracker) *http.ServeMux {
 	m := http.NewServeMux()
 	h := handler{
-		svc:       svc,
-		updateSvc: updateSvc,
+		svc:             svc,
+		updateSvc:       updateSvc,
+		progressTracker: progressTracker,
 	}
 
 	// Dashboard
 	m.HandleFunc("GET /", h.getDashboard)
 	m.HandleFunc("GET /collectors", h.getDashboard)
+	m.HandleFunc("GET /update/progress", h.getUpdateProgressSSE)
 
 	// Collector
 	m.HandleFunc("GET /collectors/{collector}", h.getCollector)
@@ -994,4 +999,43 @@ func (h *handler) postUpdate(w http.ResponseWriter, r *http.Request) {
 		CollectorsNotified: result.CollectorsNotified,
 		Message:            result.Message,
 	}).Render(r.Context(), w)
+}
+
+// getUpdateProgressSSE streams update progress as Server-Sent Events.
+func (h *handler) getUpdateProgressSSE(w http.ResponseWriter, r *http.Request) {
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "Streaming not supported", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+
+	// Send initial snapshot
+	snapshot := h.progressTracker.Snapshot()
+	if data, err := json.Marshal(snapshot); err == nil {
+		fmt.Fprintf(w, "event: snapshot\ndata: %s\n\n", data)
+		flusher.Flush()
+	}
+
+	// Subscribe to live updates
+	ch := h.progressTracker.Subscribe()
+	defer h.progressTracker.Unsubscribe(ch)
+
+	ctx := r.Context()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case data, ok := <-ch:
+			if !ok {
+				return
+			}
+			fmt.Fprintf(w, "event: progress\ndata: %s\n\n", data)
+			flusher.Flush()
+		}
+	}
 }

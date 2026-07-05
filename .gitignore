@@ -6,4 +6,5 @@ tasks/
 /.tasks/
 .cptr
 tracer-panel
+tracer-collector
 tracer-test-config.yaml

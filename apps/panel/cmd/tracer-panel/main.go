@@ -238,11 +238,14 @@ func serve(ctx context.Context, cfg *config.Config, noAuth, readOnly bool) error
 	// Initialize collector tracker
 	tracker := ingest.NewTracker()
 
+	// Update progress tracker for SSE streaming
+	progressTracker := ingest.NewUpdateProgressTracker()
+
 	// Connection manager for WebSocket-based collector communication
 	connManager := ingest.NewConnManager()
 
 	panelService := panelsvc.New(dbManager, ingestService, tracker, userService)
-	updateService := updatesvc.New(connManager)
+	updateService := updatesvc.New(connManager, progressTracker)
 	topologyService := topologysvc.NewService(panelService)
 
 	// Run services
@@ -279,17 +282,18 @@ func serve(ctx context.Context, cfg *config.Config, noAuth, readOnly bool) error
 
 	// Initialize HTTP server
 	deps := web.Dependencies{
-		DBManagerx:   dbManager,
-		Ingest:       ingestService,
-		Notify:       notifyService,
-		Auth:         authService,
-		User:         userService,
-		Tracker:      tracker,
-		Topology:     topologyService,
-		PanelService: panelService,
-		UpdateSvc:    updateService,
-		ConnManager:  connManager,
-		Config:       cfg,
+		DBManagerx:      dbManager,
+		Ingest:          ingestService,
+		Notify:          notifyService,
+		Auth:            authService,
+		User:            userService,
+		Tracker:         tracker,
+		ProgressTracker: progressTracker,
+		Topology:        topologyService,
+		PanelService:    panelService,
+		UpdateSvc:       updateService,
+		ConnManager:     connManager,
+		Config:          cfg,
 	}
 	server := web.NewServer(deps, cfg.GetPort(), noAuth, readOnly)
 

@@ -172,9 +172,15 @@ func serve(ctx context.Context, cfg config.Config) error {
 	statsMonitor := stats.New(cfg.Stats)
 
 	// Transport
-	svc := transport.New(cfg.Transport, appNames, mpsc, handler.NewEventProcessor(func() error {
-		return update.SelfUpdate(runtime.SlugCollector)
-	}))
+	var svc *transport.Service
+	progressSender := update.ProgressReporter(func(stage string, status types.ProgressStatus, message string) {
+		if svc != nil {
+			svc.SendProgress(stage, status, message)
+		}
+	})
+	svc = transport.New(cfg.Transport, appNames, mpsc, handler.NewEventProcessor(func(reporter update.ProgressReporter) error {
+		return update.SelfUpdate(runtime.SlugCollector, reporter)
+	}, progressSender))
 
 	// Run
 	wg.Go(func() {

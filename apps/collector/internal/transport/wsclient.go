@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -26,14 +27,15 @@ type Service struct {
 	spec     Spec
 	appNames []string
 	peer     *wsconn.Peer
+	peerMu   sync.Mutex
 	events   <-chan types.Event
 	handler  types.EventHandler
 }
 
 // New creates a WebSocket client service.
 // handler is called for every event received from the panel.
-func New(spec Spec, appNames []string, events <-chan types.Event, handler types.EventHandler) Service {
-	return Service{
+func New(spec Spec, appNames []string, events <-chan types.Event, handler types.EventHandler) *Service {
+	return &Service{
 		spec:     spec,
 		appNames: appNames,
 		events:   events,
@@ -68,15 +70,19 @@ func (s *Service) Start(ctx context.Context) {
 			slog.Warn("Connection lost", "error", err)
 		}
 
+		s.peerMu.Lock()
 		s.peer.Close()
 		s.peer = nil
+		s.peerMu.Unlock()
 	}
 }
 
 func (s *Service) connect() error {
+	s.peerMu.Lock()
 	if s.peer != nil {
 		s.peer.Close()
 	}
+	s.peerMu.Unlock()
 
 	wsURL, err := panelWSURL(s.spec.PanelHost)
 	if err != nil {
@@ -92,7 +98,9 @@ func (s *Service) connect() error {
 	}
 
 	ws := wsconn.New(conn)
+	s.peerMu.Lock()
 	s.peer = wsconn.NewPeer(ws, s.handler)
+	s.peerMu.Unlock()
 	return nil
 }
 
@@ -165,4 +173,37 @@ func (s *Service) sendEvent(evt types.Event) error {
 		Data:      payload,
 	}
 	return s.peer.Send(msg)
+}
+
+// SendProgress sends an update progress event to the panel.
+func (s *Service) SendProgress(stage string, status types.ProgressStatus, message string) {
+	s.peerMu.Lock()
+	peer := s.peer
+	s.peerMu.Unlock()
+	if peer == nil {
+		return
+	}
+	evt := types.UpdateProgressEvent{
+		Type:    types.EventTypeUpdateProgress,
+		Time:    time.Now().UTC(),
+		Entity:  s.spec.Name,
+		Stage:   stage,
+		Status:  status,
+		Message: message,
+	}
+	// Send as envelope so the panel knows which collector sent it.
+	payload, err := json.Marshal(evt)
+	if err != nil {
+		slog.Error("Failed to marshal progress event", "error", err)
+		return
+	}
+	msg := types.Envelope{
+		Type:      evt.EventType(),
+		Time:      evt.Time,
+		Collector: s.spec.Name,
+		Data:      payload,
+	}
+	if err := peer.Send(msg); err != nil {
+		slog.Debug("Failed to send progress event", "error", err)
+	}
 }

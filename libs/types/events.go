@@ -9,18 +9,19 @@ import (
 type EventType string
 
 const (
-	EventTypeRegister  EventType = "register"
-	EventTypeLog       EventType = "log"
-	EventTypeLifecycle EventType = "lifecycle"
-	EventTypeStats     EventType = "stats"
-	EventTypeError     EventType = "error"
-	EventTypeHealth    EventType = "health"
-	EventTypeUpdate    EventType = "update"
+	EventTypeRegister       EventType = "register"
+	EventTypeLog            EventType = "log"
+	EventTypeLifecycle      EventType = "lifecycle"
+	EventTypeStats          EventType = "stats"
+	EventTypeError          EventType = "error"
+	EventTypeHealth         EventType = "health"
+	EventTypeUpdate         EventType = "update"
+	EventTypeUpdateProgress EventType = "update_progress"
 )
 
 func (t EventType) Validate() error {
 	switch t {
-	case EventTypeRegister, EventTypeLog, EventTypeLifecycle, EventTypeStats, EventTypeError, EventTypeHealth, EventTypeUpdate:
+	case EventTypeRegister, EventTypeLog, EventTypeLifecycle, EventTypeStats, EventTypeError, EventTypeHealth, EventTypeUpdate, EventTypeUpdateProgress:
 		return nil
 	}
 	return fmt.Errorf("invalid event type: %q", t)
@@ -136,6 +137,29 @@ type UpdateRequestedEvent struct {
 
 func (m UpdateRequestedEvent) EventType() EventType { return m.Type }
 func (m UpdateRequestedEvent) Timestamp() time.Time { return time.Time{} }
+
+// ProgressStatus represents the status of an update stage.
+type ProgressStatus string
+
+const (
+	ProgressPending    ProgressStatus = "pending"
+	ProgressInProgress ProgressStatus = "in_progress"
+	ProgressDone       ProgressStatus = "done"
+	ProgressFailed     ProgressStatus = "failed"
+)
+
+// UpdateProgressEvent reports progress of a self-update for a specific entity.
+type UpdateProgressEvent struct {
+	Type    EventType      `json:"type"`
+	Time    time.Time      `json:"timestamp"`
+	Entity  string         `json:"entity"` // "panel" or collector name
+	Stage   string         `json:"stage"`  // "download", "build", "verify", "install", "restart", "complete"
+	Status  ProgressStatus `json:"status"`
+	Message string         `json:"message,omitempty"`
+}
+
+func (e UpdateProgressEvent) EventType() EventType { return e.Type }
+func (e UpdateProgressEvent) Timestamp() time.Time { return e.Time }
 
 // FromJSON parses JSON bytes into the appropriate Event concrete type
 // based on the "type" field.

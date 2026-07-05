@@ -13,15 +13,16 @@ import (
 )
 
 type Dependencies struct {
-	DBManagerx   *dbmanager.Manager
-	Ingest       *ingest.Service
-	Notify       *notify.Service
-	Auth         *auth.Service
-	User         *user.Service
-	Tracker      *ingest.Tracker
-	Topology     *topologysvc.Service
-	PanelService *panelsvc.Service
-	UpdateSvc    *updatesvc.Service
-	ConnManager  *ingest.ConnManager
-	Config       *config.Config
+	DBManagerx      *dbmanager.Manager
+	Ingest          *ingest.Service
+	Notify          *notify.Service
+	Auth            *auth.Service
+	User            *user.Service
+	Tracker         *ingest.Tracker
+	ProgressTracker *ingest.UpdateProgressTracker
+	Topology        *topologysvc.Service
+	PanelService    *panelsvc.Service
+	UpdateSvc       *updatesvc.Service
+	ConnManager     *ingest.ConnManager
+	Config          *config.Config
 }

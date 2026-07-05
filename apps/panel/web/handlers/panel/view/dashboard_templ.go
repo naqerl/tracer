@@ -121,7 +121,7 @@ func Dashboard(p DashboardProps) templ.Component {
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"max-w-5xl mx-auto p-2 md:p-6\"><!-- Update Controls --><div class=\"mb-6 flex gap-2 items-center\"><button type=\"button\" hx-post=\"/panel/update\" hx-target=\"#update-status\" hx-swap=\"innerHTML\" class=\"text-xs px-3 py-1.5 border border-bg-secondary rounded hover:bg-bg-secondary transition-colors\">Update Panel &amp; Collectors</button> <span id=\"update-status\" class=\"text-xs text-fg-secondary\"></span></div><div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"max-w-5xl mx-auto p-2 md:p-6\"><!-- Update Controls --><div class=\"mb-6 flex gap-2 items-center\"><button type=\"button\" id=\"update-btn\" hx-post=\"/panel/update\" hx-target=\"#update-status\" hx-swap=\"innerHTML\" class=\"text-xs px-3 py-1.5 border border-bg-secondary rounded hover:bg-bg-secondary transition-colors\">Update Panel &amp; Collectors</button> <span id=\"update-status\" class=\"text-xs text-fg-secondary\"></span></div><!-- Update Progress Display --><div id=\"update-progress\" class=\"hidden mb-6\"><div class=\"text-sm font-medium mb-2\">Update Progress</div><div id=\"progress-entities\" class=\"space-y-2\"><!-- Filled by JavaScript --></div></div><div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -139,7 +139,7 @@ func Dashboard(p DashboardProps) templ.Component {
 				var templ_7745c5c3_Var3 templ.SafeURL
 				templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinURLErrs("/panel/collectors/" + c.Name)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/panel/view/dashboard.templ`, Line: 110, Col: 46}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/panel/view/dashboard.templ`, Line: 119, Col: 46}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 				if templ_7745c5c3_Err != nil {
@@ -152,7 +152,7 @@ func Dashboard(p DashboardProps) templ.Component {
 				var templ_7745c5c3_Var4 string
 				templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinStringErrs(c.Name)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/panel/view/dashboard.templ`, Line: 111, Col: 16}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/panel/view/dashboard.templ`, Line: 120, Col: 16}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
 				if templ_7745c5c3_Err != nil {
@@ -173,7 +173,7 @@ func Dashboard(p DashboardProps) templ.Component {
 				var templ_7745c5c3_Var5 string
 				templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.ResolveAttributeValue("/panel/collectors/" + c.Name + "/apps")
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/panel/view/dashboard.templ`, Line: 119, Col: 55}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/panel/view/dashboard.templ`, Line: 128, Col: 55}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var5)
 				if templ_7745c5c3_Err != nil {
@@ -184,7 +184,7 @@ func Dashboard(p DashboardProps) templ.Component {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "</div></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "</div></div><script type=\"text/javascript\">\n\t\t\t(function() {\n\t\t\t\tconst progressContainer = document.getElementById('update-progress');\n\t\t\t\tconst entitiesContainer = document.getElementById('progress-entities');\n\t\t\t\tconst updateBtn = document.getElementById('update-btn');\n\n\t\t\t\tlet eventSource = null;\n\n\t\t\t\tfunction renderEntities(entities) {\n\t\t\t\t\tif (!entities || entities.length === 0) {\n\t\t\t\t\t\tprogressContainer.classList.add('hidden');\n\t\t\t\t\t\treturn;\n\t\t\t\t\t}\n\t\t\t\t\tprogressContainer.classList.remove('hidden');\n\n\t\t\t\t\tlet html = '';\n\t\t\t\t\tfor (const entity of entities) {\n\t\t\t\t\t\tconst stagesHtml = entity.stages.map(s => {\n\t\t\t\t\t\t\tconst statusIcon = s.status === 'done' ? '✓' :\n\t\t\t\t\t\t\t\ts.status === 'failed' ? '✗' :\n\t\t\t\t\t\t\t\ts.status === 'in_progress' ? '⟳' : '○';\n\t\t\t\t\t\t\tconst statusColor = s.status === 'done' ? 'text-green-400' :\n\t\t\t\t\t\t\t\ts.status === 'failed' ? 'text-red-400' :\n\t\t\t\t\t\t\t\ts.status === 'in_progress' ? 'text-yellow-400' : 'text-fg-secondary';\n\t\t\t\t\t\t\tconst message = s.message ? '<span class=\"text-fg-secondary ml-1\">' + s.message + '</span>' : '';\n\t\t\t\t\t\t\treturn '<div class=\"flex items-center gap-2 text-xs ' + statusColor + '\">' +\n\t\t\t\t\t\t\t\t'<span>' + statusIcon + '</span>' +\n\t\t\t\t\t\t\t\t'<span class=\"font-mono\">' + s.stage + '</span>' +\n\t\t\t\t\t\t\t\tmessage +\n\t\t\t\t\t\t\t\t'</div>';\n\t\t\t\t\t\t}).join('');\n\n\t\t\t\t\t\thtml += '<div class=\"border border-bg-secondary rounded p-3\">' +\n\t\t\t\t\t\t\t'<div class=\"text-sm font-medium mb-1\">' + entity.entity + '</div>' +\n\t\t\t\t\t\t\t'<div class=\"space-y-0.5\">' + stagesHtml + '</div>' +\n\t\t\t\t\t\t\t'</div>';\n\t\t\t\t\t}\n\t\t\t\t\tentitiesContainer.innerHTML = html;\n\t\t\t\t}\n\n\t\t\t\tfunction connectSSE() {\n\t\t\t\t\tif (eventSource) {\n\t\t\t\t\t\teventSource.close();\n\t\t\t\t\t}\n\n\t\t\t\t\teventSource = new EventSource('/panel/update/progress');\n\n\t\t\t\t\teventSource.addEventListener('snapshot', function(e) {\n\t\t\t\t\t\ttry {\n\t\t\t\t\t\t\tconst entities = JSON.parse(e.data);\n\t\t\t\t\t\t\trenderEntities(entities);\n\t\t\t\t\t\t} catch (err) {\n\t\t\t\t\t\t\tconsole.error('Failed to parse progress snapshot:', err);\n\t\t\t\t\t\t}\n\t\t\t\t\t});\n\n\t\t\t\t\teventSource.addEventListener('progress', function(e) {\n\t\t\t\t\t\ttry {\n\t\t\t\t\t\t\tconst data = JSON.parse(e.data);\n\t\t\t\t\t\t\tif (data.entities) {\n\t\t\t\t\t\t\t\trenderEntities(data.entities);\n\t\t\t\t\t\t\t}\n\t\t\t\t\t\t} catch (err) {\n\t\t\t\t\t\t\tconsole.error('Failed to parse progress event:', err);\n\t\t\t\t\t\t}\n\t\t\t\t\t});\n\n\t\t\t\t\teventSource.onerror = function() {\n\t\t\t\t\t\t// SSE connection closed (expected when panel restarts)\n\t\t\t\t\t\teventSource.close();\n\t\t\t\t\t\teventSource = null;\n\t\t\t\t\t\t// Keep showing the last state\n\t\t\t\t\t};\n\t\t\t\t}\n\n\t\t\t\t// Listen for HTMX after-swap to detect update button click\n\t\t\t\tdocument.body.addEventListener('htmx:afterRequest', function(e) {\n\t\t\t\t\tif (e.detail.target && e.detail.target.id === 'update-status') {\n\t\t\t\t\t\t// Update was triggered, connect SSE\n\t\t\t\t\t\tconnectSSE();\n\t\t\t\t\t}\n\t\t\t\t});\n\n\t\t\t\t// Cleanup on page unload\n\t\t\t\twindow.addEventListener('beforeunload', function() {\n\t\t\t\t\tif (eventSource) {\n\t\t\t\t\t\teventSource.close();\n\t\t\t\t\t}\n\t\t\t\t});\n\t\t\t})();\n\t\t</script>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

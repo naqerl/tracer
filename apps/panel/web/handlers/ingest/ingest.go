@@ -29,21 +29,23 @@ var upgrader = websocket.Upgrader{
 }
 
 type handler struct {
-	authService   *auth.Service
-	ingestService *ingest.Service
-	tracker       *ingest.Tracker
-	topology      *topologysvc.Service
-	connManager   *ingest.ConnManager
+	authService     *auth.Service
+	ingestService   *ingest.Service
+	tracker         *ingest.Tracker
+	topology        *topologysvc.Service
+	connManager     *ingest.ConnManager
+	progressTracker *ingest.UpdateProgressTracker
 }
 
-func InitMux(authService *auth.Service, ingestService *ingest.Service, tracker *ingest.Tracker, topology *topologysvc.Service, connManager *ingest.ConnManager) *http.ServeMux {
+func InitMux(authService *auth.Service, ingestService *ingest.Service, tracker *ingest.Tracker, topology *topologysvc.Service, connManager *ingest.ConnManager, progressTracker *ingest.UpdateProgressTracker) *http.ServeMux {
 	m := http.NewServeMux()
 	h := &handler{
-		authService:   authService,
-		ingestService: ingestService,
-		tracker:       tracker,
-		topology:      topology,
-		connManager:   connManager,
+		authService:     authService,
+		ingestService:   ingestService,
+		tracker:         tracker,
+		topology:        topology,
+		connManager:     connManager,
+		progressTracker: progressTracker,
 	}
 
 	m.HandleFunc("GET /ws", h.handleWebSocket)
@@ -159,6 +161,13 @@ func (h *handler) handleEnvelope(ctx context.Context, env types.Envelope) {
 			return
 		}
 		h.handleHealth(ctx, env.Collector, evt)
+	case types.EventTypeUpdateProgress:
+		var evt types.UpdateProgressEvent
+		if err := json.Unmarshal(env.Data, &evt); err != nil {
+			slog.Warn("Failed to decode update progress event", "error", err, "collector", env.Collector)
+			return
+		}
+		h.handleUpdateProgress(ctx, evt)
 	default:
 		slog.Error("Unhandled envelope type", "type", env.Type)
 	}
@@ -292,6 +301,14 @@ func (h *handler) handleHealth(ctx context.Context, collector string, evt types.
 		return
 	}
 
+}
+
+// handleUpdateProgress processes an update progress event from a collector.
+func (h *handler) handleUpdateProgress(ctx context.Context, evt types.UpdateProgressEvent) {
+	if h.progressTracker == nil {
+		return
+	}
+	h.progressTracker.ReportProgress(evt.Entity, evt.Stage, evt.Status, evt.Message)
 }
 
 func (h *handler) requireCollectorAPIKey(w http.ResponseWriter, r *http.Request) bool {

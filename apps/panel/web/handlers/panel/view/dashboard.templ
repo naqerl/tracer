@@ -87,6 +87,7 @@ templ Dashboard(p DashboardProps) {
 			<div class="mb-6 flex gap-2 items-center">
 				<button
 					type="button"
+					id="update-btn"
 					hx-post="/panel/update"
 					hx-target="#update-status"
 					hx-swap="innerHTML"
@@ -95,6 +96,14 @@ templ Dashboard(p DashboardProps) {
 					Update Panel &amp; Collectors
 				</button>
 				<span id="update-status" class="text-xs text-fg-secondary"></span>
+			</div>
+
+			<!-- Update Progress Display -->
+			<div id="update-progress" class="hidden mb-6">
+				<div class="text-sm font-medium mb-2">Update Progress</div>
+				<div id="progress-entities" class="space-y-2">
+					<!-- Filled by JavaScript -->
+				</div>
 			</div>
 
 			<div>
@@ -126,5 +135,97 @@ templ Dashboard(p DashboardProps) {
 				}
 			</div>
 		</div>
+
+		<script type="text/javascript">
+			(function() {
+				const progressContainer = document.getElementById('update-progress');
+				const entitiesContainer = document.getElementById('progress-entities');
+				const updateBtn = document.getElementById('update-btn');
+
+				let eventSource = null;
+
+				function renderEntities(entities) {
+					if (!entities || entities.length === 0) {
+						progressContainer.classList.add('hidden');
+						return;
+					}
+					progressContainer.classList.remove('hidden');
+
+					let html = '';
+					for (const entity of entities) {
+						const stagesHtml = entity.stages.map(s => {
+							const statusIcon = s.status === 'done' ? '✓' :
+								s.status === 'failed' ? '✗' :
+								s.status === 'in_progress' ? '⟳' : '○';
+							const statusColor = s.status === 'done' ? 'text-green-400' :
+								s.status === 'failed' ? 'text-red-400' :
+								s.status === 'in_progress' ? 'text-yellow-400' : 'text-fg-secondary';
+							const message = s.message ? '<span class="text-fg-secondary ml-1">' + s.message + '</span>' : '';
+							return '<div class="flex items-center gap-2 text-xs ' + statusColor + '">' +
+								'<span>' + statusIcon + '</span>' +
+								'<span class="font-mono">' + s.stage + '</span>' +
+								message +
+								'</div>';
+						}).join('');
+
+						html += '<div class="border border-bg-secondary rounded p-3">' +
+							'<div class="text-sm font-medium mb-1">' + entity.entity + '</div>' +
+							'<div class="space-y-0.5">' + stagesHtml + '</div>' +
+							'</div>';
+					}
+					entitiesContainer.innerHTML = html;
+				}
+
+				function connectSSE() {
+					if (eventSource) {
+						eventSource.close();
+					}
+
+					eventSource = new EventSource('/panel/update/progress');
+
+					eventSource.addEventListener('snapshot', function(e) {
+						try {
+							const entities = JSON.parse(e.data);
+							renderEntities(entities);
+						} catch (err) {
+							console.error('Failed to parse progress snapshot:', err);
+						}
+					});
+
+					eventSource.addEventListener('progress', function(e) {
+						try {
+							const data = JSON.parse(e.data);
+							if (data.entities) {
+								renderEntities(data.entities);
+							}
+						} catch (err) {
+							console.error('Failed to parse progress event:', err);
+						}
+					});
+
+					eventSource.onerror = function() {
+						// SSE connection closed (expected when panel restarts)
+						eventSource.close();
+						eventSource = null;
+						// Keep showing the last state
+					};
+				}
+
+				// Listen for HTMX after-swap to detect update button click
+				document.body.addEventListener('htmx:afterRequest', function(e) {
+					if (e.detail.target && e.detail.target.id === 'update-status') {
+						// Update was triggered, connect SSE
+						connectSSE();
+					}
+				});
+
+				// Cleanup on page unload
+				window.addEventListener('beforeunload', function() {
+					if (eventSource) {
+						eventSource.close();
+					}
+				});
+			})();
+		</script>
 	}
 }
