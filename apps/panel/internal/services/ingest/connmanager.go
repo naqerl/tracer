@@ -12,19 +12,19 @@ import (
 // send messages back to collectors (e.g., update commands).
 type ConnManager struct {
 	mu    sync.RWMutex
-	conns map[string]*wsconn.Conn
+	conns map[string]*wsconn.Peer
 }
 
 // NewConnManager creates a new ConnManager.
 func NewConnManager() *ConnManager {
 	return &ConnManager{
-		conns: make(map[string]*wsconn.Conn),
+		conns: make(map[string]*wsconn.Peer),
 	}
 }
 
 // Register stores a connection keyed by connID. If a connection
 // for this connID already exists, it is closed.
-func (cm *ConnManager) Register(connID string, c *wsconn.Conn) {
+func (cm *ConnManager) Register(connID string, p *wsconn.Peer) {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 
@@ -33,7 +33,7 @@ func (cm *ConnManager) Register(connID string, c *wsconn.Conn) {
 		existing.Close()
 	}
 
-	cm.conns[connID] = c
+	cm.conns[connID] = p
 	slog.Debug("Connection registered", "conn_id", connID)
 }
 
@@ -44,8 +44,8 @@ func (cm *ConnManager) Unregister(connID string) bool {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 
-	if c, ok := cm.conns[connID]; ok {
-		c.Close()
+	if p, ok := cm.conns[connID]; ok {
+		p.Close()
 		delete(cm.conns, connID)
 		slog.Debug("Connection unregistered", "conn_id", connID)
 		return true
@@ -58,7 +58,7 @@ func (cm *ConnManager) Unregister(connID string) bool {
 // The read lock is held for the entire iteration to prevent concurrent
 // modification of the connection map by Register/Unregister.
 func (cm *ConnManager) SendUpdate() int {
-	msg := types.MessageHeader{Type: types.EventTypeUpdate}
+	msg := types.UpdateRequestedEvent{Type: types.EventTypeUpdate}
 
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
@@ -71,12 +71,11 @@ func (cm *ConnManager) SendUpdate() int {
 	slog.Info("Sending update command to collectors", "count", len(cm.conns))
 
 	sent := 0
-	for _, c := range cm.conns {
-		select {
-		case c.Outgoing() <- msg:
+	for _, p := range cm.conns {
+		if err := p.Send(msg); err != nil {
+			slog.Warn("Failed to send update to collector")
+		} else {
 			sent++
-		default:
-			slog.Warn("Write buffer full, dropping update for collector")
 		}
 	}
 

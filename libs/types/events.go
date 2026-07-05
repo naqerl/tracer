@@ -26,20 +26,19 @@ func (t EventType) Validate() error {
 	return fmt.Errorf("invalid event type: %q", t)
 }
 
-// MessageHeader is the JSON envelope used for incoming WebSocket messages
-// to identify the event type. It is shared between collector and panel.
-type MessageHeader struct {
+// messageHeader is used internally by FromJSON to peek at the event type field.
+type messageHeader struct {
 	Type EventType `json:"type"`
 }
-
-func (m MessageHeader) EventType() EventType { return m.Type }
-func (m MessageHeader) Timestamp() time.Time { return time.Time{} }
 
 // Event is the base collector event interface.
 type Event interface {
 	EventType() EventType
 	Timestamp() time.Time
 }
+
+// EventHandler processes events received from a peer.
+type EventHandler func(Event)
 
 // LogEvent represents a parsed log line.
 type LogEvent struct {
@@ -98,15 +97,15 @@ type Envelope struct {
 func (e Envelope) EventType() EventType { return e.Type }
 func (e Envelope) Timestamp() time.Time { return e.Time }
 
-// RegisterMessage is the initial registration message.
-type RegisterMessage struct {
+// RegisterEvent is the initial registration message sent by collectors.
+type RegisterEvent struct {
 	Type      EventType `json:"type"`
 	Collector string    `json:"collector"`
 	Apps      []string  `json:"apps"`
 }
 
-func (m RegisterMessage) EventType() EventType { return m.Type }
-func (m RegisterMessage) Timestamp() time.Time { return time.Time{} }
+func (m RegisterEvent) EventType() EventType { return m.Type }
+func (m RegisterEvent) Timestamp() time.Time { return time.Time{} }
 
 // ErrorEvent represents a source error for reporting to panel.
 type ErrorEvent struct {
@@ -141,13 +140,13 @@ func (m UpdateRequestedEvent) Timestamp() time.Time { return time.Time{} }
 // FromJSON parses JSON bytes into the appropriate Event concrete type
 // based on the "type" field.
 func FromJSON(data []byte) (Event, error) {
-	var hdr MessageHeader
+	var hdr messageHeader
 	if err := json.Unmarshal(data, &hdr); err != nil {
 		return nil, err
 	}
 	switch hdr.Type {
 	case EventTypeRegister:
-		var msg RegisterMessage
+		var msg RegisterEvent
 		if err := json.Unmarshal(data, &msg); err != nil {
 			return nil, err
 		}

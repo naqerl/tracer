@@ -18,25 +18,21 @@ import (
 
 const (
 	reconnectDelay   = 5 * time.Second
-	pingInterval     = 30 * time.Second
 	maxReconnectWait = 5 * time.Minute
 )
-
-// EventHandler processes events received from the panel.
-type EventHandler func(types.Event)
 
 // Service handles WebSocket connection to panel.
 type Service struct {
 	spec     Spec
 	appNames []string
-	conn     *wsconn.Conn
+	peer     *wsconn.Peer
 	events   <-chan types.Event
-	handler  EventHandler
+	handler  types.EventHandler
 }
 
 // New creates a WebSocket client service.
 // handler is called for every event received from the panel.
-func New(spec Spec, appNames []string, events <-chan types.Event, handler EventHandler) Service {
+func New(spec Spec, appNames []string, events <-chan types.Event, handler types.EventHandler) Service {
 	return Service{
 		spec:     spec,
 		appNames: appNames,
@@ -72,14 +68,14 @@ func (s *Service) Start(ctx context.Context) {
 			slog.Warn("Connection lost", "error", err)
 		}
 
-		s.conn.Close()
-		s.conn = nil
+		s.peer.Close()
+		s.peer = nil
 	}
 }
 
 func (s *Service) connect() error {
-	if s.conn != nil {
-		s.conn.Close()
+	if s.peer != nil {
+		s.peer.Close()
 	}
 
 	wsURL, err := panelWSURL(s.spec.PanelHost)
@@ -95,7 +91,8 @@ func (s *Service) connect() error {
 		return err
 	}
 
-	s.conn = wsconn.New(conn)
+	ws := wsconn.New(conn)
+	s.peer = wsconn.NewPeer(ws, s.handler)
 	return nil
 }
 
@@ -132,42 +129,27 @@ func panelWSURL(panelHost string) (string, error) {
 }
 
 func (s *Service) run(ctx context.Context) error {
-	pingTicker := time.NewTicker(pingInterval)
-	defer pingTicker.Stop()
-
 	for {
 		select {
 		case <-ctx.Done():
 			return nil
-		case msg, ok := <-s.conn.Incoming():
-			if !ok {
-				return fmt.Errorf("connection closed")
-			}
-			s.handlePanelMessage(msg)
 		case evt := <-s.events:
 			if err := s.sendEvent(evt); err != nil {
 				return err
 			}
-		case <-pingTicker.C:
-			if err := s.conn.Ping(); err != nil {
-				return err
-			}
+		case <-s.peer.Closed():
+			return fmt.Errorf("connection closed")
 		}
 	}
 }
 
-// handlePanelMessage delegates incoming messages to the configured handler.
-func (s *Service) handlePanelMessage(evt types.Event) {
-	s.handler(evt)
-}
-
 func (s *Service) sendRegistration() {
-	msg := types.RegisterMessage{
+	msg := types.RegisterEvent{
 		Type:      types.EventTypeRegister,
 		Collector: s.spec.Name,
 		Apps:      s.appNames,
 	}
-	s.sendJSON(msg)
+	s.peer.Send(msg) // nolint: errcheck — registration is best-effort
 }
 
 func (s *Service) sendEvent(evt types.Event) error {
@@ -182,16 +164,5 @@ func (s *Service) sendEvent(evt types.Event) error {
 		Collector: s.spec.Name,
 		Data:      payload,
 	}
-	return s.sendJSON(msg)
-}
-
-// sendJSON sends v through the connection's outgoing channel.
-// The write loop in wsconn handles JSON marshalling.
-func (s *Service) sendJSON(v types.Event) error {
-	select {
-	case s.conn.Outgoing() <- v:
-		return nil
-	case <-s.conn.Closed():
-		return fmt.Errorf("connection closed")
-	}
+	return s.peer.Send(msg)
 }

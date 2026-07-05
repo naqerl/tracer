@@ -70,32 +70,32 @@ func (h *handler) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 
 	slog.Info("WebSocket connected", "remote", remoteAddr, "conn_id", connID)
 
-	// Wrap in shared Conn for channel-based I/O.
+	// Wrap in shared Conn and start Peer with dispatch handler.
 	ws := wsconn.New(conn)
+	var peer *wsconn.Peer
+	peer = wsconn.NewPeer(ws, func(evt types.Event) {
+		h.processMessage(r.Context(), connID, remoteAddr, evt, peer)
+	})
 
 	// Clean up connection on disconnect.
 	defer func() {
 		if !h.connManager.Unregister(connID) {
-			ws.Close()
+			peer.Close()
 		}
 		h.tracker.Disconnect(connID)
 		slog.Info("WebSocket disconnected", "remote", remoteAddr, "conn_id", connID)
 	}()
 
-	// Start ping ticker
-	go h.pingLoop(ws)
-
-	// Read loop using wsconn.Incoming
-	for evt := range ws.Incoming() {
-		h.processMessage(r.Context(), connID, remoteAddr, evt, ws)
-	}
+	// Block until the connection is closed (the read loop inside Peer
+	// handles all incoming events and the ping loop handles keepalive).
+	<-peer.Closed()
 }
 
 // Helpers
 
-func (h *handler) processMessage(ctx context.Context, connID, remoteAddr string, evt types.Event, ws *wsconn.Conn) {
+func (h *handler) processMessage(ctx context.Context, connID, remoteAddr string, evt types.Event, peer *wsconn.Peer) {
 	switch msg := evt.(type) {
-	case types.RegisterMessage:
+	case types.RegisterEvent:
 		if err := msg.Type.Validate(); err != nil {
 			slog.Error("Invalid websocket message type", "error", err)
 			return
@@ -103,7 +103,7 @@ func (h *handler) processMessage(ctx context.Context, connID, remoteAddr string,
 		h.topology.Publish(topologysvc.Message{
 			Register: &msg,
 		})
-		h.handleRegistration(ctx, connID, remoteAddr, msg, ws)
+		h.handleRegistration(ctx, connID, remoteAddr, msg, peer)
 	case types.Envelope:
 		h.handleEnvelope(ctx, msg)
 	default:
@@ -164,7 +164,7 @@ func (h *handler) handleEnvelope(ctx context.Context, env types.Envelope) {
 	}
 }
 
-func (h *handler) handleRegistration(ctx context.Context, connID, remoteAddr string, msg types.RegisterMessage, ws *wsconn.Conn) {
+func (h *handler) handleRegistration(ctx context.Context, connID, remoteAddr string, msg types.RegisterEvent, peer *wsconn.Peer) {
 	if len(msg.Apps) == 0 {
 		slog.Info("Skipping empty collector registration", "collector", msg.Collector, "remote", remoteAddr, "conn_id", connID)
 		return
@@ -187,7 +187,7 @@ func (h *handler) handleRegistration(ctx context.Context, connID, remoteAddr str
 	// Register connection for bidirectional communication, keyed by connID.
 	// This must happen before RegisterCollector so the Conn is available for
 	// any outgoing messages.
-	h.connManager.Register(connID, ws)
+	h.connManager.Register(connID, peer)
 
 	// Register ingest with tracker
 	h.tracker.Register(connID, req.CollectorName, remoteAddr, req.Apps)
@@ -292,17 +292,6 @@ func (h *handler) handleHealth(ctx context.Context, collector string, evt types.
 		return
 	}
 
-}
-
-func (h *handler) pingLoop(ws *wsconn.Conn) {
-	ticker := time.NewTicker(30 * time.Second)
-	defer ticker.Stop()
-
-	for range ticker.C {
-		if err := ws.Ping(); err != nil {
-			return
-		}
-	}
 }
 
 func (h *handler) requireCollectorAPIKey(w http.ResponseWriter, r *http.Request) bool {

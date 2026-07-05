@@ -4,13 +4,12 @@ package handler
 import (
 	"log/slog"
 
-	"tracer/apps/collector/internal/transport"
 	"tracer/libs/types"
 )
 
 // NewEventProcessor creates an EventHandler that processes messages from the panel.
 // updateFn is called when the panel requests a collector self-update.
-func NewEventProcessor(updateFn func() error) transport.EventHandler {
+func NewEventProcessor(updateFn func() error) types.EventHandler {
 	return func(evt types.Event) {
 		switch msg := evt.(type) {
 		case types.UpdateRequestedEvent:
