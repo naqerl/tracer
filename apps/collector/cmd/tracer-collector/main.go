@@ -172,15 +172,16 @@ func serve(ctx context.Context, cfg config.Config) error {
 	statsMonitor := stats.New(cfg.Stats)
 
 	// Transport
-	var svc *transport.Service
-	progressSender := update.ProgressReporter(func(stage string, status types.ProgressStatus, message string) {
-		if svc != nil {
-			svc.SendProgress(stage, status, message)
-		}
-	})
-	svc = transport.New(cfg.Transport, appNames, mpsc, handler.NewEventProcessor(func(reporter update.ProgressReporter) error {
+	// Create the event processor first — it starts with a no-op progress reporter
+	// so there is no circular dependency with the transport service.
+	processor := handler.NewEventProcessor(func(reporter update.ProgressReporter) error {
 		return update.SelfUpdate(runtime.SlugCollector, reporter)
-	}, progressSender))
+	})
+
+	svc := transport.New(cfg.Transport, appNames, mpsc, processor.HandleEvent)
+
+	// Wire progress reporting back through the transport now that it exists.
+	processor.SetProgressReporter(svc.SendProgress)
 
 	// Run
 	wg.Go(func() {
