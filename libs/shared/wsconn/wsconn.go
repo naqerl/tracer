@@ -1,13 +1,15 @@
 // Package wsconn provides a channel-based wrapper around gorilla/websocket.Conn.
 // It satisfies the single-writer requirement internally and exposes two channels:
 //   - Incoming: receives messages from the peer.
-//   - Outgoing: sends messages to the peer.
+//   - Outgoing: sends messages to the peer. All values sent are JSON-marshalled
+//     by the write loop before being written to the WebSocket.
 //
 // Both the collector (to connect to panel) and the panel (to manage collector
 // connections) use this package.
 package wsconn
 
 import (
+	"encoding/json"
 	"log/slog"
 	"sync"
 	"time"
@@ -33,7 +35,7 @@ const (
 type Conn struct {
 	conn      *websocket.Conn
 	incoming  chan []byte
-	outgoing  chan []byte
+	outgoing  chan any
 	wDone     chan struct{} // closed when writeLoop exits
 	rDone     chan struct{} // closed when readLoop exits
 	closeOnce sync.Once
@@ -45,7 +47,7 @@ func New(conn *websocket.Conn) *Conn {
 	c := &Conn{
 		conn:     conn,
 		incoming: make(chan []byte, IncomingCap),
-		outgoing: make(chan []byte, OutgoingCap),
+		outgoing: make(chan any, OutgoingCap),
 		wDone:    make(chan struct{}),
 		rDone:    make(chan struct{}),
 	}
@@ -67,9 +69,9 @@ func New(conn *websocket.Conn) *Conn {
 func (c *Conn) Incoming() <-chan []byte { return c.incoming }
 
 // Outgoing returns a send-only channel for messages to send to the peer.
-// Blocks until the message is accepted by the write buffer.
-// To detect a closed connection, select on Closed().
-func (c *Conn) Outgoing() chan<- []byte { return c.outgoing }
+// Any value sent to this channel is JSON-marshalled by the write loop before
+// being written to the WebSocket.
+func (c *Conn) Outgoing() chan<- any { return c.outgoing }
 
 // Closed returns a channel that is closed when the write loop exits (connection lost or shutdown).
 func (c *Conn) Closed() <-chan struct{} { return c.wDone }
@@ -77,7 +79,20 @@ func (c *Conn) Closed() <-chan struct{} { return c.wDone }
 // writeLoop is the single goroutine that writes to the underlying conn.
 func (c *Conn) writeLoop() {
 	defer close(c.wDone)
-	for data := range c.outgoing {
+	for v := range c.outgoing {
+		var data []byte
+		switch val := v.(type) {
+		case []byte:
+			data = val
+		default:
+			var err error
+			data, err = json.Marshal(val)
+			if err != nil {
+				slog.Error("wsconn: failed to marshal outgoing message", "error", err)
+				continue
+			}
+		}
+
 		c.conn.SetWriteDeadline(time.Now().Add(WriteTimeout))
 		if err := c.conn.WriteMessage(websocket.TextMessage, data); err != nil {
 			slog.Debug("WebSocket write failed", "error", err)

@@ -1,11 +1,11 @@
 package ingest
 
 import (
-	"encoding/json"
 	"log/slog"
 	"sync"
 
 	"tracer/libs/shared/wsconn"
+	"tracer/libs/types"
 )
 
 // ConnManager tracks collector WebSocket connections so the panel can
@@ -58,17 +58,7 @@ func (cm *ConnManager) Unregister(connID string) bool {
 // The read lock is held for the entire iteration to prevent concurrent
 // modification of the connection map by Register/Unregister.
 func (cm *ConnManager) SendUpdate() int {
-	msg := struct {
-		Type string `json:"type"`
-	}{
-		Type: "update",
-	}
-
-	payload, err := json.Marshal(msg)
-	if err != nil {
-		slog.Error("Failed to marshal update message", "error", err)
-		return 0
-	}
+	msg := types.MessageHeader{Type: types.EventTypeUpdate}
 
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
@@ -83,7 +73,7 @@ func (cm *ConnManager) SendUpdate() int {
 	sent := 0
 	for _, c := range cm.conns {
 		select {
-		case c.Outgoing() <- payload:
+		case c.Outgoing() <- msg:
 			sent++
 		default:
 			slog.Warn("Write buffer full, dropping update for collector")

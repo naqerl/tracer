@@ -198,15 +198,11 @@ func (s *Service) sendEvent(evt types.Event) error {
 	return s.sendJSON(msg)
 }
 
-// sendJSON marshals v and sends it through the connection's outgoing channel.
+// sendJSON sends v through the connection's outgoing channel.
+// The write loop in wsconn handles JSON marshalling.
 func (s *Service) sendJSON(v any) error {
-	data, err := json.Marshal(v)
-	if err != nil {
-		return fmt.Errorf("marshal failed: %w", err)
-	}
-
 	select {
-	case s.conn.Outgoing() <- data:
+	case s.conn.Outgoing() <- v:
 		return nil
 	case <-s.conn.Closed():
 		return fmt.Errorf("connection closed")

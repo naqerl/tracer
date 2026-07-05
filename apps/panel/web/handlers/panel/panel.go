@@ -3,7 +3,6 @@ package panel
 import (
 	"database/sql"
 	_ "embed"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -990,9 +989,9 @@ func (h *handler) postUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusAccepted)
-	if err := json.NewEncoder(w).Encode(result); err != nil {
-		slog.Error("Failed to write update response", "error", err)
-	}
+	view.UpdateStatus(view.UpdateStatusProps{
+		CollectorsNotified: result.CollectorsNotified,
+		Message:            result.Message,
+	}).Render(r.Context(), w)
 }
