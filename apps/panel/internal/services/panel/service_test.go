@@ -82,7 +82,7 @@ func setupTestService(t *testing.T) (*Service, *rwdb.DBHandle, int64, string, st
 	mgr := newTestDBManager(t)
 
 	// --- Tracker ---
-	tracker := ingestsvc.NewTracker()
+	tracker := ingestsvc.NewCollectorTracker()
 
 	// --- User service ---
 	userSvc := usersvc.NewService(panelDB)
@@ -133,7 +133,7 @@ func setupTestServiceNoAccess(t *testing.T) (*Service, int64) {
 
 	panelDB := newTestPanelDB(t)
 	mgr := newTestDBManager(t)
-	tracker := ingestsvc.NewTracker()
+	tracker := ingestsvc.NewCollectorTracker()
 	userSvc := usersvc.NewService(panelDB)
 	authSvc := authsvc.New(panelDB)
 

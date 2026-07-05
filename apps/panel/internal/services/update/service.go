@@ -22,11 +22,11 @@ type UpdateResult struct {
 // Service handles update operations for the panel.
 type Service struct {
 	connManager *ingest.ConnManager
-	progTracker *ingest.UpdateProgressTracker
+	progTracker *ingest.UpdateTracker
 }
 
 // New creates a new update Service.
-func New(connManager *ingest.ConnManager, progTracker *ingest.UpdateProgressTracker) *Service {
+func New(connManager *ingest.ConnManager, progTracker *ingest.UpdateTracker) *Service {
 	return &Service{
 		connManager: connManager,
 		progTracker: progTracker,

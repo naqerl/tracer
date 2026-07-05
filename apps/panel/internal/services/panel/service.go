@@ -35,7 +35,7 @@ const (
 	sinceValidationSkew = time.Second
 )
 
-func New(dbManager *dbmanager.Manager, ingestSvc *ingest.Service, tracker *ingest.Tracker, userSvc *user.Service) *Service {
+func New(dbManager *dbmanager.Manager, ingestSvc *ingest.Service, tracker *ingest.CollectorTracker, userSvc *user.Service) *Service {
 	return &Service{
 		dbManager: dbManager,
 		ingestSvc: ingestSvc,
@@ -48,7 +48,7 @@ type Service struct {
 	dbManager *dbmanager.Manager
 	ingestSvc *ingest.Service
 	userSvc   *user.Service
-	tracker   *ingest.Tracker
+	tracker   *ingest.CollectorTracker
 }
 
 // Collector provides a complete view of a collector for display,

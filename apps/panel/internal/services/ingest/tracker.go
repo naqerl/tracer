@@ -17,22 +17,22 @@ type Collector struct {
 	connID      string    // internal: current connection ID
 }
 
-// Tracker keeps track of connected collectors
-type Tracker struct {
+// CollectorTracker keeps track of connected collectors.
+type CollectorTracker struct {
 	mu         sync.RWMutex
 	collectors map[string]*Collector // key: collector name
 }
 
-// NewTracker creates a new collector tracker
-func NewTracker() *Tracker {
-	return &Tracker{
+// NewCollectorTracker creates a new collector tracker.
+func NewCollectorTracker() *CollectorTracker {
+	return &CollectorTracker{
 		collectors: make(map[string]*Collector),
 	}
 }
 
 // Register adds or updates a collector connection
 // Uses collector name as key, so reconnections update the existing entry
-func (t *Tracker) Register(connID, name, remoteAddr string, apps []string) {
+func (t *CollectorTracker) Register(connID, name, remoteAddr string, apps []string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
@@ -61,7 +61,7 @@ func (t *Tracker) Register(connID, name, remoteAddr string, apps []string) {
 
 // Disconnect marks a collector as disconnected (by connection ID)
 // Only disconnects if the connID matches the current connection
-func (t *Tracker) Disconnect(connID string) {
+func (t *CollectorTracker) Disconnect(connID string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
@@ -75,7 +75,7 @@ func (t *Tracker) Disconnect(connID string) {
 }
 
 // UpdateLastSeen updates the last seen timestamp for a collector (by connection ID)
-func (t *Tracker) UpdateLastSeen(connID string) {
+func (t *CollectorTracker) UpdateLastSeen(connID string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
@@ -89,7 +89,7 @@ func (t *Tracker) UpdateLastSeen(connID string) {
 
 // List returns all collectors (both connected and recently disconnected)
 // Sorted by name for consistent ordering
-func (t *Tracker) List() []Collector {
+func (t *CollectorTracker) List() []Collector {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 
@@ -104,7 +104,7 @@ func (t *Tracker) List() []Collector {
 }
 
 // ListConnected returns only connected collectors
-func (t *Tracker) ListConnected() []Collector {
+func (t *CollectorTracker) ListConnected() []Collector {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 
@@ -118,7 +118,7 @@ func (t *Tracker) ListConnected() []Collector {
 }
 
 // Cleanup removes collectors that have been disconnected for longer than the given duration
-func (t *Tracker) Cleanup(maxAge time.Duration) {
+func (t *CollectorTracker) Cleanup(maxAge time.Duration) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
@@ -131,7 +131,7 @@ func (t *Tracker) Cleanup(maxAge time.Duration) {
 }
 
 // Get returns a specific collector by name
-func (t *Tracker) Get(name string) (Collector, bool) {
+func (t *CollectorTracker) Get(name string) (Collector, bool) {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 

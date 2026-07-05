@@ -22,9 +22,9 @@ type UpdateEntityProgress struct {
 	Done   bool          `json:"done"`
 }
 
-// UpdateProgressTracker tracks progress of update operations and provides
+// UpdateTracker tracks progress of update operations and provides
 // an SSE subscriber channel for real-time progress streaming.
-type UpdateProgressTracker struct {
+type UpdateTracker struct {
 	mu       sync.RWMutex
 	entities map[string]*UpdateEntityProgress
 
@@ -36,9 +36,9 @@ type UpdateProgressTracker struct {
 	active int32
 }
 
-// NewUpdateProgressTracker creates a new tracker.
-func NewUpdateProgressTracker() *UpdateProgressTracker {
-	return &UpdateProgressTracker{
+// NewUpdateTracker creates a new tracker.
+func NewUpdateTracker() *UpdateTracker {
+	return &UpdateTracker{
 		entities: make(map[string]*UpdateEntityProgress),
 		subs:     make(map[chan []byte]struct{}),
 	}
@@ -46,7 +46,7 @@ func NewUpdateProgressTracker() *UpdateProgressTracker {
 
 // Subscribe returns a channel that receives progress events as JSON bytes.
 // The caller must call Unsubscribe when done.
-func (t *UpdateProgressTracker) Subscribe() chan []byte {
+func (t *UpdateTracker) Subscribe() chan []byte {
 	ch := make(chan []byte, 64)
 	t.subsMu.Lock()
 	t.subs[ch] = struct{}{}
@@ -55,19 +55,19 @@ func (t *UpdateProgressTracker) Subscribe() chan []byte {
 }
 
 // Unsubscribe removes a subscriber channel.
-func (t *UpdateProgressTracker) Unsubscribe(ch chan []byte) {
+func (t *UpdateTracker) Unsubscribe(ch chan []byte) {
 	t.subsMu.Lock()
 	delete(t.subs, ch)
 	t.subsMu.Unlock()
 }
 
 // IsActive returns true if an update is currently in progress.
-func (t *UpdateProgressTracker) IsActive() bool {
+func (t *UpdateTracker) IsActive() bool {
 	return atomic.LoadInt32(&t.active) == 1
 }
 
 // StartUpdate marks the update as active and initializes entities.
-func (t *UpdateProgressTracker) StartUpdate() {
+func (t *UpdateTracker) StartUpdate() {
 	atomic.StoreInt32(&t.active, 1)
 	t.mu.Lock()
 	t.entities = make(map[string]*UpdateEntityProgress)
@@ -75,7 +75,7 @@ func (t *UpdateProgressTracker) StartUpdate() {
 }
 
 // FinishUpdate marks the update as complete (no longer active).
-func (t *UpdateProgressTracker) FinishUpdate() {
+func (t *UpdateTracker) FinishUpdate() {
 	atomic.StoreInt32(&t.active, 0)
 }
 
@@ -92,7 +92,7 @@ func stageIndex(stage string) int {
 }
 
 // ReportProgress records progress for an entity and broadcasts to all subscribers.
-func (t *UpdateProgressTracker) ReportProgress(entity, stage string, status types.ProgressStatus, message string) {
+func (t *UpdateTracker) ReportProgress(entity, stage string, status types.ProgressStatus, message string) {
 	t.mu.Lock()
 	ep, ok := t.entities[entity]
 	if !ok {
@@ -158,7 +158,7 @@ func (t *UpdateProgressTracker) ReportProgress(entity, stage string, status type
 }
 
 // Snapshot returns a copy of all entity progress states.
-func (t *UpdateProgressTracker) Snapshot() []UpdateEntityProgress {
+func (t *UpdateTracker) Snapshot() []UpdateEntityProgress {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 	result := make([]UpdateEntityProgress, 0, len(t.entities))

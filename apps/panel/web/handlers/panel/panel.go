@@ -26,7 +26,7 @@ var logGroupPlotJS []byte
 type handler struct {
 	svc             *panelsvc.Service
 	updateSvc       *updatesvc.Service
-	progressTracker *ingest.UpdateProgressTracker
+	progressTracker *ingest.UpdateTracker
 }
 
 // LevelFilter represents a log level filter option
@@ -50,7 +50,7 @@ const (
 	defaultSinceLabel = "24h"
 )
 
-func InitMux(svc *panelsvc.Service, updateSvc *updatesvc.Service, progressTracker *ingest.UpdateProgressTracker) *http.ServeMux {
+func InitMux(svc *panelsvc.Service, updateSvc *updatesvc.Service, progressTracker *ingest.UpdateTracker) *http.ServeMux {
 	m := http.NewServeMux()
 	h := handler{
 		svc:             svc,

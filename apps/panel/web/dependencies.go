@@ -26,10 +26,7 @@ type Dependencies struct {
 	Update   *updatesvc.Service
 	Config   *config.Config
 
-	// Tracker tracks connected collectors (WebSocket peers).
-	Tracker *ingest.Tracker
-	// UpdateTracker tracks per-entity update progress (download → build → … → complete).
-	UpdateTracker *ingest.UpdateProgressTracker
-	// ConnManager manages WebSocket connections to collectors.
-	ConnManager *ingest.ConnManager
+	Tracker       *ingest.CollectorTracker
+	UpdateTracker *ingest.UpdateTracker
+	ConnManager   *ingest.ConnManager
 }

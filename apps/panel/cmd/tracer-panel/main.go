@@ -236,10 +236,10 @@ func serve(ctx context.Context, cfg *config.Config, noAuth, readOnly bool) error
 	retentionService := retention.New(dbManager, ingestService, cfg)
 
 	// Initialize collector tracker
-	tracker := ingest.NewTracker()
+	tracker := ingest.NewCollectorTracker()
 
 	// Update progress tracker for SSE streaming
-	progressTracker := ingest.NewUpdateProgressTracker()
+	progressTracker := ingest.NewUpdateTracker()
 
 	// Connection manager for WebSocket-based collector communication
 	connManager := ingest.NewConnManager()
@@ -282,14 +282,12 @@ func serve(ctx context.Context, cfg *config.Config, noAuth, readOnly bool) error
 
 	// Initialize HTTP server
 	deps := web.Dependencies{
-		DBManager: dbManager,
-		Ingest:    ingestService,
-		Notify:    notifyService,
-		Auth:      authService,
-		User:      userService,
-		// Tracker tracks connected collectors (WebSocket peers).
-		Tracker: tracker,
-		// UpdateTracker tracks per-entity update progress.
+		DBManager:     dbManager,
+		Ingest:        ingestService,
+		Notify:        notifyService,
+		Auth:          authService,
+		User:          userService,
+		Tracker:       tracker,
 		UpdateTracker: progressTracker,
 		Topology:      topologyService,
 		Panel:         panelService,

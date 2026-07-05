@@ -31,13 +31,13 @@ var upgrader = websocket.Upgrader{
 type handler struct {
 	authService     *auth.Service
 	ingestService   *ingest.Service
-	tracker         *ingest.Tracker
+	tracker         *ingest.CollectorTracker
 	topology        *topologysvc.Service
 	connManager     *ingest.ConnManager
-	progressTracker *ingest.UpdateProgressTracker
+	progressTracker *ingest.UpdateTracker
 }
 
-func InitMux(authService *auth.Service, ingestService *ingest.Service, tracker *ingest.Tracker, topology *topologysvc.Service, connManager *ingest.ConnManager, progressTracker *ingest.UpdateProgressTracker) *http.ServeMux {
+func InitMux(authService *auth.Service, ingestService *ingest.Service, tracker *ingest.CollectorTracker, topology *topologysvc.Service, connManager *ingest.ConnManager, progressTracker *ingest.UpdateTracker) *http.ServeMux {
 	m := http.NewServeMux()
 	h := &handler{
 		authService:     authService,
