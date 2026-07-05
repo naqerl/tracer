@@ -1016,7 +1016,8 @@ func (h *handler) getUpdateProgressSSE(w http.ResponseWriter, r *http.Request) {
 
 	// Send initial snapshot
 	snapshot := h.progressTracker.Snapshot()
-	if data, err := json.Marshal(snapshot); err == nil {
+	payload := map[string]any{"entities": snapshot}
+	if data, err := json.Marshal(payload); err == nil {
 		fmt.Fprintf(w, "event: snapshot\ndata: %s\n\n", data)
 		flusher.Flush()
 	}

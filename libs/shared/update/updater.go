@@ -15,12 +15,15 @@ import (
 // Updater performs the stages of a self-update (download, build, verify,
 // install, restart) and reports progress via a Report.
 type Updater struct {
-	slug runtime.Slug
+	slug  runtime.Slug
+	runFn func(chan<- ProgressEvent) error // injectable for testing; defaults to u.run
 }
 
 // NewUpdater creates an Updater for the given service slug.
 func NewUpdater(slug runtime.Slug) *Updater {
-	return &Updater{slug: slug}
+	u := &Updater{slug: slug}
+	u.runFn = u.run
+	return u
 }
 
 // Run executes the self-update in a goroutine. It returns a Report whose
@@ -33,7 +36,12 @@ func (u *Updater) Run() *Report {
 
 	go func() {
 		defer close(events)
-		err := u.run(events)
+		defer func() {
+			if p := recover(); p != nil {
+				r.setErr(fmt.Errorf("update panicked: %v", p))
+			}
+		}()
+		err := u.runFn(events)
 		r.setErr(err)
 	}()
 
@@ -153,6 +161,7 @@ func (u *Updater) run(events chan<- ProgressEvent) error {
 		events <- ProgressEvent{Stage: "restart", Status: types.ProgressFailed, Message: err.Error()}
 	} else {
 		events <- ProgressEvent{Stage: "restart", Status: types.ProgressDone}
+		events <- ProgressEvent{Stage: "complete", Status: types.ProgressDone}
 	}
 
 	return nil

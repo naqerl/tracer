@@ -79,10 +79,12 @@ func (s *Service) Start(ctx context.Context) {
 
 func (s *Service) connect() error {
 	s.peerMu.Lock()
+	defer s.peerMu.Unlock()
+
 	if s.peer != nil {
 		s.peer.Close()
+		s.peer = nil
 	}
-	s.peerMu.Unlock()
 
 	wsURL, err := panelWSURL(s.spec.PanelHost)
 	if err != nil {
@@ -98,9 +100,7 @@ func (s *Service) connect() error {
 	}
 
 	ws := wsconn.New(conn)
-	s.peerMu.Lock()
 	s.peer = wsconn.NewPeer(ws, s.handler)
-	s.peerMu.Unlock()
 	return nil
 }
 
