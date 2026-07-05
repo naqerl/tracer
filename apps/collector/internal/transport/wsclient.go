@@ -154,23 +154,28 @@ func (s *Service) run(ctx context.Context) error {
 }
 
 // handlePanelMessage processes an incoming message from the panel.
-func (s *Service) handlePanelMessage(message []byte) {
-	var hdr types.MessageHeader
-	if err := json.Unmarshal(message, &hdr); err != nil {
-		slog.Error("Failed to parse panel message", "error", err)
-		return
-	}
-
-	switch hdr.Type {
-	case types.EventTypeUpdate:
-		slog.Info("Received update command from panel, triggering self-update")
+func (s *Service) handlePanelMessage(evt types.Event) {
+	switch msg := evt.(type) {
+	case types.UpdateRequestedEvent:
+		slog.Info("Received update command from panel", "version", msg.Version)
 		go func() {
 			if err := s.updateFn(); err != nil {
 				slog.Error("Collector update failed", "error", err)
 			}
 		}()
+	case types.MessageHeader:
+		if msg.Type == types.EventTypeUpdate {
+			slog.Info("Received update command from panel, triggering self-update")
+			go func() {
+				if err := s.updateFn(); err != nil {
+					slog.Error("Collector update failed", "error", err)
+				}
+			}()
+		} else {
+			slog.Debug("Received unknown message type from panel", "type", msg.Type)
+		}
 	default:
-		slog.Debug("Received unknown message type from panel", "type", hdr.Type)
+		slog.Debug("Received unknown message type from panel", "type", evt.EventType())
 	}
 }
 
@@ -191,7 +196,7 @@ func (s *Service) sendEvent(evt types.Event) error {
 
 	msg := types.Envelope{
 		Type:      evt.EventType(),
-		Timestamp: time.Now().UTC(),
+		Time:      time.Now().UTC(),
 		Collector: s.spec.Name,
 		Data:      payload,
 	}
@@ -200,7 +205,7 @@ func (s *Service) sendEvent(evt types.Event) error {
 
 // sendJSON sends v through the connection's outgoing channel.
 // The write loop in wsconn handles JSON marshalling.
-func (s *Service) sendJSON(v any) error {
+func (s *Service) sendJSON(v types.Event) error {
 	select {
 	case s.conn.Outgoing() <- v:
 		return nil

@@ -15,6 +15,8 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+
+	"tracer/libs/types"
 )
 
 const (
@@ -34,8 +36,8 @@ const (
 // All reads are serialized through a single goroutine.
 type Conn struct {
 	conn      *websocket.Conn
-	incoming  chan []byte
-	outgoing  chan any
+	incoming  chan types.Event
+	outgoing  chan types.Event
 	wDone     chan struct{} // closed when writeLoop exits
 	rDone     chan struct{} // closed when readLoop exits
 	closeOnce sync.Once
@@ -46,8 +48,8 @@ type Conn struct {
 func New(conn *websocket.Conn) *Conn {
 	c := &Conn{
 		conn:     conn,
-		incoming: make(chan []byte, IncomingCap),
-		outgoing: make(chan any, OutgoingCap),
+		incoming: make(chan types.Event, IncomingCap),
+		outgoing: make(chan types.Event, OutgoingCap),
 		wDone:    make(chan struct{}),
 		rDone:    make(chan struct{}),
 	}
@@ -66,12 +68,12 @@ func New(conn *websocket.Conn) *Conn {
 
 // Incoming returns a receive-only channel of messages received from the peer.
 // The channel is closed when the connection is closed or an error occurs.
-func (c *Conn) Incoming() <-chan []byte { return c.incoming }
+func (c *Conn) Incoming() <-chan types.Event { return c.incoming }
 
 // Outgoing returns a send-only channel for messages to send to the peer.
 // Any value sent to this channel is JSON-marshalled by the write loop before
 // being written to the WebSocket.
-func (c *Conn) Outgoing() chan<- any { return c.outgoing }
+func (c *Conn) Outgoing() chan<- types.Event { return c.outgoing }
 
 // Closed returns a channel that is closed when the write loop exits (connection lost or shutdown).
 func (c *Conn) Closed() <-chan struct{} { return c.wDone }
@@ -80,17 +82,10 @@ func (c *Conn) Closed() <-chan struct{} { return c.wDone }
 func (c *Conn) writeLoop() {
 	defer close(c.wDone)
 	for v := range c.outgoing {
-		var data []byte
-		switch val := v.(type) {
-		case []byte:
-			data = val
-		default:
-			var err error
-			data, err = json.Marshal(val)
-			if err != nil {
-				slog.Error("wsconn: failed to marshal outgoing message", "error", err)
-				continue
-			}
+		data, err := json.Marshal(v)
+		if err != nil {
+			slog.Error("wsconn: failed to marshal outgoing message", "error", err)
+			continue
 		}
 
 		c.conn.SetWriteDeadline(time.Now().Add(WriteTimeout))
@@ -109,8 +104,15 @@ func (c *Conn) readLoop() {
 		if err != nil {
 			return
 		}
+
+		evt, err := types.FromJSON(data)
+		if err != nil {
+			slog.Warn("wsconn: failed to parse incoming message", "error", err)
+			continue
+		}
+
 		select {
-		case c.incoming <- data:
+		case c.incoming <- evt:
 		default:
 			slog.Warn("Incoming message buffer full, dropping message")
 		}

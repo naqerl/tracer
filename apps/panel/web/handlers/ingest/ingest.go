@@ -86,42 +86,28 @@ func (h *handler) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	go h.pingLoop(ws)
 
 	// Read loop using wsconn.Incoming
-	for msg := range ws.Incoming() {
-		h.processMessage(r.Context(), connID, remoteAddr, msg, ws)
+	for evt := range ws.Incoming() {
+		h.processMessage(r.Context(), connID, remoteAddr, evt, ws)
 	}
 }
 
 // Helpers
 
-func (h *handler) processMessage(ctx context.Context, connID, remoteAddr string, message []byte, ws *wsconn.Conn) {
-	var hdr types.MessageHeader
-	if err := json.Unmarshal(message, &hdr); err != nil {
-		slog.Error("Failed to parse websocket message header", "error", err)
-		return
-	}
-	if err := hdr.Type.Validate(); err != nil {
-		slog.Error("Invalid websocket message type", "error", err)
-		return
-	}
-
-	switch hdr.Type {
-	case types.EventTypeRegister:
-		var reg types.RegisterMessage
-		if err := json.Unmarshal(message, &reg); err != nil {
-			slog.Error("Failed to parse collector registration", "error", err)
+func (h *handler) processMessage(ctx context.Context, connID, remoteAddr string, evt types.Event, ws *wsconn.Conn) {
+	switch msg := evt.(type) {
+	case types.RegisterMessage:
+		if err := msg.Type.Validate(); err != nil {
+			slog.Error("Invalid websocket message type", "error", err)
 			return
 		}
 		h.topology.Publish(topologysvc.Message{
-			Register: &reg,
+			Register: &msg,
 		})
-		h.handleRegistration(ctx, connID, remoteAddr, reg, ws)
+		h.handleRegistration(ctx, connID, remoteAddr, msg, ws)
+	case types.Envelope:
+		h.handleEnvelope(ctx, msg)
 	default:
-		var env types.Envelope
-		if err := json.Unmarshal(message, &env); err != nil {
-			slog.Error("Failed to parse ingest envelope", "error", err)
-			return
-		}
-		h.handleEnvelope(ctx, env)
+		slog.Error("Unexpected message type from collector", "type", evt.EventType())
 	}
 }
 

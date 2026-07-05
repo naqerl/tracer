@@ -32,6 +32,9 @@ type MessageHeader struct {
 	Type EventType `json:"type"`
 }
 
+func (m MessageHeader) EventType() EventType { return m.Type }
+func (m MessageHeader) Timestamp() time.Time { return time.Time{} }
+
 // Event is the base collector event interface.
 type Event interface {
 	EventType() EventType
@@ -87,10 +90,13 @@ func (e StatsEvent) Timestamp() time.Time { return e.Time }
 // Envelope is the wire format with collector context added by transport.
 type Envelope struct {
 	Type      EventType       `json:"type"`
-	Timestamp time.Time       `json:"timestamp"`
+	Time      time.Time       `json:"timestamp"`
 	Collector string          `json:"collector"`
 	Data      json.RawMessage `json:"data"`
 }
+
+func (e Envelope) EventType() EventType { return e.Type }
+func (e Envelope) Timestamp() time.Time { return e.Time }
 
 // RegisterMessage is the initial registration message.
 type RegisterMessage struct {
@@ -98,6 +104,9 @@ type RegisterMessage struct {
 	Collector string    `json:"collector"`
 	Apps      []string  `json:"apps"`
 }
+
+func (m RegisterMessage) EventType() EventType { return m.Type }
+func (m RegisterMessage) Timestamp() time.Time { return time.Time{} }
 
 // ErrorEvent represents a source error for reporting to panel.
 type ErrorEvent struct {
@@ -120,8 +129,40 @@ type HealthEvent struct {
 func (e HealthEvent) EventType() EventType { return EventTypeHealth }
 func (e HealthEvent) Timestamp() time.Time { return e.Time }
 
-// UpdateMessage is sent from panel to collectors to trigger a self-update.
-type UpdateMessage struct {
+// UpdateRequestedEvent is sent from panel to collectors to trigger a self-update.
+type UpdateRequestedEvent struct {
 	Type    EventType `json:"type"`
 	Version string    `json:"version,omitempty"`
+}
+
+func (m UpdateRequestedEvent) EventType() EventType { return m.Type }
+func (m UpdateRequestedEvent) Timestamp() time.Time { return time.Time{} }
+
+// FromJSON parses JSON bytes into the appropriate Event concrete type
+// based on the "type" field.
+func FromJSON(data []byte) (Event, error) {
+	var hdr MessageHeader
+	if err := json.Unmarshal(data, &hdr); err != nil {
+		return nil, err
+	}
+	switch hdr.Type {
+	case EventTypeRegister:
+		var msg RegisterMessage
+		if err := json.Unmarshal(data, &msg); err != nil {
+			return nil, err
+		}
+		return msg, nil
+	case EventTypeUpdate:
+		var evt UpdateRequestedEvent
+		if err := json.Unmarshal(data, &evt); err != nil {
+			return nil, err
+		}
+		return evt, nil
+	default:
+		var env Envelope
+		if err := json.Unmarshal(data, &env); err != nil {
+			return nil, err
+		}
+		return env, nil
+	}
 }
