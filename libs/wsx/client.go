@@ -26,81 +26,129 @@ const (
 	DefaultReadLimit        = 10 * 1024 * 1024 // 10 MB
 )
 
-// Config holds client configurations for a reconnecting WebSocket client.
-type Config struct {
-	// URL is the WebSocket server endpoint (e.g. "ws://host/ws").
-	// Leave empty for server-side connections created with NewFromConn.
-	URL string
+// ClientOption configures the Client. Options are applied in order.
+type ClientOption func(*cfg)
 
-	// Headers are sent during the initial handshake.
-	Headers http.Header
-
-	// HandshakeTimeout is the maximum time to wait for the connection to establish.
-	HandshakeTimeout time.Duration
-
-	// WriteTimeout is the deadline for each write operation.
-	WriteTimeout time.Duration
-
-	// PingInterval is how often the client sends ping frames.
-	PingInterval time.Duration
-
-	// PongWait is how long the client waits for a pong before considering the
-	// connection dead (also used as the read deadline).
-	PongWait time.Duration
-
-	// ReconnectDelay is the initial delay before reconnecting after a failure.
-	ReconnectDelay time.Duration
-
-	// MaxReconnectWait is the maximum backoff delay between reconnect attempts.
-	MaxReconnectWait time.Duration
-
-	// ReadLimit sets the maximum message size in bytes. 0 means no limit.
-	ReadLimit int64
-
-	// OnConnect is called after a successful connection.
-	// If it returns an error, the connection is closed and a reconnect is attempted.
-	OnConnect func(ctx context.Context) error
-
-	// OnDisconnect is called when the connection is lost (after cleanup).
-	OnDisconnect func()
+// cfg holds all configuration for a Client.
+type cfg struct {
+	url              string
+	headers          http.Header
+	conn             *websocket.Conn // pre-existing connection (server mode)
+	handshakeTimeout time.Duration
+	writeTimeout     time.Duration
+	pingInterval     time.Duration
+	pongWait         time.Duration
+	reconnectDelay   time.Duration
+	maxReconnectWait time.Duration
+	readLimit        int64
+	onConnect        func(ctx context.Context) error
+	onDisconnect     func()
 }
 
-// setDefaults fills in zero-valued fields with sensible defaults.
-func (c *Config) setDefaults() {
-	if c.HandshakeTimeout <= 0 {
-		c.HandshakeTimeout = DefaultHandshakeTimeout
+// setDefaults fills zero-valued fields with sensible defaults.
+func (c *cfg) setDefaults() {
+	if c.handshakeTimeout <= 0 {
+		c.handshakeTimeout = DefaultHandshakeTimeout
 	}
-	if c.WriteTimeout <= 0 {
-		c.WriteTimeout = DefaultWriteTimeout
+	if c.writeTimeout <= 0 {
+		c.writeTimeout = DefaultWriteTimeout
 	}
-	if c.PingInterval <= 0 {
-		c.PingInterval = DefaultPingInterval
+	if c.pingInterval <= 0 {
+		c.pingInterval = DefaultPingInterval
 	}
-	if c.PongWait <= 0 {
-		c.PongWait = DefaultPongWait
+	if c.pongWait <= 0 {
+		c.pongWait = DefaultPongWait
 	}
-	if c.ReconnectDelay <= 0 {
-		c.ReconnectDelay = DefaultReconnectDelay
+	if c.reconnectDelay <= 0 {
+		c.reconnectDelay = DefaultReconnectDelay
 	}
-	if c.MaxReconnectWait <= 0 {
-		c.MaxReconnectWait = DefaultMaxReconnectWait
+	if c.maxReconnectWait <= 0 {
+		c.maxReconnectWait = DefaultMaxReconnectWait
 	}
-	if c.ReadLimit <= 0 {
-		c.ReadLimit = DefaultReadLimit
+	if c.readLimit <= 0 {
+		c.readLimit = DefaultReadLimit
 	}
 }
+
+// ── Option functions ───────────────────────────────────────────────────────────
+
+// WithURL sets the WebSocket server endpoint (e.g. "ws://host/ws").
+// When set, the client dials the URL and reconnects on failure (client mode).
+func WithURL(url string) ClientOption {
+	return func(c *cfg) { c.url = url }
+}
+
+// WithHeaders sets the HTTP headers sent during the initial handshake.
+func WithHeaders(headers http.Header) ClientOption {
+	return func(c *cfg) { c.headers = headers }
+}
+
+// WithConn wraps an already-upgraded WebSocket connection.
+// When set, the client runs in server mode (no reconnection, no dial).
+func WithConn(raw *websocket.Conn) ClientOption {
+	return func(c *cfg) { c.conn = raw }
+}
+
+// WithHandshakeTimeout sets the dial handshake timeout.
+func WithHandshakeTimeout(d time.Duration) ClientOption {
+	return func(c *cfg) { c.handshakeTimeout = d }
+}
+
+// WithWriteTimeout sets the write deadline for each outgoing frame.
+func WithWriteTimeout(d time.Duration) ClientOption {
+	return func(c *cfg) { c.writeTimeout = d }
+}
+
+// WithPingInterval sets the interval between keepalive pings.
+func WithPingInterval(d time.Duration) ClientOption {
+	return func(c *cfg) { c.pingInterval = d }
+}
+
+// WithPongWait sets the time to wait for a pong before considering the
+// connection dead (also used as the read deadline).
+func WithPongWait(d time.Duration) ClientOption {
+	return func(c *cfg) { c.pongWait = d }
+}
+
+// WithReconnectDelay sets the initial delay before reconnecting.
+func WithReconnectDelay(d time.Duration) ClientOption {
+	return func(c *cfg) { c.reconnectDelay = d }
+}
+
+// WithMaxReconnectWait sets the maximum backoff delay between reconnect attempts.
+func WithMaxReconnectWait(d time.Duration) ClientOption {
+	return func(c *cfg) { c.maxReconnectWait = d }
+}
+
+// WithReadLimit sets the maximum message size in bytes (0 = no limit).
+func WithReadLimit(limit int64) ClientOption {
+	return func(c *cfg) { c.readLimit = limit }
+}
+
+// WithOnConnect sets a callback called after a successful connection.
+// If it returns an error, the connection is closed and a reconnect is attempted.
+func WithOnConnect(fn func(ctx context.Context) error) ClientOption {
+	return func(c *cfg) { c.onConnect = fn }
+}
+
+// WithOnDisconnect sets a callback called when the connection is lost.
+func WithOnDisconnect(fn func()) ClientOption {
+	return func(c *cfg) { c.onDisconnect = fn }
+}
+
+// ── Client ─────────────────────────────────────────────────────────────────────
 
 // Client manages a WebSocket connection and provides a clean
 // Send/Recv API operating on the Event interface.
 //
 // Two modes:
-//   - Client mode: created via NewClient with a Config containing a URL.
+//   - Client mode: created via New with WithURL.
 //     The client dials the URL, reconnects on failure, and manages the
 //     connection lifecycle internally.
-//   - Server mode: created via NewFromConn wrapping an already-upgraded
+//   - Server mode: created via New with WithConn, wrapping an already-upgraded
 //     connection (e.g. from the panel's HTTP handler). No reconnection.
 type Client struct {
-	config   Config
+	cfg      cfg
 	conn     *conn
 	connMu   sync.RWMutex
 	dialer   websocket.Dialer
@@ -109,36 +157,43 @@ type Client struct {
 	closedMu sync.Mutex
 }
 
-// NewClient creates a client that dials the WebSocket URL in Config.
-func NewClient(config Config) *Client {
-	return newClient(config)
-}
+// New creates a Client with the given options.
+//
+//	client := wsx.New(
+//	    wsx.WithURL("ws://panel/ws"),
+//	    wsx.WithHeaders(headers),
+//	    wsx.WithOnConnect(func(ctx) error { ... }),
+//	)
+func New(opts ...ClientOption) *Client {
+	var c cfg
+	for _, opt := range opts {
+		opt(&c)
+	}
+	c.setDefaults()
 
-// NewFromConn wraps an existing, already-upgraded WebSocket connection
-// into a Client. The returned Client does not reconnect; Start returns
-// when the connection drops or the context is cancelled.
-func NewFromConn(wrapped *websocket.Conn, writeTimeout time.Duration) *Client {
-	c := newClient(Config{
-		WriteTimeout: writeTimeout,
-		ReadLimit:    DefaultReadLimit,
-		PingInterval: DefaultPingInterval,
-		PongWait:     DefaultPongWait,
-	})
-	c.connMu.Lock()
-	c.conn = newConn(wrapped, writeTimeout)
-	c.connMu.Unlock()
-	return c
-}
-
-func newClient(config Config) *Client {
-	config.setDefaults()
-	return &Client{
-		config: config,
+	cl := &Client{
+		cfg: c,
 		dialer: websocket.Dialer{
-			HandshakeTimeout: config.HandshakeTimeout,
+			HandshakeTimeout: c.handshakeTimeout,
 		},
 		recv: make(chan types.Event, 64),
 	}
+
+	// Server mode: pre-wrapped connection.
+	if c.conn != nil {
+		wrapped := newConn(c.conn, c.writeTimeout)
+		wrapped.setReadLimit(c.readLimit)
+		wrapped.setReadDeadline(time.Now().Add(c.pongWait))
+		wrapped.setPongHandler(func(string) error {
+			wrapped.setReadDeadline(time.Now().Add(c.pongWait))
+			return nil
+		})
+		cl.connMu.Lock()
+		cl.conn = wrapped
+		cl.connMu.Unlock()
+	}
+
+	return cl
 }
 
 // Close shuts down the connection and releases resources.
@@ -166,8 +221,8 @@ func (c *Client) Recv() <-chan types.Event {
 }
 
 // Start begins the connection loop. It blocks until the context is cancelled.
-// For client mode (URL set), it reconnects with exponential backoff on failure.
-// For server mode (NewFromConn), it runs until the wrapped connection drops.
+// For client mode (WithURL), it reconnects with exponential backoff on failure.
+// For server mode (WithConn), it runs until the wrapped connection drops.
 func (c *Client) Start(ctx context.Context) error {
 	// Server mode: already have a connection.
 	if c.conn != nil {
@@ -178,7 +233,7 @@ func (c *Client) Start(ctx context.Context) error {
 
 // runClient connects, reconnects on failure, and manages the lifecycle.
 func (c *Client) runClient(ctx context.Context) error {
-	reconnectWait := c.config.ReconnectDelay
+	reconnectWait := c.cfg.reconnectDelay
 
 	for {
 		if ctx.Err() != nil {
@@ -186,7 +241,7 @@ func (c *Client) runClient(ctx context.Context) error {
 		}
 
 		if err := c.connect(ctx); err != nil {
-			slog.Error("wsx: failed to connect", "url", c.config.URL, "error", err)
+			slog.Error("wsx: failed to connect", "url", c.cfg.url, "error", err)
 			select {
 			case <-ctx.Done():
 				return ctx.Err()
@@ -194,16 +249,16 @@ func (c *Client) runClient(ctx context.Context) error {
 			}
 			reconnectWait = time.Duration(math.Min(
 				float64(reconnectWait)*2,
-				float64(c.config.MaxReconnectWait),
+				float64(c.cfg.maxReconnectWait),
 			))
 			continue
 		}
 
-		reconnectWait = c.config.ReconnectDelay
-		slog.Info("wsx: connected", "url", c.config.URL)
+		reconnectWait = c.cfg.reconnectDelay
+		slog.Info("wsx: connected", "url", c.cfg.url)
 
-		if c.config.OnConnect != nil {
-			if err := c.config.OnConnect(ctx); err != nil {
+		if c.cfg.onConnect != nil {
+			if err := c.cfg.onConnect(ctx); err != nil {
 				slog.Error("wsx: OnConnect failed, reconnecting", "error", err)
 				c.close()
 				continue
@@ -224,8 +279,8 @@ func (c *Client) runClient(ctx context.Context) error {
 
 // runServer runs the read loop for a pre-existing connection (server mode).
 func (c *Client) runServer(ctx context.Context) error {
-	if c.config.OnConnect != nil {
-		if err := c.config.OnConnect(ctx); err != nil {
+	if c.cfg.onConnect != nil {
+		if err := c.cfg.onConnect(ctx); err != nil {
 			slog.Error("wsx: OnConnect failed", "error", err)
 			c.close()
 			return err
@@ -237,16 +292,16 @@ func (c *Client) runServer(ctx context.Context) error {
 }
 
 func (c *Client) connect(ctx context.Context) error {
-	raw, _, err := c.dialer.DialContext(ctx, c.config.URL, c.config.Headers)
+	raw, _, err := c.dialer.DialContext(ctx, c.cfg.url, c.cfg.headers)
 	if err != nil {
 		return err
 	}
 
-	wrapped := newConn(raw, c.config.WriteTimeout)
-	wrapped.setReadLimit(c.config.ReadLimit)
-	wrapped.setReadDeadline(time.Now().Add(c.config.PongWait))
+	wrapped := newConn(raw, c.cfg.writeTimeout)
+	wrapped.setReadLimit(c.cfg.readLimit)
+	wrapped.setReadDeadline(time.Now().Add(c.cfg.pongWait))
 	wrapped.setPongHandler(func(string) error {
-		wrapped.setReadDeadline(time.Now().Add(c.config.PongWait))
+		wrapped.setReadDeadline(time.Now().Add(c.cfg.pongWait))
 		return nil
 	})
 
@@ -257,7 +312,7 @@ func (c *Client) connect(ctx context.Context) error {
 }
 
 func (c *Client) run(ctx context.Context) error {
-	pingTicker := time.NewTicker(c.config.PingInterval)
+	pingTicker := time.NewTicker(c.cfg.pingInterval)
 	defer pingTicker.Stop()
 
 	c.connMu.RLock()
@@ -274,7 +329,7 @@ func (c *Client) run(ctx context.Context) error {
 		case err := <-readErr:
 			return err
 		case <-pingTicker.C:
-			if err := conn.ping(time.Now().Add(c.config.WriteTimeout)); err != nil {
+			if err := conn.ping(time.Now().Add(c.cfg.writeTimeout)); err != nil {
 				return err
 			}
 		}
@@ -342,8 +397,8 @@ func (c *Client) close() {
 		c.conn = nil
 	}
 	c.connMu.Unlock()
-	if c.config.OnDisconnect != nil {
-		c.config.OnDisconnect()
+	if c.cfg.onDisconnect != nil {
+		c.cfg.onDisconnect()
 	}
 	// Signal to Recv consumers that the connection is gone.
 	// Multiple close calls are guarded by c.closed.

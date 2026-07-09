@@ -42,23 +42,22 @@ func (s *Service) Start(ctx context.Context) error {
 	headers := http.Header{}
 	headers.Set("X-API-Key", s.spec.APIKey)
 
-	// Build config with OnConnect referencing client (captured later).
+	// Declare client first so OnConnect closure can capture it.
 	// This is safe because OnConnect is only called after Start, by which
 	// time client has been assigned.
 	var client *wsx.Client
 
-	cfg := wsx.Config{
-		URL:     s.spec.PanelHost,
-		Headers: headers,
-		OnConnect: func(ctx context.Context) error {
+	client = wsx.New(
+		wsx.WithURL(s.spec.PanelHost),
+		wsx.WithHeaders(headers),
+		wsx.WithOnConnect(func(ctx context.Context) error {
 			slog.Info("Connected to panel, sending registration",
 				"host", s.spec.PanelHost,
 				"collector", s.spec.Name,
 			)
 			return s.sendRegistration(client)
-		},
-	}
-	client = wsx.NewClient(cfg)
+		}),
+	)
 
 	// Forward events from the events channel to the WebSocket connection.
 	var wg sync.WaitGroup

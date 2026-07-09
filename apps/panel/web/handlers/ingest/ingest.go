@@ -78,7 +78,7 @@ func (h *handler) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	})
 
 	// Wrap in wsx.Client for thread-safe Send/Recv.
-	client := wsx.NewFromConn(rawConn, 10*time.Second)
+	client := wsx.New(wsx.WithConn(rawConn), wsx.WithWriteTimeout(10*time.Second))
 	defer func() {
 		client.Close()
 		h.tracker.Disconnect(connID)

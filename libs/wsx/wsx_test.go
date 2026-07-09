@@ -101,30 +101,34 @@ func startRegisterServer(t *testing.T) (*httptest.Server, string) {
 	return srv, url
 }
 
+func connectOpts(url string) []ClientOption {
+	return []ClientOption{
+		WithURL(url),
+		WithHandshakeTimeout(testTimeout),
+		WithWriteTimeout(time.Second),
+		WithPingInterval(10 * time.Second),
+		WithPongWait(20 * time.Second),
+		WithReconnectDelay(time.Second),
+		WithMaxReconnectWait(5 * time.Second),
+	}
+}
+
 // ── Client: Send & Recv ────────────────────────────────────────────────────────
 
 func TestClientSendRecv(t *testing.T) {
 	srv, url, _ := startTestServer(t)
 	defer srv.Close()
 
-	client := NewClient(Config{
-		URL:              url,
-		HandshakeTimeout: testTimeout,
-		WriteTimeout:     time.Second,
-		PingInterval:     10 * time.Second,
-		PongWait:         20 * time.Second,
-		ReconnectDelay:   time.Second,
-		MaxReconnectWait: 5 * time.Second,
-	})
+	connected := make(chan struct{})
+	client := New(append(connectOpts(url),
+		WithOnConnect(func(_ context.Context) error {
+			close(connected)
+			return nil
+		}),
+	)...)
 
 	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
 	defer cancel()
-
-	connected := make(chan struct{})
-	client.config.OnConnect = func(_ context.Context) error {
-		close(connected)
-		return nil
-	}
 
 	go func() {
 		_ = client.Start(ctx)
@@ -171,29 +175,21 @@ func TestClientSendRegisterRecv(t *testing.T) {
 	srv, url := startRegisterServer(t)
 	defer srv.Close()
 
-	client := NewClient(Config{
-		URL:              url,
-		HandshakeTimeout: testTimeout,
-		WriteTimeout:     time.Second,
-		PingInterval:     10 * time.Second,
-		PongWait:         20 * time.Second,
-		ReconnectDelay:   time.Second,
-		MaxReconnectWait: 5 * time.Second,
-	})
+	var client *Client
+
+	connected := make(chan struct{})
+	client = New(append(connectOpts(url),
+		WithOnConnect(func(_ context.Context) error {
+			close(connected)
+			return client.Send(types.RegisterMessage{
+				Collector: "test-collector",
+				Apps:      []string{"app1", "app2"},
+			})
+		}),
+	)...)
 
 	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
 	defer cancel()
-
-	connected := make(chan struct{})
-
-	// Send registration from OnConnect
-	client.config.OnConnect = func(_ context.Context) error {
-		close(connected)
-		return client.Send(types.RegisterMessage{
-			Collector: "test-collector",
-			Apps:      []string{"app1", "app2"},
-		})
-	}
 
 	go func() {
 		_ = client.Start(ctx)
@@ -235,24 +231,16 @@ func TestClientConcurrentSends(t *testing.T) {
 	srv, url, _ := startTestServer(t)
 	defer srv.Close()
 
-	client := NewClient(Config{
-		URL:              url,
-		HandshakeTimeout: testTimeout,
-		WriteTimeout:     time.Second,
-		PingInterval:     10 * time.Second,
-		PongWait:         20 * time.Second,
-		ReconnectDelay:   time.Second,
-		MaxReconnectWait: 5 * time.Second,
-	})
+	connected := make(chan struct{})
+	client := New(append(connectOpts(url),
+		WithOnConnect(func(_ context.Context) error {
+			close(connected)
+			return nil
+		}),
+	)...)
 
 	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
 	defer cancel()
-
-	connected := make(chan struct{})
-	client.config.OnConnect = func(_ context.Context) error {
-		close(connected)
-		return nil
-	}
 
 	go func() {
 		_ = client.Start(ctx)
@@ -329,19 +317,19 @@ func TestClientReconnect(t *testing.T) {
 	url := "ws" + strings.TrimPrefix(srv.URL, "http")
 
 	connected := make(chan struct{}, 2)
-	client := NewClient(Config{
-		URL:              url,
-		HandshakeTimeout: testTimeout,
-		WriteTimeout:     time.Second,
-		PingInterval:     10 * time.Second,
-		PongWait:         20 * time.Second,
-		ReconnectDelay:   time.Second,
-		MaxReconnectWait: 2 * time.Second,
-		OnConnect: func(_ context.Context) error {
+	client := New(
+		WithURL(url),
+		WithHandshakeTimeout(testTimeout),
+		WithWriteTimeout(time.Second),
+		WithPingInterval(10*time.Second),
+		WithPongWait(20*time.Second),
+		WithReconnectDelay(time.Second),
+		WithMaxReconnectWait(2*time.Second),
+		WithOnConnect(func(_ context.Context) error {
 			connected <- struct{}{}
 			return nil
-		},
-	})
+		}),
+	)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()
@@ -372,15 +360,7 @@ func TestClientContextCancel(t *testing.T) {
 	srv, url, _ := startTestServer(t)
 	defer srv.Close()
 
-	client := NewClient(Config{
-		URL:              url,
-		HandshakeTimeout: testTimeout,
-		WriteTimeout:     time.Second,
-		PingInterval:     10 * time.Second,
-		PongWait:         20 * time.Second,
-		ReconnectDelay:   time.Second,
-		MaxReconnectWait: 5 * time.Second,
-	})
+	client := New(connectOpts(url)...)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -396,28 +376,20 @@ func TestClientDisconnectedCallback(t *testing.T) {
 	defer srv.Close()
 
 	disconnected := make(chan struct{})
+	connected := make(chan struct{})
 
-	client := NewClient(Config{
-		URL:              url,
-		HandshakeTimeout: testTimeout,
-		WriteTimeout:     time.Second,
-		PingInterval:     10 * time.Second,
-		PongWait:         20 * time.Second,
-		ReconnectDelay:   time.Second,
-		MaxReconnectWait: 5 * time.Second,
-		OnDisconnect: func() {
+	client := New(append(connectOpts(url),
+		WithOnConnect(func(_ context.Context) error {
+			close(connected)
+			return nil
+		}),
+		WithOnDisconnect(func() {
 			close(disconnected)
-		},
-	})
+		}),
+	)...)
 
 	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
 	defer cancel()
-
-	connected := make(chan struct{})
-	client.config.OnConnect = func(_ context.Context) error {
-		close(connected)
-		return nil
-	}
 
 	go func() {
 		_ = client.Start(ctx)
@@ -438,7 +410,7 @@ func TestClientDisconnectedCallback(t *testing.T) {
 	}
 }
 
-// ── Server mode (NewFromConn) ───────────────────────────────────────────────────
+// ── Server mode ────────────────────────────────────────────────────────────────
 
 func TestServerModeSendRecv(t *testing.T) {
 	srv, url, _ := startTestServer(t)
@@ -450,7 +422,7 @@ func TestServerModeSendRecv(t *testing.T) {
 		t.Fatalf("dial: %v", err)
 	}
 
-	client := NewFromConn(raw, time.Second)
+	client := New(WithConn(raw), WithWriteTimeout(time.Second))
 
 	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
 	defer cancel()
@@ -491,19 +463,10 @@ func TestServerModeSendRecv(t *testing.T) {
 }
 
 func TestSendBeforeStart(t *testing.T) {
-	dialer := websocket.Dialer{HandshakeTimeout: testTimeout}
-	raw, _, err := dialer.Dial("ws://127.0.0.1:1", nil)
-	if err == nil {
-		raw.Close()
-		t.Skip("unexpectedly connected")
-	}
+	// Verify that Send returns an error when not connected
+	client := New(WithURL("ws://127.0.0.1:1"))
 
-	// Just verify that Send returns an error when not connected
-	client := NewClient(Config{
-		URL: "ws://127.0.0.1:1",
-	})
-
-	err = client.Send(types.RegisterMessage{Collector: "test"})
+	err := client.Send(types.RegisterMessage{Collector: "test"})
 	if err == nil {
 		t.Fatal("expected error when not connected")
 	}
