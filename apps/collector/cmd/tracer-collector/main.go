@@ -24,10 +24,10 @@ import (
 	"tracer/apps/collector/internal/health"
 	"tracer/apps/collector/internal/install"
 	"tracer/apps/collector/internal/lifecycle"
+	"tracer/apps/collector/internal/outbound"
 	"tracer/apps/collector/internal/parser"
 	"tracer/apps/collector/internal/source"
 	"tracer/apps/collector/internal/stats"
-	"tracer/apps/collector/internal/transport"
 	"tracer/build"
 	"tracer/libs/installx"
 	"tracer/libs/logx"
@@ -98,8 +98,8 @@ func main() {
 	installx.RequireServiceUser(build.CollectorUser, build.TracerGroup)
 
 	slog.Info("Starting collector",
-		"name", cfg.Transport.Name,
-		"panelHost", cfg.Transport.PanelHost,
+		"name", cfg.Outbound.Name,
+		"panelHost", cfg.Outbound.PanelHost,
 		"apps", len(cfg.Apps),
 	)
 
@@ -170,14 +170,14 @@ func serve(ctx context.Context, cfg config.Config) error {
 	statsMonitor := stats.New(cfg.Stats)
 
 	// Transport
-	transport := transport.New(cfg.Transport, appNames, mpsc)
+	transporter := outbound.New(cfg.Outbound, appNames, mpsc)
 
 	// Run
 	wg.Go(func() {
-		slog.Info("starting transport")
-		defer slog.Info("transport stopped")
+		slog.Info("starting outbound")
+		defer slog.Info("outbound stopped")
 
-		transport.Start(ctx)
+		transporter.Start(ctx)
 	})
 	wg.Go(func() {
 		slog.Info("starting stats monitor")
@@ -434,11 +434,11 @@ func handleSet(path string, cfg config.Config, setCmd *flag.FlagSet) {
 
 	switch key {
 	case "api-key":
-		cfg.Transport.APIKey = value
+		cfg.Outbound.APIKey = value
 	case "panel-host":
-		cfg.Transport.PanelHost = value
+		cfg.Outbound.PanelHost = value
 	case "name":
-		cfg.Transport.Name = value
+		cfg.Outbound.Name = value
 	default:
 		log.Fatalf("Unknown key: %s. Supported keys: api-key, panel-host, name", key)
 	}

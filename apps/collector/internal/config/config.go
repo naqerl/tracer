@@ -8,14 +8,14 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"tracer/apps/collector/internal/health"
+	"tracer/apps/collector/internal/outbound"
 	"tracer/apps/collector/internal/parser"
 	"tracer/apps/collector/internal/source"
 	"tracer/apps/collector/internal/stats"
-	"tracer/apps/collector/internal/transport"
 )
 
 type Config struct {
-	Transport transport.Spec `yaml:"transport"`
+	Outbound outbound.Spec `yaml:"transport"`
 
 	Stats stats.Spec `yaml:"stats"`
 
@@ -44,7 +44,7 @@ func Default() Config {
 	}
 
 	return Config{
-		Transport: transport.Spec{
+		Outbound: outbound.Spec{
 			Name:      hostname,
 			PanelHost: "localhost:8080",
 			APIKey:    "",

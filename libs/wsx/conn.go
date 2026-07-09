@@ -81,5 +81,3 @@ func (c *conn) close() error {
 func (c *conn) ping(deadline time.Time) error {
 	return c.writeControl(websocket.PingMessage, nil, deadline)
 }
-
-

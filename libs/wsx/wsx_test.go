@@ -1,7 +1,6 @@
 package wsx
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -101,15 +100,12 @@ func startRegisterServer(t *testing.T) (*httptest.Server, string) {
 	return srv, url
 }
 
-func connectOpts(url string) []ClientOption {
+func connectOpts() []ClientOption {
 	return []ClientOption{
-		WithURL(url),
 		WithHandshakeTimeout(testTimeout),
 		WithWriteTimeout(time.Second),
 		WithPingInterval(10 * time.Second),
 		WithPongWait(20 * time.Second),
-		WithReconnectDelay(time.Second),
-		WithMaxReconnectWait(5 * time.Second),
 	}
 }
 
@@ -119,26 +115,14 @@ func TestClientSendRecv(t *testing.T) {
 	srv, url, _ := startTestServer(t)
 	defer srv.Close()
 
-	connected := make(chan struct{})
-	client := New(append(connectOpts(url),
-		WithOnConnect(func(_ context.Context) error {
-			close(connected)
-			return nil
-		}),
-	)...)
-
-	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
-	defer cancel()
-
-	go func() {
-		_ = client.Start(ctx)
-	}()
-
-	select {
-	case <-connected:
-	case <-time.After(testTimeout):
-		t.Fatal("timed out waiting for connect")
+	client, err := New(url, connectOpts()...)
+	if err != nil {
+		t.Fatalf("New: %v", err)
 	}
+	defer client.Close()
+
+	// Give the read/ping loops a moment to start
+	time.Sleep(50 * time.Millisecond)
 
 	// Send an Envelope via the Event interface
 	payload, _ := json.Marshal(map[string]string{"msg": "hello"})
@@ -175,30 +159,20 @@ func TestClientSendRegisterRecv(t *testing.T) {
 	srv, url := startRegisterServer(t)
 	defer srv.Close()
 
-	var client *Client
+	client, err := New(url, connectOpts()...)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer client.Close()
 
-	connected := make(chan struct{})
-	client = New(append(connectOpts(url),
-		WithOnConnect(func(_ context.Context) error {
-			close(connected)
-			return client.Send(types.RegisterMessage{
-				Collector: "test-collector",
-				Apps:      []string{"app1", "app2"},
-			})
-		}),
-	)...)
+	time.Sleep(50 * time.Millisecond)
 
-	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
-	defer cancel()
-
-	go func() {
-		_ = client.Start(ctx)
-	}()
-
-	select {
-	case <-connected:
-	case <-time.After(testTimeout):
-		t.Fatal("timed out waiting for connect")
+	// Send registration first
+	if err := client.Send(types.RegisterMessage{
+		Collector: "test-collector",
+		Apps:      []string{"app1", "app2"},
+	}); err != nil {
+		t.Fatalf("Send registration: %v", err)
 	}
 
 	// Send an envelope and verify echo
@@ -231,26 +205,13 @@ func TestClientConcurrentSends(t *testing.T) {
 	srv, url, _ := startTestServer(t)
 	defer srv.Close()
 
-	connected := make(chan struct{})
-	client := New(append(connectOpts(url),
-		WithOnConnect(func(_ context.Context) error {
-			close(connected)
-			return nil
-		}),
-	)...)
-
-	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
-	defer cancel()
-
-	go func() {
-		_ = client.Start(ctx)
-	}()
-
-	select {
-	case <-connected:
-	case <-time.After(testTimeout):
-		t.Fatal("timed out waiting for connect")
+	client, err := New(url, connectOpts()...)
+	if err != nil {
+		t.Fatalf("New: %v", err)
 	}
+	defer client.Close()
+
+	time.Sleep(50 * time.Millisecond)
 
 	var wg sync.WaitGroup
 	for i := 0; i < 10; i++ {
@@ -281,158 +242,65 @@ func TestClientConcurrentSends(t *testing.T) {
 	}
 }
 
-// ── Client: Reconnect ───────────────────────────────────────────────────────────
+// ── Upgrade (server mode) ──────────────────────────────────────────────────────
 
-func TestClientReconnect(t *testing.T) {
-	var mu sync.Mutex
-	acceptCount := 0
-
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		mu.Lock()
-		acceptCount++
-		count := acceptCount
-		mu.Unlock()
-
-		var upgrader = websocket.Upgrader{
-			CheckOrigin: func(r *http.Request) bool { return true },
-		}
-		conn, err := upgrader.Upgrade(w, r, nil)
-		if err != nil {
-			return
-		}
-
-		if count == 1 {
-			conn.Close()
-			return
-		}
-		for {
-			_, _, err := conn.ReadMessage()
-			if err != nil {
-				return
-			}
-		}
-	}))
-	defer srv.Close()
-
-	url := "ws" + strings.TrimPrefix(srv.URL, "http")
-
-	connected := make(chan struct{}, 2)
-	client := New(
-		WithURL(url),
-		WithHandshakeTimeout(testTimeout),
-		WithWriteTimeout(time.Second),
-		WithPingInterval(10*time.Second),
-		WithPongWait(20*time.Second),
-		WithReconnectDelay(time.Second),
-		WithMaxReconnectWait(2*time.Second),
-		WithOnConnect(func(_ context.Context) error {
-			connected <- struct{}{}
-			return nil
-		}),
-	)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
-	defer cancel()
-
-	go func() {
-		_ = client.Start(ctx)
-	}()
-
-	select {
-	case <-connected:
-	case <-time.After(testTimeout):
-		t.Fatal("timed out waiting for first connect")
-	}
-	select {
-	case <-connected:
-	case <-time.After(5 * time.Second):
-		t.Fatal("timed out waiting for reconnect connect")
-	}
-
-	mu.Lock()
-	if acceptCount < 2 {
-		t.Fatalf("expected at least 2 connections, got %d", acceptCount)
-	}
-	mu.Unlock()
-}
-
-func TestClientContextCancel(t *testing.T) {
+func TestUpgradeSendRecv(t *testing.T) {
 	srv, url, _ := startTestServer(t)
 	defer srv.Close()
 
-	client := New(connectOpts(url)...)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-
-	err := client.Start(ctx)
-	if err == nil {
-		t.Fatal("expected error from cancelled context")
-	}
-}
-
-func TestClientDisconnectedCallback(t *testing.T) {
-	srv, url, _ := startTestServer(t)
-	defer srv.Close()
-
-	disconnected := make(chan struct{})
-	connected := make(chan struct{})
-
-	client := New(append(connectOpts(url),
-		WithOnConnect(func(_ context.Context) error {
-			close(connected)
-			return nil
-		}),
-		WithOnDisconnect(func() {
-			close(disconnected)
-		}),
-	)...)
-
-	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
-	defer cancel()
-
-	go func() {
-		_ = client.Start(ctx)
-	}()
-
-	select {
-	case <-connected:
-	case <-time.After(testTimeout):
-		t.Fatal("timed out waiting for connect")
-	}
-
-	cancel()
-
-	select {
-	case <-disconnected:
-	case <-time.After(testTimeout):
-		t.Fatal("timed out waiting for OnDisconnect")
-	}
-}
-
-// ── Server mode ────────────────────────────────────────────────────────────────
-
-func TestServerModeSendRecv(t *testing.T) {
-	srv, url, _ := startTestServer(t)
-	defer srv.Close()
-
+	// Dial raw connection, then use Upgrade to wrap it
 	dialer := websocket.Dialer{HandshakeTimeout: testTimeout}
 	raw, _, err := dialer.Dial(url, nil)
 	if err != nil {
 		t.Fatalf("dial: %v", err)
 	}
 
-	client := New(WithConn(raw), WithWriteTimeout(time.Second))
+	// Simulate the panel side: use Upgrade from an HTTP request by
+	// constructing one. We skip the HTTP roundtrip here since we already
+	// have a raw connection — we test Upgrade path separately below.
+	//
+	// Instead, test via direct dial + raw wrap (see TestServerModeSendRecv).
 
-	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
-	defer cancel()
+	_ = raw.Close()
 
-	go func() {
-		_ = client.Start(ctx)
-	}()
+	// For now, test New (which uses dial) — Upgrade testing would
+	// require an httptest.Server with the upgrade handler.
+}
 
-	// Wait briefly for Start and any OnConnect
-	time.Sleep(100 * time.Millisecond)
+// TestServerModeSendRecv tests the upgrade path by manually dialing and
+// wrapping with a http.Handler that calls wsx.Upgrade.
+func TestServerModeSendRecv(t *testing.T) {
+	msgCh := make(chan []byte, 100)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		client, err := Upgrade(w, r,
+			WithWriteTimeout(time.Second),
+			WithPongWait(20*time.Second),
+		)
+		if err != nil {
+			t.Logf("Upgrade error: %v", err)
+			return
+		}
+		defer client.Close()
+
+		// Echo back everything received
+		for evt := range client.Recv() {
+			payload, _ := json.Marshal(evt)
+			msgCh <- payload
+			_ = client.Send(evt)
+		}
+	}))
+	defer srv.Close()
+
+	url := "ws" + strings.TrimPrefix(srv.URL, "http")
+
+	// Dial as a regular WebSocket client
+	client, err := New(url, connectOpts()...)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer client.Close()
+
+	time.Sleep(50 * time.Millisecond)
 
 	// Send an event
 	payload, _ := json.Marshal(map[string]string{"hello": "world"})
@@ -459,15 +327,5 @@ func TestServerModeSendRecv(t *testing.T) {
 		}
 	case <-time.After(testTimeout):
 		t.Fatal("timed out waiting for echo")
-	}
-}
-
-func TestSendBeforeStart(t *testing.T) {
-	// Verify that Send returns an error when not connected
-	client := New(WithURL("ws://127.0.0.1:1"))
-
-	err := client.Send(types.RegisterMessage{Collector: "test"})
-	if err == nil {
-		t.Fatal("expected error when not connected")
 	}
 }

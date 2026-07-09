@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/gorilla/websocket"
 
 	"tracer/apps/panel/internal/services/auth"
 	"tracer/apps/panel/internal/services/ingest"
@@ -17,16 +16,6 @@ import (
 	"tracer/libs/types"
 	"tracer/libs/wsx"
 )
-
-var upgrader = websocket.Upgrader{
-	ReadBufferSize:  1024,
-	WriteBufferSize: 1024,
-	// WebSocket connections originate from the collector process, not a browser.
-	// Origin validation is not applicable here; collectors connect from arbitrary hosts.
-	CheckOrigin: func(r *http.Request) bool {
-		return true
-	},
-}
 
 type handler struct {
 	authService   *auth.Service
@@ -56,40 +45,28 @@ func (h *handler) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rawConn, err := upgrader.Upgrade(w, r, nil)
+	connID := uuid.New().String()
+	remoteAddr := extractIP(r.RemoteAddr)
+
+	client, err := wsx.Upgrade(w, r,
+		wsx.WithReadLimit(10*1024*1024),
+		wsx.WithPongWait(5*time.Minute),
+		wsx.WithPongCallback(func() {
+			h.tracker.UpdateLastSeen(connID)
+		}),
+		wsx.WithWriteTimeout(10*time.Second),
+	)
 	if err != nil {
 		slog.Error("WebSocket upgrade failed", "error", err)
 		return
 	}
 
-	// Generate unique connection ID
-	connID := uuid.New().String()
-	remoteAddr := extractIP(r.RemoteAddr)
-
 	slog.Info("WebSocket connected", "remote", remoteAddr, "conn_id", connID)
 
-	// Configure the raw connection before wrapping.
-	rawConn.SetReadLimit(10 * 1024 * 1024) // 10 MB max message size
-	rawConn.SetReadDeadline(time.Now().Add(5 * time.Minute))
-	rawConn.SetPongHandler(func(string) error {
-		rawConn.SetReadDeadline(time.Now().Add(5 * time.Minute))
-		h.tracker.UpdateLastSeen(connID)
-		return nil
-	})
-
-	// Wrap in wsx.Client for thread-safe Send/Recv.
-	client := wsx.New(wsx.WithConn(rawConn), wsx.WithWriteTimeout(10*time.Second))
 	defer func() {
 		client.Close()
 		h.tracker.Disconnect(connID)
 		slog.Info("WebSocket disconnected", "remote", remoteAddr, "conn_id", connID)
-	}()
-
-	// Start the client's internal read/ping loop.
-	ctx, cancel := context.WithCancel(r.Context())
-	defer cancel()
-	go func() {
-		_ = client.Start(ctx)
 	}()
 
 	// Process events from Recv until the channel is closed.
