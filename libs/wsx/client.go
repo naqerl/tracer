@@ -226,7 +226,9 @@ func (c *Client) pingLoop(interval time.Duration) {
 	for {
 		select {
 		case <-ticker.C:
-			_ = c.conn.ping(time.Now().Add(c.writeTimeout))
+			if err := c.conn.ping(time.Now().Add(c.writeTimeout)); err != nil {
+				return
+			}
 		case <-c.closed:
 			return
 		}

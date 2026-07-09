@@ -315,3 +315,104 @@ func TestServerModeSendRecv(t *testing.T) {
 		t.Fatalf("got type %q, want %q", got.Type, types.EventTypeLog)
 	}
 }
+
+// ── Recv lifecycle ───────────────────────────────────────────────────────
+
+func TestClientRecvClosedAfterClose(t *testing.T) {
+	srv, url := startTestServer(t)
+	defer srv.Close()
+
+	client, err := New(url, connectOpts()...)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	// Send one message so we know the connection is live.
+	env := types.Envelope{Type: types.EventTypeLog, TS: time.Now().UTC(), Collector: "test", Data: []byte(`{}`)}
+	if err := client.Send(env); err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	<-client.Recv() // drain echo
+
+	client.Close()
+
+	// Recv channel must be closed.
+	select {
+	case _, ok := <-client.Recv():
+		if ok {
+			t.Fatal("Recv returned value after Close")
+		}
+	case <-time.After(testTimeout):
+		t.Fatal("Recv not closed within timeout")
+	}
+}
+
+// ── Connection drop ──────────────────────────────────────────────────────
+
+func TestClientRecvClosesOnConnectionDrop(t *testing.T) {
+	// A server that drops the connection immediately after accepting.
+	var upgrader = websocket.Upgrader{
+		CheckOrigin: func(r *http.Request) bool { return true },
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		// No read loop — just close immediately.
+		conn.Close()
+	}))
+	defer srv.Close()
+
+	url := "ws" + strings.TrimPrefix(srv.URL, "http")
+
+	client, err := New(url, connectOpts()...)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer client.Close()
+
+	// Recv should eventually close when the server drops.
+	select {
+	case _, ok := <-client.Recv():
+		if ok {
+			t.Fatal("Recv returned value after connection drop")
+		}
+	case <-time.After(testTimeout):
+		t.Fatal("Recv not closed within timeout after connection drop")
+	}
+}
+
+// ── Concurrent Close + Send ──────────────────────────────────────────────
+
+func TestClientConcurrentCloseAndSend(t *testing.T) {
+	srv, url := startTestServer(t)
+	defer srv.Close()
+
+	client, err := New(url, connectOpts()...)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	// One goroutine sends repeatedly.
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 50; i++ {
+			env := types.Envelope{Type: types.EventTypeLog, TS: time.Now().UTC(), Collector: "test", Data: []byte(`{}`)}
+			_ = client.Send(env)
+		}
+	}()
+
+	// Another goroutine closes after a brief delay.
+	go func() {
+		defer wg.Done()
+		time.Sleep(10 * time.Millisecond)
+		client.Close()
+	}()
+
+	wg.Wait()
+	// Must not panic or deadlock.
+}

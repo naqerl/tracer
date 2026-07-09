@@ -1,132 +1,148 @@
 package outbound
 
 import (
+	"context"
 	"errors"
 	"sync"
 
 	"tracer/libs/types"
 )
 
-// reconnecting wraps a Client factory, transparently reconnecting on Send
-// failure. Recv returns a channel that seamlessly receives events from
-// whichever inner client is active.
+type sendReq struct {
+	event types.Event
+	resp  chan error
+}
+
+// reconnecting wraps a Client factory. Send and Recv are handled by a single
+// actor goroutine that owns the current Client. No mutexes.
 type reconnecting struct {
 	factory func() (Client, error)
-	current Client
-	mu      sync.RWMutex
 	recv    chan types.Event
-	notify  chan struct{} // 1-buffered; signals pipe that current may be non-nil
-	alive   bool
+	req     chan sendReq
+	ctx     context.Context
+	cancel  context.CancelFunc
+	once    sync.Once
 }
 
 func newReconnecting(factory func() (Client, error)) *reconnecting {
+	ctx, cancel := context.WithCancel(context.Background())
 	r := &reconnecting{
 		factory: factory,
 		recv:    make(chan types.Event, 64),
-		notify:  make(chan struct{}, 1),
-		alive:   true,
+		req:     make(chan sendReq),
+		ctx:     ctx,
+		cancel:  cancel,
 	}
-	go r.pipe()
+	go r.run()
 	return r
 }
 
-// pipe reads from the current client's Recv channel and relays events to
-// r.recv. It runs until Close is called.
-func (r *reconnecting) pipe() {
+// run is the single actor goroutine. It owns current Client and relays events
+// to r.recv. Exits when the context is cancelled.
+func (r *reconnecting) run() {
 	defer close(r.recv)
+	var current Client
 
 	for {
-		r.mu.RLock()
-		cur := r.current
-		alive := r.alive
-		r.mu.RUnlock()
-
-		if !alive {
-			return
-		}
-		if cur == nil {
-			// Wait for a client to be set (by Send).
-			<-r.notify
+		if current == nil {
+			select {
+			case msg := <-r.req:
+				c, err := r.factory()
+				if err != nil {
+					msg.resp <- err
+					continue
+				}
+				if err := c.Send(msg.event); err != nil {
+					c.Close()
+					// First attempt failed — retry once with a fresh client.
+					newC, err2 := r.factory()
+					if err2 != nil {
+						msg.resp <- err2
+						continue
+					}
+					if err2 := newC.Send(msg.event); err2 != nil {
+						newC.Close()
+						msg.resp <- err2
+						continue
+					}
+					current = newC
+					msg.resp <- nil
+					continue
+				}
+				current = c
+				msg.resp <- nil
+			case <-r.ctx.Done():
+				return
+			}
 			continue
 		}
 
 		select {
-		case evt, ok := <-cur.Recv():
+		case msg := <-r.req:
+			err := current.Send(msg.event)
+			if err == nil {
+				msg.resp <- nil
+				continue
+			}
+			// Connection lost — create new client and retry once.
+			current.Close()
+			current = nil
+			newC, err2 := r.factory()
+			if err2 != nil {
+				msg.resp <- err2
+				continue
+			}
+			if err2 := newC.Send(msg.event); err2 != nil {
+				newC.Close()
+				msg.resp <- err2
+				continue
+			}
+			current = newC
+			msg.resp <- nil
+
+		case evt, ok := <-current.Recv():
 			if !ok {
-				r.mu.Lock()
-				if r.current == cur {
-					r.current = nil
-				}
-				r.mu.Unlock()
+				current = nil
 				continue
 			}
 			select {
 			case r.recv <- evt:
 			default:
 			}
-		case <-r.notify:
-			// Client was replaced; loop to re-read r.current.
+
+		case <-r.ctx.Done():
+			if current != nil {
+				current.Close()
+			}
+			return
 		}
 	}
 }
 
-// Send delivers an event. If the underlying connection fails, it discards
-// the dead client, creates a fresh one, and retries exactly once.
+// Send delivers an event. It blocks until the event is sent or Close is called.
+// If the underlying connection fails, a new one is created transparently.
 func (r *reconnecting) Send(event types.Event) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	if !r.alive {
+	resp := make(chan error, 1)
+	msg := sendReq{event: event, resp: resp}
+	select {
+	case r.req <- msg:
+	case <-r.ctx.Done():
 		return errors.New("reconnecting: closed")
 	}
-
-	if r.current != nil {
-		if err := r.current.Send(event); err == nil {
-			return nil
-		}
-		r.current.Close()
-		r.current = nil
-	}
-
-	newC, err := r.factory()
-	if err != nil {
-		return err
-	}
-	if err := newC.Send(event); err != nil {
-		newC.Close()
-		return err
-	}
-	r.current = newC
-
-	// Wake pipe if it's waiting for a client.
 	select {
-	case r.notify <- struct{}{}:
-	default:
+	case err := <-resp:
+		return err
+	case <-r.ctx.Done():
+		return errors.New("reconnecting: closed")
 	}
-
-	return nil
 }
 
-// Recv returns a channel that receives events from the current inner client.
+// Recv returns a channel that receives events from the current inner Client.
 // The channel remains stable across reconnects.
 func (r *reconnecting) Recv() <-chan types.Event { return r.recv }
 
-// Close shuts down the wrapper. Pending events in the buffer may still be
-// received by consumers.
+// Close shuts down the wrapper. It does not block — the actor goroutine
+// exits when it processes the cancellation.
 func (r *reconnecting) Close() {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if !r.alive {
-		return
-	}
-	r.alive = false
-	if r.current != nil {
-		r.current.Close()
-		r.current = nil
-	}
-	// Wake pipe so it sees alive==false and exits.
-	select {
-	case r.notify <- struct{}{}:
-	default:
-	}
+	r.once.Do(func() { r.cancel() })
 }
