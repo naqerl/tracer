@@ -39,26 +39,28 @@ func New(spec Spec, appNames []string, events <-chan types.Event) Service {
 // Start begins the connection loop and event processing.
 // It blocks until the context is cancelled.
 func (s *Service) Start(ctx context.Context) error {
-	// Prepare headers with API key for authentication.
 	headers := http.Header{}
 	headers.Set("X-API-Key", s.spec.APIKey)
 
-	client := wsx.NewClient(wsx.Config{
+	// Build config with OnConnect referencing client (captured later).
+	// This is safe because OnConnect is only called after Start, by which
+	// time client has been assigned.
+	var client *wsx.Client
+
+	cfg := wsx.Config{
 		URL:     s.spec.PanelHost,
 		Headers: headers,
-		// Use defaults for HandshakeTimeout, WriteTimeout, PingInterval, etc.
-		OnConnect: func(ctx context.Context, conn *wsx.Conn) error {
+		OnConnect: func(ctx context.Context) error {
 			slog.Info("Connected to panel, sending registration",
 				"host", s.spec.PanelHost,
 				"collector", s.spec.Name,
 			)
-			return s.sendRegistration(conn)
+			return s.sendRegistration(client)
 		},
-	})
+	}
+	client = wsx.NewClient(cfg)
 
 	// Forward events from the events channel to the WebSocket connection.
-	// This goroutine runs for the lifetime of ctx; client.SendJSON is safe for
-	// concurrent use and returns an error if the connection is down.
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
@@ -72,7 +74,7 @@ func (s *Service) Start(ctx context.Context) error {
 					return
 				}
 				if err := s.sendEvent(client, evt); err != nil {
-					slog.Warn("wsx: failed to send event", "error", err)
+					slog.Warn("failed to send event", "error", err)
 				}
 			}
 		}
@@ -83,13 +85,12 @@ func (s *Service) Start(ctx context.Context) error {
 	return err
 }
 
-func (s *Service) sendRegistration(conn *wsx.Conn) error {
+func (s *Service) sendRegistration(client *wsx.Client) error {
 	msg := types.RegisterMessage{
-		Type:      types.EventTypeRegister,
 		Collector: s.spec.Name,
 		Apps:      s.appNames,
 	}
-	return conn.SendJSON(msg)
+	return client.Send(msg)
 }
 
 func (s *Service) sendEvent(client *wsx.Client, evt types.Event) error {
@@ -98,11 +99,11 @@ func (s *Service) sendEvent(client *wsx.Client, evt types.Event) error {
 		return fmt.Errorf("could not marshal payload: %w", err)
 	}
 
-	msg := types.Envelope{
+	env := types.Envelope{
 		Type:      evt.EventType(),
-		Timestamp: time.Now().UTC(),
+		TS:        time.Now().UTC(),
 		Collector: s.spec.Name,
 		Data:      payload,
 	}
-	return client.SendJSON(msg)
+	return client.Send(env)
 }

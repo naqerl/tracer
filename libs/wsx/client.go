@@ -2,6 +2,8 @@ package wsx
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"log/slog"
 	"math"
 	"net/http"
@@ -9,6 +11,8 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+
+	"tracer/libs/types"
 )
 
 // Default configuration values.
@@ -25,6 +29,7 @@ const (
 // Config holds client configurations for a reconnecting WebSocket client.
 type Config struct {
 	// URL is the WebSocket server endpoint (e.g. "ws://host/ws").
+	// Leave empty for server-side connections created with NewFromConn.
 	URL string
 
 	// Headers are sent during the initial handshake.
@@ -52,17 +57,12 @@ type Config struct {
 	// ReadLimit sets the maximum message size in bytes. 0 means no limit.
 	ReadLimit int64
 
-	// OnConnect is called after a successful connection and handshake.
+	// OnConnect is called after a successful connection.
 	// If it returns an error, the connection is closed and a reconnect is attempted.
-	OnConnect func(ctx context.Context, conn *Conn) error
+	OnConnect func(ctx context.Context) error
 
 	// OnDisconnect is called when the connection is lost (after cleanup).
 	OnDisconnect func()
-
-	// ReadHandler is called for every incoming message received on the connection.
-	// If nil, incoming messages are silently discarded (but the read loop still
-	// runs to process pong responses).
-	ReadHandler func(messageType int, data []byte)
 }
 
 // setDefaults fills in zero-valued fields with sensible defaults.
@@ -90,43 +90,97 @@ func (c *Config) setDefaults() {
 	}
 }
 
-// Client maintains a reconnecting WebSocket connection with keepalive pings.
+// Client manages a WebSocket connection and provides a clean
+// Send/Recv API operating on the Event interface.
+//
+// Two modes:
+//   - Client mode: created via NewClient with a Config containing a URL.
+//     The client dials the URL, reconnects on failure, and manages the
+//     connection lifecycle internally.
+//   - Server mode: created via NewFromConn wrapping an already-upgraded
+//     connection (e.g. from the panel's HTTP handler). No reconnection.
 type Client struct {
 	config   Config
-	conn     *Conn
+	conn     *conn
 	connMu   sync.RWMutex
 	dialer   websocket.Dialer
+	recv     chan types.Event
 	closed   bool
 	closedMu sync.Mutex
 }
 
-// NewClient creates a new WebSocket client with the given configuration.
-// The client does not connect until Start is called.
+// NewClient creates a client that dials the WebSocket URL in Config.
 func NewClient(config Config) *Client {
+	return newClient(config)
+}
+
+// NewFromConn wraps an existing, already-upgraded WebSocket connection
+// into a Client. The returned Client does not reconnect; Start returns
+// when the connection drops or the context is cancelled.
+func NewFromConn(wrapped *websocket.Conn, writeTimeout time.Duration) *Client {
+	c := newClient(Config{
+		WriteTimeout: writeTimeout,
+		ReadLimit:    DefaultReadLimit,
+		PingInterval: DefaultPingInterval,
+		PongWait:     DefaultPongWait,
+	})
+	c.connMu.Lock()
+	c.conn = newConn(wrapped, writeTimeout)
+	c.connMu.Unlock()
+	return c
+}
+
+func newClient(config Config) *Client {
 	config.setDefaults()
 	return &Client{
 		config: config,
 		dialer: websocket.Dialer{
 			HandshakeTimeout: config.HandshakeTimeout,
 		},
+		recv: make(chan types.Event, 64),
 	}
 }
 
-// Conn returns the current active connection, or nil if not connected.
-func (c *Client) Conn() *Conn {
+// Close shuts down the connection and releases resources.
+// Safe to call multiple times.
+func (c *Client) Close() {
+	c.close()
+}
+
+// Send marshals an event to JSON and sends it over the WebSocket connection.
+// It is safe for concurrent use. If not connected, it returns an error.
+func (c *Client) Send(event types.Event) error {
 	c.connMu.RLock()
-	defer c.connMu.RUnlock()
-	return c.conn
+	conn := c.conn
+	c.connMu.RUnlock()
+	if conn == nil {
+		return errors.New("wsx: not connected")
+	}
+	return conn.writeJSON(event)
+}
+
+// Recv returns a channel of received events. The channel is closed when the
+// connection is closed or the context is cancelled.
+func (c *Client) Recv() <-chan types.Event {
+	return c.recv
 }
 
 // Start begins the connection loop. It blocks until the context is cancelled.
-// On successful connection, the OnConnect callback is invoked. If the connection
-// drops, it automatically reconnects with exponential backoff.
+// For client mode (URL set), it reconnects with exponential backoff on failure.
+// For server mode (NewFromConn), it runs until the wrapped connection drops.
 func (c *Client) Start(ctx context.Context) error {
+	// Server mode: already have a connection.
+	if c.conn != nil {
+		return c.runServer(ctx)
+	}
+	return c.runClient(ctx)
+}
+
+// runClient connects, reconnects on failure, and manages the lifecycle.
+func (c *Client) runClient(ctx context.Context) error {
 	reconnectWait := c.config.ReconnectDelay
 
 	for {
-		// Check if we should stop before attempting a connection.
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
@@ -148,17 +202,14 @@ func (c *Client) Start(ctx context.Context) error {
 		reconnectWait = c.config.ReconnectDelay
 		slog.Info("wsx: connected", "url", c.config.URL)
 
-		// OnConnect hook
 		if c.config.OnConnect != nil {
-			if err := c.config.OnConnect(ctx, c.conn); err != nil {
+			if err := c.config.OnConnect(ctx); err != nil {
 				slog.Error("wsx: OnConnect failed, reconnecting", "error", err)
 				c.close()
 				continue
 			}
 		}
 
-		// Run the read/ping loop until error or context cancellation.
-		// run() only returns on error or context cancellation.
 		err := c.run(ctx)
 		c.close()
 		if err != nil {
@@ -171,22 +222,36 @@ func (c *Client) Start(ctx context.Context) error {
 	}
 }
 
+// runServer runs the read loop for a pre-existing connection (server mode).
+func (c *Client) runServer(ctx context.Context) error {
+	if c.config.OnConnect != nil {
+		if err := c.config.OnConnect(ctx); err != nil {
+			slog.Error("wsx: OnConnect failed", "error", err)
+			c.close()
+			return err
+		}
+	}
+	err := c.run(ctx)
+	c.close()
+	return err
+}
+
 func (c *Client) connect(ctx context.Context) error {
-	conn, _, err := c.dialer.DialContext(ctx, c.config.URL, c.config.Headers)
+	raw, _, err := c.dialer.DialContext(ctx, c.config.URL, c.config.Headers)
 	if err != nil {
 		return err
 	}
 
-	wsConn := NewConn(conn, c.config.WriteTimeout)
-	wsConn.SetReadLimit(c.config.ReadLimit)
-	wsConn.SetReadDeadline(time.Now().Add(c.config.PongWait))
-	wsConn.SetPongHandler(func(string) error {
-		wsConn.SetReadDeadline(time.Now().Add(c.config.PongWait))
+	wrapped := newConn(raw, c.config.WriteTimeout)
+	wrapped.setReadLimit(c.config.ReadLimit)
+	wrapped.setReadDeadline(time.Now().Add(c.config.PongWait))
+	wrapped.setPongHandler(func(string) error {
+		wrapped.setReadDeadline(time.Now().Add(c.config.PongWait))
 		return nil
 	})
 
 	c.connMu.Lock()
-	c.conn = wsConn
+	c.conn = wrapped
 	c.connMu.Unlock()
 	return nil
 }
@@ -195,11 +260,10 @@ func (c *Client) run(ctx context.Context) error {
 	pingTicker := time.NewTicker(c.config.PingInterval)
 	defer pingTicker.Stop()
 
-	// Snapshot the connection; c.conn is stable while run() owns it.
-	// close() only mutates c.conn after run() returns.
+	c.connMu.RLock()
 	conn := c.conn
+	c.connMu.RUnlock()
 
-	// Read errors are communicated via this channel.
 	readErr := make(chan error, 1)
 	go c.readLoop(readErr, conn)
 
@@ -210,38 +274,56 @@ func (c *Client) run(ctx context.Context) error {
 		case err := <-readErr:
 			return err
 		case <-pingTicker.C:
-			if err := conn.Ping(time.Now().Add(c.config.WriteTimeout)); err != nil {
+			if err := conn.ping(time.Now().Add(c.config.WriteTimeout)); err != nil {
 				return err
 			}
 		}
 	}
 }
 
-// readLoop reads messages from the connection until an error occurs.
-// If a ReadHandler is configured, it is called for each message.
-func (c *Client) readLoop(errCh chan<- error, conn *Conn) {
+func (c *Client) readLoop(errCh chan<- error, conn *conn) {
 	for {
-		msgType, data, err := conn.ReadMessage()
+		_, data, err := conn.readMessage()
 		if err != nil {
 			errCh <- err
 			return
 		}
-		if c.config.ReadHandler != nil {
-			c.config.ReadHandler(msgType, data)
+		evt, err := decodeEvent(data)
+		if err != nil {
+			slog.Warn("wsx: failed to decode event", "error", err)
+			continue
+		}
+		select {
+		case c.recv <- evt:
+		default:
+			slog.Warn("wsx: recv channel full, dropping event")
 		}
 	}
 }
 
-// SendJSON sends a JSON-encoded message on the current connection.
-// It is safe for concurrent use.
-func (c *Client) SendJSON(v any) error {
-	c.connMu.RLock()
-	conn := c.conn
-	c.connMu.RUnlock()
-	if conn == nil {
-		return websocket.ErrCloseSent
+// decodeEvent unmarshals a JSON message into the appropriate Event type
+// based on the "type" field.
+func decodeEvent(data []byte) (types.Event, error) {
+	var envelope struct {
+		Type types.EventType `json:"type"`
 	}
-	return conn.SendJSON(v)
+	if err := json.Unmarshal(data, &envelope); err != nil {
+		return nil, err
+	}
+	switch envelope.Type {
+	case types.EventTypeRegister:
+		var msg types.RegisterMessage
+		if err := json.Unmarshal(data, &msg); err != nil {
+			return nil, err
+		}
+		return msg, nil
+	default:
+		var env types.Envelope
+		if err := json.Unmarshal(data, &env); err != nil {
+			return nil, err
+		}
+		return env, nil
+	}
 }
 
 // close sends a close frame and cleans up the connection.
@@ -256,11 +338,14 @@ func (c *Client) close() {
 
 	c.connMu.Lock()
 	if c.conn != nil {
-		c.conn.Close()
+		c.conn.close()
 		c.conn = nil
 	}
 	c.connMu.Unlock()
 	if c.config.OnDisconnect != nil {
 		c.config.OnDisconnect()
 	}
+	// Signal to Recv consumers that the connection is gone.
+	// Multiple close calls are guarded by c.closed.
+	close(c.recv)
 }

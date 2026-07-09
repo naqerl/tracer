@@ -80,10 +80,13 @@ func (e StatsEvent) Timestamp() time.Time { return e.Time }
 // Envelope is the wire format with collector context added by transport.
 type Envelope struct {
 	Type      EventType       `json:"type"`
-	Timestamp time.Time       `json:"timestamp"`
+	TS        time.Time       `json:"timestamp"`
 	Collector string          `json:"collector"`
 	Data      json.RawMessage `json:"data"`
 }
+
+func (e Envelope) EventType() EventType { return e.Type }
+func (e Envelope) Timestamp() time.Time { return e.TS }
 
 // RegisterMessage is the initial registration message.
 type RegisterMessage struct {
@@ -91,6 +94,9 @@ type RegisterMessage struct {
 	Collector string    `json:"collector"`
 	Apps      []string  `json:"apps"`
 }
+
+func (r RegisterMessage) EventType() EventType { return EventTypeRegister }
+func (r RegisterMessage) Timestamp() time.Time { return time.Time{} }
 
 // ErrorEvent represents a source error for reporting to panel.
 type ErrorEvent struct {

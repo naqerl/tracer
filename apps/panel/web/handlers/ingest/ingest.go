@@ -62,87 +62,53 @@ func (h *handler) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Wrap in wsx.Conn for thread-safe operations and standardized lifecycle.
-	conn := wsx.NewConn(rawConn, 10*time.Second)
-	defer conn.Close()
-
 	// Generate unique connection ID
 	connID := uuid.New().String()
 	remoteAddr := extractIP(r.RemoteAddr)
 
 	slog.Info("WebSocket connected", "remote", remoteAddr, "conn_id", connID)
 
-	// Configure connection with generous timeout and max message size
-	conn.SetReadLimit(10 * 1024 * 1024) // 10 MB max message size
-	conn.SetReadDeadline(time.Now().Add(5 * time.Minute))
-	conn.SetPongHandler(func(string) error {
-		conn.SetReadDeadline(time.Now().Add(5 * time.Minute))
+	// Configure the raw connection before wrapping.
+	rawConn.SetReadLimit(10 * 1024 * 1024) // 10 MB max message size
+	rawConn.SetReadDeadline(time.Now().Add(5 * time.Minute))
+	rawConn.SetPongHandler(func(string) error {
+		rawConn.SetReadDeadline(time.Now().Add(5 * time.Minute))
 		h.tracker.UpdateLastSeen(connID)
 		return nil
 	})
 
-	// Mark as disconnected when connection closes
+	// Wrap in wsx.Client for thread-safe Send/Recv.
+	client := wsx.NewFromConn(rawConn, 10*time.Second)
 	defer func() {
+		client.Close()
 		h.tracker.Disconnect(connID)
 		slog.Info("WebSocket disconnected", "remote", remoteAddr, "conn_id", connID)
 	}()
 
-	// Start ping ticker (separate goroutine; wsx.Conn is thread-safe for writes)
-	go h.pingLoop(conn)
+	// Start the client's internal read/ping loop.
+	ctx, cancel := context.WithCancel(r.Context())
+	defer cancel()
+	go func() {
+		_ = client.Start(ctx)
+	}()
 
-	// Read loop
-	for {
-		_, message, err := conn.ReadMessage()
-		if err != nil {
-			if websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
-				slog.Debug("WebSocket closed", "error", err)
-			} else if websocket.IsUnexpectedCloseError(err, websocket.CloseAbnormalClosure) {
-				slog.Error("WebSocket read error", "error", err)
-			} else {
-				slog.Warn("WebSocket read closed", "error", err)
-			}
-			break
+	// Process events from Recv until the channel is closed.
+	for evt := range client.Recv() {
+		switch e := evt.(type) {
+		case types.RegisterMessage:
+			h.topology.Publish(topologysvc.Message{
+				Register: &e,
+			})
+			h.handleRegistration(r.Context(), connID, remoteAddr, e)
+		case types.Envelope:
+			h.handleEnvelope(r.Context(), e)
+		default:
+			slog.Warn("Unknown event type from Recv", "event_type", evt.EventType())
 		}
-
-		h.processMessage(r.Context(), connID, remoteAddr, message)
 	}
 }
 
 // Helpers
-
-func (h *handler) processMessage(ctx context.Context, connID, remoteAddr string, message []byte) {
-	var hdr struct {
-		Type types.EventType `json:"type"`
-	}
-	if err := json.Unmarshal(message, &hdr); err != nil {
-		slog.Error("Failed to parse websocket message header", "error", err)
-		return
-	}
-	if err := hdr.Type.Validate(); err != nil {
-		slog.Error("Invalid websocket message type", "error", err)
-		return
-	}
-
-	switch hdr.Type {
-	case types.EventTypeRegister:
-		var reg types.RegisterMessage
-		if err := json.Unmarshal(message, &reg); err != nil {
-			slog.Error("Failed to parse collector registration", "error", err)
-			return
-		}
-		h.topology.Publish(topologysvc.Message{
-			Register: &reg,
-		})
-		h.handleRegistration(ctx, connID, remoteAddr, reg)
-	default:
-		var env types.Envelope
-		if err := json.Unmarshal(message, &env); err != nil {
-			slog.Error("Failed to parse ingest envelope", "error", err)
-			return
-		}
-		h.handleEnvelope(ctx, env)
-	}
-}
 
 func (h *handler) handleEnvelope(ctx context.Context, env types.Envelope) {
 	switch env.Type {
@@ -320,17 +286,6 @@ func (h *handler) handleHealth(ctx context.Context, collector string, evt types.
 		return
 	}
 
-}
-
-func (h *handler) pingLoop(conn *wsx.Conn) {
-	ticker := time.NewTicker(30 * time.Second)
-	defer ticker.Stop()
-
-	for range ticker.C {
-		if err := conn.Ping(time.Now().Add(10 * time.Second)); err != nil {
-			return
-		}
-	}
 }
 
 func (h *handler) requireCollectorAPIKey(w http.ResponseWriter, r *http.Request) bool {

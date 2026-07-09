@@ -118,10 +118,10 @@ func TestTopologyEventsStreamsOnlyAuthorizedEvents(t *testing.T) {
 		t.Fatalf("marshal authorized event: %v", err)
 	}
 	topologyService.Publish(topologysvc.Message{
-		Envelope: &types.Envelope{Type: types.EventTypeHealth, Collector: "collector-b", Timestamp: time.Now(), Data: unauthorized},
+		Envelope: &types.Envelope{Type: types.EventTypeHealth, Collector: "collector-b", TS: time.Now(), Data: unauthorized},
 	})
 	topologyService.Publish(topologysvc.Message{
-		Envelope: &types.Envelope{Type: types.EventTypeHealth, Collector: "collector-a", Timestamp: time.Now(), Data: authorized},
+		Envelope: &types.Envelope{Type: types.EventTypeHealth, Collector: "collector-a", TS: time.Now(), Data: authorized},
 	})
 	time.Sleep(30 * time.Millisecond)
 	cancel()
