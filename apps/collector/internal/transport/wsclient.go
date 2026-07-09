@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"net/url"
-	"strings"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -41,13 +39,13 @@ func New(spec Spec, appNames []string, events <-chan types.Event) Service {
 }
 
 // Start begins the connection loop and event processing.
-func (s *Service) Start(ctx context.Context) {
+func (s *Service) Start(ctx context.Context) error {
 	reconnectWait := reconnectDelay
 
 	for {
 		select {
 		case <-ctx.Done():
-			return
+			return ctx.Err()
 		default:
 		}
 
@@ -64,7 +62,7 @@ func (s *Service) Start(ctx context.Context) {
 		s.sendRegistration()
 
 		if err := s.run(ctx); err != nil {
-			slog.Warn("Connection lost", "error", err)
+			return fmt.Errorf("could not run connection with %w", err)
 		}
 
 		s.close()
@@ -73,20 +71,15 @@ func (s *Service) Start(ctx context.Context) {
 
 func (s *Service) connect() error {
 	if s.conn != nil {
-		s.conn.Close()
-	}
-
-	wsURL, err := panelWSURL(s.spec.PanelHost)
-	if err != nil {
-		return err
+		return fmt.Errorf("connection is open alrady")
 	}
 
 	headers := http.Header{}
 	headers.Set("X-API-Key", s.spec.APIKey)
 
-	conn, _, err := websocket.DefaultDialer.Dial(wsURL, headers)
+	conn, _, err := websocket.DefaultDialer.Dial(s.spec.PanelHost, headers)
 	if err != nil {
-		return err
+		return fmt.Errorf("could not dial with %w", err)
 	}
 
 	conn.SetReadDeadline(time.Now().Add(pongWait))
@@ -97,38 +90,6 @@ func (s *Service) connect() error {
 
 	s.conn = conn
 	return nil
-}
-
-func panelWSURL(panelHost string) (string, error) {
-	raw := strings.TrimSpace(panelHost)
-	if raw == "" {
-		return "", fmt.Errorf("panel_host is empty")
-	}
-	if !strings.Contains(raw, "://") {
-		raw = "ws://" + raw
-	}
-
-	u, err := url.Parse(raw)
-	if err != nil {
-		return "", fmt.Errorf("invalid panel_host %q: %w", panelHost, err)
-	}
-	if u.Host == "" {
-		return "", fmt.Errorf("invalid panel_host %q: missing host", panelHost)
-	}
-
-	switch u.Scheme {
-	case "ws", "wss":
-	case "http":
-		u.Scheme = "ws"
-	case "https":
-		u.Scheme = "wss"
-	default:
-		return "", fmt.Errorf("invalid panel_host scheme %q (expected ws, wss, http, https, or host:port)", u.Scheme)
-	}
-
-	u.Path = "/ingest/ws"
-	u.RawPath = ""
-	return u.String(), nil
 }
 
 func (s *Service) run(ctx context.Context) error {
