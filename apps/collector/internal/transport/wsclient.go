@@ -6,26 +6,17 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"sync"
 	"time"
 
-	"github.com/gorilla/websocket"
-
 	"tracer/libs/types"
-)
-
-const (
-	writeTimeout     = 10 * time.Second
-	reconnectDelay   = 5 * time.Second
-	pingInterval     = 30 * time.Second
-	pongWait         = 60 * time.Second
-	maxReconnectWait = 5 * time.Minute
+	"tracer/libs/wsx"
 )
 
 // Service handles WebSocket connection to panel.
 type Service struct {
 	spec     Spec
 	appNames []string
-	conn     *websocket.Conn
 	events   <-chan types.Event
 }
 
@@ -39,104 +30,62 @@ func New(spec Spec, appNames []string, events <-chan types.Event) Service {
 }
 
 // Start begins the connection loop and event processing.
+// It blocks until the context is cancelled.
 func (s *Service) Start(ctx context.Context) error {
-	reconnectWait := reconnectDelay
-
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-		}
-
-		if err := s.connect(); err != nil {
-			slog.Error("Failed to connect to panel", "host", s.spec.PanelHost, "error", err)
-			time.Sleep(reconnectWait)
-			reconnectWait = min(reconnectWait*2, maxReconnectWait)
-			continue
-		}
-
-		reconnectWait = reconnectDelay
-		slog.Info("Connected to panel", "host", s.spec.PanelHost)
-
-		s.sendRegistration()
-
-		if err := s.run(ctx); err != nil {
-			return fmt.Errorf("could not run connection with %w", err)
-		}
-
-		s.close()
-	}
-}
-
-func (s *Service) connect() error {
-	if s.conn != nil {
-		return fmt.Errorf("connection is open alrady")
-	}
-
+	// Prepare headers with API key for authentication.
 	headers := http.Header{}
 	headers.Set("X-API-Key", s.spec.APIKey)
 
-	conn, _, err := websocket.DefaultDialer.Dial(s.spec.PanelHost, headers)
-	if err != nil {
-		return fmt.Errorf("could not dial with %w", err)
-	}
-
-	conn.SetReadDeadline(time.Now().Add(pongWait))
-	conn.SetPongHandler(func(string) error {
-		conn.SetReadDeadline(time.Now().Add(pongWait))
-		return nil
+	client := wsx.NewClient(wsx.Config{
+		URL:     s.spec.PanelHost,
+		Headers: headers,
+		// Use defaults for HandshakeTimeout, WriteTimeout, PingInterval, etc.
+		OnConnect: func(ctx context.Context, conn *wsx.Conn) error {
+			slog.Info("Connected to panel, sending registration",
+				"host", s.spec.PanelHost,
+				"collector", s.spec.Name,
+			)
+			return s.sendRegistration(conn)
+		},
 	})
 
-	s.conn = conn
-	return nil
-}
-
-func (s *Service) run(ctx context.Context) error {
-	pingTicker := time.NewTicker(pingInterval)
-	defer pingTicker.Stop()
-
-	// Start read loop for pongs
-	pongDone := make(chan struct{})
-	go s.readLoop(pongDone)
-
-	for {
-		select {
-		case <-ctx.Done():
-			return nil
-		case <-pongDone:
-			return websocket.ErrBadHandshake
-		case evt := <-s.events:
-			if err := s.sendEvent(evt); err != nil {
-				return err
-			}
-		case <-pingTicker.C:
-			if err := s.conn.WriteControl(websocket.PingMessage, nil, time.Now().Add(writeTimeout)); err != nil {
-				return err
+	// Forward events from the events channel to the WebSocket connection.
+	// This goroutine runs for the lifetime of ctx; client.SendJSON is safe for
+	// concurrent use and returns an error if the connection is down.
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case evt, ok := <-s.events:
+				if !ok {
+					return
+				}
+				if err := s.sendEvent(client, evt); err != nil {
+					slog.Warn("wsx: failed to send event", "error", err)
+				}
 			}
 		}
-	}
+	}()
+
+	err := client.Start(ctx)
+	wg.Wait()
+	return err
 }
 
-func (s *Service) readLoop(done chan<- struct{}) {
-	defer close(done)
-	for {
-		if _, _, err := s.conn.ReadMessage(); err != nil {
-			return
-		}
-	}
-}
-
-func (s *Service) sendRegistration() {
+func (s *Service) sendRegistration(conn *wsx.Conn) error {
 	msg := types.RegisterMessage{
 		Type:      types.EventTypeRegister,
 		Collector: s.spec.Name,
 		Apps:      s.appNames,
 	}
-	s.sendJSON(msg)
+	return conn.SendJSON(msg)
 }
 
-func (s *Service) sendEvent(evt types.Event) error {
+func (s *Service) sendEvent(client *wsx.Client, evt types.Event) error {
 	payload, err := json.Marshal(evt)
 	if err != nil {
 		return fmt.Errorf("could not marshal payload: %w", err)
@@ -148,22 +97,5 @@ func (s *Service) sendEvent(evt types.Event) error {
 		Collector: s.spec.Name,
 		Data:      payload,
 	}
-	return s.sendJSON(msg)
-}
-
-func (s *Service) sendJSON(v any) error {
-	s.conn.SetWriteDeadline(time.Now().Add(writeTimeout))
-	return s.conn.WriteJSON(v)
-}
-
-func (s *Service) close() {
-	if s.conn != nil {
-		s.conn.WriteControl(
-			websocket.CloseMessage,
-			websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""),
-			time.Now().Add(writeTimeout),
-		)
-		s.conn.Close()
-		s.conn = nil
-	}
+	return client.SendJSON(msg)
 }

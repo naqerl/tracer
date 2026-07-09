@@ -15,6 +15,7 @@ import (
 	"tracer/apps/panel/internal/services/ingest"
 	topologysvc "tracer/apps/panel/internal/services/topology"
 	"tracer/libs/types"
+	"tracer/libs/wsx"
 )
 
 var upgrader = websocket.Upgrader{
@@ -55,11 +56,14 @@ func (h *handler) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	conn, err := upgrader.Upgrade(w, r, nil)
+	rawConn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		slog.Error("WebSocket upgrade failed", "error", err)
 		return
 	}
+
+	// Wrap in wsx.Conn for thread-safe operations and standardized lifecycle.
+	conn := wsx.NewConn(rawConn, 10*time.Second)
 	defer conn.Close()
 
 	// Generate unique connection ID
@@ -83,7 +87,7 @@ func (h *handler) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		slog.Info("WebSocket disconnected", "remote", remoteAddr, "conn_id", connID)
 	}()
 
-	// Start ping ticker
+	// Start ping ticker (separate goroutine; wsx.Conn is thread-safe for writes)
 	go h.pingLoop(conn)
 
 	// Read loop
@@ -318,12 +322,12 @@ func (h *handler) handleHealth(ctx context.Context, collector string, evt types.
 
 }
 
-func (h *handler) pingLoop(conn *websocket.Conn) {
+func (h *handler) pingLoop(conn *wsx.Conn) {
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
 
 	for range ticker.C {
-		if err := conn.WriteControl(websocket.PingMessage, nil, time.Now().Add(10*time.Second)); err != nil {
+		if err := conn.Ping(time.Now().Add(10 * time.Second)); err != nil {
 			return
 		}
 	}
