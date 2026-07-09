@@ -25,14 +25,14 @@ import (
 	"tracer/apps/panel/internal/services/notify"
 	"tracer/apps/panel/internal/services/notify/ntfy"
 	"tracer/apps/panel/internal/services/notify/telegram"
-	panelsvc "tracer/apps/panel/internal/services/panel"
-	topologysvc "tracer/apps/panel/internal/services/topology"
+	"tracer/apps/panel/internal/services/panel"
+	"tracer/apps/panel/internal/services/topology"
 	"tracer/apps/panel/internal/services/user"
 	"tracer/apps/panel/web"
 	"tracer/build"
+	"tracer/libs/installx"
 	"tracer/libs/logx"
-	sysinstall "tracer/libs/shared/install"
-	"tracer/libs/shared/update"
+	"tracer/libs/updatex"
 )
 
 func main() {
@@ -109,7 +109,7 @@ func main() {
 	}
 	cfgObj := config.New(cfg, cfgPath)
 
-	sysinstall.RequireServiceUser(build.PanelUser, build.TracerGroup)
+	installx.RequireServiceUser(build.PanelUser, build.TracerGroup)
 
 	slog.Info("Starting panel",
 		"port", cfg.Port,
@@ -235,8 +235,8 @@ func serve(ctx context.Context, cfg *config.Config, noAuth, readOnly bool) error
 
 	// Initialize collector tracker
 	tracker := ingest.NewTracker()
-	panelService := panelsvc.New(dbManager, ingestService, tracker, userService)
-	topologyService := topologysvc.NewService(panelService)
+	panelService := panel.New(dbManager, ingestService, tracker, userService)
+	topologyService := topology.NewService(panelService)
 
 	// Run services
 	wg.Go(func() {
@@ -313,8 +313,8 @@ func serve(ctx context.Context, cfg *config.Config, noAuth, readOnly bool) error
 }
 
 func handleUpdate() {
-	if err := update.Update(update.Options{
-		BinaryName: update.BinaryPanel,
+	if err := updatex.Update(updatex.Options{
+		BinaryName: updatex.BinaryPanel,
 		PostUpdate: func() {
 			fmt.Println("Please restart the panel to apply the update:")
 			fmt.Println()

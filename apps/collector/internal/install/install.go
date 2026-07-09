@@ -11,7 +11,7 @@ import (
 
 	"tracer/apps/collector/internal/config"
 	"tracer/build"
-	tracerinstall "tracer/libs/shared/install"
+	"tracer/libs/installx"
 )
 
 const (
@@ -35,16 +35,16 @@ type serviceData struct {
 func Run() error {
 	fmt.Fprintln(os.Stderr, "Setting up tracer-collector...")
 
-	if err := tracerinstall.CreateGroup(build.TracerGroup); err != nil {
+	if err := installx.CreateGroup(build.TracerGroup); err != nil {
 		return fmt.Errorf("create group: %w", err)
 	}
-	if err := tracerinstall.CreateSystemUser(build.CollectorUser, build.TracerGroup, "Tracer Collector Service", "/nonexistent"); err != nil {
+	if err := installx.CreateSystemUser(build.CollectorUser, build.TracerGroup, "Tracer Collector Service", "/nonexistent"); err != nil {
 		return fmt.Errorf("create user: %w", err)
 	}
-	if err := tracerinstall.CreateDir(ConfigDir, 0755); err != nil {
+	if err := installx.CreateDir(ConfigDir, 0755); err != nil {
 		return fmt.Errorf("create config dir: %w", err)
 	}
-	if err := tracerinstall.ChownDir(ConfigDir, "root", build.TracerGroup); err != nil {
+	if err := installx.ChownDir(ConfigDir, "root", build.TracerGroup); err != nil {
 		return fmt.Errorf("chown config dir: %w", err)
 	}
 	if err := createConfig(); err != nil {
@@ -59,7 +59,7 @@ func Run() error {
 }
 
 func createConfig() error {
-	if tracerinstall.FileExists(ConfigFilePath) {
+	if installx.FileExists(ConfigFilePath) {
 		fmt.Fprintf(os.Stderr, "Config already exists at %s, skipping\n", ConfigFilePath)
 		return nil
 	}
@@ -74,7 +74,7 @@ func createConfig() error {
 		return fmt.Errorf("marshal config: %w", err)
 	}
 
-	return tracerinstall.WriteConfig(ConfigFilePath, out, 0640, "root", build.TracerGroup)
+	return installx.WriteConfig(ConfigFilePath, out, 0640, "root", build.TracerGroup)
 }
 
 func installSystemd() error {
@@ -88,5 +88,5 @@ func installSystemd() error {
 	if err := serviceTmpl.Execute(&buf, data); err != nil {
 		return fmt.Errorf("execute template: %w", err)
 	}
-	return tracerinstall.InstallService("/etc/systemd/system/tracer-collector.service", buf.Bytes())
+	return installx.InstallService("/etc/systemd/system/tracer-collector.service", buf.Bytes())
 }
