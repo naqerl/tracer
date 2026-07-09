@@ -76,7 +76,8 @@ func WithPongWait(d time.Duration) ClientOption {
 	return func(c *clientConfig) { c.pongWait = d }
 }
 
-// WithReadLimit sets the maximum message size in bytes (0 = no limit).
+// WithReadLimit sets the maximum message size in bytes.
+// If called with 0 or not called at all, the DefaultReadLimit (10 MB) is used.
 func WithReadLimit(limit int64) ClientOption {
 	return func(c *clientConfig) { c.readLimit = limit }
 }

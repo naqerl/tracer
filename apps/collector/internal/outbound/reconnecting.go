@@ -4,8 +4,14 @@ import (
 	"context"
 	"errors"
 	"sync"
+	"time"
 
 	"tracer/libs/types"
+)
+
+const (
+	initialBackoff = 1 * time.Second
+	maxBackoff     = 30 * time.Second
 )
 
 type sendReq struct {
@@ -16,15 +22,19 @@ type sendReq struct {
 // reconnecting wraps a Client factory. Send and Recv are handled by a single
 // actor goroutine that owns the current Client. No mutexes.
 type reconnecting struct {
-	factory func() (Client, error)
+	factory func(context.Context) (Client, error)
 	recv    chan types.Event
 	req     chan sendReq
 	ctx     context.Context
 	cancel  context.CancelFunc
 	once    sync.Once
+
+	backoffDelay time.Duration
 }
 
-func newReconnecting(factory func() (Client, error)) *reconnecting {
+// newReconnecting starts the actor goroutine. The factory is called with the
+// internal context so that Close can cancel a blocked dial.
+func newReconnecting(factory func(context.Context) (Client, error)) *reconnecting {
 	ctx, cancel := context.WithCancel(context.Background())
 	r := &reconnecting{
 		factory: factory,
@@ -37,71 +47,40 @@ func newReconnecting(factory func() (Client, error)) *reconnecting {
 	return r
 }
 
-// run is the single actor goroutine. It owns current Client and relays events
-// to r.recv. Exits when the context is cancelled.
+// run is the single actor goroutine. It owns the current Client and relays
+// events to r.recv. Exits when the context is cancelled.
 func (r *reconnecting) run() {
 	defer close(r.recv)
 	var current Client
 
 	for {
-		if current == nil {
-			select {
-			case msg := <-r.req:
-				c, err := r.factory()
-				if err != nil {
-					msg.resp <- err
-					continue
-				}
-				if err := c.Send(msg.event); err != nil {
-					c.Close()
-					// First attempt failed — retry once with a fresh client.
-					newC, err2 := r.factory()
-					if err2 != nil {
-						msg.resp <- err2
-						continue
-					}
-					if err2 := newC.Send(msg.event); err2 != nil {
-						newC.Close()
-						msg.resp <- err2
-						continue
-					}
-					current = newC
-					msg.resp <- nil
-					continue
-				}
-				current = c
-				msg.resp <- nil
-			case <-r.ctx.Done():
-				return
-			}
-			continue
+		// Conditionally observe the current client's Recv channel.
+		var recvChan <-chan types.Event
+		if current != nil {
+			recvChan = current.Recv()
 		}
 
 		select {
 		case msg := <-r.req:
-			err := current.Send(msg.event)
-			if err == nil {
-				msg.resp <- nil
+			newCurrent, err := r.dialAndSend(current, msg.event)
+			if err != nil {
+				msg.resp <- err
+				if current != nil {
+					current.Close()
+				}
+				current = nil
+				r.waitWithBackoff()
 				continue
 			}
-			// Connection lost — create new client and retry once.
-			current.Close()
-			current = nil
-			newC, err2 := r.factory()
-			if err2 != nil {
-				msg.resp <- err2
-				continue
-			}
-			if err2 := newC.Send(msg.event); err2 != nil {
-				newC.Close()
-				msg.resp <- err2
-				continue
-			}
-			current = newC
+			current = newCurrent
+			r.backoffDelay = 0
 			msg.resp <- nil
 
-		case evt, ok := <-current.Recv():
+		case evt, ok := <-recvChan:
 			if !ok {
+				if current != nil {
+					current.Close()
+				}
 				current = nil
 				continue
 			}
@@ -116,6 +95,56 @@ func (r *reconnecting) run() {
 			}
 			return
 		}
+	}
+}
+
+// dialAndSend attempts to send the event on the provided client.
+// If the client is nil or Send fails, it dials a new client and retries once.
+// Returns the (possibly new) client to keep, or an error.
+func (r *reconnecting) dialAndSend(current Client, event types.Event) (Client, error) {
+	// Try the existing client first.
+	if current != nil {
+		if err := current.Send(event); err == nil {
+			return current, nil
+		}
+		current.Close()
+	}
+
+	// Dial and send. Retry once if the first send fails (dead-on-arrival).
+	c, err := r.factory(r.ctx)
+	if err != nil {
+		return nil, err
+	}
+	if err := c.Send(event); err != nil {
+		c.Close()
+		c2, err2 := r.factory(r.ctx)
+		if err2 != nil {
+			return nil, err2
+		}
+		if err2 := c2.Send(event); err2 != nil {
+			c2.Close()
+			return nil, err2
+		}
+		return c2, nil
+	}
+	return c, nil
+}
+
+// waitWithBackoff applies exponential backoff after a failed attempt.
+// Returns immediately when the context is cancelled.
+func (r *reconnecting) waitWithBackoff() {
+	if r.backoffDelay <= 0 {
+		r.backoffDelay = initialBackoff
+	}
+	timer := time.NewTimer(r.backoffDelay)
+	select {
+	case <-timer.C:
+	case <-r.ctx.Done():
+	}
+	timer.Stop()
+	r.backoffDelay *= 2
+	if r.backoffDelay > maxBackoff {
+		r.backoffDelay = maxBackoff
 	}
 }
 

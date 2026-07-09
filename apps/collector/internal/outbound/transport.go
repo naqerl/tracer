@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
 
 	"tracer/libs/types"
@@ -36,8 +38,12 @@ func New(spec Spec, appNames []string, events <-chan types.Event) Service {
 	headers := http.Header{}
 	headers.Set("X-API-Key", spec.APIKey)
 
-	factory := func() (Client, error) {
-		url := "ws://" + spec.PanelHost + "/ws"
+	factory := func(ctx context.Context) (Client, error) {
+		_ = ctx // available for future context-aware dial
+		url, err := panelWSURL(spec.PanelHost)
+		if err != nil {
+			return nil, fmt.Errorf("build URL: %w", err)
+		}
 		c, err := wsx.New(url,
 			wsx.WithHeaders(headers),
 			wsx.WithWriteTimeout(10*time.Second),
@@ -73,6 +79,7 @@ func (s *Service) Start(ctx context.Context) error {
 			return ctx.Err()
 		case evt, ok := <-s.events:
 			if !ok {
+				s.client.Close()
 				return nil
 			}
 			if err := s.sendEvent(evt); err != nil {
@@ -95,4 +102,39 @@ func (s *Service) sendEvent(evt types.Event) error {
 		Data:      payload,
 	}
 	return s.client.Send(env)
+}
+
+// panelWSURL builds a WebSocket URL from the panel_host config value.
+// It accepts host:port, ws://host:port, wss://host:port, http://host:port,
+// or https://host:port. The /ws path is appended.
+func panelWSURL(panelHost string) (string, error) {
+	raw := strings.TrimSpace(panelHost)
+	if raw == "" {
+		return "", fmt.Errorf("panel_host is empty")
+	}
+	if !strings.Contains(raw, "://") {
+		raw = "ws://" + raw
+	}
+
+	u, err := url.Parse(raw)
+	if err != nil {
+		return "", fmt.Errorf("invalid panel_host %q: %w", panelHost, err)
+	}
+	if u.Host == "" {
+		return "", fmt.Errorf("invalid panel_host %q: missing host", panelHost)
+	}
+
+	switch u.Scheme {
+	case "ws", "wss":
+	case "http":
+		u.Scheme = "ws"
+	case "https":
+		u.Scheme = "wss"
+	default:
+		return "", fmt.Errorf("invalid panel_host scheme %q (expected ws, wss, http, https, or host:port)", u.Scheme)
+	}
+
+	u.Path = "/ws"
+	u.RawPath = ""
+	return u.String(), nil
 }

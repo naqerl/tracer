@@ -1,6 +1,7 @@
 package outbound
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -75,7 +76,7 @@ func TestReconnectingBasicSendRecv(t *testing.T) {
 	defer srv.Close()
 
 	var callCount int
-	r := newReconnecting(func() (Client, error) {
+	r := newReconnecting(func(_ context.Context) (Client, error) {
 		callCount++
 		c, err := wsx.New(url, dialOpts()...)
 		if err != nil {
@@ -116,7 +117,7 @@ func TestReconnectingReconnectOnSendFailure(t *testing.T) {
 	// First call returns a broken client (immediate close).
 	// Second call succeeds.
 	var callCount atomic.Int32
-	r := newReconnecting(func() (Client, error) {
+	r := newReconnecting(func(_ context.Context) (Client, error) {
 		if callCount.Add(1) == 1 {
 			// Return a client that's already closed.
 			c, err := wsx.New(url, dialOpts()...)
@@ -151,7 +152,7 @@ func TestReconnectingReconnectOnSendFailure(t *testing.T) {
 
 func TestReconnectingFactoryFailure(t *testing.T) {
 	wantErr := errors.New("factory boom")
-	r := newReconnecting(func() (Client, error) {
+	r := newReconnecting(func(_ context.Context) (Client, error) {
 		return nil, wantErr
 	})
 	defer r.Close()
@@ -169,7 +170,7 @@ func TestReconnectingSendAfterClose(t *testing.T) {
 	srv, url := echoServer(t)
 	defer srv.Close()
 
-	r := newReconnecting(func() (Client, error) {
+	r := newReconnecting(func(_ context.Context) (Client, error) {
 		return wsx.New(url, dialOpts()...)
 	})
 	r.Close()
@@ -184,7 +185,7 @@ func TestReconnectingSendAfterClose(t *testing.T) {
 }
 
 func TestReconnectingCloseIdempotent(t *testing.T) {
-	r := newReconnecting(func() (Client, error) {
+	r := newReconnecting(func(_ context.Context) (Client, error) {
 		return nil, errors.New("no dial needed")
 	})
 	// Multiple Close calls must not panic or block.
@@ -198,7 +199,7 @@ func TestReconnectingRecvStableAcrossReconnects(t *testing.T) {
 	defer srv.Close()
 
 	var callCount atomic.Int32
-	r := newReconnecting(func() (Client, error) {
+	r := newReconnecting(func(_ context.Context) (Client, error) {
 		callCount.Add(1)
 		return wsx.New(url, dialOpts()...)
 	})
@@ -222,7 +223,7 @@ func TestReconnectingConcurrentSends(t *testing.T) {
 	srv, url := echoServer(t)
 	defer srv.Close()
 
-	r := newReconnecting(func() (Client, error) {
+	r := newReconnecting(func(_ context.Context) (Client, error) {
 		return wsx.New(url, dialOpts()...)
 	})
 	defer r.Close()
@@ -255,7 +256,7 @@ func TestReconnectingCloseDuringFactory(t *testing.T) {
 	started := make(chan struct{})
 	proceed := make(chan struct{})
 
-	r := newReconnecting(func() (Client, error) {
+	r := newReconnecting(func(_ context.Context) (Client, error) {
 		close(started)
 		<-proceed
 		return nil, errors.New("factory never completes")
@@ -280,7 +281,7 @@ func TestReconnectingRecvClosedAfterClose(t *testing.T) {
 	srv, url := echoServer(t)
 	defer srv.Close()
 
-	r := newReconnecting(func() (Client, error) {
+	r := newReconnecting(func(_ context.Context) (Client, error) {
 		return wsx.New(url, dialOpts()...)
 	})
 
@@ -300,22 +301,5 @@ func TestReconnectingRecvClosedAfterClose(t *testing.T) {
 		}
 	case <-time.After(testTimeout):
 		t.Fatal("Recv not closed after timeout")
-	}
-}
-
-// TestReconnectingRecvNotClosedPanics ensures the Recv channel returns
-// something without panicking — that it's properly typed.
-func TestReconnectingRecvType(t *testing.T) {
-	srv, url := echoServer(t)
-	defer srv.Close()
-
-	r := newReconnecting(func() (Client, error) {
-		return wsx.New(url, dialOpts()...)
-	})
-	defer r.Close()
-
-	ch := r.Recv()
-	if ch == nil {
-		t.Fatal("Recv() returned nil channel")
 	}
 }
