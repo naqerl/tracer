@@ -72,7 +72,7 @@ func (h *handler) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	// Process events from Recv until the channel is closed.
 	for evt := range client.Recv() {
 		switch e := evt.(type) {
-		case types.RegisterMessage:
+		case types.RegisterEvent:
 			h.topology.Publish(topologysvc.Message{
 				Register: &e,
 			})
@@ -140,7 +140,7 @@ func (h *handler) handleEnvelope(ctx context.Context, env types.Envelope) {
 	}
 }
 
-func (h *handler) handleRegistration(ctx context.Context, connID, remoteAddr string, msg types.RegisterMessage) {
+func (h *handler) handleRegistration(ctx context.Context, connID, remoteAddr string, msg types.RegisterEvent) {
 	if len(msg.Apps) == 0 {
 		slog.Info("Skipping empty collector registration", "collector", msg.Collector, "remote", remoteAddr, "conn_id", connID)
 		return

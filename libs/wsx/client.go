@@ -14,10 +14,11 @@ import (
 
 // Default configuration values.
 const (
-	DefaultWriteTimeout = 10 * time.Second
-	DefaultPingInterval = 30 * time.Second
-	DefaultPongWait     = 60 * time.Second
-	DefaultReadLimit    = 10 * 1024 * 1024 // 10 MB
+	DefaultWriteTimeout     = 10 * time.Second
+	DefaultPingInterval     = 30 * time.Second
+	DefaultPongWait         = 60 * time.Second
+	DefaultReadLimit        = 10 * 1024 * 1024 // 10 MB
+	DefaultHandshakeTimeout = 10 * time.Second
 )
 
 // ClientOption configures the Client. Options are applied in order.
@@ -48,7 +49,7 @@ func (c *clientConfig) setDefaults() {
 		c.readLimit = DefaultReadLimit
 	}
 	if c.handshakeTimeout <= 0 {
-		c.handshakeTimeout = 10 * time.Second
+		c.handshakeTimeout = DefaultHandshakeTimeout
 	}
 }
 
@@ -245,7 +246,7 @@ func decodeEvent(data []byte) (types.Event, error) {
 	}
 	switch envelope.Type {
 	case types.EventTypeRegister:
-		var msg types.RegisterMessage
+		var msg types.RegisterEvent
 		if err := json.Unmarshal(data, &msg); err != nil {
 			return nil, err
 		}

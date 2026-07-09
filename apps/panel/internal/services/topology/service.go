@@ -43,9 +43,9 @@ type Service struct {
 }
 
 type Message struct {
-	Register  *types.RegisterMessage `json:"register,omitempty"`
-	Envelope  *types.Envelope        `json:"envelope,omitempty"`
-	Persisted *PersistedLogMessage   `json:"persisted,omitempty"`
+	Register  *types.RegisterEvent `json:"register,omitempty"`
+	Envelope  *types.Envelope      `json:"envelope,omitempty"`
+	Persisted *PersistedLogMessage `json:"persisted,omitempty"`
 }
 
 type PersistedLogMessage struct {

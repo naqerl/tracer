@@ -29,7 +29,7 @@ type Service struct {
 
 // New creates a Service. The client automatically reconnects on failure.
 //
-// The factory dials the panel, authenticates, and sends a RegisterMessage
+// The factory dials the panel, authenticates, and sends a RegisterEvent
 // before returning. If registration fails, the entire factory call fails
 // and the reconnecting wrapper retries.
 func New(spec Spec, appNames []string, events <-chan types.Event) Service {
@@ -45,7 +45,8 @@ func New(spec Spec, appNames []string, events <-chan types.Event) Service {
 		if err != nil {
 			return nil, fmt.Errorf("dial: %w", err)
 		}
-		if err := c.Send(types.RegisterMessage{
+		if err := c.Send(types.RegisterEvent{
+			Type:      types.EventTypeRegister,
 			Collector: spec.Name,
 			Apps:      appNames,
 		}); err != nil {

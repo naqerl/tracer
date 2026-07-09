@@ -15,7 +15,7 @@ import (
 )
 
 type Config struct {
-	Outbound outbound.Spec `yaml:"transport"`
+	Outbound outbound.Spec `yaml:"outbound"`
 
 	Stats stats.Spec `yaml:"stats"`
 
