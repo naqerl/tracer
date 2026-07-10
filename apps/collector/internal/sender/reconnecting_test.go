@@ -72,7 +72,7 @@ func TestReconnectingBasicSendRecv(t *testing.T) {
 	defer srv.Close()
 
 	var callCount int
-	r := newReconnecting(func(ctx context.Context) (Client, error) {
+	r := newReconnecting(context.Background(), func(ctx context.Context) (Client, error) {
 		callCount++
 		c, err := wsx.New(ctx, url, dialOpts()...)
 		if err != nil {
@@ -113,7 +113,7 @@ func TestReconnectingReconnectOnSendFailure(t *testing.T) {
 	// First call returns a broken client (immediate close).
 	// Second call succeeds.
 	var callCount atomic.Int32
-	r := newReconnecting(func(ctx context.Context) (Client, error) {
+	r := newReconnecting(context.Background(), func(ctx context.Context) (Client, error) {
 		if callCount.Add(1) == 1 {
 			// Return a client that's already closed.
 			c, err := wsx.New(ctx, url, dialOpts()...)
@@ -148,7 +148,7 @@ func TestReconnectingReconnectOnSendFailure(t *testing.T) {
 
 func TestReconnectingFactoryFailure(t *testing.T) {
 	wantErr := errors.New("factory boom")
-	r := newReconnecting(func(ctx context.Context) (Client, error) {
+	r := newReconnecting(context.Background(), func(ctx context.Context) (Client, error) {
 		return nil, wantErr
 	})
 	defer r.Close()
@@ -166,7 +166,7 @@ func TestReconnectingSendAfterClose(t *testing.T) {
 	srv, url := echoServer(t)
 	defer srv.Close()
 
-	r := newReconnecting(func(ctx context.Context) (Client, error) {
+	r := newReconnecting(context.Background(), func(ctx context.Context) (Client, error) {
 		return wsx.New(ctx, url, dialOpts()...)
 	})
 	r.Close()
@@ -203,7 +203,7 @@ func TestReconnectingRetryOnceOnSendFailure(t *testing.T) {
 	defer srv.Close()
 
 	var factoryCalls atomic.Int32
-	r := newReconnecting(func(ctx context.Context) (Client, error) {
+	r := newReconnecting(context.Background(), func(ctx context.Context) (Client, error) {
 		factoryCalls.Add(1)
 		inner, err := wsx.New(ctx, url, dialOpts()...)
 		if err != nil {
@@ -244,7 +244,7 @@ func TestReconnectingRetryOnceOnSendFailure(t *testing.T) {
 }
 
 func TestReconnectingCloseIdempotent(t *testing.T) {
-	r := newReconnecting(func(ctx context.Context) (Client, error) {
+	r := newReconnecting(context.Background(), func(ctx context.Context) (Client, error) {
 		return nil, errors.New("no dial needed")
 	})
 	// Multiple Close calls must not panic or block.
@@ -258,7 +258,7 @@ func TestReconnectingRecvStableAcrossReconnects(t *testing.T) {
 	defer srv.Close()
 
 	var callCount atomic.Int32
-	r := newReconnecting(func(ctx context.Context) (Client, error) {
+	r := newReconnecting(context.Background(), func(ctx context.Context) (Client, error) {
 		callCount.Add(1)
 		return wsx.New(ctx, url, dialOpts()...)
 	})
@@ -282,7 +282,7 @@ func TestReconnectingConcurrentSends(t *testing.T) {
 	srv, url := echoServer(t)
 	defer srv.Close()
 
-	r := newReconnecting(func(ctx context.Context) (Client, error) {
+	r := newReconnecting(context.Background(), func(ctx context.Context) (Client, error) {
 		return wsx.New(ctx, url, dialOpts()...)
 	})
 	defer r.Close()
@@ -315,7 +315,7 @@ func TestReconnectingCloseDuringFactory(t *testing.T) {
 	started := make(chan struct{})
 	proceed := make(chan struct{})
 
-	r := newReconnecting(func(ctx context.Context) (Client, error) {
+	r := newReconnecting(context.Background(), func(ctx context.Context) (Client, error) {
 		close(started)
 		<-proceed
 		return nil, errors.New("factory never completes")
@@ -340,7 +340,7 @@ func TestReconnectingRecvClosedAfterClose(t *testing.T) {
 	srv, url := echoServer(t)
 	defer srv.Close()
 
-	r := newReconnecting(func(ctx context.Context) (Client, error) {
+	r := newReconnecting(context.Background(), func(ctx context.Context) (Client, error) {
 		return wsx.New(ctx, url, dialOpts()...)
 	})
 

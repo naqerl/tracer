@@ -38,9 +38,6 @@ func New(spec Spec, appNames []string, events <-chan types.Event) *Service {
 	headers.Set("X-API-Key", spec.APIKey)
 
 	factory := func(ctx context.Context) (Client, error) {
-		if err := ctx.Err(); err != nil {
-			return nil, err
-		}
 		url, err := panelWSURL(spec.PanelHost)
 		if err != nil {
 			return nil, fmt.Errorf("build URL: %w", err)
@@ -64,7 +61,7 @@ func New(spec Spec, appNames []string, events <-chan types.Event) *Service {
 	}
 
 	return &Service{
-		client: newReconnecting(factory),
+		client: newReconnecting(context.Background(), factory),
 		events: events,
 		spec:   spec,
 	}
@@ -83,21 +80,17 @@ func (s *Service) Start(ctx context.Context) error {
 				s.client.Close()
 				return nil
 			}
-			if err := s.sendEvent(evt); err != nil {
+			env := types.Envelope{
+				Type:      evt.EventType(),
+				Time:      time.Now().UTC(),
+				Collector: s.spec.Name,
+				Data:      evt,
+			}
+			if err := s.client.Send(env); err != nil {
 				slog.Warn("failed to send event", "error", err)
 			}
 		}
 	}
-}
-
-func (s *Service) sendEvent(evt types.Event) error {
-	env := types.Envelope{
-		Type:      evt.EventType(),
-		Time:      time.Now().UTC(),
-		Collector: s.spec.Name,
-		Data:      evt,
-	}
-	return s.client.Send(env)
 }
 
 // panelWSURL builds a WebSocket URL from the panel_host config value.

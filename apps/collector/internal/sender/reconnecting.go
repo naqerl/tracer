@@ -38,8 +38,9 @@ type reconnecting struct {
 
 // newReconnecting starts the actor goroutine. The factory is called with the
 // internal context so that Close can cancel a blocked dial.
-func newReconnecting(factory func(context.Context) (Client, error)) *reconnecting {
-	ctx, cancel := context.WithCancel(context.Background())
+// The parent context controls the overall lifetime of the reconnecting wrapper.
+func newReconnecting(ctx context.Context, factory func(context.Context) (Client, error)) *reconnecting {
+	ctx, cancel := context.WithCancel(ctx)
 	r := &reconnecting{
 		factory: factory,
 		recv:    make(chan types.Event, 64),
@@ -135,6 +136,10 @@ func (r *reconnecting) run() {
 // If the client is nil or Send fails, it dials a new client and retries once.
 // Returns the (possibly new) client to keep, or an error.
 func (r *reconnecting) dialAndSend(current Client, event types.Event) (Client, error) {
+	if err := r.ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	// Try the existing client first.
 	if current != nil {
 		if err := current.Send(event); err == nil {
