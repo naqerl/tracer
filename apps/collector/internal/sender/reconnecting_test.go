@@ -50,7 +50,7 @@ func echoServer(t *testing.T) (*httptest.Server, string) {
 func envEvent(collector string) types.Event {
 	return types.Envelope{
 		Type:      types.EventTypeLog,
-		TS:        time.Now().UTC(),
+		Time:      time.Now().UTC(),
 		Collector: collector,
 		Data:      []byte(`{"msg":"test"}`),
 	}

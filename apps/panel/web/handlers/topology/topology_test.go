@@ -109,10 +109,10 @@ func TestTopologyEventsStreamsOnlyAuthorizedEvents(t *testing.T) {
 
 	time.Sleep(30 * time.Millisecond)
 	topologyService.Publish(topologysvc.Message{
-		Envelope: &types.Envelope{Type: types.EventTypeHealth, Collector: "collector-b", TS: time.Now(), Data: types.HealthEvent{Time: time.Now(), App: "app-b", Status: types.HealthStatusDown}},
+		Envelope: &types.Envelope{Type: types.EventTypeHealth, Collector: "collector-b", Time: time.Now(), Data: types.HealthEvent{Time: time.Now(), App: "app-b", Status: types.HealthStatusDown}},
 	})
 	topologyService.Publish(topologysvc.Message{
-		Envelope: &types.Envelope{Type: types.EventTypeHealth, Collector: "collector-a", TS: time.Now(), Data: types.HealthEvent{Time: time.Now(), App: "app-a", Status: types.HealthStatusUp}},
+		Envelope: &types.Envelope{Type: types.EventTypeHealth, Collector: "collector-a", Time: time.Now(), Data: types.HealthEvent{Time: time.Now(), App: "app-a", Status: types.HealthStatusUp}},
 	})
 	time.Sleep(30 * time.Millisecond)
 	cancel()
@@ -136,7 +136,7 @@ func TestTopologyEventsStreamsOnlyAuthorizedEvents(t *testing.T) {
 func TestDecodeData(t *testing.T) {
 	env := types.Envelope{
 		Type: types.EventTypeHealth,
-		TS:   time.Now(),
+		Time: time.Now(),
 		Data: map[string]any{
 			"time":   "2025-01-15T10:00:00Z",
 			"app":    "myapp",
@@ -161,7 +161,7 @@ func TestDecodeDataFromTyped(t *testing.T) {
 	inner := types.HealthEvent{Time: time.Now(), App: "srv", Status: types.HealthStatusDown}
 	env := types.Envelope{
 		Type:      types.EventTypeHealth,
-		TS:        time.Now(),
+		Time:      time.Now(),
 		Collector: "c1",
 		Data:      inner,
 	}
@@ -181,7 +181,7 @@ func TestDecodeDataFromTyped(t *testing.T) {
 func TestDecodeDataInvalid(t *testing.T) {
 	env := types.Envelope{
 		Type: types.EventTypeHealth,
-		TS:   time.Now(),
+		Time: time.Now(),
 		Data: 42,
 	}
 	var evt types.HealthEvent

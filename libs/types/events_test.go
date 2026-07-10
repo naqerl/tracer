@@ -20,7 +20,7 @@ func TestEnvelopeMarshalRoundTrip(t *testing.T) {
 
 	env := Envelope{
 		Type:      EventTypeLog,
-		TS:        now,
+		Time:      now,
 		Collector: "test-collector",
 		Data:      orig,
 	}
@@ -63,7 +63,7 @@ func TestEnvelopeMarshalRoundTrip(t *testing.T) {
 func TestEnvelopeNilData(t *testing.T) {
 	env := Envelope{
 		Type:      EventTypeStats,
-		TS:        time.Now().UTC(),
+		Time:      time.Now().UTC(),
 		Collector: "c1",
 	}
 
@@ -83,7 +83,7 @@ func TestEnvelopeNilData(t *testing.T) {
 }
 
 func TestEnvelopeImplementsEvent(t *testing.T) {
-	env := Envelope{Type: EventTypeHealth, TS: time.Now()}
+	env := Envelope{Type: EventTypeHealth, Time: time.Now()}
 	var _ Event = env
 	_ = env.EventType()
 	_ = env.Timestamp()

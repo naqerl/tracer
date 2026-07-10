@@ -80,13 +80,13 @@ func (e StatsEvent) Timestamp() time.Time { return e.Time }
 // Envelope is the wire format with collector context added by transport.
 type Envelope struct {
 	Type      EventType `json:"type"`
-	TS        time.Time `json:"timestamp"`
+	Time      time.Time `json:"timestamp"`
 	Collector string    `json:"collector"`
 	Data      any       `json:"data"`
 }
 
 func (e Envelope) EventType() EventType { return e.Type }
-func (e Envelope) Timestamp() time.Time { return e.TS }
+func (e Envelope) Timestamp() time.Time { return e.Time }
 
 // DecodeData converts the envelope's Data field (any-typed JSON-decoded value)
 // into the typed target. It is a marshal-unmarshal roundtrip that handles both

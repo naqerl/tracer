@@ -132,7 +132,7 @@ func TestClientSendRecv(t *testing.T) {
 	payload, _ := json.Marshal(map[string]string{"msg": "hello"})
 	env := types.Envelope{
 		Type:      types.EventTypeLog,
-		TS:        time.Now().UTC(),
+		Time:      time.Now().UTC(),
 		Collector: "test",
 		Data:      payload,
 	}
@@ -177,7 +177,7 @@ func TestClientSendRegisterRecv(t *testing.T) {
 	payload, _ := json.Marshal(map[string]int{"n": 42})
 	env := types.Envelope{
 		Type:      types.EventTypeStats,
-		TS:        time.Now().UTC(),
+		Time:      time.Now().UTC(),
 		Collector: "test-collector",
 		Data:      payload,
 	}
@@ -213,7 +213,7 @@ func TestClientConcurrentSends(t *testing.T) {
 			payload, _ := json.Marshal(map[string]int{"n": n})
 			env := types.Envelope{
 				Type:      types.EventTypeLog,
-				TS:        time.Now().UTC(),
+				Time:      time.Now().UTC(),
 				Collector: "test",
 				Data:      payload,
 			}
@@ -260,7 +260,7 @@ func TestClientSendAfterClose(t *testing.T) {
 	// but shouldn't panic.
 	_ = client.Send(types.Envelope{
 		Type:      types.EventTypeLog,
-		TS:        time.Now().UTC(),
+		Time:      time.Now().UTC(),
 		Collector: "test",
 	})
 }
@@ -297,7 +297,7 @@ func TestServerModeSendRecv(t *testing.T) {
 	payload, _ := json.Marshal(map[string]string{"hello": "world"})
 	env := types.Envelope{
 		Type:      types.EventTypeLog,
-		TS:        time.Now().UTC(),
+		Time:      time.Now().UTC(),
 		Collector: "server-test",
 		Data:      payload,
 	}
@@ -328,7 +328,7 @@ func TestClientRecvClosedAfterClose(t *testing.T) {
 	}
 
 	// Send one message so we know the connection is live.
-	env := types.Envelope{Type: types.EventTypeLog, TS: time.Now().UTC(), Collector: "test", Data: []byte(`{}`)}
+	env := types.Envelope{Type: types.EventTypeLog, Time: time.Now().UTC(), Collector: "test", Data: []byte(`{}`)}
 	if err := client.Send(env); err != nil {
 		t.Fatalf("Send: %v", err)
 	}
@@ -401,7 +401,7 @@ func TestClientConcurrentCloseAndSend(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		for i := 0; i < 50; i++ {
-			env := types.Envelope{Type: types.EventTypeLog, TS: time.Now().UTC(), Collector: "test", Data: []byte(`{}`)}
+			env := types.Envelope{Type: types.EventTypeLog, Time: time.Now().UTC(), Collector: "test", Data: []byte(`{}`)}
 			_ = client.Send(env)
 		}
 	}()

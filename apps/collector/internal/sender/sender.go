@@ -93,7 +93,7 @@ func (s *Service) Start(ctx context.Context) error {
 func (s *Service) sendEvent(evt types.Event) error {
 	env := types.Envelope{
 		Type:      evt.EventType(),
-		TS:        time.Now().UTC(),
+		Time:      time.Now().UTC(),
 		Collector: s.spec.Name,
 		Data:      evt,
 	}

@@ -51,6 +51,34 @@ func newReconnecting(factory func(context.Context) (Client, error)) *reconnectin
 	return r
 }
 
+// Send delivers an event. It blocks until the event is sent or Close is called.
+// If the underlying connection fails, a new one is created transparently.
+func (r *reconnecting) Send(event types.Event) error {
+	resp := make(chan error, 1)
+	msg := sendReq{event: event, resp: resp}
+	select {
+	case r.req <- msg:
+	case <-r.ctx.Done():
+		return ErrClosed
+	}
+	select {
+	case err := <-resp:
+		return err
+	case <-r.ctx.Done():
+		return ErrClosed
+	}
+}
+
+// Recv returns a channel that receives events from the current inner Client.
+// The channel remains stable across reconnects.
+func (r *reconnecting) Recv() <-chan types.Event { return r.recv }
+
+// Close shuts down the wrapper. It does not block — the actor goroutine
+// exits when it processes the cancellation.
+func (r *reconnecting) Close() {
+	r.once.Do(func() { r.cancel() })
+}
+
 // run is the single actor goroutine. It owns the current Client and relays
 // events to r.recv. Exits when the context is cancelled.
 func (r *reconnecting) run() {
@@ -151,32 +179,4 @@ func (r *reconnecting) waitWithBackoff() {
 	if r.backoffDelay > maxBackoff {
 		r.backoffDelay = maxBackoff
 	}
-}
-
-// Send delivers an event. It blocks until the event is sent or Close is called.
-// If the underlying connection fails, a new one is created transparently.
-func (r *reconnecting) Send(event types.Event) error {
-	resp := make(chan error, 1)
-	msg := sendReq{event: event, resp: resp}
-	select {
-	case r.req <- msg:
-	case <-r.ctx.Done():
-		return ErrClosed
-	}
-	select {
-	case err := <-resp:
-		return err
-	case <-r.ctx.Done():
-		return ErrClosed
-	}
-}
-
-// Recv returns a channel that receives events from the current inner Client.
-// The channel remains stable across reconnects.
-func (r *reconnecting) Recv() <-chan types.Event { return r.recv }
-
-// Close shuts down the wrapper. It does not block — the actor goroutine
-// exits when it processes the cancellation.
-func (r *reconnecting) Close() {
-	r.once.Do(func() { r.cancel() })
 }
