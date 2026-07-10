@@ -1,4 +1,4 @@
-package outbound
+package sender
 
 import (
 	"context"

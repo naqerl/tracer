@@ -66,7 +66,7 @@ func createConfig() error {
 
 	cfg := config.Default()
 	if envKey := os.Getenv("TRACER_COLLECTOR_API_KEY"); envKey != "" {
-		cfg.Outbound.APIKey = envKey
+		cfg.Sender.APIKey = envKey
 	}
 
 	out, err := yaml.Marshal(cfg)
