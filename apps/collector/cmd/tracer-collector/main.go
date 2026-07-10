@@ -169,7 +169,7 @@ func serve(ctx context.Context, cfg config.Config) error {
 	// Resource monitor
 	statsMonitor := stats.New(cfg.Stats)
 
-	// Transport
+	// Sender
 	senderSvc := sender.New(cfg.Sender, appNames, mpsc)
 
 	// Run

@@ -134,15 +134,19 @@ func TestTopologyEventsStreamsOnlyAuthorizedEvents(t *testing.T) {
 }
 
 func TestDecodeData(t *testing.T) {
-	raw := map[string]any{
-		"time":   "2025-01-15T10:00:00Z",
-		"app":    "myapp",
-		"status": "up",
+	env := types.Envelope{
+		Type: types.EventTypeHealth,
+		TS:   time.Now(),
+		Data: map[string]any{
+			"time":   "2025-01-15T10:00:00Z",
+			"app":    "myapp",
+			"status": "up",
+		},
 	}
 
 	var evt types.HealthEvent
-	if err := decodeData(raw, &evt); err != nil {
-		t.Fatalf("decodeData: %v", err)
+	if err := env.DecodeData(&evt); err != nil {
+		t.Fatalf("DecodeData: %v", err)
 	}
 	if evt.App != "myapp" {
 		t.Fatalf("app: got %q, want %q", evt.App, "myapp")
@@ -154,17 +158,17 @@ func TestDecodeData(t *testing.T) {
 
 func TestDecodeDataFromTyped(t *testing.T) {
 	// Simulate the path where Data is already a typed event (tests, direct assignment).
-	evt := types.HealthEvent{Time: time.Now(), App: "srv", Status: types.HealthStatusDown}
+	inner := types.HealthEvent{Time: time.Now(), App: "srv", Status: types.HealthStatusDown}
 	env := types.Envelope{
 		Type:      types.EventTypeHealth,
 		TS:        time.Now(),
 		Collector: "c1",
-		Data:      evt,
+		Data:      inner,
 	}
 
 	var got types.HealthEvent
-	if err := decodeData(env.Data, &got); err != nil {
-		t.Fatalf("decodeData: %v", err)
+	if err := env.DecodeData(&got); err != nil {
+		t.Fatalf("DecodeData: %v", err)
 	}
 	if got.App != "srv" {
 		t.Fatalf("app: got %q, want %q", got.App, "srv")
@@ -175,9 +179,13 @@ func TestDecodeDataFromTyped(t *testing.T) {
 }
 
 func TestDecodeDataInvalid(t *testing.T) {
+	env := types.Envelope{
+		Type: types.EventTypeHealth,
+		TS:   time.Now(),
+		Data: 42,
+	}
 	var evt types.HealthEvent
-	err := decodeData(42, &evt)
-	if err == nil {
+	if err := env.DecodeData(&evt); err == nil {
 		t.Fatal("expected error for int data, got nil")
 	}
 }

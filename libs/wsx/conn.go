@@ -1,6 +1,8 @@
 package wsx
 
 import (
+	"encoding/json"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -27,12 +29,16 @@ func newConn(raw *websocket.Conn, writeTimeout time.Duration) *conn {
 
 // writeJSON marshals v as JSON and sends it as a text message. Safe for concurrent use.
 func (c *conn) writeJSON(v any) error {
+	data, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.writeTimeout > 0 {
 		c.raw.SetWriteDeadline(time.Now().Add(c.writeTimeout))
 	}
-	return c.raw.WriteJSON(v)
+	return c.raw.WriteMessage(websocket.TextMessage, data)
 }
 
 // writeControl sends a control frame. Safe for concurrent use.
@@ -73,7 +79,9 @@ func (c *conn) close() error {
 	}
 	c.closed = true
 	msg := websocket.FormatCloseMessage(websocket.CloseNormalClosure, "")
-	_ = c.raw.WriteControl(websocket.CloseMessage, msg, time.Now().Add(2*time.Second))
+	if err := c.raw.WriteControl(websocket.CloseMessage, msg, time.Now().Add(2*time.Second)); err != nil {
+		slog.Warn("wsx: error sending close frame", "error", err)
+	}
 	return c.raw.Close()
 }
 

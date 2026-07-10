@@ -33,7 +33,7 @@ type Service struct {
 // The factory dials the panel, authenticates, and sends a RegisterEvent
 // before returning. If registration fails, the entire factory call fails
 // and the reconnecting wrapper retries.
-func New(spec Spec, appNames []string, events <-chan types.Event) Service {
+func New(spec Spec, appNames []string, events <-chan types.Event) *Service {
 	headers := http.Header{}
 	headers.Set("X-API-Key", spec.APIKey)
 
@@ -45,7 +45,7 @@ func New(spec Spec, appNames []string, events <-chan types.Event) Service {
 		if err != nil {
 			return nil, fmt.Errorf("build URL: %w", err)
 		}
-		c, err := wsx.New(url,
+		c, err := wsx.New(ctx, url,
 			wsx.WithHeaders(headers),
 			wsx.WithWriteTimeout(10*time.Second),
 		)
@@ -63,7 +63,7 @@ func New(spec Spec, appNames []string, events <-chan types.Event) Service {
 		return c, nil
 	}
 
-	return Service{
+	return &Service{
 		client: newReconnecting(factory),
 		events: events,
 		spec:   spec,

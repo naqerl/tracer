@@ -2,7 +2,6 @@ package ingest
 
 import (
 	"context"
-	"encoding/json"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -48,7 +47,7 @@ func (h *handler) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	connID := uuid.New().String()
 	remoteAddr := extractIP(r.RemoteAddr)
 
-	client, err := wsx.Upgrade(w, r,
+	client, err := wsx.Upgrade(r.Context(), w, r,
 		wsx.WithReadLimit(10*1024*1024),
 		wsx.WithPongWait(5*time.Minute),
 		wsx.WithPongCallback(func() {
@@ -91,14 +90,14 @@ func (h *handler) handleEnvelope(ctx context.Context, env types.Envelope) {
 	switch env.Type {
 	case types.EventTypeLog:
 		var evt types.LogEvent
-		if err := decodeData(env.Data, &evt); err != nil {
+		if err := env.DecodeData(&evt); err != nil {
 			slog.Warn("Failed to decode log event", "error", err, "collector", env.Collector)
 			return
 		}
 		h.handleLog(ctx, env.Collector, evt.App, evt.Entry, &env)
 	case types.EventTypeLifecycle:
 		var evt types.LifecycleEvent
-		if err := decodeData(env.Data, &evt); err != nil {
+		if err := env.DecodeData(&evt); err != nil {
 			slog.Warn("Failed to decode lifecycle event", "error", err, "collector", env.Collector)
 			return
 		}
@@ -108,14 +107,14 @@ func (h *handler) handleEnvelope(ctx context.Context, env types.Envelope) {
 			Envelope: &env,
 		})
 		var evt types.StatsEvent
-		if err := decodeData(env.Data, &evt); err != nil {
+		if err := env.DecodeData(&evt); err != nil {
 			slog.Warn("Failed to decode stats event", "error", err, "collector", env.Collector)
 			return
 		}
 		h.handleStats(ctx, env.Collector, evt.Data)
 	case types.EventTypeError:
 		var evt types.ErrorEvent
-		if err := decodeData(env.Data, &evt); err != nil {
+		if err := env.DecodeData(&evt); err != nil {
 			slog.Warn("Failed to decode error event", "error", err, "collector", env.Collector)
 			return
 		}
@@ -130,7 +129,7 @@ func (h *handler) handleEnvelope(ctx context.Context, env types.Envelope) {
 			Envelope: &env,
 		})
 		var evt types.HealthEvent
-		if err := decodeData(env.Data, &evt); err != nil {
+		if err := env.DecodeData(&evt); err != nil {
 			slog.Warn("Failed to decode health event", "error", err, "collector", env.Collector)
 			return
 		}
@@ -282,15 +281,6 @@ func (h *handler) requireCollectorAPIKey(w http.ResponseWriter, r *http.Request)
 		return false
 	}
 	return true
-}
-
-// decodeData converts any-typed JSON-decoded data into a typed target.
-func decodeData(data any, target any) error {
-	raw, err := json.Marshal(data)
-	if err != nil {
-		return err
-	}
-	return json.Unmarshal(raw, target)
 }
 
 // extractIP extracts the IP address from remote address (removes port)

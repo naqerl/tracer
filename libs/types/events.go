@@ -1,6 +1,7 @@
 package types
 
 import (
+	"encoding/json"
 	"fmt"
 	"time"
 )
@@ -86,6 +87,18 @@ type Envelope struct {
 
 func (e Envelope) EventType() EventType { return e.Type }
 func (e Envelope) Timestamp() time.Time { return e.TS }
+
+// DecodeData converts the envelope's Data field (any-typed JSON-decoded value)
+// into the typed target. It is a marshal-unmarshal roundtrip that handles both
+// the case where Data is already a typed struct and where it is a map from
+// json.Unmarshal.
+func (e Envelope) DecodeData(target any) error {
+	raw, err := json.Marshal(e.Data)
+	if err != nil {
+		return err
+	}
+	return json.Unmarshal(raw, target)
+}
 
 // RegisterEvent is the initial registration event sent on connect.
 type RegisterEvent struct {

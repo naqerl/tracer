@@ -19,9 +19,7 @@ import (
 
 const testTimeout = 5 * time.Second
 
-// ═══════════════════════════════════════════════════════════════════════════
 // Test helpers
-// ═══════════════════════════════════════════════════════════════════════════
 
 // echoServer starts a WebSocket server that echoes every received message.
 func echoServer(t *testing.T) (*httptest.Server, string) {
@@ -67,18 +65,16 @@ func dialOpts() []wsx.ClientOption {
 	}
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 // Tests
-// ═══════════════════════════════════════════════════════════════════════════
 
 func TestReconnectingBasicSendRecv(t *testing.T) {
 	srv, url := echoServer(t)
 	defer srv.Close()
 
 	var callCount int
-	r := newReconnecting(func(_ context.Context) (Client, error) {
+	r := newReconnecting(func(ctx context.Context) (Client, error) {
 		callCount++
-		c, err := wsx.New(url, dialOpts()...)
+		c, err := wsx.New(ctx, url, dialOpts()...)
 		if err != nil {
 			return nil, err
 		}
@@ -117,17 +113,17 @@ func TestReconnectingReconnectOnSendFailure(t *testing.T) {
 	// First call returns a broken client (immediate close).
 	// Second call succeeds.
 	var callCount atomic.Int32
-	r := newReconnecting(func(_ context.Context) (Client, error) {
+	r := newReconnecting(func(ctx context.Context) (Client, error) {
 		if callCount.Add(1) == 1 {
 			// Return a client that's already closed.
-			c, err := wsx.New(url, dialOpts()...)
+			c, err := wsx.New(ctx, url, dialOpts()...)
 			if err != nil {
 				return nil, err
 			}
 			c.Close()
 			return c, nil
 		}
-		return wsx.New(url, dialOpts()...)
+		return wsx.New(ctx, url, dialOpts()...)
 	})
 	defer r.Close()
 
@@ -152,7 +148,7 @@ func TestReconnectingReconnectOnSendFailure(t *testing.T) {
 
 func TestReconnectingFactoryFailure(t *testing.T) {
 	wantErr := errors.New("factory boom")
-	r := newReconnecting(func(_ context.Context) (Client, error) {
+	r := newReconnecting(func(ctx context.Context) (Client, error) {
 		return nil, wantErr
 	})
 	defer r.Close()
@@ -170,8 +166,8 @@ func TestReconnectingSendAfterClose(t *testing.T) {
 	srv, url := echoServer(t)
 	defer srv.Close()
 
-	r := newReconnecting(func(_ context.Context) (Client, error) {
-		return wsx.New(url, dialOpts()...)
+	r := newReconnecting(func(ctx context.Context) (Client, error) {
+		return wsx.New(ctx, url, dialOpts()...)
 	})
 	r.Close()
 
@@ -179,13 +175,76 @@ func TestReconnectingSendAfterClose(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error after Close, got nil")
 	}
-	if !strings.Contains(err.Error(), "closed") {
+	if !errors.Is(err, ErrClosed) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
+// sendFails wraps a wsx.Client and makes Send fail a configurable number of
+// times before succeeding. After each failure the inner client is closed.
+type sendFails struct {
+	Client
+	remaining int
+}
+
+func (f *sendFails) Send(event types.Event) error {
+	if f.remaining > 0 {
+		f.remaining--
+		f.Client.Close()
+		return errors.New("sendFails: simulated send failure")
+	}
+	return f.Client.Send(event)
+}
+
+// TestReconnectingRetryOnceOnSendFailure verifies that dialAndSend retries once
+// when the first Send on a freshly-dialed connection fails (dead-on-arrival).
+func TestReconnectingRetryOnceOnSendFailure(t *testing.T) {
+	srv, url := echoServer(t)
+	defer srv.Close()
+
+	var factoryCalls atomic.Int32
+	r := newReconnecting(func(ctx context.Context) (Client, error) {
+		factoryCalls.Add(1)
+		inner, err := wsx.New(ctx, url, dialOpts()...)
+		if err != nil {
+			return nil, err
+		}
+		// The first factory call returns a client whose first Send fails.
+		// The second factory call returns a client that works immediately.
+		failCount := 1
+		if factoryCalls.Load() == 2 {
+			failCount = 0
+		}
+		return &sendFails{Client: inner, remaining: failCount}, nil
+	})
+	defer r.Close()
+
+	evt := envEvent("test-retry-once")
+	if err := r.Send(evt); err != nil {
+		t.Fatalf("Send after retry: %v", err)
+	}
+
+	if calls := factoryCalls.Load(); calls != 2 {
+		t.Fatalf("expected 2 factory calls (first dial + retry dial), got %d", calls)
+	}
+
+	// Verify echo received.
+	select {
+	case got := <-r.Recv():
+		env, ok := got.(types.Envelope)
+		if !ok {
+			t.Fatalf("expected Envelope, got %T", got)
+		}
+		if env.Collector != "test-retry-once" {
+			t.Fatalf("got collector %q, want %q", env.Collector, "test-retry-once")
+		}
+	case <-time.After(testTimeout):
+		t.Fatal("timed out waiting for Recv")
+	}
+}
+
 func TestReconnectingCloseIdempotent(t *testing.T) {
-	r := newReconnecting(func(_ context.Context) (Client, error) {
+	r := newReconnecting(func(ctx context.Context) (Client, error) {
 		return nil, errors.New("no dial needed")
 	})
 	// Multiple Close calls must not panic or block.
@@ -199,9 +258,9 @@ func TestReconnectingRecvStableAcrossReconnects(t *testing.T) {
 	defer srv.Close()
 
 	var callCount atomic.Int32
-	r := newReconnecting(func(_ context.Context) (Client, error) {
+	r := newReconnecting(func(ctx context.Context) (Client, error) {
 		callCount.Add(1)
-		return wsx.New(url, dialOpts()...)
+		return wsx.New(ctx, url, dialOpts()...)
 	})
 	defer r.Close()
 
@@ -223,8 +282,8 @@ func TestReconnectingConcurrentSends(t *testing.T) {
 	srv, url := echoServer(t)
 	defer srv.Close()
 
-	r := newReconnecting(func(_ context.Context) (Client, error) {
-		return wsx.New(url, dialOpts()...)
+	r := newReconnecting(func(ctx context.Context) (Client, error) {
+		return wsx.New(ctx, url, dialOpts()...)
 	})
 	defer r.Close()
 
@@ -256,7 +315,7 @@ func TestReconnectingCloseDuringFactory(t *testing.T) {
 	started := make(chan struct{})
 	proceed := make(chan struct{})
 
-	r := newReconnecting(func(_ context.Context) (Client, error) {
+	r := newReconnecting(func(ctx context.Context) (Client, error) {
 		close(started)
 		<-proceed
 		return nil, errors.New("factory never completes")
@@ -281,8 +340,8 @@ func TestReconnectingRecvClosedAfterClose(t *testing.T) {
 	srv, url := echoServer(t)
 	defer srv.Close()
 
-	r := newReconnecting(func(_ context.Context) (Client, error) {
-		return wsx.New(url, dialOpts()...)
+	r := newReconnecting(func(ctx context.Context) (Client, error) {
+		return wsx.New(ctx, url, dialOpts()...)
 	})
 
 	// Send one event to establish a client.

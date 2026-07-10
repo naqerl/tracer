@@ -3,11 +3,15 @@ package sender
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"sync"
 	"time"
 
 	"tracer/libs/types"
 )
+
+// ErrClosed is returned by Send when the reconnecting wrapper has been closed.
+var ErrClosed = errors.New("reconnecting: closed")
 
 const (
 	initialBackoff = 1 * time.Second
@@ -87,6 +91,7 @@ func (r *reconnecting) run() {
 			select {
 			case r.recv <- evt:
 			default:
+				slog.Warn("reconnecting: recv channel full, dropping event")
 			}
 
 		case <-r.ctx.Done():
@@ -156,13 +161,13 @@ func (r *reconnecting) Send(event types.Event) error {
 	select {
 	case r.req <- msg:
 	case <-r.ctx.Done():
-		return errors.New("reconnecting: closed")
+		return ErrClosed
 	}
 	select {
 	case err := <-resp:
 		return err
 	case <-r.ctx.Done():
-		return errors.New("reconnecting: closed")
+		return ErrClosed
 	}
 }
 

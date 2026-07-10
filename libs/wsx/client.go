@@ -1,6 +1,7 @@
 package wsx
 
 import (
+	"context"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -109,7 +110,7 @@ type Client struct {
 }
 
 // New dials the given WebSocket URL and returns an active Client.
-func New(url string, opts ...ClientOption) (*Client, error) {
+func New(ctx context.Context, url string, opts ...ClientOption) (*Client, error) {
 	var cfg clientConfig
 	for _, opt := range opts {
 		opt(&cfg)
@@ -117,7 +118,7 @@ func New(url string, opts ...ClientOption) (*Client, error) {
 	cfg.setDefaults()
 
 	dialer := websocket.Dialer{HandshakeTimeout: cfg.handshakeTimeout}
-	raw, _, err := dialer.Dial(url, cfg.headers)
+	raw, _, err := dialer.DialContext(ctx, url, cfg.headers)
 	if err != nil {
 		return nil, err
 	}
@@ -125,8 +126,9 @@ func New(url string, opts ...ClientOption) (*Client, error) {
 }
 
 // Upgrade creates a Client from an HTTP WebSocket upgrade request.
-// The caller passes the HTTP response writer and request from the handler.
-func Upgrade(w http.ResponseWriter, r *http.Request, opts ...ClientOption) (*Client, error) {
+// The caller passes the context, HTTP response writer and request from the handler.
+func Upgrade(ctx context.Context, w http.ResponseWriter, r *http.Request, opts ...ClientOption) (*Client, error) {
+	_ = ctx // context is reserved for future use (e.g. cancelling the handshake)
 	var upgrader = websocket.Upgrader{
 		ReadBufferSize:  1024,
 		WriteBufferSize: 1024,

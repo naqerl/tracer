@@ -17,7 +17,7 @@ import (
 // testTimeout is a reasonable timeout for test operations.
 const testTimeout = 5 * time.Second
 
-// ── Helpers ────────────────────────────────────────────────────────────────────
+// Helpers
 
 // startTestServer starts a local WebSocket echo server for testing.
 func startTestServer(t *testing.T) (*httptest.Server, string) {
@@ -116,13 +116,13 @@ func waitForRecv(t *testing.T, client *Client) types.Event {
 	}
 }
 
-// ── Client: Send & Recv ────────────────────────────────────────────────────────
+// Client: Send & Recv
 
 func TestClientSendRecv(t *testing.T) {
 	srv, url := startTestServer(t)
 	defer srv.Close()
 
-	client, err := New(url, connectOpts()...)
+	client, err := New(t.Context(), url, connectOpts()...)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -158,7 +158,7 @@ func TestClientSendRegisterRecv(t *testing.T) {
 	srv, url := startRegistrationServer(t)
 	defer srv.Close()
 
-	client, err := New(url, connectOpts()...)
+	client, err := New(t.Context(), url, connectOpts()...)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -199,7 +199,7 @@ func TestClientConcurrentSends(t *testing.T) {
 	srv, url := startTestServer(t)
 	defer srv.Close()
 
-	client, err := New(url, connectOpts()...)
+	client, err := New(t.Context(), url, connectOpts()...)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -230,13 +230,13 @@ func TestClientConcurrentSends(t *testing.T) {
 	}
 }
 
-// ── Client: Close behavior ─────────────────────────────────────────────────────
+// Client: Close behavior
 
 func TestClientCloseIdempotent(t *testing.T) {
 	srv, url := startTestServer(t)
 	defer srv.Close()
 
-	client, err := New(url, connectOpts()...)
+	client, err := New(t.Context(), url, connectOpts()...)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -250,7 +250,7 @@ func TestClientSendAfterClose(t *testing.T) {
 	srv, url := startTestServer(t)
 	defer srv.Close()
 
-	client, err := New(url, connectOpts()...)
+	client, err := New(t.Context(), url, connectOpts()...)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -265,11 +265,11 @@ func TestClientSendAfterClose(t *testing.T) {
 	})
 }
 
-// ── Upgrade (server mode) ──────────────────────────────────────────────────────
+// Upgrade (server mode)
 
 func TestServerModeSendRecv(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		client, err := Upgrade(w, r,
+		client, err := Upgrade(r.Context(), w, r,
 			WithWriteTimeout(time.Second),
 			WithPongWait(20*time.Second),
 		)
@@ -288,7 +288,7 @@ func TestServerModeSendRecv(t *testing.T) {
 
 	url := "ws" + strings.TrimPrefix(srv.URL, "http")
 
-	client, err := New(url, connectOpts()...)
+	client, err := New(t.Context(), url, connectOpts()...)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -316,13 +316,13 @@ func TestServerModeSendRecv(t *testing.T) {
 	}
 }
 
-// ── Recv lifecycle ───────────────────────────────────────────────────────
+// Recv lifecycle
 
 func TestClientRecvClosedAfterClose(t *testing.T) {
 	srv, url := startTestServer(t)
 	defer srv.Close()
 
-	client, err := New(url, connectOpts()...)
+	client, err := New(t.Context(), url, connectOpts()...)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -347,7 +347,7 @@ func TestClientRecvClosedAfterClose(t *testing.T) {
 	}
 }
 
-// ── Connection drop ──────────────────────────────────────────────────────
+// Connection drop
 
 func TestClientRecvClosesOnConnectionDrop(t *testing.T) {
 	// A server that drops the connection immediately after accepting.
@@ -366,7 +366,7 @@ func TestClientRecvClosesOnConnectionDrop(t *testing.T) {
 
 	url := "ws" + strings.TrimPrefix(srv.URL, "http")
 
-	client, err := New(url, connectOpts()...)
+	client, err := New(t.Context(), url, connectOpts()...)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -383,13 +383,13 @@ func TestClientRecvClosesOnConnectionDrop(t *testing.T) {
 	}
 }
 
-// ── Concurrent Close + Send ──────────────────────────────────────────────
+// Concurrent Close + Send
 
 func TestClientConcurrentCloseAndSend(t *testing.T) {
 	srv, url := startTestServer(t)
 	defer srv.Close()
 
-	client, err := New(url, connectOpts()...)
+	client, err := New(t.Context(), url, connectOpts()...)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
