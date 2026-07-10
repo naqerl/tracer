@@ -39,7 +39,9 @@ func New(spec Spec, appNames []string, events <-chan types.Event) Service {
 	headers.Set("X-API-Key", spec.APIKey)
 
 	factory := func(ctx context.Context) (Client, error) {
-		_ = ctx // available for future context-aware dial
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		url, err := panelWSURL(spec.PanelHost)
 		if err != nil {
 			return nil, fmt.Errorf("build URL: %w", err)
