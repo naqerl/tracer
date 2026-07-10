@@ -3,7 +3,6 @@ package topology
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -109,19 +108,11 @@ func TestTopologyEventsStreamsOnlyAuthorizedEvents(t *testing.T) {
 	}()
 
 	time.Sleep(30 * time.Millisecond)
-	unauthorized, err := json.Marshal(types.HealthEvent{Time: time.Now(), App: "app-b", Status: types.HealthStatusDown})
-	if err != nil {
-		t.Fatalf("marshal unauthorized event: %v", err)
-	}
-	authorized, err := json.Marshal(types.HealthEvent{Time: time.Now(), App: "app-a", Status: types.HealthStatusUp})
-	if err != nil {
-		t.Fatalf("marshal authorized event: %v", err)
-	}
 	topologyService.Publish(topologysvc.Message{
-		Envelope: &types.Envelope{Type: types.EventTypeHealth, Collector: "collector-b", TS: time.Now(), Data: unauthorized},
+		Envelope: &types.Envelope{Type: types.EventTypeHealth, Collector: "collector-b", TS: time.Now(), Data: types.HealthEvent{Time: time.Now(), App: "app-b", Status: types.HealthStatusDown}},
 	})
 	topologyService.Publish(topologysvc.Message{
-		Envelope: &types.Envelope{Type: types.EventTypeHealth, Collector: "collector-a", TS: time.Now(), Data: authorized},
+		Envelope: &types.Envelope{Type: types.EventTypeHealth, Collector: "collector-a", TS: time.Now(), Data: types.HealthEvent{Time: time.Now(), App: "app-a", Status: types.HealthStatusUp}},
 	})
 	time.Sleep(30 * time.Millisecond)
 	cancel()

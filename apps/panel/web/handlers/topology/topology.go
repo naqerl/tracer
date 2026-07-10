@@ -167,13 +167,13 @@ func allowedEnvelopeForPolicy(policy usersvc.AccessPolicy, evt types.Envelope) b
 		return policy.AllowedTo(evt.Collector, "")
 	case types.EventTypeLog:
 		var payload types.LogEvent
-		if err := json.Unmarshal(evt.Data, &payload); err != nil {
+		if err := decodeData(evt.Data, &payload); err != nil {
 			return false
 		}
 		return policy.AllowedTo(evt.Collector, payload.App)
 	case types.EventTypeHealth:
 		var payload types.HealthEvent
-		if err := json.Unmarshal(evt.Data, &payload); err != nil {
+		if err := decodeData(evt.Data, &payload); err != nil {
 			return false
 		}
 		return policy.AllowedTo(evt.Collector, payload.App)
@@ -208,4 +208,13 @@ func writeSSE(w http.ResponseWriter, event string, data any) error {
 		return err
 	}
 	return nil
+}
+
+// decodeData converts any-typed decoded JSON data into a typed target.
+func decodeData(data any, target any) error {
+	raw, err := json.Marshal(data)
+	if err != nil {
+		return err
+	}
+	return json.Unmarshal(raw, target)
 }

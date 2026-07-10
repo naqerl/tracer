@@ -1,7 +1,6 @@
 package types
 
 import (
-	"encoding/json"
 	"fmt"
 	"time"
 )
@@ -79,10 +78,10 @@ func (e StatsEvent) Timestamp() time.Time { return e.Time }
 
 // Envelope is the wire format with collector context added by transport.
 type Envelope struct {
-	Type      EventType       `json:"type"`
-	TS        time.Time       `json:"timestamp"`
-	Collector string          `json:"collector"`
-	Data      json.RawMessage `json:"data"`
+	Type      EventType `json:"type"`
+	TS        time.Time `json:"timestamp"`
+	Collector string    `json:"collector"`
+	Data      any       `json:"data"`
 }
 
 func (e Envelope) EventType() EventType { return e.Type }

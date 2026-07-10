@@ -2,7 +2,6 @@ package outbound
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -92,16 +91,11 @@ func (s *Service) Start(ctx context.Context) error {
 }
 
 func (s *Service) sendEvent(evt types.Event) error {
-	payload, err := json.Marshal(evt)
-	if err != nil {
-		return fmt.Errorf("marshal event: %w", err)
-	}
-
 	env := types.Envelope{
 		Type:      evt.EventType(),
 		TS:        time.Now().UTC(),
 		Collector: s.spec.Name,
-		Data:      payload,
+		Data:      evt,
 	}
 	return s.client.Send(env)
 }
