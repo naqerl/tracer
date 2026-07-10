@@ -28,29 +28,34 @@ type ClientOption func(*clientConfig)
 // clientConfig holds configuration for a Client.
 type clientConfig struct {
 	headers          http.Header
-	writeTimeout     time.Duration
-	pingInterval     time.Duration
-	pongWait         time.Duration
+	writeTimeout     *time.Duration
+	pingInterval     *time.Duration
+	pongWait         *time.Duration
 	pongCallback     func()
-	readLimit        int64
-	handshakeTimeout time.Duration
+	readLimit        *int64
+	handshakeTimeout *time.Duration
 }
 
 func (c *clientConfig) setDefaults() {
-	if c.writeTimeout <= 0 {
-		c.writeTimeout = DefaultWriteTimeout
+	if c.writeTimeout == nil {
+		v := DefaultWriteTimeout
+		c.writeTimeout = &v
 	}
-	if c.pingInterval <= 0 {
-		c.pingInterval = DefaultPingInterval
+	if c.pingInterval == nil {
+		v := DefaultPingInterval
+		c.pingInterval = &v
 	}
-	if c.pongWait <= 0 {
-		c.pongWait = DefaultPongWait
+	if c.pongWait == nil {
+		v := DefaultPongWait
+		c.pongWait = &v
 	}
-	if c.readLimit <= 0 {
-		c.readLimit = DefaultReadLimit
+	if c.readLimit == nil {
+		v := int64(DefaultReadLimit)
+		c.readLimit = &v
 	}
-	if c.handshakeTimeout <= 0 {
-		c.handshakeTimeout = DefaultHandshakeTimeout
+	if c.handshakeTimeout == nil {
+		v := DefaultHandshakeTimeout
+		c.handshakeTimeout = &v
 	}
 }
 
@@ -63,24 +68,24 @@ func WithHeaders(headers http.Header) ClientOption {
 
 // WithWriteTimeout sets the write deadline for each outgoing frame.
 func WithWriteTimeout(d time.Duration) ClientOption {
-	return func(c *clientConfig) { c.writeTimeout = d }
+	return func(c *clientConfig) { c.writeTimeout = &d }
 }
 
 // WithPingInterval sets the interval between keepalive pings.
 func WithPingInterval(d time.Duration) ClientOption {
-	return func(c *clientConfig) { c.pingInterval = d }
+	return func(c *clientConfig) { c.pingInterval = &d }
 }
 
 // WithPongWait sets the time to wait for a pong before considering the
 // connection dead (also used as the read deadline).
 func WithPongWait(d time.Duration) ClientOption {
-	return func(c *clientConfig) { c.pongWait = d }
+	return func(c *clientConfig) { c.pongWait = &d }
 }
 
 // WithReadLimit sets the maximum message size in bytes.
 // If called with 0 or not called at all, the DefaultReadLimit (10 MB) is used.
 func WithReadLimit(limit int64) ClientOption {
-	return func(c *clientConfig) { c.readLimit = limit }
+	return func(c *clientConfig) { c.readLimit = &limit }
 }
 
 // WithPongCallback sets a function to call on each pong (in addition to
@@ -91,7 +96,7 @@ func WithPongCallback(fn func()) ClientOption {
 
 // WithHandshakeTimeout sets the dial handshake timeout.
 func WithHandshakeTimeout(d time.Duration) ClientOption {
-	return func(c *clientConfig) { c.handshakeTimeout = d }
+	return func(c *clientConfig) { c.handshakeTimeout = &d }
 }
 
 // ── Client ─────────────────────────────────────────────────────────────────────
@@ -117,7 +122,7 @@ func New(ctx context.Context, url string, opts ...ClientOption) (*Client, error)
 	}
 	cfg.setDefaults()
 
-	dialer := websocket.Dialer{HandshakeTimeout: cfg.handshakeTimeout}
+	dialer := websocket.Dialer{HandshakeTimeout: *cfg.handshakeTimeout}
 	raw, _, err := dialer.DialContext(ctx, url, cfg.headers)
 	if err != nil {
 		return nil, err
@@ -150,19 +155,19 @@ func Upgrade(ctx context.Context, w http.ResponseWriter, r *http.Request, opts .
 
 // newClient wraps a raw gorilla connection and starts the read and ping loops.
 func newClient(raw *websocket.Conn, cfg *clientConfig) *Client {
-	wc := newConn(raw, cfg.writeTimeout)
-	wc.setReadLimit(cfg.readLimit)
-	wc.setReadDeadline(time.Now().Add(cfg.pongWait))
+	wc := newConn(raw, *cfg.writeTimeout)
+	wc.setReadLimit(*cfg.readLimit)
+	wc.setReadDeadline(time.Now().Add(*cfg.pongWait))
 
 	if cfg.pongCallback != nil {
 		wc.setPongHandler(func(string) error {
-			wc.setReadDeadline(time.Now().Add(cfg.pongWait))
+			wc.setReadDeadline(time.Now().Add(*cfg.pongWait))
 			cfg.pongCallback()
 			return nil
 		})
 	} else {
 		wc.setPongHandler(func(string) error {
-			wc.setReadDeadline(time.Now().Add(cfg.pongWait))
+			wc.setReadDeadline(time.Now().Add(*cfg.pongWait))
 			return nil
 		})
 	}
@@ -171,10 +176,10 @@ func newClient(raw *websocket.Conn, cfg *clientConfig) *Client {
 		conn:         wc,
 		recv:         make(chan types.Event, 64),
 		closed:       make(chan struct{}),
-		writeTimeout: cfg.writeTimeout,
+		writeTimeout: *cfg.writeTimeout,
 	}
 	go c.readLoop()
-	go c.pingLoop(cfg.pingInterval)
+	go c.pingLoop(*cfg.pingInterval)
 	return c
 }
 
