@@ -3,6 +3,7 @@ package topology
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -167,13 +168,15 @@ func allowedEnvelopeForPolicy(policy usersvc.AccessPolicy, evt types.Envelope) b
 		return policy.AllowedTo(evt.Collector, "")
 	case types.EventTypeLog:
 		var payload types.LogEvent
-		if err := json.Unmarshal(evt.Data, &payload); err != nil {
+		if err := evt.DecodeData(&payload); err != nil {
+			slog.Warn("Failed to decode log event for policy check", "error", err, "collector", evt.Collector)
 			return false
 		}
 		return policy.AllowedTo(evt.Collector, payload.App)
 	case types.EventTypeHealth:
 		var payload types.HealthEvent
-		if err := json.Unmarshal(evt.Data, &payload); err != nil {
+		if err := evt.DecodeData(&payload); err != nil {
+			slog.Warn("Failed to decode health event for policy check", "error", err, "collector", evt.Collector)
 			return false
 		}
 		return policy.AllowedTo(evt.Collector, payload.App)

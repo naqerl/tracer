@@ -2,30 +2,19 @@ package ingest
 
 import (
 	"context"
-	"encoding/json"
 	"log/slog"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/gorilla/websocket"
 
 	"tracer/apps/panel/internal/services/auth"
 	"tracer/apps/panel/internal/services/ingest"
 	topologysvc "tracer/apps/panel/internal/services/topology"
 	"tracer/libs/types"
+	"tracer/libs/wsx"
 )
-
-var upgrader = websocket.Upgrader{
-	ReadBufferSize:  1024,
-	WriteBufferSize: 1024,
-	// WebSocket connections originate from the collector process, not a browser.
-	// Origin validation is not applicable here; collectors connect from arbitrary hosts.
-	CheckOrigin: func(r *http.Request) bool {
-		return true
-	},
-}
 
 type handler struct {
 	authService   *auth.Service
@@ -55,103 +44,60 @@ func (h *handler) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	conn, err := upgrader.Upgrade(w, r, nil)
+	connID := uuid.New().String()
+	remoteAddr := extractIP(r.RemoteAddr)
+
+	client, err := wsx.Upgrade(r.Context(), w, r,
+		wsx.WithReadLimit(10*1024*1024),
+		wsx.WithPongWait(5*time.Minute),
+		wsx.WithPongCallback(func() {
+			h.tracker.UpdateLastSeen(connID)
+		}),
+		wsx.WithWriteTimeout(10*time.Second),
+	)
 	if err != nil {
 		slog.Error("WebSocket upgrade failed", "error", err)
 		return
 	}
-	defer conn.Close()
-
-	// Generate unique connection ID
-	connID := uuid.New().String()
-	remoteAddr := extractIP(r.RemoteAddr)
 
 	slog.Info("WebSocket connected", "remote", remoteAddr, "conn_id", connID)
 
-	// Configure connection with generous timeout and max message size
-	conn.SetReadLimit(10 * 1024 * 1024) // 10 MB max message size
-	conn.SetReadDeadline(time.Now().Add(5 * time.Minute))
-	conn.SetPongHandler(func(string) error {
-		conn.SetReadDeadline(time.Now().Add(5 * time.Minute))
-		h.tracker.UpdateLastSeen(connID)
-		return nil
-	})
-
-	// Mark as disconnected when connection closes
 	defer func() {
+		client.Close()
 		h.tracker.Disconnect(connID)
 		slog.Info("WebSocket disconnected", "remote", remoteAddr, "conn_id", connID)
 	}()
 
-	// Start ping ticker
-	go h.pingLoop(conn)
-
-	// Read loop
-	for {
-		_, message, err := conn.ReadMessage()
-		if err != nil {
-			if websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
-				slog.Debug("WebSocket closed", "error", err)
-			} else if websocket.IsUnexpectedCloseError(err, websocket.CloseAbnormalClosure) {
-				slog.Error("WebSocket read error", "error", err)
-			} else {
-				slog.Warn("WebSocket read closed", "error", err)
-			}
-			break
+	// Process events from Recv until the channel is closed.
+	for evt := range client.Recv() {
+		switch e := evt.(type) {
+		case types.RegisterEvent:
+			h.topology.Publish(topologysvc.Message{
+				Register: &e,
+			})
+			h.handleRegistration(r.Context(), connID, remoteAddr, e)
+		case types.Envelope:
+			h.handleEnvelope(r.Context(), e)
+		default:
+			slog.Warn("Unknown event type from Recv", "event_type", evt.EventType())
 		}
-
-		h.processMessage(r.Context(), connID, remoteAddr, message)
 	}
 }
 
 // Helpers
 
-func (h *handler) processMessage(ctx context.Context, connID, remoteAddr string, message []byte) {
-	var hdr struct {
-		Type types.EventType `json:"type"`
-	}
-	if err := json.Unmarshal(message, &hdr); err != nil {
-		slog.Error("Failed to parse websocket message header", "error", err)
-		return
-	}
-	if err := hdr.Type.Validate(); err != nil {
-		slog.Error("Invalid websocket message type", "error", err)
-		return
-	}
-
-	switch hdr.Type {
-	case types.EventTypeRegister:
-		var reg types.RegisterMessage
-		if err := json.Unmarshal(message, &reg); err != nil {
-			slog.Error("Failed to parse collector registration", "error", err)
-			return
-		}
-		h.topology.Publish(topologysvc.Message{
-			Register: &reg,
-		})
-		h.handleRegistration(ctx, connID, remoteAddr, reg)
-	default:
-		var env types.Envelope
-		if err := json.Unmarshal(message, &env); err != nil {
-			slog.Error("Failed to parse ingest envelope", "error", err)
-			return
-		}
-		h.handleEnvelope(ctx, env)
-	}
-}
-
 func (h *handler) handleEnvelope(ctx context.Context, env types.Envelope) {
 	switch env.Type {
 	case types.EventTypeLog:
 		var evt types.LogEvent
-		if err := json.Unmarshal(env.Data, &evt); err != nil {
+		if err := env.DecodeData(&evt); err != nil {
 			slog.Warn("Failed to decode log event", "error", err, "collector", env.Collector)
 			return
 		}
 		h.handleLog(ctx, env.Collector, evt.App, evt.Entry, &env)
 	case types.EventTypeLifecycle:
 		var evt types.LifecycleEvent
-		if err := json.Unmarshal(env.Data, &evt); err != nil {
+		if err := env.DecodeData(&evt); err != nil {
 			slog.Warn("Failed to decode lifecycle event", "error", err, "collector", env.Collector)
 			return
 		}
@@ -161,14 +107,14 @@ func (h *handler) handleEnvelope(ctx context.Context, env types.Envelope) {
 			Envelope: &env,
 		})
 		var evt types.StatsEvent
-		if err := json.Unmarshal(env.Data, &evt); err != nil {
+		if err := env.DecodeData(&evt); err != nil {
 			slog.Warn("Failed to decode stats event", "error", err, "collector", env.Collector)
 			return
 		}
 		h.handleStats(ctx, env.Collector, evt.Data)
 	case types.EventTypeError:
 		var evt types.ErrorEvent
-		if err := json.Unmarshal(env.Data, &evt); err != nil {
+		if err := env.DecodeData(&evt); err != nil {
 			slog.Warn("Failed to decode error event", "error", err, "collector", env.Collector)
 			return
 		}
@@ -183,7 +129,7 @@ func (h *handler) handleEnvelope(ctx context.Context, env types.Envelope) {
 			Envelope: &env,
 		})
 		var evt types.HealthEvent
-		if err := json.Unmarshal(env.Data, &evt); err != nil {
+		if err := env.DecodeData(&evt); err != nil {
 			slog.Warn("Failed to decode health event", "error", err, "collector", env.Collector)
 			return
 		}
@@ -193,7 +139,7 @@ func (h *handler) handleEnvelope(ctx context.Context, env types.Envelope) {
 	}
 }
 
-func (h *handler) handleRegistration(ctx context.Context, connID, remoteAddr string, msg types.RegisterMessage) {
+func (h *handler) handleRegistration(ctx context.Context, connID, remoteAddr string, msg types.RegisterEvent) {
 	if len(msg.Apps) == 0 {
 		slog.Info("Skipping empty collector registration", "collector", msg.Collector, "remote", remoteAddr, "conn_id", connID)
 		return
@@ -316,17 +262,6 @@ func (h *handler) handleHealth(ctx context.Context, collector string, evt types.
 		return
 	}
 
-}
-
-func (h *handler) pingLoop(conn *websocket.Conn) {
-	ticker := time.NewTicker(30 * time.Second)
-	defer ticker.Stop()
-
-	for range ticker.C {
-		if err := conn.WriteControl(websocket.PingMessage, nil, time.Now().Add(10*time.Second)); err != nil {
-			return
-		}
-	}
 }
 
 func (h *handler) requireCollectorAPIKey(w http.ResponseWriter, r *http.Request) bool {

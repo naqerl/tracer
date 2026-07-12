@@ -79,18 +79,36 @@ func (e StatsEvent) Timestamp() time.Time { return e.Time }
 
 // Envelope is the wire format with collector context added by transport.
 type Envelope struct {
-	Type      EventType       `json:"type"`
-	Timestamp time.Time       `json:"timestamp"`
-	Collector string          `json:"collector"`
-	Data      json.RawMessage `json:"data"`
+	Type      EventType `json:"type"`
+	Time      time.Time `json:"timestamp"`
+	Collector string    `json:"collector"`
+	Data      any       `json:"data"`
 }
 
-// RegisterMessage is the initial registration message.
-type RegisterMessage struct {
+func (e Envelope) EventType() EventType { return e.Type }
+func (e Envelope) Timestamp() time.Time { return e.Time }
+
+// DecodeData converts the envelope's Data field (any-typed JSON-decoded value)
+// into the typed target. It is a marshal-unmarshal roundtrip that handles both
+// the case where Data is already a typed struct and where it is a map from
+// json.Unmarshal.
+func (e Envelope) DecodeData(target any) error {
+	raw, err := json.Marshal(e.Data)
+	if err != nil {
+		return err
+	}
+	return json.Unmarshal(raw, target)
+}
+
+// RegisterEvent is the initial registration event sent on connect.
+type RegisterEvent struct {
 	Type      EventType `json:"type"`
 	Collector string    `json:"collector"`
 	Apps      []string  `json:"apps"`
 }
+
+func (r RegisterEvent) EventType() EventType { return EventTypeRegister }
+func (r RegisterEvent) Timestamp() time.Time { return time.Time{} }
 
 // ErrorEvent represents a source error for reporting to panel.
 type ErrorEvent struct {

@@ -9,13 +9,13 @@ import (
 
 	"tracer/apps/collector/internal/health"
 	"tracer/apps/collector/internal/parser"
+	"tracer/apps/collector/internal/sender"
 	"tracer/apps/collector/internal/source"
 	"tracer/apps/collector/internal/stats"
-	"tracer/apps/collector/internal/transport"
 )
 
 type Config struct {
-	Transport transport.Spec `yaml:"transport"`
+	Sender sender.Spec `yaml:"sender"`
 
 	Stats stats.Spec `yaml:"stats"`
 
@@ -44,7 +44,7 @@ func Default() Config {
 	}
 
 	return Config{
-		Transport: transport.Spec{
+		Sender: sender.Spec{
 			Name:      hostname,
 			PanelHost: "localhost:8080",
 			APIKey:    "",

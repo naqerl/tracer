@@ -13,7 +13,7 @@ func TestStreamPublishesToSubscribers(t *testing.T) {
 	defer unsubscribe()
 
 	want := Message{
-		Register: &types.RegisterMessage{Type: types.EventTypeRegister, Collector: "alpha", Apps: []string{"api"}},
+		Register: &types.RegisterEvent{Type: types.EventTypeRegister, Collector: "alpha", Apps: []string{"api"}},
 	}
 	svc.Publish(want)
 
@@ -35,7 +35,7 @@ func TestStreamUnsubscribeStopsDelivery(t *testing.T) {
 	ch, unsubscribe := svc.Subscribe()
 	unsubscribe()
 
-	svc.Publish(Message{Register: &types.RegisterMessage{Type: types.EventTypeRegister, Collector: "alpha"}})
+	svc.Publish(Message{Register: &types.RegisterEvent{Type: types.EventTypeRegister, Collector: "alpha"}})
 
 	select {
 	case _, ok := <-ch:

@@ -3,7 +3,6 @@ package topology
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -109,19 +108,11 @@ func TestTopologyEventsStreamsOnlyAuthorizedEvents(t *testing.T) {
 	}()
 
 	time.Sleep(30 * time.Millisecond)
-	unauthorized, err := json.Marshal(types.HealthEvent{Time: time.Now(), App: "app-b", Status: types.HealthStatusDown})
-	if err != nil {
-		t.Fatalf("marshal unauthorized event: %v", err)
-	}
-	authorized, err := json.Marshal(types.HealthEvent{Time: time.Now(), App: "app-a", Status: types.HealthStatusUp})
-	if err != nil {
-		t.Fatalf("marshal authorized event: %v", err)
-	}
 	topologyService.Publish(topologysvc.Message{
-		Envelope: &types.Envelope{Type: types.EventTypeHealth, Collector: "collector-b", Timestamp: time.Now(), Data: unauthorized},
+		Envelope: &types.Envelope{Type: types.EventTypeHealth, Collector: "collector-b", Time: time.Now(), Data: types.HealthEvent{Time: time.Now(), App: "app-b", Status: types.HealthStatusDown}},
 	})
 	topologyService.Publish(topologysvc.Message{
-		Envelope: &types.Envelope{Type: types.EventTypeHealth, Collector: "collector-a", Timestamp: time.Now(), Data: authorized},
+		Envelope: &types.Envelope{Type: types.EventTypeHealth, Collector: "collector-a", Time: time.Now(), Data: types.HealthEvent{Time: time.Now(), App: "app-a", Status: types.HealthStatusUp}},
 	})
 	time.Sleep(30 * time.Millisecond)
 	cancel()
@@ -139,5 +130,62 @@ func TestTopologyEventsStreamsOnlyAuthorizedEvents(t *testing.T) {
 	}
 	if !strings.Contains(body, "event: tick") {
 		t.Fatalf("expected initial tick in body, got %q", body)
+	}
+}
+
+func TestDecodeData(t *testing.T) {
+	env := types.Envelope{
+		Type: types.EventTypeHealth,
+		Time: time.Now(),
+		Data: map[string]any{
+			"time":   "2025-01-15T10:00:00Z",
+			"app":    "myapp",
+			"status": "up",
+		},
+	}
+
+	var evt types.HealthEvent
+	if err := env.DecodeData(&evt); err != nil {
+		t.Fatalf("DecodeData: %v", err)
+	}
+	if evt.App != "myapp" {
+		t.Fatalf("app: got %q, want %q", evt.App, "myapp")
+	}
+	if evt.Status != types.HealthStatusUp {
+		t.Fatalf("status: got %q, want %q", evt.Status, types.HealthStatusUp)
+	}
+}
+
+func TestDecodeDataFromTyped(t *testing.T) {
+	// Simulate the path where Data is already a typed event (tests, direct assignment).
+	inner := types.HealthEvent{Time: time.Now(), App: "srv", Status: types.HealthStatusDown}
+	env := types.Envelope{
+		Type:      types.EventTypeHealth,
+		Time:      time.Now(),
+		Collector: "c1",
+		Data:      inner,
+	}
+
+	var got types.HealthEvent
+	if err := env.DecodeData(&got); err != nil {
+		t.Fatalf("DecodeData: %v", err)
+	}
+	if got.App != "srv" {
+		t.Fatalf("app: got %q, want %q", got.App, "srv")
+	}
+	if got.Status != types.HealthStatusDown {
+		t.Fatalf("status: got %q, want %q", got.Status, types.HealthStatusDown)
+	}
+}
+
+func TestDecodeDataInvalid(t *testing.T) {
+	env := types.Envelope{
+		Type: types.EventTypeHealth,
+		Time: time.Now(),
+		Data: 42,
+	}
+	var evt types.HealthEvent
+	if err := env.DecodeData(&evt); err == nil {
+		t.Fatal("expected error for int data, got nil")
 	}
 }
