@@ -22,6 +22,11 @@ const (
 	StatusCancelled  = "cancelled"
 	StatusCompleted  = "completed"
 
+	// StatusPendingRestart is reserved for future use when the panel tracks
+	// collector restart status. Once a collector successfully activates a
+	// staged binary, the panel can set this status and wait for the collector
+	// to reconnect. On reconnection (HelloReport) the status transitions to
+	// StatusActivated.
 	StatusPendingRestart = "restarting"
 )
 

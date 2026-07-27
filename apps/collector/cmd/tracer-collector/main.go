@@ -179,7 +179,7 @@ func serve(ctx context.Context, cfg config.Config) error {
 	// Update agent
 	updateRouter := sender.NewRouter()
 	updateEnv := updatex.ProdEnvironment{}
-	agent := updateagent.NewAgent(cfg.Sender.Name, updateEnv, senderSvc.Client())
+	agent := updateagent.NewAgent(ctx, cfg.Sender.Name, updateEnv, senderSvc.Client())
 	agent.Register(updateRouter)
 
 	// Wire PostConnect to send HelloReport on each connection.

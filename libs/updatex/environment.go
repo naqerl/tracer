@@ -27,14 +27,23 @@ type Environment interface {
 
 // ProdEnvironment implements Environment for the production system. It uses
 // os.Executable and exec.Command for version detection.
-type ProdEnvironment struct{}
+//
+// BinaryPathOverride, if non-empty, is returned by BinaryPath instead of
+// os.Executable. Set this in tests or when os.Executable is unreliable.
+// ProdEnvironment with an empty BinaryPathOverride works correctly for both
+// collector and panel — it probes os.Executable and falls back to "" if that
+// fails (callers receive a sensible error downstream).
+type ProdEnvironment struct {
+	BinaryPathOverride string
+}
 
-func (ProdEnvironment) BinaryPath() string {
+func (e ProdEnvironment) BinaryPath() string {
+	if e.BinaryPathOverride != "" {
+		return e.BinaryPathOverride
+	}
 	path, err := os.Executable()
 	if err != nil {
-		// Fallback: should never happen in production, but provides a sensible
-		// default for development.
-		return "/usr/local/bin/tracer-collector"
+		return ""
 	}
 	return path
 }

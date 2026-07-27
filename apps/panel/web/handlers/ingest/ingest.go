@@ -81,6 +81,28 @@ func (s *ClientStore) DeleteByClient(client *wsx.Client) {
 	}
 }
 
+// Option configures the ingest mux handler.
+type Option func(*handler)
+
+// WithClientStore sets the ClientStore for the handler. If not set, a new one
+// is created. Use this when the caller needs to share the store with other
+// components (e.g., the update service).
+func WithClientStore(cs *ClientStore) Option {
+	return func(h *handler) {
+		h.clients = cs
+	}
+}
+
+// WithUpdateCallbacks configures callbacks for update-related events (hello
+// and update status reports). These are called when the handler receives the
+// corresponding envelope types from collectors.
+func WithUpdateCallbacks(onHello func(ctx context.Context, hello types.HelloReport), onUpdateStatus func(ctx context.Context, report types.UpdateStatusReport)) Option {
+	return func(h *handler) {
+		h.onHello = onHello
+		h.onUpdateStatus = onUpdateStatus
+	}
+}
+
 type handler struct {
 	authService    *auth.Service
 	ingestService  *ingest.Service
@@ -91,30 +113,22 @@ type handler struct {
 	onUpdateStatus func(ctx context.Context, report types.UpdateStatusReport)
 }
 
-func InitMux(authService *auth.Service, ingestService *ingest.Service, tracker *ingest.Tracker, topology *topologysvc.Service) *http.ServeMux {
-	return InitMuxWithClientStore(authService, ingestService, tracker, topology, NewClientStore())
-}
-
-// InitMuxWithClientStore creates the mux with a pre-allocated ClientStore.
-// This allows the caller to share the ClientStore reference with other
-// components (e.g., the update service).
-func InitMuxWithClientStore(authService *auth.Service, ingestService *ingest.Service, tracker *ingest.Tracker, topology *topologysvc.Service, clients *ClientStore) *http.ServeMux {
-	return InitMuxWithCallbacks(authService, ingestService, tracker, topology, clients, nil, nil)
-}
-
-// InitMuxWithCallbacks creates the mux with optional callbacks for update
-// events. This allows the update service to receive hello and update status
-// reports without direct coupling.
-func InitMuxWithCallbacks(authService *auth.Service, ingestService *ingest.Service, tracker *ingest.Tracker, topology *topologysvc.Service, clients *ClientStore, onHello func(ctx context.Context, hello types.HelloReport), onUpdateStatus func(ctx context.Context, report types.UpdateStatusReport)) *http.ServeMux {
+// InitMux creates an HTTP mux with ingest WebSocket routes.
+//
+// Required arguments: authService, ingestService, tracker, topology.
+// Optional configuration via Option arguments: WithClientStore, WithUpdateCallbacks.
+func InitMux(authService *auth.Service, ingestService *ingest.Service, tracker *ingest.Tracker, topology *topologysvc.Service, opts ...Option) *http.ServeMux {
 	m := http.NewServeMux()
 	h := &handler{
-		authService:    authService,
-		ingestService:  ingestService,
-		tracker:        tracker,
-		topology:       topology,
-		clients:        clients,
-		onHello:        onHello,
-		onUpdateStatus: onUpdateStatus,
+		authService:   authService,
+		ingestService: ingestService,
+		tracker:       tracker,
+		topology:      topology,
+		clients:       NewClientStore(),
+	}
+
+	for _, opt := range opts {
+		opt(h)
 	}
 
 	m.HandleFunc("GET /ws", h.handleWebSocket)

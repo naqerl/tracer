@@ -53,13 +53,18 @@ func NewServer(deps Dependencies, port string, noAuth bool, readOnly bool) *http
 			}
 		}
 	}
-	mux.Handle("/ingest/", http.StripPrefix("/ingest", ingest.InitMuxWithCallbacks(deps.Auth, deps.Ingest, deps.Tracker, deps.Topology, deps.ClientStore, onHello, onUpdateStatus)))
+	mux.Handle("/ingest/", http.StripPrefix("/ingest", ingest.InitMux(deps.Auth, deps.Ingest, deps.Tracker, deps.Topology,
+		ingest.WithClientStore(deps.ClientStore),
+		ingest.WithUpdateCallbacks(onHello, onUpdateStatus),
+	)))
 	mux.Handle("/panel/", http.StripPrefix("/panel", panel.InitMux(deps.PanelService)))
 	mux.Handle("/topology/", http.StripPrefix("/topology", topology.InitMux(deps.Topology, deps.User)))
 	mux.Handle("/auth/", http.StripPrefix("/auth", authMux))
 	mux.Handle("/llm", llm.InitMux())
 	mux.Handle("/settings/", http.StripPrefix("/settings", settings.InitMux(deps.Auth, deps.User, deps.Ingest, deps.DBManagerx, deps.Notify, deps.Config)))
-	mux.Handle("/updates/", http.StripPrefix("/updates", updates.InitMux(deps.UpdateSvc)))
+	if deps.UpdateSvc != nil {
+		mux.Handle("/updates/", http.StripPrefix("/updates", updates.InitMux(deps.UpdateSvc)))
+	}
 
 	markdownMiddleware := middleware.BuildMarkdownMiddleware()
 	loginPathMiddleware := authmw.BuildLoginPathMiddleware("/auth/login")

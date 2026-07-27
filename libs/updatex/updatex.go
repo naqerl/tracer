@@ -12,6 +12,7 @@ package updatex
 import (
 	"context"
 	"fmt"
+	"os"
 	"time"
 )
 
@@ -68,7 +69,7 @@ func StagedVersion(env Environment) (string, bool) {
 
 	orch := NewOrchestrator(env)
 	staged := orch.StagedPath()
-	if staged == "" {
+	if _, err := os.Stat(staged); err != nil {
 		return "", false
 	}
 	version, err := env.VersionOf(ctx, staged)

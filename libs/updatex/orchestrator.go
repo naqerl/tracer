@@ -133,6 +133,9 @@ func (o *Orchestrator) Verify(expectedHex string) error {
 // PreFlight runs the staged binary with --version to verify it is executable.
 func (o *Orchestrator) PreFlight(ctx context.Context) (string, error) {
 	staged := o.StagedPath()
+	if _, err := os.Stat(staged); err != nil {
+		return "", fmt.Errorf("pre-flight check failed: staged binary not found at %s: %w", staged, err)
+	}
 	version, err := o.env.VersionOf(ctx, staged)
 	if err != nil {
 		return "", fmt.Errorf("pre-flight check failed: %w", err)
