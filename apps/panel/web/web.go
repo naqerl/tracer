@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 	"time"
@@ -11,9 +12,11 @@ import (
 	"tracer/apps/panel/web/handlers/panel"
 	"tracer/apps/panel/web/handlers/settings"
 	"tracer/apps/panel/web/handlers/topology"
+	"tracer/apps/panel/web/handlers/updates"
 	"tracer/apps/panel/web/middleware"
 	authmw "tracer/apps/panel/web/middleware/auth"
 	"tracer/apps/panel/web/static"
+	"tracer/libs/types"
 )
 
 // NewServer creates and configures an HTTP server with all handlers.
@@ -35,12 +38,28 @@ func NewServer(deps Dependencies, port string, noAuth bool, readOnly bool) *http
 		}
 	})
 	mux.Handle("/static/", http.StripPrefix("/static", static.Handler()))
-	mux.Handle("/ingest/", http.StripPrefix("/ingest", ingest.InitMux(deps.Auth, deps.Ingest, deps.Tracker, deps.Topology)))
+	// Wire update service callbacks to ingest handler.
+	var onHello func(ctx context.Context, hello types.HelloReport)
+	var onUpdateStatus func(ctx context.Context, report types.UpdateStatusReport)
+	if deps.UpdateSvc != nil {
+		onHello = func(ctx context.Context, hello types.HelloReport) {
+			if err := deps.UpdateSvc.IngestHello(ctx, hello); err != nil {
+				slog.Error("update hello handling failed", "error", err)
+			}
+		}
+		onUpdateStatus = func(ctx context.Context, report types.UpdateStatusReport) {
+			if err := deps.UpdateSvc.IngestUpdateStatus(ctx, report); err != nil {
+				slog.Error("update status handling failed", "error", err)
+			}
+		}
+	}
+	mux.Handle("/ingest/", http.StripPrefix("/ingest", ingest.InitMuxWithCallbacks(deps.Auth, deps.Ingest, deps.Tracker, deps.Topology, deps.ClientStore, onHello, onUpdateStatus)))
 	mux.Handle("/panel/", http.StripPrefix("/panel", panel.InitMux(deps.PanelService)))
 	mux.Handle("/topology/", http.StripPrefix("/topology", topology.InitMux(deps.Topology, deps.User)))
 	mux.Handle("/auth/", http.StripPrefix("/auth", authMux))
 	mux.Handle("/llm", llm.InitMux())
 	mux.Handle("/settings/", http.StripPrefix("/settings", settings.InitMux(deps.Auth, deps.User, deps.Ingest, deps.DBManagerx, deps.Notify, deps.Config)))
+	mux.Handle("/updates/", http.StripPrefix("/updates", updates.InitMux(deps.UpdateSvc)))
 
 	markdownMiddleware := middleware.BuildMarkdownMiddleware()
 	loginPathMiddleware := authmw.BuildLoginPathMiddleware("/auth/login")

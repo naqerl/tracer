@@ -27,8 +27,10 @@ import (
 	"tracer/apps/panel/internal/services/notify/telegram"
 	"tracer/apps/panel/internal/services/panel"
 	"tracer/apps/panel/internal/services/topology"
+	updatesvc "tracer/apps/panel/internal/services/update"
 	"tracer/apps/panel/internal/services/user"
 	"tracer/apps/panel/web"
+	ingesthandler "tracer/apps/panel/web/handlers/ingest"
 	"tracer/build"
 	"tracer/libs/installx"
 	"tracer/libs/logx"
@@ -238,6 +240,24 @@ func serve(ctx context.Context, cfg *config.Config, noAuth, readOnly bool) error
 	panelService := panel.New(dbManager, ingestService, tracker, userService)
 	topologyService := topology.NewService(panelService)
 
+	// Create a ClientStore for sending commands to collectors.
+	clientStore := ingesthandler.NewClientStore()
+
+	// Initialize update service
+	updateService := updatesvc.New(panelHandle, clientStore, updatex.ProdEnvironment{})
+
+	// Check for staged update on startup
+	if version, ok := updatex.StagedVersion(updatex.ProdEnvironment{}); ok {
+		slog.Info("staged binary found", "version", version)
+	}
+
+	// Check for pending activation in manifest
+	if m, err := updatex.ReadManifest(updatex.ProdEnvironment{}.BinaryDir()); err != nil {
+		slog.Warn("could not read update manifest", "error", err)
+	} else if m != nil {
+		slog.Info("last update manifest", "version", m.Version, "binary", m.BinaryPath, "activated_at", m.ActivatedAt)
+	}
+
 	// Run services
 	wg.Go(func() {
 		slog.Info("starting notify dispatcher")
@@ -280,6 +300,8 @@ func serve(ctx context.Context, cfg *config.Config, noAuth, readOnly bool) error
 		Tracker:      tracker,
 		Topology:     topologyService,
 		PanelService: panelService,
+		UpdateSvc:    updateService,
+		ClientStore:  clientStore,
 		Config:       cfg,
 	}
 	server := web.NewServer(deps, cfg.GetPort(), noAuth, readOnly)
@@ -313,17 +335,26 @@ func serve(ctx context.Context, cfg *config.Config, noAuth, readOnly bool) error
 }
 
 func handleUpdate() {
-	if err := updatex.Update(updatex.Options{
-		BinaryName: updatex.BinaryPanel,
-		PostUpdate: func() {
-			fmt.Println("Please restart the panel to apply the update:")
-			fmt.Println()
-			fmt.Println("  sudo systemctl restart tracer-panel")
-			fmt.Println()
-		},
-	}); err != nil {
+	// CLI update command: tracer-panel update <url> <checksum>
+	args := flag.Args()[1:]
+	if len(args) < 1 {
+		log.Fatal("Usage: tracer-panel update <download_url> [checksum]")
+	}
+	url := args[0]
+	checksum := ""
+	if len(args) > 1 {
+		checksum = args[1]
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+
+	env := updatex.ProdEnvironment{}
+	if _, err := updatex.UpdateBinary(ctx, env, url, checksum); err != nil {
 		log.Fatalf("Update failed: %v", err)
 	}
+	fmt.Println("Binary downloaded and staged successfully.")
+	fmt.Println("Activate with 'tracer-panel activate' or restart the service.")
 }
 
 func handleInstall(args []string) {

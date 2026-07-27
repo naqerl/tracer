@@ -9,17 +9,22 @@ import (
 type EventType string
 
 const (
-	EventTypeRegister  EventType = "register"
-	EventTypeLog       EventType = "log"
-	EventTypeLifecycle EventType = "lifecycle"
-	EventTypeStats     EventType = "stats"
-	EventTypeError     EventType = "error"
-	EventTypeHealth    EventType = "health"
+	EventTypeRegister       EventType = "register"
+	EventTypeLog            EventType = "log"
+	EventTypeLifecycle      EventType = "lifecycle"
+	EventTypeStats          EventType = "stats"
+	EventTypeError          EventType = "error"
+	EventTypeHealth         EventType = "health"
+	EventTypeUpdatePrepare  EventType = "update_prepare"
+	EventTypeUpdateActivate EventType = "update_activate"
+	EventTypeUpdateStatus   EventType = "update_status"
+	EventTypeHello          EventType = "hello"
 )
 
 func (t EventType) Validate() error {
 	switch t {
-	case EventTypeRegister, EventTypeLog, EventTypeLifecycle, EventTypeStats, EventTypeError, EventTypeHealth:
+	case EventTypeRegister, EventTypeLog, EventTypeLifecycle, EventTypeStats, EventTypeError, EventTypeHealth,
+		EventTypeUpdatePrepare, EventTypeUpdateActivate, EventTypeUpdateStatus, EventTypeHello:
 		return nil
 	}
 	return fmt.Errorf("invalid event type: %q", t)
@@ -130,3 +135,47 @@ type HealthEvent struct {
 
 func (e HealthEvent) EventType() EventType { return EventTypeHealth }
 func (e HealthEvent) Timestamp() time.Time { return e.Time }
+
+// UpdatePrepareCommand is sent from panel to collector to prepare an update.
+type UpdatePrepareCommand struct {
+	Type        EventType `json:"type"`
+	Version     string    `json:"version"`
+	DownloadURL string    `json:"download_url"`
+	Checksum    string    `json:"checksum"`
+}
+
+func (u UpdatePrepareCommand) EventType() EventType { return EventTypeUpdatePrepare }
+func (u UpdatePrepareCommand) Timestamp() time.Time { return time.Now() }
+
+// UpdateActivateCommand is sent from panel to collector to activate a staged update.
+type UpdateActivateCommand struct {
+	Type EventType `json:"type"`
+}
+
+func (u UpdateActivateCommand) EventType() EventType { return EventTypeUpdateActivate }
+func (u UpdateActivateCommand) Timestamp() time.Time { return time.Now() }
+
+// UpdateStatusReport is sent from collector to panel with update progress.
+type UpdateStatusReport struct {
+	Type       EventType `json:"type"`
+	Collector  string    `json:"collector"`
+	Status     string    `json:"status"`
+	Step       string    `json:"step,omitempty"`
+	Error      string    `json:"error,omitempty"`
+	OldVersion string    `json:"old_version,omitempty"`
+	NewVersion string    `json:"new_version,omitempty"`
+}
+
+func (u UpdateStatusReport) EventType() EventType { return EventTypeUpdateStatus }
+func (u UpdateStatusReport) Timestamp() time.Time { return time.Now() }
+
+// HelloReport is sent from collector to panel on reconnection.
+type HelloReport struct {
+	Type             EventType `json:"type"`
+	Collector        string    `json:"collector"`
+	Version          string    `json:"version"`
+	HasPendingUpdate bool      `json:"has_pending_update"`
+}
+
+func (h HelloReport) EventType() EventType { return EventTypeHello }
+func (h HelloReport) Timestamp() time.Time { return time.Now() }

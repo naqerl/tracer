@@ -28,6 +28,7 @@ import (
 	"tracer/apps/collector/internal/sender"
 	"tracer/apps/collector/internal/source"
 	"tracer/apps/collector/internal/stats"
+	updateagent "tracer/apps/collector/internal/update"
 	"tracer/build"
 	"tracer/libs/installx"
 	"tracer/libs/logx"
@@ -172,12 +173,43 @@ func serve(ctx context.Context, cfg config.Config) error {
 	// Sender
 	senderSvc := sender.New(cfg.Sender, appNames, mpsc)
 
+	// Update agent
+	updateRouter := sender.NewRouter()
+	updateEnv := updatex.ProdEnvironment{}
+	agent := updateagent.NewAgent(cfg.Sender.Name, updateEnv, senderSvc.Client())
+	agent.Register(updateRouter)
+
+	// Wire PostConnect to send HelloReport on each connection.
+	senderSvc.PostConnect = func(c sender.Client) {
+		hasPending := agent.CheckPendingUpdate()
+		env := types.Envelope{
+			Type:      types.EventTypeHello,
+			Time:      time.Now().UTC(),
+			Collector: cfg.Sender.Name,
+			Data: types.HelloReport{
+				Type:             types.EventTypeHello,
+				Collector:        cfg.Sender.Name,
+				Version:          build.Commit,
+				HasPendingUpdate: hasPending,
+			},
+		}
+		if err := c.Send(env); err != nil {
+			slog.Warn("could not send hello", "error", err)
+		}
+	}
+
 	// Run
 	wg.Go(func() {
 		slog.Info("starting sender")
 		defer slog.Info("sender stopped")
 
 		senderSvc.Start(ctx)
+	})
+	wg.Go(func() {
+		slog.Info("starting update recv loop")
+		defer slog.Info("update recv loop stopped")
+
+		senderSvc.RunRecv(ctx, updateRouter)
 	})
 	wg.Go(func() {
 		slog.Info("starting stats monitor")
@@ -451,17 +483,28 @@ func handleSet(path string, cfg config.Config, setCmd *flag.FlagSet) {
 }
 
 func handleUpdate() {
-	if err := updatex.Update(updatex.Options{
-		BinaryName: updatex.BinaryCollector,
-		PostUpdate: func() {
-			fmt.Println("Please restart the collector to apply the update:")
-			fmt.Println()
-			fmt.Println("  sudo systemctl restart tracer-collector")
-			fmt.Println()
-		},
-	}); err != nil {
+	// CLI update command now uses the new binary-download approach.
+	// Usage: tracer-collector update <url> <checksum>
+	args := flag.Args()[1:]
+	if len(args) < 1 {
+		log.Fatal("Usage: tracer-collector update <download_url> [checksum]")
+	}
+	url := args[0]
+	checksum := ""
+	if len(args) > 1 {
+		checksum = args[1]
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+
+	env := updatex.ProdEnvironment{}
+	if _, err := updatex.UpdateBinary(ctx, env, url, checksum); err != nil {
 		log.Fatalf("Update failed: %v", err)
 	}
+	fmt.Println("Binary downloaded and staged successfully.")
+	fmt.Println("Run 'sudo systemctl restart tracer-collector' after activation, or")
+	fmt.Println("use 'tracer-collector activate' to activate in-place.")
 }
 
 func handleInstall() {

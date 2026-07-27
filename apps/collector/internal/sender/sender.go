@@ -23,9 +23,10 @@ type Spec struct {
 // Service forwards events from a channel to the panel via a reconnecting
 // WebSocket client. Registration is sent automatically on each connection.
 type Service struct {
-	client Client
-	events <-chan types.Event
-	spec   Spec
+	client      Client
+	events      <-chan types.Event
+	spec        Spec
+	PostConnect func(client Client) // called after each successful connection (after RegisterEvent)
 }
 
 // New creates a Service. The client automatically reconnects on failure.
@@ -33,7 +34,16 @@ type Service struct {
 // The factory dials the panel, authenticates, and sends a RegisterEvent
 // before returning. If registration fails, the entire factory call fails
 // and the reconnecting wrapper retries.
+//
+// If Service.PostConnect is set, it is called after each successful connection
+// (after RegisterEvent). Callers can use this to send HelloReport or other
+// post-connect messages.
 func New(spec Spec, appNames []string, events <-chan types.Event) *Service {
+	s := &Service{
+		events: events,
+		spec:   spec,
+	}
+
 	headers := http.Header{}
 	headers.Set("X-API-Key", spec.APIKey)
 
@@ -57,14 +67,14 @@ func New(spec Spec, appNames []string, events <-chan types.Event) *Service {
 			c.Close()
 			return nil, fmt.Errorf("register: %w", err)
 		}
+		if s.PostConnect != nil {
+			s.PostConnect(c)
+		}
 		return c, nil
 	}
 
-	return &Service{
-		client: newReconnecting(context.Background(), factory),
-		events: events,
-		spec:   spec,
-	}
+	s.client = newReconnecting(context.Background(), factory)
+	return s
 }
 
 // Start forwards events from the events channel to the panel.
@@ -91,6 +101,34 @@ func (s *Service) Start(ctx context.Context) error {
 			}
 		}
 	}
+}
+
+// RunRecv reads incoming events from the WebSocket connection and dispatches
+// them through the router. It blocks until the context is cancelled or the
+// receive channel is closed.
+func (s *Service) RunRecv(ctx context.Context, router *Router) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case evt, ok := <-s.client.Recv():
+			if !ok {
+				return
+			}
+			env, ok := evt.(types.Envelope)
+			if !ok {
+				slog.Debug("received non-envelope event, skipping", "type", evt.EventType())
+				continue
+			}
+			router.Dispatch(env)
+		}
+	}
+}
+
+// Client returns the underlying Client, allowing the update agent to send
+// status reports and other messages directly.
+func (s *Service) Client() Client {
+	return s.client
 }
 
 // panelWSURL builds a WebSocket URL from the panel_host config value.

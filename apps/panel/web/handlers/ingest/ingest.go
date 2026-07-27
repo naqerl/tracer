@@ -2,9 +2,11 @@ package ingest
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -16,20 +18,103 @@ import (
 	"tracer/libs/wsx"
 )
 
+// ClientStore maps collector names to their WebSocket clients, allowing the
+// update service to send commands to specific collectors.
+type ClientStore struct {
+	mu      sync.RWMutex
+	clients map[string]*wsx.Client
+}
+
+// NewClientStore creates an empty ClientStore.
+func NewClientStore() *ClientStore {
+	return &ClientStore{
+		clients: make(map[string]*wsx.Client),
+	}
+}
+
+// Store associates a collector name with its WebSocket client.
+func (s *ClientStore) Store(name string, client *wsx.Client) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.clients[name] = client
+}
+
+// Delete removes a collector name from the store.
+func (s *ClientStore) Delete(name string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.clients, name)
+}
+
+// SendTo sends an event to the named collector. Returns an error if the
+// collector is not connected.
+func (s *ClientStore) SendTo(ctx context.Context, name string, msg types.Event) error {
+	s.mu.RLock()
+	client, ok := s.clients[name]
+	s.mu.RUnlock()
+	if !ok {
+		return fmt.Errorf("collector %s is not connected", name)
+	}
+	return client.Send(msg)
+}
+
+// ConnectedNames returns the names of all currently connected collectors.
+func (s *ClientStore) ConnectedNames() []string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	names := make([]string, 0, len(s.clients))
+	for name := range s.clients {
+		names = append(names, name)
+	}
+	return names
+}
+
+// DeleteByClient removes all entries that reference the given client pointer.
+// Used on WebSocket disconnect to clean up stale references.
+func (s *ClientStore) DeleteByClient(client *wsx.Client) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for name, c := range s.clients {
+		if c == client {
+			delete(s.clients, name)
+		}
+	}
+}
+
 type handler struct {
-	authService   *auth.Service
-	ingestService *ingest.Service
-	tracker       *ingest.Tracker
-	topology      *topologysvc.Service
+	authService    *auth.Service
+	ingestService  *ingest.Service
+	tracker        *ingest.Tracker
+	topology       *topologysvc.Service
+	clients        *ClientStore
+	onHello        func(ctx context.Context, hello types.HelloReport)
+	onUpdateStatus func(ctx context.Context, report types.UpdateStatusReport)
 }
 
 func InitMux(authService *auth.Service, ingestService *ingest.Service, tracker *ingest.Tracker, topology *topologysvc.Service) *http.ServeMux {
+	return InitMuxWithClientStore(authService, ingestService, tracker, topology, NewClientStore())
+}
+
+// InitMuxWithClientStore creates the mux with a pre-allocated ClientStore.
+// This allows the caller to share the ClientStore reference with other
+// components (e.g., the update service).
+func InitMuxWithClientStore(authService *auth.Service, ingestService *ingest.Service, tracker *ingest.Tracker, topology *topologysvc.Service, clients *ClientStore) *http.ServeMux {
+	return InitMuxWithCallbacks(authService, ingestService, tracker, topology, clients, nil, nil)
+}
+
+// InitMuxWithCallbacks creates the mux with optional callbacks for update
+// events. This allows the update service to receive hello and update status
+// reports without direct coupling.
+func InitMuxWithCallbacks(authService *auth.Service, ingestService *ingest.Service, tracker *ingest.Tracker, topology *topologysvc.Service, clients *ClientStore, onHello func(ctx context.Context, hello types.HelloReport), onUpdateStatus func(ctx context.Context, report types.UpdateStatusReport)) *http.ServeMux {
 	m := http.NewServeMux()
 	h := &handler{
-		authService:   authService,
-		ingestService: ingestService,
-		tracker:       tracker,
-		topology:      topology,
+		authService:    authService,
+		ingestService:  ingestService,
+		tracker:        tracker,
+		topology:       topology,
+		clients:        clients,
+		onHello:        onHello,
+		onUpdateStatus: onUpdateStatus,
 	}
 
 	m.HandleFunc("GET /ws", h.handleWebSocket)
@@ -63,6 +148,8 @@ func (h *handler) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	slog.Info("WebSocket connected", "remote", remoteAddr, "conn_id", connID)
 
 	defer func() {
+		// Clean up client store on disconnect.
+		h.cleanupClientStore(client)
 		client.Close()
 		h.tracker.Disconnect(connID)
 		slog.Info("WebSocket disconnected", "remote", remoteAddr, "conn_id", connID)
@@ -75,7 +162,7 @@ func (h *handler) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			h.topology.Publish(topologysvc.Message{
 				Register: &e,
 			})
-			h.handleRegistration(r.Context(), connID, remoteAddr, e)
+			h.handleRegistration(r.Context(), connID, remoteAddr, e, client)
 		case types.Envelope:
 			h.handleEnvelope(r.Context(), e)
 		default:
@@ -134,12 +221,26 @@ func (h *handler) handleEnvelope(ctx context.Context, env types.Envelope) {
 			return
 		}
 		h.handleHealth(ctx, env.Collector, evt)
+	case types.EventTypeUpdateStatus:
+		var evt types.UpdateStatusReport
+		if err := env.DecodeData(&evt); err != nil {
+			slog.Warn("Failed to decode update status event", "error", err, "collector", env.Collector)
+			return
+		}
+		h.handleUpdateStatus(ctx, evt)
+	case types.EventTypeHello:
+		var evt types.HelloReport
+		if err := env.DecodeData(&evt); err != nil {
+			slog.Warn("Failed to decode hello event", "error", err, "collector", env.Collector)
+			return
+		}
+		h.handleHello(ctx, evt)
 	default:
 		slog.Error("Unhandled envelope type", "type", env.Type)
 	}
 }
 
-func (h *handler) handleRegistration(ctx context.Context, connID, remoteAddr string, msg types.RegisterEvent) {
+func (h *handler) handleRegistration(ctx context.Context, connID, remoteAddr string, msg types.RegisterEvent, client *wsx.Client) {
 	if len(msg.Apps) == 0 {
 		slog.Info("Skipping empty collector registration", "collector", msg.Collector, "remote", remoteAddr, "conn_id", connID)
 		return
@@ -161,6 +262,9 @@ func (h *handler) handleRegistration(ctx context.Context, connID, remoteAddr str
 
 	// Register ingest with tracker
 	h.tracker.Register(connID, req.CollectorName, remoteAddr, req.Apps)
+
+	// Store client reference for sending commands (e.g., updates).
+	h.clients.Store(req.CollectorName, client)
 
 	// Create all databases via ingest service
 	if err := h.ingestService.RegisterCollector(ctx, req); err != nil {
@@ -262,6 +366,33 @@ func (h *handler) handleHealth(ctx context.Context, collector string, evt types.
 		return
 	}
 
+}
+
+// handleUpdateStatus processes an update status report from a collector.
+// It delegates to the update service callback if set.
+func (h *handler) handleUpdateStatus(ctx context.Context, report types.UpdateStatusReport) {
+	slog.Info("update status report", "collector", report.Collector, "status", report.Status,
+		"step", report.Step, "error", report.Error)
+	if h.onUpdateStatus != nil {
+		h.onUpdateStatus(ctx, report)
+	}
+}
+
+// handleHello processes a hello report from a reconnecting collector.
+// It delegates to the update service callback if set (for tracking activation).
+func (h *handler) handleHello(ctx context.Context, hello types.HelloReport) {
+	slog.Info("hello from collector", "collector", hello.Collector,
+		"version", hello.Version, "has_pending_update", hello.HasPendingUpdate)
+	if h.onHello != nil {
+		h.onHello(ctx, hello)
+	}
+}
+
+// cleanupClientStore removes all entries in the client store that reference
+// the given client (by pointer comparison). This is called on disconnect to
+// clean up stale entries.
+func (h *handler) cleanupClientStore(client *wsx.Client) {
+	h.clients.DeleteByClient(client)
 }
 
 func (h *handler) requireCollectorAPIKey(w http.ResponseWriter, r *http.Request) bool {
