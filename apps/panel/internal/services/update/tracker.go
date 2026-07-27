@@ -5,6 +5,7 @@ package update
 
 import (
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"tracer/libs/types"
@@ -55,7 +56,8 @@ type Target struct {
 type Tracker struct {
 	mu          sync.RWMutex
 	planEvents  map[string][]PlanEvent // planID → events
-	subscribers []func(PlanEvent)
+	subscribers map[int64]func(PlanEvent)
+	nextSubID   atomic.Int64
 }
 
 // PlanEvent represents a state change in an update plan or target.
@@ -70,7 +72,8 @@ type PlanEvent struct {
 // NewTracker creates a new Tracker.
 func NewTracker() *Tracker {
 	return &Tracker{
-		planEvents: make(map[string][]PlanEvent),
+		planEvents:  make(map[string][]PlanEvent),
+		subscribers: make(map[int64]func(PlanEvent)),
 	}
 }
 
@@ -80,11 +83,14 @@ func (t *Tracker) PublishPlanStatus(planID, status string) {
 	evt := PlanEvent{
 		PlanID:    planID,
 		Type:      "plan_status",
+		Plan:      &Plan{ID: planID, Status: status},
 		Timestamp: time.Now(),
 	}
 	t.planEvents[planID] = append(t.planEvents[planID], evt)
-	subs := make([]func(PlanEvent), len(t.subscribers))
-	copy(subs, t.subscribers)
+	subs := make([]func(PlanEvent), 0, len(t.subscribers))
+	for _, fn := range t.subscribers {
+		subs = append(subs, fn)
+	}
 	t.mu.Unlock()
 
 	for _, sub := range subs {
@@ -102,8 +108,10 @@ func (t *Tracker) PublishTargetStatus(planID string, target *Target) {
 		Timestamp: time.Now(),
 	}
 	t.planEvents[planID] = append(t.planEvents[planID], evt)
-	subs := make([]func(PlanEvent), len(t.subscribers))
-	copy(subs, t.subscribers)
+	subs := make([]func(PlanEvent), 0, len(t.subscribers))
+	for _, fn := range t.subscribers {
+		subs = append(subs, fn)
+	}
 	t.mu.Unlock()
 
 	for _, sub := range subs {
@@ -124,14 +132,14 @@ func (t *Tracker) Events(planID string) []PlanEvent {
 // Subscribe adds a callback that is called for every event. Returns an
 // unsubscribe function.
 func (t *Tracker) Subscribe(fn func(PlanEvent)) func() {
+	id := t.nextSubID.Add(1)
 	t.mu.Lock()
-	t.subscribers = append(t.subscribers, fn)
-	idx := len(t.subscribers) - 1
+	t.subscribers[id] = fn
 	t.mu.Unlock()
 
 	return func() {
 		t.mu.Lock()
-		t.subscribers = append(t.subscribers[:idx], t.subscribers[idx+1:]...)
+		delete(t.subscribers, id)
 		t.mu.Unlock()
 	}
 }

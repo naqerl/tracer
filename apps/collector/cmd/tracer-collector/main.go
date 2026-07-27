@@ -82,6 +82,9 @@ func main() {
 		case "update":
 			handleUpdate()
 			return
+		case "activate":
+			handleActivate()
+			return
 		case "install":
 			handleInstall()
 			return
@@ -505,6 +508,18 @@ func handleUpdate() {
 	fmt.Println("Binary downloaded and staged successfully.")
 	fmt.Println("Run 'sudo systemctl restart tracer-collector' after activation, or")
 	fmt.Println("use 'tracer-collector activate' to activate in-place.")
+}
+
+func handleActivate() {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	env := updatex.ProdEnvironment{}
+	if err := updatex.ActivateStaged(ctx, env); err != nil {
+		log.Fatalf("Activation failed: %v", err)
+	}
+	fmt.Println("Binary activated successfully.")
+	fmt.Println("Run 'sudo systemctl restart tracer-collector' to restart the service with the new binary.")
 }
 
 func handleInstall() {

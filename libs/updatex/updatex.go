@@ -12,6 +12,7 @@ package updatex
 import (
 	"context"
 	"fmt"
+	"time"
 )
 
 // UpdateBinary downloads a binary from url, verifies its sha256 checksum, and
@@ -33,12 +34,10 @@ func UpdateBinary(ctx context.Context, env Environment, url, checksum string) (s
 		}
 	}
 
-	version, err := orch.PreFlight(ctx)
-	if err != nil {
+	if _, err := orch.PreFlight(ctx); err != nil {
 		return "", fmt.Errorf("could not verify staged binary: %w", err)
 	}
 
-	_ = version // caller may want to store in manifest
 	return orch.StagedPath(), nil
 }
 
@@ -64,12 +63,15 @@ func ActivateStaged(ctx context.Context, env Environment) error {
 // StagedVersion runs the staged binary's --version and returns the output.
 // Returns ("", false) if no staged binary exists or if it fails.
 func StagedVersion(env Environment) (string, bool) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
 	orch := NewOrchestrator(env)
 	staged := orch.StagedPath()
 	if staged == "" {
 		return "", false
 	}
-	version, err := env.VersionOf(context.Background(), staged)
+	version, err := env.VersionOf(ctx, staged)
 	if err != nil {
 		return "", false
 	}

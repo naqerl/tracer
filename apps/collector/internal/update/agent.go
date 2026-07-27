@@ -104,7 +104,6 @@ func (a *Agent) handlePrepare(env types.Envelope) {
 		return
 	}
 
-	_ = stagedPath
 	a.sendStatus(ctx, "prepared", "staged", "", "", cmd.Version)
 	slog.Info("update prepared successfully", "version", cmd.Version, "path", stagedPath)
 }

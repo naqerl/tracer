@@ -90,6 +90,9 @@ func main() {
 		case "update":
 			handleUpdate()
 			return
+		case "activate":
+			handleActivate()
+			return
 		case "install":
 			handleInstall(flag.Args()[1:])
 			return
@@ -355,6 +358,18 @@ func handleUpdate() {
 	}
 	fmt.Println("Binary downloaded and staged successfully.")
 	fmt.Println("Activate with 'tracer-panel activate' or restart the service.")
+}
+
+func handleActivate() {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	env := updatex.ProdEnvironment{}
+	if err := updatex.ActivateStaged(ctx, env); err != nil {
+		log.Fatalf("Activation failed: %v", err)
+	}
+	fmt.Println("Binary activated successfully.")
+	fmt.Println("Run 'sudo systemctl restart tracer-panel' to restart the service with the new binary.")
 }
 
 func handleInstall(args []string) {

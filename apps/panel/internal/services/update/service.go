@@ -280,6 +280,12 @@ func (s *Service) IngestUpdateStatus(ctx context.Context, report types.UpdateSta
 	}
 
 	s.tracker.IngestUpdateStatus(planID, report.Collector, report)
+
+	// Check if all targets have completed and mark plan as completed.
+	if err := s.completePlanIfDone(ctx, planID); err != nil {
+		slog.Warn("could not check plan completion", "plan_id", planID, "error", err)
+	}
+
 	return nil
 }
 
@@ -321,6 +327,46 @@ func (s *Service) IngestHello(ctx context.Context, hello types.HelloReport) erro
 	if err != nil {
 		return fmt.Errorf("could not update target after hello: %w", err)
 	}
+
+	// Check if all targets have completed and mark plan as completed.
+	if err := s.completePlanIfDone(ctx, planID); err != nil {
+		slog.Warn("could not check plan completion", "plan_id", planID, "error", err)
+	}
+
+	return nil
+}
+
+// completePlanIfDone checks whether all targets in the plan have reached a
+// terminal status (prepared, activated, failed, or cancelled). If so, it
+// transitions the plan status to "completed".
+func (s *Service) completePlanIfDone(ctx context.Context, planID string) error {
+	// Check if there are any targets still in non-terminal states.
+	var pendingCount int
+	err := s.db.Read().QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM update_targets
+		 WHERE plan_id = ? AND status NOT IN ('prepared', 'activated', 'failed', 'cancelled')`,
+		planID).Scan(&pendingCount)
+	if err != nil {
+		return fmt.Errorf("could not count pending targets: %w", err)
+	}
+	if pendingCount > 0 {
+		return nil
+	}
+
+	// All targets are done — mark plan as completed.
+	now := time.Now().Unix()
+	err = s.db.Write(ctx, func(tx db.DBTX) error {
+		_, err := tx.ExecContext(ctx,
+			`UPDATE update_plans SET status = 'completed', completed_at = ?
+			 WHERE id = ? AND status NOT IN ('completed', 'cancelled')`,
+			now, planID)
+		return err
+	})
+	if err != nil {
+		return fmt.Errorf("could not complete plan: %w", err)
+	}
+
+	s.tracker.PublishPlanStatus(planID, StatusCompleted)
 	return nil
 }
 
