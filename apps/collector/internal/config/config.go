@@ -12,6 +12,8 @@ import (
 	"tracer/apps/collector/internal/sender"
 	"tracer/apps/collector/internal/source"
 	"tracer/apps/collector/internal/stats"
+	"tracer/build"
+	"tracer/libs/installx"
 )
 
 type Config struct {
@@ -79,11 +81,17 @@ func Load(path string) (Config, error) {
 	return cfg, nil
 }
 
+// Persist writes the config back to disk and hands ownership to the collector
+// service user so the daemon can manage its own config. Written 0640 so the
+// API key stays readable only by root, the service user, and the tracer group.
 func (c Config) Persist(path string) error {
 	str, err := c.String()
 	if err != nil {
 		return err
 	}
 
-	return os.WriteFile(path, []byte(str), 0644)
+	if err := os.WriteFile(path, []byte(str), 0640); err != nil {
+		return fmt.Errorf("could not write config: %w", err)
+	}
+	return installx.ChownFile(path, build.CollectorUser, build.TracerGroup)
 }

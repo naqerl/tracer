@@ -79,6 +79,10 @@ func main() {
 			handleAdd(ctx, cfgPath, cfg, addCmd)
 			return
 		case "set":
+			// set mutates the config, which is owned by the service user.
+			// Check privileges before loading so a plain user gets a clear
+			// error instead of a raw permission denied.
+			installx.RequireRootOrServiceUser(build.CollectorUser, build.TracerGroup)
 			cfg, err := config.Load(cfgPath)
 			if err != nil {
 				log.Fatalf("failed to load config: %s", err)

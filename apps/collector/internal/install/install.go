@@ -74,7 +74,9 @@ func createConfig() error {
 		return fmt.Errorf("marshal config: %w", err)
 	}
 
-	return installx.WriteConfig(ConfigFilePath, out, 0640, "root", build.TracerGroup)
+	// The config is owned by the collector service user so the daemon can
+	// manage it; root and the tracer group keep read access via 0640.
+	return installx.WriteConfig(ConfigFilePath, out, 0640, build.CollectorUser, build.TracerGroup)
 }
 
 func installSystemd() error {

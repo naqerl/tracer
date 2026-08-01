@@ -165,6 +165,27 @@ func FileExists(path string) bool {
 	return err == nil
 }
 
+// RequireRootOrServiceUser exits with a fatal message unless the process runs
+// as root or as the given service user. It is meant for config-mutating CLI
+// subcommands (e.g. the collector's set command) whose writes must land on
+// files owned by the service user.
+func RequireRootOrServiceUser(serviceUser, serviceGroup string) {
+	if os.Getuid() == 0 {
+		return
+	}
+	wantUID, wantGID, err := lookupUserGroup(serviceUser, serviceGroup)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "fatal: cannot resolve service user %s:%s: %v\n", serviceUser, serviceGroup, err)
+		os.Exit(1)
+	}
+	if os.Getuid() != wantUID || os.Getgid() != wantGID {
+		fmt.Fprintf(os.Stderr,
+			"fatal: must run as root or %s:%s to modify the config (running as uid=%d gid=%d)\n",
+			serviceUser, serviceGroup, os.Getuid(), os.Getgid())
+		os.Exit(1)
+	}
+}
+
 // RequireServiceUser checks that the current process is running as the
 // expected service user and group. It should be called only before the
 // long-running serve path — not for CLI subcommands like install, init,
