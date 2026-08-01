@@ -23,3 +23,11 @@ WHERE id = ?;
 
 -- name: CountUsers :one
 SELECT COUNT(*) FROM user;
+
+-- name: UpdateUserPassword :execrows
+UPDATE user SET password_hash = ?
+WHERE id = ?;
+
+-- name: SetUserAdmin :exec
+UPDATE user SET is_admin = 1
+WHERE id = ?;

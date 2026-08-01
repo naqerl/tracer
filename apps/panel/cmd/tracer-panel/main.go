@@ -42,6 +42,7 @@ func main() {
 		printDefaults  = flag.Bool("print-defaults", false, "print default configuration and exit")
 		generateAPIKey = flag.Bool("generate-api-key", false, "generate and persist a new collector API key, output raw key and exit")
 		initPanel      = flag.Bool("init", false, "initialize panel: create admin user, generate collector API key, output credentials")
+		initForce      = flag.Bool("force", false, "with -init: overwrite the password of the given admin user if the panel is already initialized")
 		initUsername   = flag.String("username", "admin", "admin username for -init")
 		initPassword   = flag.String("password", "", "admin password for -init (auto-generated if empty)")
 		keyName        = flag.String("key-name", "default", "collector API key name for -generate-api-key")
@@ -50,6 +51,10 @@ func main() {
 		setCmd         = flag.NewFlagSet("set", flag.ExitOnError)
 	)
 	flag.Parse()
+
+	if *initForce && !*initPanel {
+		log.Fatal("-force requires -init")
+	}
 
 	logx.SetDefault()
 
@@ -72,7 +77,7 @@ func main() {
 	}
 
 	if *initPanel {
-		if err := initPanelCmd(*initUsername, *initPassword); err != nil {
+		if err := initPanelCmd(*initUsername, *initPassword, *initForce); err != nil {
 			if errors.Is(err, cli.ErrAlreadyInitialized) {
 				fmt.Fprintln(os.Stderr, "Panel already initialized")
 				os.Exit(2)
@@ -149,12 +154,13 @@ func generateAPIKeyCmd(name string) error {
 	return nil
 }
 
-func initPanelCmd(username, password string) error {
+func initPanelCmd(username, password string, force bool) error {
 	ctx := context.Background()
 
 	result, err := cli.InitPanel(ctx, cli.InitOptions{
 		Username: username,
 		Password: password,
+		Force:    force,
 	})
 	if err != nil {
 		return err

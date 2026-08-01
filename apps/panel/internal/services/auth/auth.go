@@ -33,6 +33,7 @@ const (
 var (
 	ErrInvalidCredentials = errors.New("invalid credentials")
 	ErrSessionExpired     = errors.New("session expired")
+	ErrUserNotFound       = errors.New("user not found")
 )
 
 type Service struct {
@@ -169,6 +170,56 @@ func (s *Service) HasAnyUsers(ctx context.Context) (bool, error) {
 	}
 
 	return count > 0, nil
+}
+
+// ResetPassword replaces the password of the user with the given username,
+// promotes them to admin, and invalidates all of their existing sessions.
+// Returns ErrUserNotFound if no user with that username exists.
+func (s *Service) ResetPassword(ctx context.Context, username, newPassword string) error {
+	if err := (RegisterRequest{Username: username, Password: newPassword}).Validate(); err != nil {
+		return fmt.Errorf("validate reset request: %w", err)
+	}
+
+	creds, err := db.New(s.handle.Read()).FindUserCredsByUsername(ctx, username)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrUserNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("could not find user by username: %w", err)
+	}
+
+	hash, err := hashPassword(newPassword)
+	if err != nil {
+		return fmt.Errorf("could not hash password: %w", err)
+	}
+
+	err = s.handle.Write(ctx, func(tx db.DBTX) error {
+		q := db.New(tx)
+		rows, err := q.UpdateUserPassword(ctx, db.UpdateUserPasswordParams{
+			ID:           creds.ID,
+			PasswordHash: hash,
+		})
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrUserNotFound
+		}
+		if err != nil {
+			return err
+		}
+		if rows == 0 {
+			// User was deleted between the read and the write.
+			return ErrUserNotFound
+		}
+		if err := q.SetUserAdmin(ctx, creds.ID); err != nil {
+			return err
+		}
+		return q.DeleteSessionsByUser(ctx, creds.ID)
+	})
+	if err != nil {
+		return fmt.Errorf("could not reset password: %w", err)
+	}
+
+	slog.Info("Password reset", "username", username)
+	return nil
 }
 
 // Session management

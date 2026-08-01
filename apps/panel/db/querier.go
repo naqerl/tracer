@@ -39,6 +39,7 @@ type Querier interface {
 	DeleteOldLogs(ctx context.Context, createdAt int64) error
 	DeleteOldMemPeriods(ctx context.Context, endedAt sql.NullInt64) error
 	DeleteSession(ctx context.Context, id string) error
+	DeleteSessionsByUser(ctx context.Context, userID int64) error
 	DeleteUser(ctx context.Context, id int64) error
 	DeleteUserAPIKey(ctx context.Context, id int64) error
 	DisableNotifier(ctx context.Context, id int64) error
@@ -100,6 +101,8 @@ type Querier interface {
 	RemoveAllNotifierSubscriptions(ctx context.Context, notifierID int64) error
 	RevokeAppAccess(ctx context.Context, arg RevokeAppAccessParams) error
 	SaveHealthPeriod(ctx context.Context, arg SaveHealthPeriodParams) error
+	SetUserAdmin(ctx context.Context, id int64) error
+	UpdateUserPassword(ctx context.Context, arg UpdateUserPasswordParams) (int64, error)
 	ValidateAndUpdateCollectorAPIKey(ctx context.Context, arg ValidateAndUpdateCollectorAPIKeyParams) (int64, error)
 	ValidateAndUpdateUserAPIKey(ctx context.Context, arg ValidateAndUpdateUserAPIKeyParams) (int64, error)
 }

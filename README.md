@@ -63,6 +63,24 @@ sudo systemctl enable --now tracer-collector
 
 Access the panel at **http://localhost:8080**.
 
+### Panel initialization & password reset
+
+The installer initializes the panel automatically, but you can do it manually:
+
+```bash
+# Create the admin user and collector API key (prints credentials to stdout)
+sudo tracer-panel -init -username admin -password 'your-password'
+
+# If the panel is already initialized, overwrite the admin password instead
+# (exits 0; invalidates existing sessions of the user, promotes them to admin)
+sudo tracer-panel -init -force -username admin -password 'new-password'
+```
+
+- Without `-force`, `-init` on an already-initialized panel prints
+  `Panel already initialized` to stderr and exits with code 2.
+- If `-password` is omitted, a random password is generated and printed.
+- `-init -force` never touches the existing collector API key.
+
 ## Architecture
 
 - Collectors connect to the panel via WebSocket, register their apps, and stream log events

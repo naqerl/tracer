@@ -131,3 +131,31 @@ func (q *Queries) ListUsers(ctx context.Context) ([]User, error) {
 	}
 	return items, nil
 }
+
+const setUserAdmin = `-- name: SetUserAdmin :exec
+UPDATE user SET is_admin = 1
+WHERE id = ?
+`
+
+func (q *Queries) SetUserAdmin(ctx context.Context, id int64) error {
+	_, err := q.db.ExecContext(ctx, setUserAdmin, id)
+	return err
+}
+
+const updateUserPassword = `-- name: UpdateUserPassword :execrows
+UPDATE user SET password_hash = ?
+WHERE id = ?
+`
+
+type UpdateUserPasswordParams struct {
+	PasswordHash string
+	ID           int64
+}
+
+func (q *Queries) UpdateUserPassword(ctx context.Context, arg UpdateUserPasswordParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, updateUserPassword, arg.PasswordHash, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}

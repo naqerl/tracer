@@ -2,6 +2,8 @@ package auth
 
 import (
 	"database/sql"
+	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -17,10 +19,18 @@ import (
 func newTestDB(t *testing.T) *dbmanager.DBHandle {
 	t.Helper()
 
-	db, err := sql.Open("sqlite", "file::memory:?cache=shared")
+	// Unique in-memory database per test so parallel or repeated runs
+	// cannot share state through sqlite's shared cache.
+	name := strings.ReplaceAll(t.Name(), "/", "_")
+	db, err := sql.Open("sqlite", fmt.Sprintf("file:%s?mode=memory&cache=shared", name))
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
+	t.Cleanup(func() {
+		if err := db.Close(); err != nil {
+			t.Errorf("close db: %v", err)
+		}
+	})
 
 	provider, err := goose.NewProvider(goose.DialectSQLite3, db, panelmigrations.Embed)
 	if err != nil {
@@ -37,7 +47,6 @@ func newTestDB(t *testing.T) *dbmanager.DBHandle {
 func TestGenerateAndValidateCollectorAPIKey(t *testing.T) {
 	ctx := t.Context()
 	db := newTestDB(t)
-	t.Cleanup(func() { _ = db.Close() })
 
 	svc := New(db)
 
@@ -83,7 +92,6 @@ func TestGenerateAndValidateCollectorAPIKey(t *testing.T) {
 func TestListCollectorAPIKeysReturnsMaskedDisplay(t *testing.T) {
 	ctx := t.Context()
 	db := newTestDB(t)
-	t.Cleanup(func() { _ = db.Close() })
 
 	svc := New(db)
 
@@ -111,7 +119,6 @@ func TestListCollectorAPIKeysReturnsMaskedDisplay(t *testing.T) {
 func TestValidateCollectorAPIKeyUpdatesLastUsedAt(t *testing.T) {
 	ctx := t.Context()
 	db := newTestDB(t)
-	t.Cleanup(func() { _ = db.Close() })
 
 	svc := New(db)
 
@@ -177,5 +184,93 @@ func TestGenerateCollectorAPIKeyRejectsTooLongName(t *testing.T) {
 	err := req.Validate()
 	if err == nil {
 		t.Fatal("expected validation error")
+	}
+}
+
+func TestResetPasswordOverwritesPasswordAndInvalidatesSessions(t *testing.T) {
+	ctx := t.Context()
+	db := newTestDB(t)
+
+	svc := New(db)
+
+	// Register as a regular user: the reset must promote them to admin.
+	user, err := svc.Register(ctx, RegisterRequest{
+		Username: "admin",
+		Password: "old-password",
+		IsAdmin:  false,
+	})
+	if err != nil {
+		t.Fatalf("register user: %v", err)
+	}
+
+	// Create a session before the reset; it must be invalidated.
+	oldToken, err := svc.CreateSession(ctx, user.ID)
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+
+	if err := svc.ResetPassword(ctx, "admin", "new-password"); err != nil {
+		t.Fatalf("reset password: %v", err)
+	}
+
+	// Old password must no longer work.
+	if _, err := svc.Login(ctx, "admin", "old-password"); !errors.Is(err, ErrInvalidCredentials) {
+		t.Fatalf("expected ErrInvalidCredentials with old password, got %v", err)
+	}
+
+	// New password must work.
+	if _, err := svc.Login(ctx, "admin", "new-password"); err != nil {
+		t.Fatalf("login with new password: %v", err)
+	}
+
+	// Pre-reset session token must be invalidated.
+	if _, err := svc.ValidateSession(ctx, oldToken); !errors.Is(err, ErrSessionExpired) {
+		t.Fatalf("expected ErrSessionExpired for pre-reset session, got %v", err)
+	}
+
+	// User must be promoted to admin.
+	row, err := paneldb.New(db.Read()).GetUserByID(ctx, user.ID)
+	if err != nil {
+		t.Fatalf("get user by id: %v", err)
+	}
+	if row.IsAdmin != 1 {
+		t.Fatalf("expected user to be admin after reset, got is_admin=%d", row.IsAdmin)
+	}
+}
+
+func TestResetPasswordUserNotFound(t *testing.T) {
+	ctx := t.Context()
+	db := newTestDB(t)
+
+	svc := New(db)
+
+	err := svc.ResetPassword(ctx, "ghost", "new-password")
+	if !errors.Is(err, ErrUserNotFound) {
+		t.Fatalf("expected ErrUserNotFound, got %v", err)
+	}
+}
+
+func TestResetPasswordRejectsInvalidPassword(t *testing.T) {
+	ctx := t.Context()
+	db := newTestDB(t)
+
+	svc := New(db)
+
+	if _, err := svc.Register(ctx, RegisterRequest{
+		Username: "admin",
+		Password: "old-password",
+		IsAdmin:  true,
+	}); err != nil {
+		t.Fatalf("register user: %v", err)
+	}
+
+	err := svc.ResetPassword(ctx, "admin", "short")
+	if err == nil {
+		t.Fatal("expected validation error for too-short password")
+	}
+
+	// Original password must be untouched.
+	if _, err := svc.Login(ctx, "admin", "old-password"); err != nil {
+		t.Fatalf("login with original password after rejected reset: %v", err)
 	}
 }

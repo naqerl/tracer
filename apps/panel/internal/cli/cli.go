@@ -21,7 +21,10 @@ type InitResult struct {
 // If Username or Password are empty, env vars TRACER_ADMIN_USERNAME and
 // TRACER_ADMIN_PASSWORD will be used. If those are empty, Username defaults
 // to "admin" and Password is auto-generated.
+// Force overwrites the password of the given admin user when the panel is
+// already initialized instead of returning ErrAlreadyInitialized.
 type InitOptions struct {
 	Username string
 	Password string
+	Force    bool
 }

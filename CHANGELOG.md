@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- `tracer-panel -init -force` overwrites the password of the given admin user when the panel is already initialized and exits 0 instead of 2 (existing sessions are invalidated, missing user is created as admin)
+
 ## [0.1.16] - 2026-06-28
 
 ### Changed
