@@ -23,7 +23,10 @@ RUN go mod download
 
 COPY . .
 
-# Build via make with env var overrides (no systemd in container)
+# Build via make with env var overrides (no systemd in container).
+# CGO_ENABLED=0 is critical: the runtime stage is scratch (no libc),
+# so the binary MUST be statically linked.
+ENV CGO_ENABLED=0
 RUN WITH_SYSTEMD=no make build-panel
 
 # ── Stage 2: Runtime (scratch — minimal) ──────────────────────────────────────
