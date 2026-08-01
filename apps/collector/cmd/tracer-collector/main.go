@@ -18,6 +18,7 @@ import (
 	"syscall"
 	"time"
 
+	"tracer/apps/collector"
 	"tracer/apps/collector/internal/app"
 	"tracer/apps/collector/internal/config"
 	"tracer/apps/collector/internal/formatguesser"
@@ -43,8 +44,14 @@ func main() {
 
 		configPath    = flag.String("config", "", "path to config file")
 		printDefaults = flag.Bool("print-defaults", false, "print default configuration and exit")
+		printVersion  = flag.Bool("version", false, "print version and exit")
 	)
 	flag.Parse()
+
+	if *printVersion {
+		fmt.Printf("tracer-collector %s\n", collector.Version)
+		return
+	}
 
 	logx.SetDefault()
 
@@ -77,6 +84,13 @@ func main() {
 				log.Fatalf("failed to load config: %s", err)
 			}
 			handleSet(cfgPath, cfg, setCmd)
+			return
+		case "verify":
+			cfg, err := config.Load(cfgPath)
+			if err != nil {
+				log.Fatalf("failed to load config: %s", err)
+			}
+			handleVerify(ctx, cfg)
 			return
 		case "update":
 			handleUpdate()
@@ -448,6 +462,25 @@ func handleSet(path string, cfg config.Config, setCmd *flag.FlagSet) {
 	}
 
 	fmt.Printf("Set %s successfully\n", key)
+}
+
+func handleVerify(ctx context.Context, cfg config.Config) {
+	appNames := make([]string, 0, len(cfg.Apps))
+	for _, app := range cfg.Apps {
+		appNames = append(appNames, app.Name)
+	}
+	if len(appNames) == 0 {
+		fmt.Fprintln(os.Stderr, "Warning: no apps configured; verify checks connectivity only")
+	}
+
+	verifyCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+
+	if err := sender.Verify(verifyCtx, cfg.Sender, appNames); err != nil {
+		log.Fatalf("Verification failed: %v", err)
+	}
+
+	fmt.Printf("Verification successful: connected to panel at %s, authenticated, and registered\n", cfg.Sender.PanelHost)
 }
 
 func handleUpdate() {

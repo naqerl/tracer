@@ -74,7 +74,7 @@ log "Installing tracer ${TRACER_VERSION} (${ARCH})..."
 
 # --- Download binaries -------------------------------------------------------
 BINARIES=("tracer-collector")
-if [ -z "${TRACER_COLLECTOR_ONLY:-}" ]; then
+if [ "${TRACER_COLLECTOR_ONLY:-}" != "1" ]; then
 	BINARIES+=("tracer-panel")
 fi
 
@@ -95,7 +95,10 @@ log "Verifying checksums..."
 # where checksums.txt still lists the panel binary we did not download.
 curl -fsSL "${DOWNLOAD_URL}/${TRACER_VERSION}/checksums.txt" -o "$TMPDIR/checksums.txt" || die "Failed to download checksums"
 for bin in "${BINARIES[@]}"; do
-	expected=$(grep "bin/${bin}$" "$TMPDIR/checksums.txt" | awk '{print $1}')
+	# tail -1 takes the most recent entry if the checksums file accumulated
+	# multiple hashes for the same binary; || true keeps the guard below
+	# reachable under set -euo pipefail.
+	expected=$(grep "bin/${bin}$" "$TMPDIR/checksums.txt" | awk '{print $1}' | tail -1 || true)
 	if [ -z "$expected" ]; then
 		die "No checksum entry found for ${bin} in release checksums"
 	fi
@@ -127,7 +130,7 @@ log "Running tracer-collector install..."
 tracer-collector install
 
 # --- Run tracer-panel install (if applicable) --------------------------------
-if [ -z "${TRACER_COLLECTOR_ONLY:-}" ]; then
+if [ "${TRACER_COLLECTOR_ONLY:-}" != "1" ]; then
 	log "Running tracer-panel install..."
 	tracer-panel install
 
@@ -144,14 +147,14 @@ if [ -z "${TRACER_COLLECTOR_ONLY:-}" ]; then
 	else
 		ADMIN_USERNAME=$(echo "$OUTPUT" | grep '^admin_username=' | cut -d= -f2)
 		ADMIN_PASSWORD=$(echo "$OUTPUT" | grep '^admin_password=' | cut -d= -f2)
-		COLLECTOR_API_KEY=$(echo "$OUTPUT" | grep '^collector_api_key=' | cut -d= -f2)
+		INIT_API_KEY=$(echo "$OUTPUT" | grep '^collector_api_key=' | cut -d= -f2)
 
-		if [ -z "$COLLECTOR_API_KEY" ]; then
+		if [ -z "$INIT_API_KEY" ]; then
 			die "Panel init succeeded but no collector_api_key in output"
 		fi
 
 		log "Configuring collector with panel API key..."
-		tracer-collector set api-key "$COLLECTOR_API_KEY"
+		tracer-collector set api-key "$INIT_API_KEY"
 
 		echo ""
 		echo "========================================"
@@ -174,9 +177,24 @@ echo "========================================"
 echo "Installation complete!"
 echo "========================================"
 echo ""
+if [ "${TRACER_COLLECTOR_ONLY:-}" = "1" ]; then
+	echo "Configure the collector to connect to your panel:"
+	echo "  sudo tracer-collector set api-key <collector-api-key>"
+	echo "  sudo tracer-collector set panel-host <panel-host>:8080"
+	echo ""
+	echo "Then verify the connection:"
+	echo "  sudo tracer-collector verify"
+	echo ""
+elif [ -z "${INIT_API_KEY:-}" ]; then
+	echo "Panel was already initialized, so the collector API key was not configured."
+	echo "Set it before starting the collector:"
+	echo "  sudo tracer-collector set api-key <collector-api-key>"
+	echo "  sudo tracer-collector verify"
+	echo ""
+fi
 echo "Start services with:"
 echo "  sudo systemctl start tracer-collector"
-if [ -z "${TRACER_COLLECTOR_ONLY:-}" ]; then
+if [ "${TRACER_COLLECTOR_ONLY:-}" != "1" ]; then
 	echo "  sudo systemctl start tracer-panel"
 fi
 echo ""

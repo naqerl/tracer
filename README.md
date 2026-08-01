@@ -48,6 +48,29 @@ tracer-collector add myapp
 tracer-collector add /var/log/myapp.log
 ```
 
+### Point the collector at your panel
+
+The collector connects to the panel over WebSocket. On a remote server (or
+after a collector-only install) you must tell it where the panel is and which
+API key to use:
+
+```bash
+# API key: create it in the panel UI (Settings → Collector API Keys)
+sudo tracer-collector set api-key <collector-api-key>
+# Panel address: host:port (no scheme; ws:// is implied)
+sudo tracer-collector set panel-host panel.example.com:8080
+```
+
+Check that the collector can reach the panel, authenticate, and register:
+
+```bash
+sudo tracer-collector verify
+```
+
+`verify` reports actionable errors: an unset key/host, a 401 rejection
+(invalid API key), a handshake rejection (not a tracer panel), or a connection
+failure. It exits non-zero on failure, so it can be used in setup scripts.
+
 If logs use inconsistent field names, resolve conflicts iteratively with `--favour`:
 
 ```bash

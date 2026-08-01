@@ -15,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	panelbuild "tracer/apps/panel"
 	"tracer/apps/panel/internal/cli"
 	"tracer/apps/panel/internal/config"
 	"tracer/apps/panel/internal/dbmanager"
@@ -48,9 +49,15 @@ func main() {
 		keyName        = flag.String("key-name", "default", "collector API key name for -generate-api-key")
 		noAuth         = flag.Bool("no-auth", false, "disable authentication, inject admin user for all requests")
 		readOnly       = flag.Bool("readonly", false, "allow only GET requests")
+		printVersion   = flag.Bool("version", false, "print version and exit")
 		setCmd         = flag.NewFlagSet("set", flag.ExitOnError)
 	)
 	flag.Parse()
+
+	if *printVersion {
+		fmt.Printf("tracer-panel %s\n", panelbuild.Version)
+		return
+	}
 
 	if *initForce && !*initPanel {
 		log.Fatal("-force requires -init")
