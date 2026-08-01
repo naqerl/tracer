@@ -15,6 +15,10 @@
 #   TRACER_DIR           - installation directory for binaries (default: /usr/local/bin)
 #   DEBUG                - set to 1 to enable shell tracing
 #
+# Note: sudo resets the environment by default, so pass variables through sudo
+# explicitly instead of exporting them first, e.g.:
+#   curl -fsSL https://git.naqerl.com/naqerl/tracer/raw/main/install.sh | sudo TRACER_COLLECTOR_ONLY=1 bash
+#
 
 set -euo pipefail
 
@@ -76,27 +80,42 @@ fi
 
 TMPDIR=$(mktemp -d) || die "Failed to create temporary directory"
 trap 'rm -rf "$TMPDIR"' EXIT
+mkdir -p "$TMPDIR/bin"
 
 for bin in "${BINARIES[@]}"; do
 	URL="${DOWNLOAD_URL}/${TRACER_VERSION}/${bin}"
 	log "Downloading ${bin}..."
-	curl -fsSL "$URL" -o "$TMPDIR/$bin" || die "Failed to download ${bin} from ${URL}"
+	curl -fsSL "$URL" -o "$TMPDIR/bin/$bin" || die "Failed to download ${bin} from ${URL}"
 done
 
 log "Verifying checksums..."
+# Release checksums.txt lists binaries with a "bin/" prefix (repo-relative
+# paths), so files are downloaded into "$TMPDIR/bin". Each downloaded binary
+# is verified against its own entry; this also works in collector-only mode,
+# where checksums.txt still lists the panel binary we did not download.
 curl -fsSL "${DOWNLOAD_URL}/${TRACER_VERSION}/checksums.txt" -o "$TMPDIR/checksums.txt" || die "Failed to download checksums"
-(cd "$TMPDIR" && sha256sum -c "checksums.txt") || die "Checksum verification failed"
+for bin in "${BINARIES[@]}"; do
+	expected=$(grep "bin/${bin}$" "$TMPDIR/checksums.txt" | awk '{print $1}')
+	if [ -z "$expected" ]; then
+		die "No checksum entry found for ${bin} in release checksums"
+	fi
+	actual=$(sha256sum "$TMPDIR/bin/$bin" | awk '{print $1}')
+	if [ "$actual" != "$expected" ]; then
+		die "Checksum mismatch for ${bin}: expected ${expected}, got ${actual}"
+	fi
+	log "  ${bin} checksum OK"
+done
 
 log "Setting permissions..."
 for bin in "${BINARIES[@]}"; do
-	chmod 0755 "$TMPDIR/$bin"
+	chmod 0755 "$TMPDIR/bin/$bin"
 done
 
 # --- Install binaries --------------------------------------------------------
 log "Installing binaries to ${TRACER_DIR}..."
 mkdir -p "$TRACER_DIR"
 for bin in "${BINARIES[@]}"; do
-	cp "$TMPDIR/$bin" "${TRACER_DIR}/${bin}"
+	cp "$TMPDIR/bin/$bin" "${TRACER_DIR}/${bin}"
 	log "  Installed ${TRACER_DIR}/${bin}"
 done
 

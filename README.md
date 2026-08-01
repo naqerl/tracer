@@ -28,9 +28,11 @@ curl -fsSL https://git.naqerl.com/naqerl/tracer/raw/main/install.sh | sudo bash
 **Collector only** (for remote servers that should not run the panel):
 
 ```bash
-export TRACER_COLLECTOR_ONLY=1
-curl -fsSL https://git.naqerl.com/naqerl/tracer/raw/main/install.sh | sudo bash
+curl -fsSL https://git.naqerl.com/naqerl/tracer/raw/main/install.sh | sudo TRACER_COLLECTOR_ONLY=1 bash
 ```
+
+> Pass `TRACER_COLLECTOR_ONLY` *through* `sudo` — a plain `export` in your shell
+> won't reach the script, because `sudo` resets the environment by default.
 
 The script downloads pre-built binaries, creates system users (`tracer-panel`, `tracer-collector`, group `tracer`), installs systemd services, and creates default configs at `/etc/tracer/panel.yaml` and `/etc/tracer/collector.yaml`.
 
