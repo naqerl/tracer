@@ -37,7 +37,8 @@ var (
 )
 
 type Service struct {
-	handle *dbmanager.DBHandle
+	handle    *dbmanager.DBHandle
+	keySecret []byte
 }
 
 type RegisterRequest struct {
@@ -89,8 +90,15 @@ func (r GenerateUserAPIKeyRequest) Validate() error {
 	return domain.ValidateAPIKeyName(r.Name)
 }
 
-func New(handle *dbmanager.DBHandle) *Service {
-	return &Service{handle: handle}
+// New creates a Service with the given panel database handle.
+// keySecret is the master key used to encrypt API key plaintext at rest so it
+// can be revealed later. Load it with LoadKeySecret. New panics if keySecret
+// is not exactly keySecretSize bytes, catching misconfiguration at startup.
+func New(handle *dbmanager.DBHandle, keySecret []byte) *Service {
+	if len(keySecret) != keySecretSize {
+		panic(fmt.Sprintf("auth.New: key secret must be %d bytes, got %d", keySecretSize, len(keySecret)))
+	}
+	return &Service{handle: handle, keySecret: keySecret}
 }
 
 // Password hashing
@@ -328,11 +336,16 @@ func (s *Service) GenerateCollectorAPIKey(ctx context.Context, req GenerateColle
 
 	var row db.CollectorApiKey
 	err = s.handle.Write(ctx, func(tx db.DBTX) error {
+		encrypted, err := encryptKey(s.keySecret, key)
+		if err != nil {
+			return fmt.Errorf("encrypt collector api key: %w", err)
+		}
 		result, err := db.New(tx).CreateCollectorAPIKey(ctx, db.CreateCollectorAPIKeyParams{
-			Name:      req.Name,
-			KeyHash:   hashAPIKey(key),
-			KeySuffix: key[max(0, len(key)-6):],
-			CreatedAt: time.Now().UTC().Unix(),
+			Name:         req.Name,
+			KeyHash:      hashAPIKey(key),
+			KeySuffix:    key[max(0, len(key)-6):],
+			KeyEncrypted: encrypted,
+			CreatedAt:    time.Now().UTC().Unix(),
 		})
 		if err != nil {
 			return err
@@ -354,6 +367,14 @@ func (s *Service) ListCollectorAPIKeys(ctx context.Context) ([]db.GetCollectorAP
 
 func (s *Service) GetCollectorAPIKeyByName(ctx context.Context, name string) (db.CollectorApiKey, error) {
 	return db.New(s.handle.Read()).GetCollectorAPIKeyByName(ctx, name)
+}
+
+// RevealCollectorAPIKey decrypts and returns the plaintext of the given
+// collector API key row. Returns ErrKeyNotRevealable for keys created before
+// reveal support (no stored ciphertext) and ErrKeyDecryptFailed when
+// decryption fails.
+func (s *Service) RevealCollectorAPIKey(key db.CollectorApiKey) (string, error) {
+	return decryptKey(s.keySecret, key.KeyEncrypted)
 }
 
 func (s *Service) DeleteCollectorAPIKey(ctx context.Context, name string) error {

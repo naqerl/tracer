@@ -188,6 +188,8 @@ func (h *handler) setup(w http.ResponseWriter, r *http.Request) {
 	authmw.SetSessionCookie(w, r, token, int(h.sessionMax.Seconds()))
 	slog.Info("Admin user created and logged in", "username", username)
 
+	// The page shows the collector API key plaintext (only once); never cache it.
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
 	SetupSuccessPage("Setup Complete - Tracer", username, collectorAPIKey).Render(r.Context(), w)
 }

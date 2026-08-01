@@ -87,7 +87,7 @@ func setupTestService(t *testing.T) (*Service, *dbmanager.DBHandle, int64, strin
 	userSvc := usersvc.NewService(panelDB)
 
 	// --- Auth service (to create user) ---
-	authSvc := authsvc.New(panelDB)
+	authSvc := authsvc.New(panelDB, testKeySecret())
 
 	user, err := authSvc.Register(ctx, authsvc.RegisterRequest{
 		Username: "admin",
@@ -134,7 +134,7 @@ func setupTestServiceNoAccess(t *testing.T) (*Service, int64) {
 	mgr := newTestDBManager(t)
 	tracker := ingestsvc.NewTracker()
 	userSvc := usersvc.NewService(panelDB)
-	authSvc := authsvc.New(panelDB)
+	authSvc := authsvc.New(panelDB, testKeySecret())
 
 	// Register collector anyway (so it exists)
 	ingestSvc := ingestsvc.New(mgr, nil, nil, &testIngestConfig{
@@ -1854,4 +1854,9 @@ func TestGetStatsHistory_PanelService_Integration(t *testing.T) {
 	if len(result.DiskPeriods) != 1 {
 		t.Fatalf("expected 1 Disk period, got %d", len(result.DiskPeriods))
 	}
+}
+
+// testKeySecret returns a fixed 32-byte master key for tests.
+func testKeySecret() []byte {
+	return []byte("0123456789abcdef0123456789abcdef")
 }

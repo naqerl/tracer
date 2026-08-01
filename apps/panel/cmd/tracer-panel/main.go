@@ -196,8 +196,14 @@ func serve(ctx context.Context, cfg *config.Config, noAuth, readOnly bool) error
 	}
 	defer panelHandle.Close()
 
+	// Load (or create) the master key used to encrypt API key plaintext at rest.
+	keySecret, err := auth.LoadKeySecret(cfg.GetDataDir())
+	if err != nil {
+		return fmt.Errorf("load key secret: %w", err)
+	}
+
 	// Initialize services
-	authService := auth.New(panelHandle)
+	authService := auth.New(panelHandle, keySecret)
 	userService := user.NewService(panelHandle)
 
 	// Check if first run (no users exist)

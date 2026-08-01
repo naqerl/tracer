@@ -3,16 +3,19 @@ package static
 import (
 	"embed"
 	"io/fs"
+	"log"
 	"net/http"
 )
 
-//go:embed htmx.min.js anime.umd.min.js uPlot.iife.min.js uPlot.min.css scrollbar.css
-var assets embed.FS
+//go:embed static
+var StaticFS embed.FS
 
-func Handler() http.Handler {
-	sub, err := fs.Sub(assets, ".")
+func InitMux() *http.ServeMux {
+	mux := http.NewServeMux()
+	fs, err := fs.Sub(StaticFS, "static")
 	if err != nil {
-		panic(err)
+		log.Fatalf("could not create sub file system for static with %v", err)
 	}
-	return http.FileServer(http.FS(sub))
+	mux.Handle("/", http.FileServer(http.FS(fs)))
+	return mux
 }

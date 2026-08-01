@@ -22,11 +22,12 @@ type AppHealthPeriod struct {
 }
 
 type CollectorApiKey struct {
-	Name       string
-	KeyHash    string
-	KeySuffix  string
-	CreatedAt  int64
-	LastUsedAt sql.NullInt64
+	Name         string
+	KeyHash      string
+	KeySuffix    string
+	CreatedAt    int64
+	LastUsedAt   sql.NullInt64
+	KeyEncrypted string
 }
 
 type CpuPeriod struct {

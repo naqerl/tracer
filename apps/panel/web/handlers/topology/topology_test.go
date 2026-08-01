@@ -47,7 +47,7 @@ func newAuthedHandler(t *testing.T) (http.Handler, *topologysvc.Service, string)
 	db := newTestDB(t)
 	t.Cleanup(func() { _ = db.Close() })
 
-	authService := authsvc.New(db)
+	authService := authsvc.New(db, testKeySecret())
 	userService := usersvc.NewService(db)
 	topologyService := topologysvc.NewService(nil)
 
@@ -188,4 +188,9 @@ func TestDecodeDataInvalid(t *testing.T) {
 	if err := env.DecodeData(&evt); err == nil {
 		t.Fatal("expected error for int data, got nil")
 	}
+}
+
+// testKeySecret returns a fixed 32-byte master key for tests.
+func testKeySecret() []byte {
+	return []byte("0123456789abcdef0123456789abcdef")
 }

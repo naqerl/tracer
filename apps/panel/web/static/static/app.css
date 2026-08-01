@@ -1,5 +1,22 @@
 /* Application-specific styles */
 
+/* Icon buttons (e.g. the API key reveal toggle). The icons are <img> SVGs
+   with their own stroke color, so hover is expressed via opacity. */
+.icon-btn {
+	background: none;
+	border: none;
+	padding: 0;
+	cursor: pointer;
+	line-height: 0;
+}
+.icon-btn img {
+	opacity: 0.75;
+	transition: opacity 0.15s;
+}
+.icon-btn:hover img {
+	opacity: 1;
+}
+
 /* Pulse animation for live indicators */
 @keyframes pulse {
 	0%, 100% { opacity: 1; }

@@ -4,6 +4,8 @@
 
 ### Added
 - `tracer-panel -init -force` overwrites the password of the given admin user when the panel is already initialized and exits 0 instead of 2 (existing sessions are invalidated, missing user is created as admin)
+- Collector API key detail page: reveal the full key with an eye icon (POST-backed, so it is rejected by the read-only middleware — keys can never be exposed in read-only mode)
+- Collector API key plaintext is now encrypted at rest (AES-256-GCM) with a master key in `{dataDir}/keys.key` (0600) or `TRACER_KEY_SECRET` env var; keys created before this version have no stored plaintext and show "Not revealable"
 
 ## [0.1.16] - 2026-06-28
 

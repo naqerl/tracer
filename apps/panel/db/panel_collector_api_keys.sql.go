@@ -12,16 +12,17 @@ import (
 
 const createCollectorAPIKey = `-- name: CreateCollectorAPIKey :one
 
-INSERT INTO collector_api_key (name, key_hash, key_suffix, created_at)
-VALUES (?, ?, ?, ?)
-RETURNING name, key_hash, key_suffix, created_at, last_used_at
+INSERT INTO collector_api_key (name, key_hash, key_suffix, key_encrypted, created_at)
+VALUES (?, ?, ?, ?, ?)
+RETURNING name, key_hash, key_suffix, created_at, last_used_at, key_encrypted
 `
 
 type CreateCollectorAPIKeyParams struct {
-	Name      string
-	KeyHash   string
-	KeySuffix string
-	CreatedAt int64
+	Name         string
+	KeyHash      string
+	KeySuffix    string
+	KeyEncrypted string
+	CreatedAt    int64
 }
 
 // Collector API keys
@@ -30,6 +31,7 @@ func (q *Queries) CreateCollectorAPIKey(ctx context.Context, arg CreateCollector
 		arg.Name,
 		arg.KeyHash,
 		arg.KeySuffix,
+		arg.KeyEncrypted,
 		arg.CreatedAt,
 	)
 	var i CollectorApiKey
@@ -39,6 +41,7 @@ func (q *Queries) CreateCollectorAPIKey(ctx context.Context, arg CreateCollector
 		&i.KeySuffix,
 		&i.CreatedAt,
 		&i.LastUsedAt,
+		&i.KeyEncrypted,
 	)
 	return i, err
 }
@@ -54,7 +57,7 @@ func (q *Queries) DeleteCollectorAPIKey(ctx context.Context, name string) error 
 }
 
 const getCollectorAPIKeyByName = `-- name: GetCollectorAPIKeyByName :one
-SELECT name, key_hash, key_suffix, created_at, last_used_at FROM collector_api_key
+SELECT name, key_hash, key_suffix, created_at, last_used_at, key_encrypted FROM collector_api_key
 WHERE name = ?
 `
 
@@ -67,6 +70,7 @@ func (q *Queries) GetCollectorAPIKeyByName(ctx context.Context, name string) (Co
 		&i.KeySuffix,
 		&i.CreatedAt,
 		&i.LastUsedAt,
+		&i.KeyEncrypted,
 	)
 	return i, err
 }

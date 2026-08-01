@@ -34,13 +34,14 @@ type handler struct {
 	dbManager     *dbmanager.Manager
 	notifyService *notify.Service
 	cfg           *config.Config
+	readOnly      bool
 }
 
 func appKey(collectorName, appName string) string {
 	return collectorName + ":" + appName
 }
 
-func InitMux(authService *auth.Service, userService *usersvc.Service, ingestService *ingest.Service, dbManager *dbmanager.Manager, notifyService *notify.Service, cfg *config.Config) *http.ServeMux {
+func InitMux(authService *auth.Service, userService *usersvc.Service, ingestService *ingest.Service, dbManager *dbmanager.Manager, notifyService *notify.Service, cfg *config.Config, readOnly bool) *http.ServeMux {
 	m := http.NewServeMux()
 	h := handler{
 		authService:   authService,
@@ -49,6 +50,7 @@ func InitMux(authService *auth.Service, userService *usersvc.Service, ingestServ
 		dbManager:     dbManager,
 		notifyService: notifyService,
 		cfg:           cfg,
+		readOnly:      readOnly,
 	}
 
 	// Users management
@@ -62,6 +64,7 @@ func InitMux(authService *auth.Service, userService *usersvc.Service, ingestServ
 	// Collector API keys
 	m.HandleFunc("POST /admin/collector-api-keys", h.createCollectorAPIKey)
 	m.HandleFunc("GET /admin/collector-api-keys/{name}", h.getCollectorAPIKey)
+	m.HandleFunc("POST /admin/collector-api-keys/{name}/reveal", h.revealCollectorAPIKey)
 	m.HandleFunc("DELETE /admin/collector-api-keys/{name}", h.deleteCollectorAPIKey)
 
 	// User API keys (LLM compatibility)
@@ -458,13 +461,13 @@ func (h *handler) getCollectorAPIKey(w http.ResponseWriter, r *http.Request) {
 	}
 
 	key, err := h.authService.GetCollectorAPIKeyByName(r.Context(), name)
+	if errors.Is(err, sql.ErrNoRows) {
+		templates.RenderError(w, r, "Error", "Collector API key not found", http.StatusNotFound)
+		return
+	}
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			templates.ErrorPage("Error", "Collector API key not found", http.StatusNotFound, templates.NavData{Since: "24h"}).Render(r.Context(), w)
-			return
-		}
 		slog.Error("Failed to get collector API key", "name", name, "error", err)
-		templates.ErrorPage("Error", "Failed to get collector API key", http.StatusInternalServerError, templates.NavData{Since: "24h"}).Render(r.Context(), w)
+		templates.RenderError(w, r, "Error", "Failed to get collector API key", http.StatusInternalServerError)
 		return
 	}
 
@@ -475,7 +478,64 @@ func (h *handler) getCollectorAPIKey(w http.ResponseWriter, r *http.Request) {
 		CreatedAt:     key.CreatedAt,
 		LastUsed:      key.LastUsedAt.Int64,
 		LastUsedValid: key.LastUsedAt.Valid,
+		CanReveal:     key.KeyEncrypted != "",
+		ReadOnly:      h.readOnly,
 	}).Render(r.Context(), w)
+}
+
+// revealCollectorAPIKey toggles the plaintext visibility of a collector API key.
+// The key is decrypted server-side and rendered as a fragment that htmx swaps
+// into the detail page. It is registered as POST so the global read-only
+// middleware (which rejects every non-GET request) makes reveal impossible in
+// read-only mode.
+func (h *handler) revealCollectorAPIKey(w http.ResponseWriter, r *http.Request) {
+	if _, err := h.requireAdminUser(w, r); err != nil {
+		return
+	}
+
+	name := r.PathValue("name")
+	if name == "" {
+		http.Error(w, "Invalid collector API key name", http.StatusBadRequest)
+		return
+	}
+
+	key, err := h.authService.GetCollectorAPIKeyByName(r.Context(), name)
+	if errors.Is(err, sql.ErrNoRows) {
+		templates.RenderError(w, r, "Error", "Collector API key not found", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		slog.Error("Failed to get collector API key", "name", name, "error", err)
+		templates.RenderError(w, r, "Error", "Failed to get collector API key", http.StatusInternalServerError)
+		return
+	}
+
+	props := view.CollectorAPIKeyKeyRowProps{
+		KeyName:   key.Name,
+		KeySuffix: key.KeySuffix,
+		CanReveal: key.KeyEncrypted != "",
+		Revealed:  r.FormValue("revealed") == "1",
+		ReadOnly:  h.readOnly,
+	}
+
+	if props.Revealed {
+		plaintext, err := h.authService.RevealCollectorAPIKey(key)
+		switch {
+		case errors.Is(err, auth.ErrKeyNotRevealable):
+			props.RevealError = "This key was created before reveal support and cannot be shown again."
+		case errors.Is(err, auth.ErrKeyDecryptFailed):
+			props.RevealError = "Could not decrypt the key. Check that the key secret is unchanged."
+		case err != nil:
+			slog.Error("Failed to reveal collector API key", "name", name, "error", err)
+			props.RevealError = "Failed to reveal the API key."
+		default:
+			props.PlaintextKey = plaintext
+		}
+	}
+
+	// Never let a browser cache the plaintext.
+	w.Header().Set("Cache-Control", "no-store")
+	view.CollectorAPIKeyKeyRow(props).Render(r.Context(), w)
 }
 
 // User API key handlers (LLM compatibility)

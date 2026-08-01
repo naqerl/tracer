@@ -48,7 +48,7 @@ func TestGenerateAndValidateCollectorAPIKey(t *testing.T) {
 	ctx := t.Context()
 	db := newTestDB(t)
 
-	svc := New(db)
+	svc := New(db, testKeySecret())
 
 	req := GenerateCollectorAPIKeyRequest{Name: "prod-a"}
 	if err := req.Validate(); err != nil {
@@ -93,7 +93,7 @@ func TestListCollectorAPIKeysReturnsMaskedDisplay(t *testing.T) {
 	ctx := t.Context()
 	db := newTestDB(t)
 
-	svc := New(db)
+	svc := New(db, testKeySecret())
 
 	req := GenerateCollectorAPIKeyRequest{Name: "prod-a"}
 	if err := req.Validate(); err != nil {
@@ -120,7 +120,7 @@ func TestValidateCollectorAPIKeyUpdatesLastUsedAt(t *testing.T) {
 	ctx := t.Context()
 	db := newTestDB(t)
 
-	svc := New(db)
+	svc := New(db, testKeySecret())
 
 	req := GenerateCollectorAPIKeyRequest{Name: "prod-a"}
 	if err := req.Validate(); err != nil {
@@ -191,7 +191,7 @@ func TestResetPasswordOverwritesPasswordAndInvalidatesSessions(t *testing.T) {
 	ctx := t.Context()
 	db := newTestDB(t)
 
-	svc := New(db)
+	svc := New(db, testKeySecret())
 
 	// Register as a regular user: the reset must promote them to admin.
 	user, err := svc.Register(ctx, RegisterRequest{
@@ -242,7 +242,7 @@ func TestResetPasswordUserNotFound(t *testing.T) {
 	ctx := t.Context()
 	db := newTestDB(t)
 
-	svc := New(db)
+	svc := New(db, testKeySecret())
 
 	err := svc.ResetPassword(ctx, "ghost", "new-password")
 	if !errors.Is(err, ErrUserNotFound) {
@@ -254,7 +254,7 @@ func TestResetPasswordRejectsInvalidPassword(t *testing.T) {
 	ctx := t.Context()
 	db := newTestDB(t)
 
-	svc := New(db)
+	svc := New(db, testKeySecret())
 
 	if _, err := svc.Register(ctx, RegisterRequest{
 		Username: "admin",
@@ -273,4 +273,95 @@ func TestResetPasswordRejectsInvalidPassword(t *testing.T) {
 	if _, err := svc.Login(ctx, "admin", "old-password"); err != nil {
 		t.Fatalf("login with original password after rejected reset: %v", err)
 	}
+}
+
+func TestRevealCollectorAPIKeyReturnsPlaintext(t *testing.T) {
+	ctx := t.Context()
+	db := newTestDB(t)
+
+	svc := New(db, testKeySecret())
+
+	key, row, err := svc.GenerateCollectorAPIKey(ctx, GenerateCollectorAPIKeyRequest{Name: "prod-a"})
+	if err != nil {
+		t.Fatalf("generate collector api key: %v", err)
+	}
+	if row.KeyEncrypted == "" {
+		t.Fatal("expected stored ciphertext for revealable key")
+	}
+
+	revealed, err := svc.RevealCollectorAPIKey(*row)
+	if err != nil {
+		t.Fatalf("reveal collector api key: %v", err)
+	}
+	if revealed != key {
+		t.Fatalf("expected revealed key to match plaintext, got %q want %q", revealed, key)
+	}
+}
+
+func TestRevealCollectorAPIKeyUnknownNameReturnsNoRows(t *testing.T) {
+	ctx := t.Context()
+	db := newTestDB(t)
+
+	svc := New(db, testKeySecret())
+
+	// The caller fetches the row first; unknown names surface as sql.ErrNoRows
+	// from the getter, which the handler maps to 404.
+	_, err := svc.GetCollectorAPIKeyByName(ctx, "ghost")
+	if !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("expected sql.ErrNoRows, got %v", err)
+	}
+}
+
+func TestRevealCollectorAPIKeyLegacyKeyWithoutCiphertext(t *testing.T) {
+	ctx := t.Context()
+	db := newTestDB(t)
+
+	svc := New(db, testKeySecret())
+
+	// Simulate a key created before reveal support: store only the hash.
+	err := db.Write(ctx, func(tx paneldb.DBTX) error {
+		_, err := paneldb.New(tx).CreateCollectorAPIKey(ctx, paneldb.CreateCollectorAPIKeyParams{
+			Name:      "legacy",
+			KeyHash:   "deadbeef",
+			KeySuffix: "c0ffee",
+			CreatedAt: 1,
+		})
+		return err
+	})
+	if err != nil {
+		t.Fatalf("insert legacy key: %v", err)
+	}
+
+	row, err := svc.GetCollectorAPIKeyByName(ctx, "legacy")
+	if err != nil {
+		t.Fatalf("get legacy key: %v", err)
+	}
+
+	_, err = svc.RevealCollectorAPIKey(row)
+	if !errors.Is(err, ErrKeyNotRevealable) {
+		t.Fatalf("expected ErrKeyNotRevealable, got %v", err)
+	}
+}
+
+func TestRevealCollectorAPIKeyFailsWithWrongMasterKey(t *testing.T) {
+	ctx := t.Context()
+	db := newTestDB(t)
+
+	svc := New(db, testKeySecret())
+	_, row, err := svc.GenerateCollectorAPIKey(ctx, GenerateCollectorAPIKeyRequest{Name: "prod-a"})
+	if err != nil {
+		t.Fatalf("generate collector api key: %v", err)
+	}
+
+	// A service constructed with a different master key cannot reveal.
+	other := New(db, []byte("fedcba9876543210fedcba9876543210"))
+	_, err = other.RevealCollectorAPIKey(*row)
+	if !errors.Is(err, ErrKeyDecryptFailed) {
+		t.Fatalf("expected ErrKeyDecryptFailed with wrong master key, got %v", err)
+	}
+}
+
+// testKeySecret returns a fixed 32-byte master key for tests.
+func testKeySecret() []byte {
+	return []byte("0123456789abcdef0123456789abcdef")
 }

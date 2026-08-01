@@ -81,6 +81,17 @@ sudo tracer-panel -init -force -username admin -password 'new-password'
 - If `-password` is omitted, a random password is generated and printed.
 - `-init -force` never touches the existing collector API key.
 
+### API key reveal & read-only mode
+
+- On the collector API key detail page (`/settings/admin/collector-api-keys/{name}`)
+  an eye icon reveals the full key. Reveal is a POST request, so it is rejected by
+  the read-only middleware (`-readonly`): a read-only panel can never expose keys.
+- Keys created before this version store no plaintext and show **Not revealable**.
+- The master key used to encrypt collector key plaintext at rest lives in
+  `{dataDir}/keys.key` (created with 0600 permissions on first use) and can be
+  overridden with the `TRACER_KEY_SECRET` env var (64 hex chars). Losing it makes
+  existing keys unrevealable.
+
 ## Architecture
 
 - Collectors connect to the panel via WebSocket, register their apps, and stream log events

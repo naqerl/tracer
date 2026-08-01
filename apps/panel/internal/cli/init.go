@@ -53,6 +53,12 @@ func InitPanel(ctx context.Context, opts InitOptions) (InitResult, error) {
 	}
 	defer handle.Close()
 
+	// Load (or create) the master key used to encrypt API key plaintext at rest.
+	keySecret, err := auth.LoadKeySecret(config.DataDir())
+	if err != nil {
+		return InitResult{}, fmt.Errorf("load key secret: %w", err)
+	}
+
 	// Ensure data dir files are owned by the service user.
 	// -init may run as root during installation, but the panel service
 	// runs as a non-root user and needs write access to the database.
@@ -60,12 +66,12 @@ func InitPanel(ctx context.Context, opts InitOptions) (InitResult, error) {
 		return InitResult{}, fmt.Errorf("chown data dir: %w", err)
 	}
 
-	return initWithHandle(ctx, handle, username, password, isNewPassword, opts.Force)
+	return initWithHandle(ctx, handle, keySecret, username, password, isNewPassword, opts.Force)
 }
 
 // initWithHandle runs the init logic against an already-open database handle.
-func initWithHandle(ctx context.Context, handle *dbmanager.DBHandle, username, password string, isNewPassword, force bool) (InitResult, error) {
-	authSvc := auth.New(handle)
+func initWithHandle(ctx context.Context, handle *dbmanager.DBHandle, keySecret []byte, username, password string, isNewPassword, force bool) (InitResult, error) {
+	authSvc := auth.New(handle, keySecret)
 
 	registerReq := auth.RegisterRequest{
 		Username: username,

@@ -48,7 +48,7 @@ func TestInitWithHandleCreatesAdminAndAPIKey(t *testing.T) {
 	ctx := t.Context()
 	db := newTestDB(t)
 
-	result, err := initWithHandle(ctx, db, "admin", "password123", false, false)
+	result, err := initWithHandle(ctx, db, testKeySecret(), "admin", "password123", false, false)
 	if err != nil {
 		t.Fatalf("init panel: %v", err)
 	}
@@ -59,7 +59,7 @@ func TestInitWithHandleCreatesAdminAndAPIKey(t *testing.T) {
 		t.Fatal("expected collector api key on fresh init")
 	}
 
-	authSvc := auth.New(db)
+	authSvc := auth.New(db, testKeySecret())
 	if _, err := authSvc.Login(ctx, "admin", "password123"); err != nil {
 		t.Fatalf("login with created admin user: %v", err)
 	}
@@ -69,7 +69,7 @@ func TestInitWithHandleAlreadyInitializedWithoutForce(t *testing.T) {
 	ctx := t.Context()
 	db := newTestDB(t)
 
-	authSvc := auth.New(db)
+	authSvc := auth.New(db, testKeySecret())
 	if _, err := authSvc.Register(ctx, auth.RegisterRequest{
 		Username: "admin",
 		Password: "password123",
@@ -78,7 +78,7 @@ func TestInitWithHandleAlreadyInitializedWithoutForce(t *testing.T) {
 		t.Fatalf("register user: %v", err)
 	}
 
-	_, err := initWithHandle(ctx, db, "admin", "password123", false, false)
+	_, err := initWithHandle(ctx, db, testKeySecret(), "admin", "password123", false, false)
 	if !errors.Is(err, ErrAlreadyInitialized) {
 		t.Fatalf("expected ErrAlreadyInitialized, got %v", err)
 	}
@@ -88,7 +88,7 @@ func TestInitWithHandleForceResetsPassword(t *testing.T) {
 	ctx := t.Context()
 	db := newTestDB(t)
 
-	authSvc := auth.New(db)
+	authSvc := auth.New(db, testKeySecret())
 	// Register as a regular user: the force reset must promote them to admin.
 	if _, err := authSvc.Register(ctx, auth.RegisterRequest{
 		Username: "admin",
@@ -98,7 +98,7 @@ func TestInitWithHandleForceResetsPassword(t *testing.T) {
 		t.Fatalf("register user: %v", err)
 	}
 
-	result, err := initWithHandle(ctx, db, "admin", "new-password", false, true)
+	result, err := initWithHandle(ctx, db, testKeySecret(), "admin", "new-password", false, true)
 	if err != nil {
 		t.Fatalf("force init panel: %v", err)
 	}
@@ -136,7 +136,7 @@ func TestInitWithHandleForceCreatesMissingAdmin(t *testing.T) {
 	db := newTestDB(t)
 
 	// Panel already initialized with a different user.
-	authSvc := auth.New(db)
+	authSvc := auth.New(db, testKeySecret())
 	if _, err := authSvc.Register(ctx, auth.RegisterRequest{
 		Username: "someone",
 		Password: "password123",
@@ -145,7 +145,7 @@ func TestInitWithHandleForceCreatesMissingAdmin(t *testing.T) {
 		t.Fatalf("register user: %v", err)
 	}
 
-	result, err := initWithHandle(ctx, db, "admin", "password123", false, true)
+	result, err := initWithHandle(ctx, db, testKeySecret(), "admin", "password123", false, true)
 	if err != nil {
 		t.Fatalf("force init panel: %v", err)
 	}
@@ -170,4 +170,9 @@ func TestInitWithHandleForceCreatesMissingAdmin(t *testing.T) {
 	if userRow.IsAdmin != 1 {
 		t.Fatalf("expected newly created user to be admin, got is_admin=%d", userRow.IsAdmin)
 	}
+}
+
+// testKeySecret returns a fixed 32-byte master key for tests.
+func testKeySecret() []byte {
+	return []byte("0123456789abcdef0123456789abcdef")
 }
