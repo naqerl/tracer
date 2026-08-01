@@ -86,6 +86,15 @@ func Load(path string) (Panel, error) {
 		return Panel{}, fmt.Errorf("decode config: %w", err)
 	}
 
+	// Environment variable overrides — single source of truth for
+	// per-environment values that may not be known at config-write time.
+	if v := os.Getenv("TRACER_PANEL_HOST"); v != "" {
+		cfg.Host = v
+	}
+	if v := os.Getenv("TRACER_PORT"); v != "" {
+		cfg.Port = v
+	}
+
 	if cfg.Host == "" {
 		return Panel{}, errors.New("host is required (e.g., https://tracer.example.com)")
 	}
