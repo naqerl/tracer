@@ -60,15 +60,16 @@ func InitMux(svc *panelsvc.Service) *http.ServeMux {
 	m.HandleFunc("GET /collectors/{collector}", h.getCollector)
 	m.HandleFunc("GET /collectors/{collector}/apps", h.getCollectorApps)
 	m.HandleFunc("GET /collectors/{collector}/resources", h.getCollectorResources)
-	m.HandleFunc("GET /collectors/{collector}/apps/{app}/uptime/percentage", h.getDashboardAppHealth)
-	m.HandleFunc("GET /collectors/{collector}/apps/{app}/errors/count", h.getDashboardAppErrorCount)
+	m.HandleFunc("GET /collectors/{collector}/stats", h.getCollectorStats)
 
 	// App logs
 	m.HandleFunc("GET /collectors/{collector}/apps/{app}", h.getApp)
 	m.HandleFunc("GET /collectors/{collector}/apps/{app}/stats", h.getAppStats)
+	m.HandleFunc("GET /collectors/{collector}/apps/{app}/uptime", h.getAppUptime)
 	m.HandleFunc("GET /collectors/{collector}/apps/{app}/logs/groups", h.getLogGroups)
 	m.HandleFunc("GET /collectors/{collector}/apps/{app}/logs/groups/{groupID}", h.getLogGroupByID)
 	m.HandleFunc("GET /collectors/{collector}/apps/{app}/logs/groups/{groupID}/entries", h.getLogGroupEntries)
+	m.HandleFunc("GET /collectors/{collector}/apps/{app}/logs/groups/{groupID}/summary", h.getLogGroupSummary)
 	m.HandleFunc("DELETE /collectors/{collector}/apps/{app}/logs/groups/{groupID}", h.deleteLogGroup)
 	m.HandleFunc("GET /collectors/{collector}/apps/{app}/logs/{id}", h.getLogByID)
 
@@ -131,42 +132,33 @@ func (h *handler) getCollector(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sinceLabel := ensureSinceCookie(w, r)
-	var stats *view.CollectorStatsView
-	if coll.Stats != nil {
-		stats = &view.CollectorStatsView{
-			CPUUsagePercent:    coll.Stats.CPUUsagePercent,
-			MemTotalMB:         coll.Stats.MemTotalMB,
-			MemUsedMB:          coll.Stats.MemUsedMB,
-			DiskTotalGB:        coll.Stats.DiskTotalGB,
-			DiskUsedGB:         coll.Stats.DiskUsedGB,
-			TimestampFormatted: coll.Stats.TimestampFormatted,
-			Staleness:          coll.Stats.Staleness,
-		}
-	}
 	view.CollectorOverview(view.CollectorOverviewProps{
 		Title:         req.CollectorName,
 		CollectorName: req.CollectorName,
 		Since:         sinceLabel,
-		Stats:         stats,
+		Stats:         collectorStatsView(coll.Stats),
 	}).Render(r.Context(), w)
 }
 
+// getCollectorApps returns the apps grid fragment with uptime and
+// error-count stats.
 func (h *handler) getCollectorApps(w http.ResponseWriter, r *http.Request) {
 	userID, err := auth.RequireOrRedirect(w, r)
 	if err != nil {
 		return
 	}
-	ensureSinceCookie(w, r)
+	_, since := readSince(w, r)
 
-	req := panelsvc.ListCollectorAppsRequest{
+	req := panelsvc.ListCollectorAppsWithStatsRequest{
 		UserID:        userID,
 		CollectorName: r.PathValue("collector"),
+		Since:         since,
 	}
 	if err := req.Validate(); err != nil {
 		templates.RenderError(w, r, "Error", err.Error(), http.StatusBadRequest)
 		return
 	}
-	apps, err := h.svc.ListCollectorApps(r.Context(), req)
+	apps, err := h.svc.ListCollectorAppsWithStats(r.Context(), req)
 	if err != nil {
 		switch {
 		case errors.Is(err, panelsvc.ErrCollectorNotFound):
@@ -184,7 +176,13 @@ func (h *handler) getCollectorApps(w http.ResponseWriter, r *http.Request) {
 
 	viewApps := make([]view.AppView, len(apps))
 	for i, a := range apps {
-		viewApps[i] = view.AppView{Name: a}
+		viewApps[i] = view.AppView{
+			Name:        a.Name,
+			UptimeText:  uptimePercentText(a.UptimePercent, a.UptimePeriods),
+			UptimeClass: uptimePercentClass(a.UptimePercent, a.UptimePeriods),
+			ErrorCount:  a.ErrorCount,
+			ErrorClass:  errorCountClass(a.ErrorCount),
+		}
 	}
 	view.CollectorApps(view.CollectorAppsProps{
 		CollectorName: req.CollectorName,
@@ -274,89 +272,36 @@ func (h *handler) getCollectorResources(w http.ResponseWriter, r *http.Request) 
 	}).Render(r.Context(), w)
 }
 
-func (h *handler) getDashboardAppHealth(w http.ResponseWriter, r *http.Request) {
+// getCollectorStats returns the collector stats row as an HTMX fragment.
+func (h *handler) getCollectorStats(w http.ResponseWriter, r *http.Request) {
 	userID, err := auth.RequireOrRedirect(w, r)
 	if err != nil {
 		return
 	}
 
-	collectorName := r.PathValue("collector")
-	appName := r.PathValue("app")
-	_, since := readSince(w, r)
-
-	req := panelsvc.GetAppHealthRequest{
+	req := panelsvc.GetCollectorRequest{
 		UserID:        userID,
-		CollectorName: collectorName,
-		AppName:       appName,
-		Since:         since,
+		CollectorName: r.PathValue("collector"),
 	}
 	if err := req.Validate(); err != nil {
 		templates.RenderError(w, r, "Error", err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	health, err := h.svc.GetAppHealth(r.Context(), req)
+	coll, err := h.svc.GetCollector(r.Context(), req)
 	if err != nil {
 		switch {
 		case errors.Is(err, panelsvc.ErrCollectorNotFound):
 			templates.RenderError(w, r, "Error", "Collector not found", http.StatusNotFound)
 		case errors.Is(err, panelsvc.ErrAccessDenied):
-			templates.RenderError(w, r, "Forbidden", "You don't have access to this app", http.StatusForbidden)
-		case errors.Is(err, panelsvc.ErrAppNotFound):
-			templates.RenderError(w, r, "Error", "App not found", http.StatusNotFound)
+			templates.RenderError(w, r, "Forbidden", "You don't have access to this collector", http.StatusForbidden)
 		default:
-			templates.RenderError(w, r, "Error", "Failed to fetch app health", http.StatusInternalServerError)
+			templates.RenderError(w, r, "Error", "Failed to get collector", http.StatusInternalServerError)
 		}
 		return
 	}
 
-	view.AppHealth(view.AppHealthProps{
-		Health: appHealthViewFromServiceToView(health),
-	}).Render(r.Context(), w)
-}
-
-func (h *handler) getDashboardAppErrorCount(w http.ResponseWriter, r *http.Request) {
-	userID, err := auth.RequireOrRedirect(w, r)
-	if err != nil {
-		return
-	}
-
-	collectorName := r.PathValue("collector")
-	appName := r.PathValue("app")
-	_, since := readSince(w, r)
-
-	req := panelsvc.GetAppErrorCountRequest{
-		UserID:        userID,
-		CollectorName: collectorName,
-		AppName:       appName,
-		Since:         since,
-	}
-	if err := req.Validate(); err != nil {
-		templates.RenderError(w, r, "Error", err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	count, err := h.svc.GetAppErrorCount(r.Context(), req)
-	if err != nil {
-		switch {
-		case errors.Is(err, panelsvc.ErrCollectorNotFound):
-			templates.RenderError(w, r, "Error", "Collector not found", http.StatusNotFound)
-		case errors.Is(err, panelsvc.ErrAccessDenied):
-			templates.RenderError(w, r, "Forbidden", "You don't have access to this app", http.StatusForbidden)
-		case errors.Is(err, panelsvc.ErrAppNotFound):
-			templates.RenderError(w, r, "Error", "App not found", http.StatusNotFound)
-		default:
-			templates.RenderError(w, r, "Error", "Failed to fetch app error count", http.StatusInternalServerError)
-		}
-		return
-	}
-
-	view.AppErrorCount(view.AppErrorCountProps{
-		Errors: view.AppErrorCountView{
-			Count: count,
-			Class: appErrorCountClass(count),
-		},
-	}).Render(r.Context(), w)
+	view.StatsRow(collectorStatsView(coll.Stats), req.CollectorName).Render(r.Context(), w)
 }
 
 // App logs handlers
@@ -458,6 +403,46 @@ func (h *handler) getAppStats(w http.ResponseWriter, r *http.Request) {
 	}).Render(r.Context(), w)
 }
 
+// getAppUptime returns the app uptime panel as an HTMX fragment.
+func (h *handler) getAppUptime(w http.ResponseWriter, r *http.Request) {
+	userID, err := auth.RequireOrRedirect(w, r)
+	if err != nil {
+		return
+	}
+
+	collectorName := r.PathValue("collector")
+	appName := r.PathValue("app")
+	_, since := readSince(w, r)
+
+	req := panelsvc.GetAppHealthRequest{
+		UserID:        userID,
+		CollectorName: collectorName,
+		AppName:       appName,
+		Since:         since,
+	}
+	if err := req.Validate(); err != nil {
+		templates.RenderError(w, r, "Error", err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	health, err := h.svc.GetAppHealth(r.Context(), req)
+	if err != nil {
+		switch {
+		case errors.Is(err, panelsvc.ErrCollectorNotFound):
+			templates.RenderError(w, r, "Error", "Collector not found", http.StatusNotFound)
+		case errors.Is(err, panelsvc.ErrAccessDenied):
+			templates.RenderError(w, r, "Forbidden", "You don't have access to this app", http.StatusForbidden)
+		case errors.Is(err, panelsvc.ErrAppNotFound):
+			templates.RenderError(w, r, "Error", "App not found", http.StatusNotFound)
+		default:
+			templates.RenderError(w, r, "Error", "Failed to fetch uptime", http.StatusInternalServerError)
+		}
+		return
+	}
+
+	view.UptimePanel(appHealthViewFromServiceToView(health)).Render(r.Context(), w)
+}
+
 func readSince(w http.ResponseWriter, r *http.Request) (string, time.Time) {
 	label := ensureSinceCookie(w, r)
 	return label, parseSinceLabel(label)
@@ -514,28 +499,33 @@ func sanitizeSinceLabel(label string) string {
 func dashboardCollectorsView(collectors []panelsvc.Collector) []view.CollectorView {
 	result := make([]view.CollectorView, 0, len(collectors))
 	for _, collector := range collectors {
-		var stats *view.CollectorStatsView
-		if collector.Stats != nil {
-			stats = &view.CollectorStatsView{
-				CPUUsagePercent:    collector.Stats.CPUUsagePercent,
-				MemTotalMB:         collector.Stats.MemTotalMB,
-				MemUsedMB:          collector.Stats.MemUsedMB,
-				DiskTotalGB:        collector.Stats.DiskTotalGB,
-				DiskUsedGB:         collector.Stats.DiskUsedGB,
-				TimestampFormatted: collector.Stats.TimestampFormatted,
-				Staleness:          collector.Stats.Staleness,
-			}
-		}
 		result = append(result, view.CollectorView{
 			Name:        collector.Name,
 			RemoteAddr:  collector.RemoteAddr,
 			IsConnected: collector.IsConnected,
 			ConnectedAt: collector.ConnectedAt,
 			LastSeenAt:  collector.LastSeenAt,
-			Stats:       stats,
+			Stats:       collectorStatsView(collector.Stats),
 		})
 	}
 	return result
+}
+
+// collectorStatsView converts service-level collector stats to the view layer,
+// or nil when the collector has no stats yet.
+func collectorStatsView(stats *panelsvc.CollectorStats) *view.CollectorStatsView {
+	if stats == nil {
+		return nil
+	}
+	return &view.CollectorStatsView{
+		CPUUsagePercent:    stats.CPUUsagePercent,
+		MemTotalMB:         stats.MemTotalMB,
+		MemUsedMB:          stats.MemUsedMB,
+		DiskTotalGB:        stats.DiskTotalGB,
+		DiskUsedGB:         stats.DiskUsedGB,
+		TimestampFormatted: stats.TimestampFormatted,
+		Staleness:          stats.Staleness,
+	}
 }
 
 func appHealthViewFromServiceToView(health panelsvc.AppHealth) view.AppHealthView {
@@ -558,13 +548,6 @@ func uptimeBarsToView(buckets []panelsvc.HealthBucket) []view.UptimeBarView {
 	return result
 }
 
-func appErrorCountClass(v int64) string {
-	if v > 0 {
-		return "text-red-400"
-	}
-	return "text-fg-secondary"
-}
-
 func uptimePercentText(v float64, periodCount int) string {
 	if periodCount == 0 {
 		return "N/A"
@@ -584,6 +567,14 @@ func uptimePercentClass(v float64, periodCount int) string {
 	}
 	if v < 99 {
 		return "text-yellow-400"
+	}
+	return "text-fg-secondary"
+}
+
+// errorCountClass colors the app-grid error count red when errors exist.
+func errorCountClass(v int64) string {
+	if v > 0 {
+		return "text-red-400"
 	}
 	return "text-fg-secondary"
 }
@@ -751,7 +742,69 @@ func (h *handler) getLogGroupByID(w http.ResponseWriter, r *http.Request) {
 			Count:     group.Count,
 			CreatedAt: group.CreatedAt.Unix(),
 			LastLogAt: group.LastLogAt.Unix(),
+			Since:     now.Unix(),
+			NewLogs:   0,
 		},
+	}).Render(r.Context(), w)
+}
+
+// getLogGroupSummary returns the log group metadata (count, first, latest)
+// as an HTMX fragment.
+func (h *handler) getLogGroupSummary(w http.ResponseWriter, r *http.Request) {
+	userID, err := auth.RequireOrRedirect(w, r)
+	if err != nil {
+		return
+	}
+
+	groupID, err := strconv.ParseInt(r.PathValue("groupID"), 10, 64)
+	if err != nil {
+		templates.RenderError(w, r, "Error", "Invalid group ID", http.StatusBadRequest)
+		return
+	}
+
+	since := int64(0)
+	if raw := r.URL.Query().Get("since"); raw != "" {
+		if v, err := strconv.ParseInt(raw, 10, 64); err == nil {
+			since = v
+		}
+	}
+
+	req := panelsvc.GetLogGroupSummaryRequest{
+		UserID:        userID,
+		CollectorName: r.PathValue("collector"),
+		AppName:       r.PathValue("app"),
+		GroupID:       groupID,
+		Since:         since,
+	}
+	if err := req.Validate(); err != nil {
+		templates.RenderError(w, r, "Error", err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	summary, err := h.svc.GetLogGroupSummary(r.Context(), req)
+	if err != nil {
+		switch {
+		case errors.Is(err, panelsvc.ErrCollectorNotFound):
+			templates.RenderError(w, r, "Error", "Collector not found", http.StatusNotFound)
+		case errors.Is(err, panelsvc.ErrAccessDenied):
+			templates.RenderError(w, r, "Forbidden", "You don't have access to this app", http.StatusForbidden)
+		case errors.Is(err, panelsvc.ErrAppNotFound), errors.Is(err, panelsvc.ErrLogNotFound):
+			templates.RenderError(w, r, "Error", "Group not found", http.StatusNotFound)
+		default:
+			templates.RenderError(w, r, "Error", "Failed to fetch logs", http.StatusInternalServerError)
+		}
+		return
+	}
+
+	view.LogGroupSummary(view.LogGroupData{
+		ID:        summary.ID,
+		Message:   summary.Message,
+		Level:     summary.Level,
+		Count:     summary.Count,
+		CreatedAt: summary.CreatedAt.Unix(),
+		LastLogAt: summary.LastLogAt.Unix(),
+		Since:     time.Now().Unix(),
+		NewLogs:   summary.NewLogs,
 	}).Render(r.Context(), w)
 }
 

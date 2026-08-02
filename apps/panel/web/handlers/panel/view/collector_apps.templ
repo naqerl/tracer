@@ -1,16 +1,25 @@
 package view
 
+import "strconv"
+
 // CollectorAppsProps holds data for the collector apps view (HTMX fragment).
 type CollectorAppsProps struct {
 	CollectorName string
 	Apps          []AppView
 }
 
+// AppView is an app card in the apps grid; UptimeClass/ErrorClass carry the
+// health color-coding.
 type AppView struct {
-	Name string
+	Name        string
+	UptimeText  string
+	UptimeClass string
+	ErrorCount  int64
+	ErrorClass  string
 }
 
-// CollectorApps renders the apps grid for a collector.
+// CollectorApps renders the apps grid for a collector with uptime and
+// error-count stats.
 templ CollectorApps(props CollectorAppsProps) {
 	if len(props.Apps) > 0 {
 		<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -18,17 +27,9 @@ templ CollectorApps(props CollectorAppsProps) {
 				<a href={ "/panel/collectors/" + props.CollectorName + "/apps/" + app.Name } class="block bg-bg-secondary hover:bg-bg-secondary/80 p-4 transition-all hover:-translate-y-0.5">
 					<div class="font-medium">{ app.Name }</div>
 					<div class="mt-2 text-xs text-fg-secondary">
-						<span
-							hx-get={ "/panel/collectors/" + props.CollectorName + "/apps/" + app.Name + "/uptime/percentage" }
-							hx-trigger="load"
-							hx-swap="outerHTML"
-						>uptime: <span class="inline-block w-[3ch] tabular-nums text-right whitespace-nowrap">N/A</span></span>
+						<span>uptime: <span class={ "inline-block w-[3ch] tabular-nums text-right whitespace-nowrap " + app.UptimeClass }>{ app.UptimeText }</span></span>
 						<span class="text-fg-secondary"> | </span>
-						<span
-							hx-get={ "/panel/collectors/" + props.CollectorName + "/apps/" + app.Name + "/errors/count" }
-							hx-trigger="load"
-							hx-swap="outerHTML"
-						>errors: <span class="inline-block w-[3ch] tabular-nums text-left whitespace-nowrap">0</span></span>
+						<span>errors: <span class={ "inline-block w-[3ch] tabular-nums text-left whitespace-nowrap " + app.ErrorClass }>{ strconv.FormatInt(app.ErrorCount, 10) }</span></span>
 					</div>
 				</a>
 			}

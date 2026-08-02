@@ -29,7 +29,10 @@ type LevelFilterItem struct {
 
 // LogGroups renders the log groups page.
 templ LogGroups(props LogGroupsProps) {
-	<div id="log-groups">
+	<div id="log-groups"
+		 hx-get={ fmt.Sprintf("/panel/collectors/%s/apps/%s/logs/groups?level=%s", props.Collector, props.App, props.Level) }
+		 hx-trigger="every 15s"
+		 hx-swap="outerHTML">
 		<h2 class="text-lg font-medium mb-4">Log Groups</h2>
 		<div class="flex flex-col gap-2 mb-6">
 			@LevelFilter(props)
@@ -45,6 +48,8 @@ templ LevelFilter(props LogGroupsProps) {
 			<a hx-get={ fmt.Sprintf("/panel/collectors/%s/apps/%s/logs/groups?level=%s", props.Collector, props.App, f.Val) }
 			   hx-push-url="false"
 			   hx-target="#log-groups"
+			   hx-swap="outerHTML"
+			   hx-sync="#log-groups:replace"
 			   class={ levelFilterLinkClass(f.Val, props.Level == f.Val) }>
 				<span class="text-sm">{ f.Label }</span>
 				<span class={ levelFilterDotClass(f.Color, props.Level == f.Val) }></span>

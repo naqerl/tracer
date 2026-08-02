@@ -17,6 +17,9 @@ type Querier interface {
 	CloseMemPeriod(ctx context.Context, arg CloseMemPeriodParams) error
 	// Count total logs in a group
 	CountLogsByGroupID(ctx context.Context, groupID sql.NullInt64) (int64, error)
+	// Count logs in a group created after a timestamp (for the "+N new records"
+	// indicator on the log group summary).
+	CountLogsByGroupIDSince(ctx context.Context, arg CountLogsByGroupIDSinceParams) (int64, error)
 	CountUsers(ctx context.Context) (int64, error)
 	// Collector API keys
 	CreateCollectorAPIKey(ctx context.Context, arg CreateCollectorAPIKeyParams) (CollectorApiKey, error)

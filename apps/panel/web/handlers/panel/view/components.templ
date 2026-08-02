@@ -3,7 +3,7 @@ package view
 import "strconv"
 
 // StatsRow renders CPU, RAM, and Disk stats in a compact row.
-templ StatsRow(stats *CollectorStatsView, showLink bool, collectorName string) {
+templ StatsRow(stats *CollectorStatsView, collectorName string) {
 	if stats != nil {
 		<div class="flex flex-wrap items-center gap-4 mb-4 text-xs">
 			<div class="flex items-center gap-1">
@@ -18,30 +18,24 @@ templ StatsRow(stats *CollectorStatsView, showLink bool, collectorName string) {
 				<span class="text-fg-secondary">Disk:</span>
 				<span class={ diskClass(diskPercent(stats.DiskUsedGB, stats.DiskTotalGB)) }>{ strconv.FormatFloat(diskPercent(stats.DiskUsedGB, stats.DiskTotalGB), 'f', 0, 64) }%</span>
 			</div>
-			if showLink {
-				<a hx-get={ "/panel/collectors/" + collectorName + "/resources" }
-				   hx-target="body"
-				   hx-push-url="true"
-				   class="text-fg-secondary hover:text-fg cursor-pointer ml-auto"
-				   title="View metrics history">
-					Metrics <span class="text-fg-secondary">&rarr;</span>
-				</a>
-			}
+			<a hx-get={ "/panel/collectors/" + collectorName + "/resources" }
+			   hx-target="body"
+			   hx-push-url="true"
+			   class="text-fg-secondary hover:text-fg cursor-pointer ml-auto"
+			   title="View metrics history">
+				Metrics <span class="text-fg-secondary">&rarr;</span>
+			</a>
 		</div>
 	} else {
-		if showLink {
-			<div class="flex items-center justify-between mb-4">
-				<span class="text-fg-secondary text-xs">No stats available</span>
-				<a hx-get={ "/panel/collectors/" + collectorName + "/resources" }
-				   hx-target="body"
-				   hx-push-url="true"
-				   class="text-xs text-fg-secondary hover:text-fg cursor-pointer"
-				   title="View metrics history">
-					Metrics <span class="text-fg-secondary">&rarr;</span>
-				</a>
-			</div>
-		} else {
-			<div class="text-fg-secondary text-xs mb-4">No stats available</div>
-		}
+		<div class="flex items-center justify-between mb-4">
+			<span class="text-fg-secondary text-xs">No stats available</span>
+			<a hx-get={ "/panel/collectors/" + collectorName + "/resources" }
+			   hx-target="body"
+			   hx-push-url="true"
+			   class="text-xs text-fg-secondary hover:text-fg cursor-pointer"
+			   title="View metrics history">
+				Metrics <span class="text-fg-secondary">&rarr;</span>
+			</a>
+		</div>
 	}
 }

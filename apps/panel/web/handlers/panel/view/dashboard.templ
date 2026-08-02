@@ -98,13 +98,20 @@ templ Dashboard(p DashboardProps) {
 							</a>
 						</div>
 
-					@StatsRow(c.Stats, true, c.Name)
+						<!-- Stats Row -->
+						<div
+							hx-get={ "/panel/collectors/" + c.Name + "/stats" }
+							hx-trigger="every 15s"
+							hx-swap="innerHTML"
+						>
+							@StatsRow(c.Stats, c.Name)
+						</div>
 
 						<!-- Apps Grid -->
 						<div
 							hx-get={ "/panel/collectors/" + c.Name + "/apps" }
-							hx-trigger="load"
-							hx-swap="outerHTML"
+							hx-trigger="load, every 15s"
+							hx-swap="innerHTML"
 						>
 							<div class="text-fg-secondary text-sm">Loading apps...</div>
 						</div>

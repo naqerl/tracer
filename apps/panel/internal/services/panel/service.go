@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"sync"
 	"time"
 
 	"tracer/apps/panel/db"
@@ -210,8 +211,78 @@ func (r ListCollectorAppsRequest) Validate() error {
 	return nil
 }
 
+// CollectorApp is an app in the apps grid with its uptime and error-count
+// stats.
+type CollectorApp struct {
+	Name          string
+	UptimePercent float64
+	UptimePeriods int
+	ErrorCount    int64
+}
+
+// ListCollectorAppsWithStatsRequest requests the accessible apps of a
+// collector with stats, within the given time window.
+type ListCollectorAppsWithStatsRequest struct {
+	UserID        int64
+	CollectorName string
+	Since         time.Time
+}
+
+func (r ListCollectorAppsWithStatsRequest) Validate() error {
+	if err := domain.ValidateUserID(r.UserID); err != nil {
+		return err
+	}
+	if r.CollectorName == "" {
+		return fmt.Errorf("collector name is required")
+	}
+	if !sinceWithinRange(r.Since) {
+		return fmt.Errorf("since should be within last 30 days")
+	}
+	return nil
+}
+
+// ListCollectorApps returns the names of the collector's apps the user may
+// see.
 func (s *Service) ListCollectorApps(ctx context.Context, req ListCollectorAppsRequest) ([]string, error) {
-	exists, err := s.collectorExists(req.CollectorName)
+	return s.listAccessibleApps(ctx, req.UserID, req.CollectorName)
+}
+
+// ListCollectorAppsWithStats returns the accessible apps with their uptime
+// and error-count stats.
+func (s *Service) ListCollectorAppsWithStats(ctx context.Context, req ListCollectorAppsWithStatsRequest) ([]CollectorApp, error) {
+	apps, err := s.listAccessibleApps(ctx, req.UserID, req.CollectorName)
+	if err != nil {
+		return nil, err
+	}
+
+	type indexedApp struct {
+		idx int
+		app CollectorApp
+	}
+
+	results := make(chan indexedApp, len(apps))
+	var wg sync.WaitGroup
+	for i, app := range apps {
+		wg.Go(func() {
+			results <- indexedApp{idx: i, app: s.appStats(ctx, req.CollectorName, app, req.Since)}
+		})
+	}
+	go func() {
+		wg.Wait()
+		close(results)
+	}()
+
+	stats := make([]CollectorApp, len(apps))
+	for r := range results {
+		stats[r.idx] = r.app
+	}
+	return stats, nil
+}
+
+// listAccessibleApps is the shared access-check + name-listing core of
+// ListCollectorApps and ListCollectorAppsWithStats.
+func (s *Service) listAccessibleApps(ctx context.Context, userID int64, collectorName string) ([]string, error) {
+	exists, err := s.collectorExists(collectorName)
 	if err != nil {
 		return nil, fmt.Errorf("could not ensure collector existence: %w", err)
 	}
@@ -219,17 +290,17 @@ func (s *Service) ListCollectorApps(ctx context.Context, req ListCollectorAppsRe
 		return nil, ErrCollectorNotFound
 	}
 
-	access, err := s.userSvc.FindAccessPolicy(ctx, req.UserID)
+	access, err := s.userSvc.FindAccessPolicy(ctx, userID)
 	if err != nil {
-		return nil, fmt.Errorf("could not load access for user %d: %w", req.UserID, err)
+		return nil, fmt.Errorf("could not load access for user %d: %w", userID, err)
 	}
-	if !access.AllowedTo(req.CollectorName, "") {
+	if !access.AllowedTo(collectorName, "") {
 		return nil, ErrAccessDenied
 	}
 
-	apps, err := s.ingestSvc.ListApps(req.CollectorName)
+	apps, err := s.ingestSvc.ListApps(collectorName)
 	if err != nil {
-		return nil, fmt.Errorf("could not list apps for collector %s: %w", req.CollectorName, err)
+		return nil, fmt.Errorf("could not list apps for collector %s: %w", collectorName, err)
 	}
 	if access.Apps == nil {
 		return apps, nil
@@ -237,11 +308,41 @@ func (s *Service) ListCollectorApps(ctx context.Context, req ListCollectorAppsRe
 
 	filtered := make([]string, 0, len(apps))
 	for _, app := range apps {
-		if access.AllowedTo(req.CollectorName, app) {
+		if access.AllowedTo(collectorName, app) {
 			filtered = append(filtered, app)
 		}
 	}
 	return filtered, nil
+}
+
+// appStats reads the uptime percentage and error count for a single app.
+func (s *Service) appStats(ctx context.Context, collectorName, appName string, since time.Time) CollectorApp {
+	app := CollectorApp{Name: appName}
+
+	queries, err := s.queriesForApp(collectorName, appName)
+	if errors.Is(err, ErrAppNotFound) {
+		return app
+	}
+	if err != nil {
+		slog.Error("could not open app db for grid stats", "collector", collectorName, "app", appName, "error", err)
+		return app
+	}
+
+	health, err := s.readAppHealth(ctx, queries, since)
+	if err != nil {
+		slog.Error("could not read app health for grid stats", "collector", collectorName, "app", appName, "error", err)
+	} else {
+		app.UptimePercent = health.UptimePercent
+		app.UptimePeriods = health.PeriodCount
+	}
+
+	counts, err := queries.GetPercentiles(ctx, since.Unix())
+	if err != nil {
+		slog.Error("could not read app stats for grid", "collector", collectorName, "app", appName, "error", err)
+	} else {
+		app.ErrorCount = counts.Errors
+	}
+	return app
 }
 
 type AppHealth struct {
@@ -295,52 +396,7 @@ func (s *Service) GetAppHealth(ctx context.Context, req GetAppHealthRequest) (Ap
 		return AppHealth{}, err
 	}
 
-	return s.readAppHealth(ctx, queries, req.Since, true)
-}
-
-type GetAppErrorCountRequest struct {
-	UserID        int64
-	CollectorName string
-	AppName       string
-	Since         time.Time
-}
-
-func (r GetAppErrorCountRequest) Validate() error {
-	if err := domain.ValidateUserID(r.UserID); err != nil {
-		return err
-	}
-	if r.CollectorName == "" {
-		return fmt.Errorf("collector name is required")
-	}
-	if r.AppName == "" {
-		return fmt.Errorf("app name is required")
-	}
-	if !sinceWithinRange(r.Since) {
-		return fmt.Errorf("since should be within last 30 days")
-	}
-	return nil
-}
-
-func (s *Service) GetAppErrorCount(ctx context.Context, req GetAppErrorCountRequest) (int64, error) {
-	access, err := s.userSvc.FindAccessPolicy(ctx, req.UserID)
-	if err != nil {
-		return 0, fmt.Errorf("could not list user apps: %w", err)
-	}
-	if !access.AllowedTo(req.CollectorName, req.AppName) {
-		return 0, ErrAccessDenied
-	}
-
-	queries, err := s.queriesForApp(req.CollectorName, req.AppName)
-	if err != nil {
-		return 0, err
-	}
-
-	counts, err := queries.GetPercentiles(ctx, req.Since.Unix())
-	if err != nil {
-		return 0, err
-	}
-
-	return counts.Errors, nil
+	return s.readAppHealthWithBars(ctx, queries, req.Since)
 }
 
 type GetStatsHistoryRequest struct {
@@ -572,6 +628,88 @@ func (s *Service) GetLogGroup(ctx context.Context, req GetLogGroupRequest) (LogG
 		CreatedAt: time.Unix(row.CreatedAt, 0),
 		LastLogAt: time.Unix(row.LastLogAt, 0),
 	}, nil
+}
+
+// GetLogGroupSummaryRequest asks for a log group's summary plus the count of
+// rows created after Since.
+type GetLogGroupSummaryRequest struct {
+	UserID        int64
+	CollectorName string
+	AppName       string
+	GroupID       int64
+	Since         int64
+}
+
+func (r GetLogGroupSummaryRequest) Validate() error {
+	if err := domain.ValidateUserID(r.UserID); err != nil {
+		return err
+	}
+	if r.CollectorName == "" {
+		return fmt.Errorf("collector name is required")
+	}
+	if r.AppName == "" {
+		return fmt.Errorf("app name is required")
+	}
+	if r.GroupID <= 0 {
+		return fmt.Errorf("group ID must be positive")
+	}
+	if r.Since < 0 {
+		return fmt.Errorf("since must be non-negative")
+	}
+	return nil
+}
+
+// LogGroupSummary is a log group plus the count of rows created after Since.
+type LogGroupSummary struct {
+	LogGroup
+	NewLogs int64
+}
+
+func (s *Service) GetLogGroupSummary(ctx context.Context, req GetLogGroupSummaryRequest) (LogGroupSummary, error) {
+	var summary LogGroupSummary
+
+	access, err := s.userSvc.FindAccessPolicy(ctx, req.UserID)
+	if err != nil {
+		return summary, fmt.Errorf("could not list user apps: %w", err)
+	}
+	if !access.AllowedTo(req.CollectorName, req.AppName) {
+		return summary, ErrAccessDenied
+	}
+
+	queries, err := s.queriesForApp(req.CollectorName, req.AppName)
+	if err != nil {
+		return summary, err
+	}
+
+	row, err := queries.GetLogGroupByID(ctx, sql.NullInt64{Int64: req.GroupID, Valid: true})
+	if errors.Is(err, sql.ErrNoRows) {
+		return summary, ErrLogNotFound
+	}
+	if err != nil {
+		return summary, err
+	}
+
+	summary.LogGroup = LogGroup{
+		ID:        req.GroupID,
+		Message:   row.Message,
+		Level:     row.Level,
+		Count:     row.LogCount,
+		CreatedAt: time.Unix(row.CreatedAt, 0),
+		LastLogAt: time.Unix(row.LastLogAt, 0),
+	}
+
+	if req.Since > 0 {
+		newLogs, err := queries.CountLogsByGroupIDSince(ctx, db.CountLogsByGroupIDSinceParams{
+			GroupID:   sql.NullInt64{Int64: req.GroupID, Valid: true},
+			CreatedAt: req.Since,
+		})
+		if err != nil {
+			return summary, err
+		}
+		summary.NewLogs = newLogs
+	}
+
+	return summary, nil
 }
 
 type GroupLogEntry struct {
@@ -816,7 +954,28 @@ func formatCollectorStats(stats ingest.SystemStat, now time.Time) *CollectorStat
 	}
 }
 
-func (s *Service) readAppHealth(ctx context.Context, queries *db.Queries, since time.Time, withBars bool) (AppHealth, error) {
+// readAppHealth reads uptime stats for an app in the given window.
+func (s *Service) readAppHealth(ctx context.Context, queries *db.Queries, since time.Time) (AppHealth, error) {
+	health, _, err := s.readHealthAndPeriods(ctx, queries, since)
+	return health, err
+}
+
+// readAppHealthWithBars is readAppHealth plus per-period bucket bars for the
+// uptime visualization.
+func (s *Service) readAppHealthWithBars(ctx context.Context, queries *db.Queries, since time.Time) (AppHealth, error) {
+	health, periods, err := s.readHealthAndPeriods(ctx, queries, since)
+	if err != nil {
+		return health, err
+	}
+
+	now := time.Now()
+	health.Buckets = buildHealthBuckets(periods, since, now)
+	return health, nil
+}
+
+// readHealthAndPeriods computes uptime stats plus the health periods they
+// were derived from.
+func (s *Service) readHealthAndPeriods(ctx context.Context, queries *db.Queries, since time.Time) (AppHealth, []db.AppHealthPeriod, error) {
 	health := AppHealth{}
 
 	latest, err := queries.GetLatestHealthPeriod(ctx)
@@ -825,7 +984,7 @@ func (s *Service) readAppHealth(ctx context.Context, queries *db.Queries, since 
 		health.CurrentStatus = sharedtypes.HealthStatus(latest.Status)
 	case errors.Is(err, sql.ErrNoRows):
 	default:
-		return health, err
+		return health, nil, err
 	}
 
 	now := time.Now()
@@ -834,7 +993,7 @@ func (s *Service) readAppHealth(ctx context.Context, queries *db.Queries, since 
 		EndedAt:   sql.NullInt64{Int64: since.Unix(), Valid: true},
 	})
 	if err != nil {
-		return health, err
+		return health, nil, err
 	}
 
 	health.PeriodCount = len(periods)
@@ -858,11 +1017,7 @@ func (s *Service) readAppHealth(ctx context.Context, queries *db.Queries, since 
 		health.UptimePercent = math.Round((float64(upDuration) / float64(totalDuration) * 10000)) / 100
 	}
 
-	if withBars {
-		health.Buckets = buildHealthBuckets(periods, since, now)
-	}
-
-	return health, nil
+	return health, periods, nil
 }
 
 func buildHealthBuckets(periods []db.AppHealthPeriod, since, now time.Time) []HealthBucket {

@@ -45,23 +45,22 @@ templ CollectorOverviewData(props CollectorOverviewProps) {
 				}
 				<span class="text-fg-secondary text-xs ml-1">]</span>
 			}
-			<span class="text-xs text-fg-secondary mx-1">[</span>
-			<a href={ "/panel/collectors/" + props.CollectorName + "/resources" }
-			   class="text-xs text-accent hover:underline"
-			   title="View resource usage history">
-				resources
-			</a>
-			<span class="text-xs text-fg-secondary ml-1">]</span>
 		</div>
 
 	<!-- Stats Row -->
-	@StatsRow(props.Stats, false, props.CollectorName)
+	<div
+		hx-get={ "/panel/collectors/" + props.CollectorName + "/stats" }
+		hx-trigger="every 15s"
+		hx-swap="innerHTML"
+	>
+		@StatsRow(props.Stats, props.CollectorName)
+	</div>
 
 		<!-- Apps Grid -->
 		<div
 			hx-get={ "/panel/collectors/" + props.CollectorName + "/apps" }
-			hx-trigger="load"
-			hx-swap="outerHTML"
+			hx-trigger="load, every 15s"
+			hx-swap="innerHTML"
 		>
 			<div class="text-fg-secondary text-sm">Loading apps...</div>
 		</div>

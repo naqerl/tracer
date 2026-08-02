@@ -19,14 +19,17 @@ templ App(props AppProps) {
 		<div class="max-w-5xl mx-auto p-6">
 			<h1 class="text-3xl font-semibold mb-6">{ props.App }</h1>
 
-			<h2 class="text-lg font-medium mb-4">Uptime { props.Uptime.UptimeText }</h2>
-			<div class="mb-6">
-				@UptimeBars(props.Uptime.Bars, "lg")
+			<div
+			  hx-get={ "/panel/collectors/" + props.Collector + "/apps/" + props.App + "/uptime" }
+			  hx-trigger="every 15s"
+			  hx-swap="innerHTML"
+			>
+				@UptimePanel(props.Uptime)
 			</div>
 
 			<div
 			  hx-get={ "/panel/collectors/" + props.Collector + "/apps/" + props.App + "/stats" }
-			  hx-trigger="load"
+			  hx-trigger="load, every 15s"
 			></div>
 
 			<div
@@ -35,6 +38,14 @@ templ App(props AppProps) {
 			></div>
 		</div>
 	}
+}
+
+// UptimePanel renders the uptime heading and bars as a pollable fragment.
+templ UptimePanel(uptime AppHealthView) {
+	<h2 class="text-lg font-medium mb-4">Uptime { uptime.UptimeText }</h2>
+	<div class="mb-6">
+		@UptimeBars(uptime.Bars, "lg")
+	</div>
 }
 
 // UptimeBars renders uptime bar visualizations.

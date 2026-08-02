@@ -362,47 +362,129 @@ func TestGetAppHealth_InvalidRequest(t *testing.T) {
 	}
 }
 
-func TestGetAppErrorCount_Success(t *testing.T) {
+func TestListCollectorAppsWithStats(t *testing.T) {
 	svc, _, userID, collectorName, appName := setupTestService(t)
 	ctx := context.Background()
 
-	count, err := svc.GetAppErrorCount(ctx, GetAppErrorCountRequest{
-		UserID:        userID,
+	if _, err := svc.ingestSvc.StoreLog(ctx, ingestsvc.StoreLogRequest{
 		CollectorName: collectorName,
 		AppName:       appName,
-		Since:         time.Now().Add(-1 * time.Hour),
+		Entry: types.LogEntry{
+			Level:     types.LevelError,
+			Message:   "boom",
+			Timestamp: time.Now(),
+		},
+	}); err != nil {
+		t.Fatalf("seed error log: %v", err)
+	}
+	if err := svc.ingestSvc.SaveHealthPeriod(ctx, ingestsvc.StoreHealthRequest{
+		CollectorName: collectorName,
+		AppName:       appName,
+		Status:        types.HealthStatusUp,
+		Time:          time.Now().Add(-30 * time.Minute),
+	}); err != nil {
+		t.Fatalf("seed health period: %v", err)
+	}
+
+	apps, err := svc.ListCollectorAppsWithStats(ctx, ListCollectorAppsWithStatsRequest{
+		UserID:        userID,
+		CollectorName: collectorName,
+		Since:         time.Now().Add(-time.Hour),
 	})
 	if err != nil {
-		t.Fatalf("GetAppErrorCount: %v", err)
+		t.Fatalf("ListCollectorAppsWithStats: %v", err)
 	}
-	if count != 0 {
-		t.Fatalf("expected 0 errors, got %d", count)
+	if len(apps) != 1 {
+		t.Fatalf("expected 1 app, got %d", len(apps))
+	}
+	if apps[0].Name != appName {
+		t.Fatalf("expected app %q, got %q", appName, apps[0].Name)
+	}
+	if apps[0].ErrorCount != 1 {
+		t.Fatalf("expected 1 error, got %d", apps[0].ErrorCount)
+	}
+	if apps[0].UptimePeriods < 1 {
+		t.Fatalf("expected at least 1 uptime period, got %d", apps[0].UptimePeriods)
+	}
+	if apps[0].UptimePercent <= 0 || apps[0].UptimePercent > 100 {
+		t.Fatalf("expected uptime percent in (0,100], got %f", apps[0].UptimePercent)
 	}
 }
 
-func TestGetAppErrorCount_AccessDenied(t *testing.T) {
+func TestListCollectorAppsWithStats_EmptyApp(t *testing.T) {
+	svc, _, userID, collectorName, _ := setupTestService(t)
+	ctx := context.Background()
+
+	// A newly registered app has a DB but no data yet.
+	if err := svc.ingestSvc.RegisterCollector(ctx, ingestsvc.RegisterCollectorRequest{
+		CollectorName: collectorName,
+		Apps:          []string{"empty-app"},
+	}); err != nil {
+		t.Fatalf("register empty app: %v", err)
+	}
+	// Grant access to empty-app so the access-filtered listing returns it.
+	if err := svc.userSvc.GrantAccess(ctx, userID, usersvc.AppAccess{
+		CollectorName: collectorName,
+		AppName:       "empty-app",
+	}); err != nil {
+		t.Fatalf("grant access to empty app: %v", err)
+	}
+
+	apps, err := svc.ListCollectorAppsWithStats(ctx, ListCollectorAppsWithStatsRequest{
+		UserID:        userID,
+		CollectorName: collectorName,
+		Since:         time.Now().Add(-time.Hour),
+	})
+	if err != nil {
+		t.Fatalf("ListCollectorAppsWithStats: %v", err)
+	}
+	for _, app := range apps {
+		if app.Name == "empty-app" {
+			if app.ErrorCount != 0 || app.UptimePeriods != 0 {
+				t.Fatalf("expected empty app to degrade to N/A / 0, got errors=%d periods=%d", app.ErrorCount, app.UptimePeriods)
+			}
+			return
+		}
+	}
+	t.Fatal("expected empty-app in results")
+}
+
+func TestListCollectorAppsWithStats_NotFound(t *testing.T) {
+	svc, _, userID, _, _ := setupTestService(t)
+	ctx := context.Background()
+
+	_, err := svc.ListCollectorAppsWithStats(ctx, ListCollectorAppsWithStatsRequest{
+		UserID:        userID,
+		CollectorName: "ghost",
+		Since:         time.Now().Add(-time.Hour),
+	})
+	if err != ErrCollectorNotFound {
+		t.Fatalf("expected ErrCollectorNotFound, got %v", err)
+	}
+}
+
+func TestListCollectorAppsWithStats_AccessDenied(t *testing.T) {
 	svc, noAccessUserID := setupTestServiceNoAccess(t)
 	ctx := context.Background()
 
-	_, err := svc.GetAppErrorCount(ctx, GetAppErrorCountRequest{
+	_, err := svc.ListCollectorAppsWithStats(ctx, ListCollectorAppsWithStatsRequest{
 		UserID:        noAccessUserID,
 		CollectorName: "other-collector",
-		AppName:       "other-app",
-		Since:         time.Now().Add(-1 * time.Hour),
+		Since:         time.Now().Add(-time.Hour),
 	})
 	if err != ErrAccessDenied {
 		t.Fatalf("expected ErrAccessDenied, got %v", err)
 	}
 }
 
-func TestGetAppErrorCount_InvalidRequest(t *testing.T) {
+func TestListCollectorAppsWithStats_InvalidRequest(t *testing.T) {
 	tests := []struct {
 		name string
-		req  GetAppErrorCountRequest
+		req  ListCollectorAppsWithStatsRequest
 	}{
-		{name: "zero user ID", req: GetAppErrorCountRequest{UserID: 0, CollectorName: "c", AppName: "a", Since: time.Now()}},
-		{name: "empty collector", req: GetAppErrorCountRequest{UserID: 1, CollectorName: "", AppName: "a", Since: time.Now()}},
-		{name: "empty app", req: GetAppErrorCountRequest{UserID: 1, CollectorName: "c", AppName: "", Since: time.Now()}},
+		{name: "zero user ID", req: ListCollectorAppsWithStatsRequest{UserID: 0, CollectorName: "c", Since: time.Now()}},
+		{name: "empty collector", req: ListCollectorAppsWithStatsRequest{UserID: 1, CollectorName: "", Since: time.Now()}},
+		{name: "since too old", req: ListCollectorAppsWithStatsRequest{UserID: 1, CollectorName: "c", Since: time.Now().Add(-31 * 24 * time.Hour)}},
 	}
 
 	for _, tt := range tests {

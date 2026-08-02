@@ -77,15 +77,18 @@ wait_for_logs() {
 
 wait_for_panel_health() {
   local collector="$1"
-  local attempt uptime
+  local attempt grid
+  # Probe the apps grid fragment for a rendered uptime value.
   for attempt in $(seq 1 30); do
-    uptime="$(curl -fsS "${DEMO_URL}/panel/collectors/${collector}/apps/tracer-panel/uptime/percentage" -H "Cookie: ${COOKIE}")"
-    if grep -Eq '[0-9]+\.[0-9]{2}%?|[0-9]+%?|N/A' <<<"${uptime}"; then
+    grid="$(curl -fsS "${DEMO_URL}/panel/collectors/${collector}/apps" -H "Cookie: ${COOKIE}")"
+    # The value span sits right after the "uptime:" label; require an actual
+    # N/A or numeric value rather than just the label.
+    if grep -Eq 'uptime: <span[^>]*>(N/A|[0-9]+)<' <<<"${grid}"; then
       return 0
     fi
     sleep 1
   done
-  fail "panel uptime endpoint did not return a percentage"
+  fail "panel apps grid did not render baked uptime"
 }
 
 assert_no_errors() {

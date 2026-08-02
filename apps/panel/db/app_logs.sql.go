@@ -24,6 +24,27 @@ func (q *Queries) CountLogsByGroupID(ctx context.Context, groupID sql.NullInt64)
 	return total, err
 }
 
+const countLogsByGroupIDSince = `-- name: CountLogsByGroupIDSince :one
+SELECT COUNT(*) as total
+FROM log
+WHERE group_id = ?
+  AND created_at > ?
+`
+
+type CountLogsByGroupIDSinceParams struct {
+	GroupID   sql.NullInt64
+	CreatedAt int64
+}
+
+// Count logs in a group created after a timestamp (for the "+N new records"
+// indicator on the log group summary).
+func (q *Queries) CountLogsByGroupIDSince(ctx context.Context, arg CountLogsByGroupIDSinceParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countLogsByGroupIDSince, arg.GroupID, arg.CreatedAt)
+	var total int64
+	err := row.Scan(&total)
+	return total, err
+}
+
 const deleteLogGroup = `-- name: DeleteLogGroup :execrows
 DELETE FROM log_group WHERE id = ?
 `

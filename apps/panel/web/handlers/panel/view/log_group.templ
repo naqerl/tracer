@@ -18,12 +18,14 @@ type LogGroupProps struct {
 }
 
 type LogGroupData struct {
-	ID      int64
-	Message string
-	Level   string
-	Count   int64
+	ID        int64
+	Message   string
+	Level     string
+	Count     int64
 	CreatedAt int64
 	LastLogAt int64
+	Since     int64
+	NewLogs   int64
 }
 
 // LogGroup renders the log group detail page.
@@ -48,11 +50,12 @@ templ LogGroupContent(props LogGroupProps) {
 	<!-- Group Header -->
 	<div class="mb-6">
 		@LogMessage(props.LogGroup.Message, props.LogGroup.Level)
-		<div class="flex flex-wrap gap-4 text-sm text-fg-secondary">
-			<span>Level: <span class="text-fg uppercase">{ props.LogGroup.Level }</span></span>
-			<span>Count: <span class="text-fg">{ strconv.FormatInt(props.LogGroup.Count, 10) }</span></span>
-			<span>First: <span class="text-fg">{ time.Unix(props.LogGroup.CreatedAt, 0).Format("2006-01-02 15:04:05") }</span></span>
-			<span>Latest: <span class="text-fg">{ time.Unix(props.LogGroup.LastLogAt, 0).Format("2006-01-02 15:04:05") }</span></span>
+		<div id="log-group-summary"
+			 hx-get={ "/panel/collectors/" + props.CollectorName + "/apps/" + props.AppName + "/logs/groups/" + strconv.FormatInt(props.LogGroup.ID, 10) + "/summary" }
+			 hx-include="#log-group-since"
+			 hx-trigger="load, every 15s"
+			 hx-swap="innerHTML">
+			@LogGroupSummary(props.LogGroup)
 		</div>
 	</div>
 
@@ -86,5 +89,21 @@ templ LogMessage(message string, level string) {
 	<div class="mb-2">
 		<span class={ "inline-block w-2 h-2 rounded-full mr-3 mt-2 " + levelDotClass(level) }></span>
 		<span class="text-xl font-medium break-all">{ message }</span>
+	</div>
+}
+
+// LogGroupSummary renders the log group metadata row (count, first, latest)
+// with a "+N" badge for rows created since the last poll.
+templ LogGroupSummary(group LogGroupData) {
+	<input type="hidden" name="since" id="log-group-since" value={ strconv.FormatInt(group.Since, 10) } />
+	<div class="flex flex-wrap gap-4 text-sm text-fg-secondary">
+		<span>Level: <span class="text-fg uppercase">{ group.Level }</span></span>
+		<span>Count: <span class="text-fg">{ strconv.FormatInt(group.Count, 10) }</span></span>
+		<span>First: <span class="text-fg">{ time.Unix(group.CreatedAt, 0).Format("2006-01-02 15:04:05") }</span></span>
+		<span>Latest: <span class="text-fg">{ time.Unix(group.LastLogAt, 0).Format("2006-01-02 15:04:05") }</span></span>
+		if group.NewLogs > 0 {
+			<span class="cursor-help font-medium text-yellow-400"
+				  title="There are new log records, refresh the page to see them">+{ strconv.FormatInt(group.NewLogs, 10) }</span>
+		}
 	</div>
 }

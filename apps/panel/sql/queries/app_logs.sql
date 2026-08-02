@@ -64,6 +64,14 @@ SELECT COUNT(*) as total
 FROM log
 WHERE group_id = ?;
 
+-- name: CountLogsByGroupIDSince :one
+-- Count logs in a group created after a timestamp (for the "+N new records"
+-- indicator on the log group summary).
+SELECT COUNT(*) as total
+FROM log
+WHERE group_id = ?
+  AND created_at > ?;
+
 -- name: DeleteOldLogs :exec
 DELETE FROM log
 WHERE created_at < ?;
