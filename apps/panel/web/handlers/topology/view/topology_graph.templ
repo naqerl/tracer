@@ -7,19 +7,18 @@ type TopologyGraphProps struct {
 
 templ TopologyGraph(p TopologyGraphProps) {
 	<div id="topology-graph-shell" data-snapshot={ p.Snapshot } class="flex min-h-[60vh] flex-1 items-center justify-center lg:min-h-0">
-		<div class="w-full overflow-hidden">
-			<svg id="topology-graph" class="block w-full max-w-full mx-auto" role="img" aria-label="Live topology graph"></svg>
+		<div class="h-full w-full overflow-hidden">
+			<svg id="topology-graph" class="block h-full w-full" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Live topology graph"></svg>
 		</div>
 	</div>
 	<script>
 				(function() {
 					const svg = document.getElementById('topology-graph');
-					const graphShell = document.getElementById('topology-graph-shell');
 					const eventLogEl = document.getElementById('topology-event-log');
 					const dataEl = document.getElementById('topology-graph-shell');
 					const animeFn = typeof window.anime === 'function' ? window.anime : null;
 
-					if (!svg || !graphShell || !dataEl) {
+					if (!svg || !dataEl) {
 						return;
 					}
 
@@ -81,8 +80,6 @@ templ TopologyGraph(p TopologyGraphProps) {
 						const centerY = size / 2;
 
 						svg.setAttribute('viewBox', `0 0 ${size} ${size}`);
-						svg.setAttribute('width', String(size));
-						svg.setAttribute('height', String(size));
 						svg.textContent = '';
 
 						const defs = el('defs');
@@ -103,7 +100,9 @@ templ TopologyGraph(p TopologyGraphProps) {
 						state.nodes.clear();
 						state.edges.clear();
 
-						createPanelNode(nodeLayer, state.snapshot.panel, centerX, centerY);
+						if (state.snapshot.panel) {
+							createPanelNode(nodeLayer, state.snapshot.panel, centerX, centerY);
+						}
 
 						collectors.forEach((collector, index) => {
 							const collectorAngle = (-Math.PI / 2) + (Math.PI * 2 * index / collectorCount);
@@ -302,28 +301,6 @@ templ TopologyGraph(p TopologyGraphProps) {
 						const height = Math.ceil(bounds.height + margin * 2);
 
 						svg.setAttribute('viewBox', `${x} ${y} ${width} ${height}`);
-						svg.setAttribute('width', String(width));
-						svg.setAttribute('height', String(height));
-						fitGraphToViewport(width, height);
-					}
-
-					function fitGraphToViewport(width, height) {
-						const container = svg.parentElement;
-						const containerWidth = container ? container.clientWidth : 0;
-						const shellWidth = graphShell.clientWidth || containerWidth;
-						const shellHeight = graphShell.clientHeight || 0;
-						const viewportWidth = Math.max(320, window.innerWidth || width);
-						const availableWidth = Math.max(240, shellWidth || (viewportWidth - 16));
-						const availableHeight = shellHeight > 0 ? Math.max(240, shellHeight - 8) : 0;
-
-						const scale = Math.min(availableWidth / width, availableHeight / height, 1);
-						let renderedWidth = Math.round(width * scale);
-						let renderedHeight = Math.round(height * scale);
-
-						svg.style.width = `${renderedWidth}px`;
-						svg.style.height = `${renderedHeight}px`;
-						svg.style.marginLeft = 'auto';
-						svg.style.marginRight = 'auto';
 					}
 
 					function tick(now) {
@@ -462,7 +439,7 @@ templ TopologyGraph(p TopologyGraphProps) {
 					}
 
 					function playHeartbeatWave() {
-						const panelNode = state.nodes.get(state.snapshot.panel.id);
+						const panelNode = state.snapshot.panel ? state.nodes.get(state.snapshot.panel.id) : null;
 						waveNode(panelNode, 0, 0.22);
 
 						const collectors = state.snapshot.collectors || [];

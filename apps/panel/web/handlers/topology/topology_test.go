@@ -74,7 +74,7 @@ func TestTopologyEventsStreamsOnlyAuthorizedEvents(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodGet, "/topology/events", nil)
 	req.AddCookie(&http.Cookie{Name: "tracer_session", Value: token})
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	req = req.WithContext(ctx)
 	rr := httptest.NewRecorder()
