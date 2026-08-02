@@ -11,13 +11,40 @@ tracer-collector add myapp
 # Add a file path
 tracer-collector add /var/log/myapp.log
 
+# Add a Kubernetes resource (kubectl source)
+tracer-collector add deployment/myapp -n default
+
 # Skip confirmation prompt
 tracer-collector add myapp --no-confirm
 ```
 
+## Kubectl sources and kubeconfig
+
+A resource reference that kubectl resolves (e.g. `deployment/myapp`,
+`pod/myapp-xxx`, `-l app=myapp`) is added as a kubectl source. The collector
+daemon reads it as the `tracer-collector` service user, which has no home
+directory, so `add` installs a kubeconfig at `/etc/tracer/kubeconfig`
+(root-owned, readable by the `tracer` group) and points the source at it.
+The source config is auto-detected from `$KUBECONFIG`, `~/.kube/config`, or
+well-known system locations; override it with `--kubeconfig <path>`. If no
+kubeconfig can be found, `add` warns and continues (the source will not work
+until kubectl access is configured).
+
+To set up or refresh kubectl access without adding a source:
+
+```bash
+sudo tracer-collector kubectl-setup
+sudo tracer-collector kubectl-setup --kubeconfig /path/to/kubeconfig
+```
+
+`kubectl-setup` verifies the config against the cluster, copies it to
+`/etc/tracer/kubeconfig`, and verifies the copy, so kubectl sources fail with
+an actionable message (e.g. a permission error on the kubeconfig) instead of
+`SOURCE_ERROR[source_read_failure]: EOF`.
+
 ## How it works
 
-1. **Detect source type** — input with `/` or `.` prefix is treated as a file path; otherwise a systemd unit
+1. **Detect source type** — input with `/` or `.` prefix is treated as a file path; otherwise a systemd unit (or a Kubernetes resource if kubectl resolves it)
 2. **Read samples** — reads the last 100 lines from the source
 3. **Guess format** — detects JSON or slog text format
 4. **Extract fields** — maps common field names (`level`, `msg`, `time`, etc.) to their actual names in your logs

@@ -2,6 +2,9 @@ package app
 
 import (
 	"context"
+	"errors"
+	"io"
+	"log/slog"
 	"time"
 
 	"tracer/apps/collector/internal/lifecycle"
@@ -65,14 +68,23 @@ func (a App) Produce(ctx context.Context) <-chan types.Event {
 						if ctx.Err() != nil {
 							return
 						}
-						if !emit(types.ErrorEvent{
-							Time:    time.Now().UTC(),
-							App:     a.Name,
-							Source:  "source",
-							ErrType: "source_read_failure",
-							Message: err.Error(),
-						}) {
-							return
+						// A clean end of stream (io.EOF) is not a failure:
+						// the source simply ran out of lines (e.g. a
+						// kubectl or journalctl process exited 0). Reopen
+						// and retry after backoff instead of reporting an
+						// error event.
+						if errors.Is(err, io.EOF) {
+							slog.Debug("log source reached end of stream, retrying", "app", a.Name)
+						} else {
+							if !emit(types.ErrorEvent{
+								Time:    time.Now().UTC(),
+								App:     a.Name,
+								Source:  "source",
+								ErrType: "source_read_failure",
+								Message: err.Error(),
+							}) {
+								return
+							}
 						}
 						break
 					}

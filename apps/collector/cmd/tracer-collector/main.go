@@ -27,6 +27,7 @@ import (
 	"tracer/apps/collector/internal/formatguesser"
 	"tracer/apps/collector/internal/health"
 	"tracer/apps/collector/internal/install"
+	"tracer/apps/collector/internal/kubeconfig"
 	"tracer/apps/collector/internal/lifecycle"
 	"tracer/apps/collector/internal/parser"
 	"tracer/apps/collector/internal/sender"
@@ -41,14 +42,16 @@ import (
 
 func main() {
 	// Define flags
-	var (
-		addCmd = flag.NewFlagSet("add", flag.ExitOnError)
-		setCmd = flag.NewFlagSet("set", flag.ExitOnError)
+	addCmd := flag.NewFlagSet("add", flag.ExitOnError)
+	setCmd := flag.NewFlagSet("set", flag.ExitOnError)
+	setupKubectlCmd := flag.NewFlagSet("kubectl-setup", flag.ExitOnError)
 
-		configPath    = flag.String("config", "", "path to config file")
-		printDefaults = flag.Bool("print-defaults", false, "print default configuration and exit")
-		printVersion  = flag.Bool("version", false, "print version and exit")
-	)
+	setupKubectlKubeconfig := setupKubectlCmd.String("kubeconfig", "", "kubeconfig to install (default: auto-detect from $KUBECONFIG, ~/.kube/config, or system locations)")
+
+	configPath := flag.String("config", "", "path to config file")
+	printDefaults := flag.Bool("print-defaults", false, "print default configuration and exit")
+	printVersion := flag.Bool("version", false, "print version and exit")
+
 	flag.Parse()
 
 	if *printVersion {
@@ -104,6 +107,10 @@ func main() {
 			return
 		case "install":
 			handleInstall()
+			return
+		case "kubectl-setup":
+			setupKubectlCmd.Parse(flag.Args()[1:])
+			handleKubectlSetup(*setupKubectlKubeconfig)
 			return
 		default:
 			log.Fatalf("Unknown command: %s\n", flag.Arg(0))
@@ -286,6 +293,7 @@ func handleAdd(ctx context.Context, path string, cfg config.Config, addCmd *flag
 	favourRaw := addCmd.String("favour", "", `favour specific parser settings when conflicts occur (e.g., 'type:"json",level_field:"status"')`)
 	noConfirm := addCmd.Bool("no-confirm", false, "skip confirmation prompt and save immediately")
 	namespace := addCmd.String("n", "default", "Kubernetes namespace (for kubectl sources)")
+	kubeconfigPath := addCmd.String("kubeconfig", "", "kubeconfig to install for the collector (default: auto-detect)")
 	addCmd.Parse(reorderFlags(flag.Args()[1:], addCmd))
 	remaining := addCmd.Args()
 
@@ -306,6 +314,37 @@ func handleAdd(ctx context.Context, path string, cfg config.Config, addCmd *flag
 	default:
 		fmt.Printf("  Type: systemd unit\n")
 		fmt.Printf("  Unit: %s\n", spec.Params["unit"])
+	}
+
+	// The daemon runs as the collector service user, which has no home
+	// directory or kubeconfig of its own. Install a kubeconfig it can read
+	// and point the source at it, so kubectl keeps working after add.
+	if spec.Type == "kubectl" {
+		installed, err := kubeconfig.Ensure(*kubeconfigPath)
+		switch {
+		case err == nil:
+			spec.Params["kubeconfig"] = installed
+			if err := kubeconfig.Resolves(installed, spec.Params["resource"], spec.Params["namespace"]); err != nil {
+				log.Fatalf("The kubeconfig installed at %s does not work for this source: %v\nRun `sudo tracer-collector kubectl-setup --kubeconfig <path>` with a kubeconfig that can read %s.",
+					installed, err, spec.Params["resource"])
+			}
+		case errors.Is(err, kubeconfig.ErrRequiresRoot):
+			// The current user has a kubeconfig but only root can install it
+			// for the daemon. Failing here beats saving a config that cannot
+			// work and only breaking at runtime.
+			src := *kubeconfigPath
+			if src == "" {
+				if cur, cerr := kubeconfig.Current(); cerr == nil {
+					src = cur
+				}
+			}
+			log.Fatalf("Installing the collector's kubeconfig requires root.\n  Run: sudo tracer-collector kubectl-setup --kubeconfig %s\n  Then re-run: tracer-collector add %s", src, remaining[0])
+		default:
+			// No kubeconfig found anywhere (e.g. in-cluster or fake kubectl
+			// that works without one): warn and continue.
+			fmt.Fprintf(os.Stderr, "\nWarning: could not find a kubeconfig for the collector (%v).\n", err)
+			fmt.Fprintf(os.Stderr, "Kubectl sources may not work until you run: sudo tracer-collector kubectl-setup\n\n")
+		}
 	}
 
 	// Parse the favour spec
@@ -749,6 +788,45 @@ func handleVerify(ctx context.Context, cfg config.Config) {
 	}
 
 	fmt.Printf("Verification successful: connected to panel at %s, authenticated, and registered\n", cfg.Sender.PanelHost)
+}
+
+// handleKubectlSetup installs a kubeconfig the collector service user can
+// read, so kubectl sources keep working under the daemon. It verifies the
+// source config, copies it to /etc/tracer/kubeconfig, and verifies the copy.
+func handleKubectlSetup(kubeconfigPath string) {
+	if os.Getuid() != 0 {
+		log.Fatalf("kubectl-setup must be run as root: sudo tracer-collector kubectl-setup")
+	}
+	if !kubectlAvailable() {
+		log.Fatalf("kubectl binary not found in PATH; install kubectl or k3s first")
+	}
+
+	src := kubeconfigPath
+	if src == "" {
+		var err error
+		src, err = kubeconfig.Current()
+		if err != nil {
+			log.Fatalf("Could not find a kubeconfig to install: %v\nPass one explicitly: sudo tracer-collector kubectl-setup --kubeconfig <path>", err)
+		}
+	}
+
+	fmt.Printf("Verifying kubectl access with %s...\n", src)
+	if err := kubeconfig.Verify(src); err != nil {
+		log.Fatalf("kubectl does not work with %s: %v", src, err)
+	}
+
+	if err := kubeconfig.Install(src); err != nil {
+		log.Fatalf("Could not install the kubeconfig: %v", err)
+	}
+
+	fmt.Printf("Verifying installed kubeconfig %s...\n", kubeconfig.Path)
+	if err := kubeconfig.Verify(kubeconfig.Path); err != nil {
+		log.Fatalf("The installed kubeconfig does not work: %v", err)
+	}
+
+	fmt.Printf("Kubectl access configured for the collector: %s\n", kubeconfig.Path)
+	fmt.Printf("Kubectl sources added via `tracer-collector add` will use it automatically.\n")
+	fmt.Printf("Restart the collector to apply: sudo systemctl restart tracer-collector\n")
 }
 
 func handleUpdate() {

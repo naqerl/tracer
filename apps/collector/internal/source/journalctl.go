@@ -2,10 +2,12 @@ package source
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -23,6 +25,13 @@ type journalctlSource struct {
 	scanner *bufio.Scanner
 	ctx     context.Context // stored from Open for use in restart
 	seeked  bool
+
+	// stderr captures the running journalctl's stderr so a failing process
+	// (e.g. a unit that does not exist) reports why instead of a bare EOF.
+	// waited tracks whether Next already called cmd.Wait() so Close does not
+	// wait a second time.
+	stderr *bytes.Buffer
+	waited bool
 
 	// linesFromEnd specifies how many lines to show from the end.
 	// 0 means start from now (tail mode).
@@ -79,6 +88,25 @@ func (js *journalctlSource) Next(ctx context.Context) (string, error) {
 		if err := js.scanner.Err(); err != nil {
 			return "", fmt.Errorf("journalctl scanner (%s): %w", js.unit, err)
 		}
+		if ctx.Err() != nil {
+			return "", ctx.Err()
+		}
+		// A previous Next already drained the stream and reaped the process;
+		// keep reporting the documented EOF instead of calling Wait twice.
+		if js.waited {
+			return "", io.EOF
+		}
+
+		// The stream ended. Wait() must run only after stdout is fully
+		// drained (it closes the pipe), so this is the first time we reap.
+		// A clean exit (status 0) is a normal end of journalctl output —
+		// report io.EOF so the caller can retry. A non-zero exit means
+		// journalctl failed; stderr holds the reason.
+		js.waited = true
+		if waitErr := js.cmd.Wait(); waitErr != nil {
+			return "", fmt.Errorf("journalctl -u %s exited: %w: %s",
+				js.unit, waitErr, strings.TrimSpace(js.stderr.String()))
+		}
 		return "", io.EOF
 	}
 }
@@ -90,14 +118,19 @@ func (js *journalctlSource) Close() error {
 		return nil
 	}
 	if err := js.cmd.Process.Kill(); err != nil {
-		return err
+		slog.Warn("journalctl source: failed to kill process", "error", err, "unit", js.unit)
 	}
-	if err := js.cmd.Wait(); err != nil {
-		return err
+	// Reap the process unless Next already waited after draining stdout.
+	if !js.waited {
+		if err := js.cmd.Wait(); err != nil {
+			slog.Warn("journalctl source: failed to reap process", "error", err, "unit", js.unit)
+		}
 	}
 
 	js.cmd = nil
 	js.scanner = nil
+	js.stderr = nil
+	js.waited = false
 	js.seeked = false
 
 	return nil
@@ -154,6 +187,12 @@ func (js *journalctlSource) startJournalCtl(follow bool) error {
 	// Build command based on current mode
 	flags := buildFlags(js.unit, js.linesFromEnd, follow)
 	cmd := exec.CommandContext(js.ctx, "journalctl", flags...)
+
+	// Capture stderr instead of letting it go to /dev/null, so a failing
+	// journalctl (e.g. a unit that does not exist) reports the real reason.
+	stderr := &bytes.Buffer{}
+	cmd.Stderr = stderr
+
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return fmt.Errorf("journalctl stdout pipe (%s): %w", js.unit, err)
@@ -169,6 +208,8 @@ func (js *journalctlSource) startJournalCtl(follow bool) error {
 
 	js.cmd = cmd
 	js.scanner = scanner
+	js.stderr = stderr
+	js.waited = false
 
 	return nil
 }

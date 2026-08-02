@@ -2,10 +2,12 @@ package source
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -32,6 +34,13 @@ type kubectlSource struct {
 	scanner *bufio.Scanner
 	ctx     context.Context // stored from Open for use in restart
 	seeked  bool
+
+	// stderr captures the running kubectl's stderr so a failing process can
+	// report why it failed (e.g. an unreadable kubeconfig) instead of leaving
+	// the caller with a bare EOF. waited tracks whether Next already called
+	// cmd.Wait() so Close does not wait a second time.
+	stderr *bytes.Buffer
+	waited bool
 
 	// linesFromEnd specifies how many lines to show from the end.
 	//  0  = start from now (tail mode, default)
@@ -96,6 +105,25 @@ func (ks *kubectlSource) Next(ctx context.Context) (string, error) {
 		if err := ks.scanner.Err(); err != nil {
 			return "", fmt.Errorf("kubectl scanner (%s/%s): %w", ks.namespace, ks.resource, err)
 		}
+		if ctx.Err() != nil {
+			return "", ctx.Err()
+		}
+		// A previous Next already drained the stream and reaped the process;
+		// keep reporting the documented EOF instead of calling Wait twice.
+		if ks.waited {
+			return "", io.EOF
+		}
+
+		// The stream ended. Wait() must run only after stdout is fully
+		// drained (it closes the pipe), so this is the first time we reap.
+		// A clean exit (status 0) means kubectl finished on its own —
+		// report io.EOF so the caller can retry. A non-zero exit means
+		// kubectl failed; stderr holds the reason.
+		ks.waited = true
+		if waitErr := ks.cmd.Wait(); waitErr != nil {
+			return "", fmt.Errorf("kubectl logs (%s/%s) exited: %w: %s",
+				ks.namespace, ks.resource, waitErr, strings.TrimSpace(ks.stderr.String()))
+		}
 		return "", io.EOF
 	}
 }
@@ -106,11 +134,20 @@ func (ks *kubectlSource) Close() error {
 		ks.seeked = false
 		return nil
 	}
-	_ = ks.cmd.Process.Kill()
-	_ = ks.cmd.Wait()
+	if err := ks.cmd.Process.Kill(); err != nil {
+		slog.Warn("kubectl source: failed to kill process", "error", err, "resource", ks.resource)
+	}
+	// Reap the process unless Next already waited after draining stdout.
+	if !ks.waited {
+		if err := ks.cmd.Wait(); err != nil {
+			slog.Warn("kubectl source: failed to reap process", "error", err, "resource", ks.resource)
+		}
+	}
 
 	ks.cmd = nil
 	ks.scanner = nil
+	ks.stderr = nil
+	ks.waited = false
 	ks.seeked = false
 
 	return nil
@@ -170,6 +207,11 @@ func (ks *kubectlSource) startKubectl(follow bool) error {
 		cmd.Env = append(cmd.Env, "KUBECONFIG="+ks.kubeconfig)
 	}
 
+	// Capture stderr instead of letting it go to /dev/null, so a failing
+	// kubectl (e.g. an unreadable kubeconfig) reports the real reason.
+	stderr := &bytes.Buffer{}
+	cmd.Stderr = stderr
+
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return fmt.Errorf("kubectl stdout pipe (%s/%s): %w", ks.namespace, ks.resource, err)
@@ -185,6 +227,8 @@ func (ks *kubectlSource) startKubectl(follow bool) error {
 
 	ks.cmd = cmd
 	ks.scanner = scanner
+	ks.stderr = stderr
+	ks.waited = false
 
 	return nil
 }

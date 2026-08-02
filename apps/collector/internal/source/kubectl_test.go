@@ -2,6 +2,7 @@ package source
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -373,6 +374,34 @@ echo '{"level":"info","msg":"ready","ts":"2025-03-30T10:00:01Z"}'
 	_, err = src.Next(t.Context())
 	if err != io.EOF {
 		t.Fatalf("expected EOF after lines exhausted, got %v", err)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Layer 1 – A failing kubectl must surface its stderr, not a bare EOF
+// ---------------------------------------------------------------------------
+
+func TestKubectlSourceNonZeroExitReportsStderr(t *testing.T) {
+	writeFakeScript(t, `
+echo 'error: error loading config file "/etc/rancher/k3s/k3s.yaml": permission denied' >&2
+exit 1
+`)
+
+	src := NewKubectl(KubectlConfig{Resource: "deployment/myapp", Namespace: "default"})
+	if err := src.Open(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = src.Close() })
+
+	_, err := src.Next(t.Context())
+	if err == nil {
+		t.Fatal("expected an error for a non-zero kubectl exit")
+	}
+	if errors.Is(err, io.EOF) {
+		t.Fatalf("expected a real error, got bare EOF: %v", err)
+	}
+	if !strings.Contains(err.Error(), "permission denied") {
+		t.Fatalf("error should include kubectl stderr, got: %v", err)
 	}
 }
 

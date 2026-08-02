@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"io"
 	"testing"
 	"time"
 
@@ -77,6 +78,28 @@ func TestProduce_EmitsLogAndSourceReadError(t *testing.T) {
 	}
 	if !hasReadErr {
 		t.Fatalf("expected source_read_failure error event")
+	}
+}
+
+// TestProduce_EOFIsSilentRetry verifies that a clean end of stream (io.EOF)
+// is not reported as a source_read_failure: the producer should retry quietly
+// instead of spamming error events.
+func TestProduce_EOFIsSilentRetry(t *testing.T) {
+	src := &stubSource{nextErr: io.EOF}
+	a := New(src, stubParser{}, lifecycle.Detector{}, "demo-app")
+
+	ctx, cancel := context.WithTimeout(t.Context(), 500*time.Millisecond)
+	defer cancel()
+
+	stream := a.Produce(ctx)
+
+	for evt := range stream {
+		switch e := evt.(type) {
+		case types.ErrorEvent:
+			t.Fatalf("expected no error event for io.EOF, got %s: %s", e.ErrType, e.Message)
+		default:
+			t.Fatalf("unexpected event for io.EOF: %T", evt)
+		}
 	}
 }
 

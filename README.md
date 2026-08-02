@@ -46,7 +46,26 @@ tracer-collector add myapp
 
 # Add a log file
 tracer-collector add /var/log/myapp.log
+
+# Add a Kubernetes resource as a log source (kubectl)
+tracer-collector add deployment/myapp -n default
 ```
+
+Kubectl sources are read by the collector daemon, which runs as the
+`tracer-collector` service user — a user with no home directory and no
+kubeconfig of its own. `add` handles this automatically: it installs a
+kubeconfig at `/etc/tracer/kubeconfig` (auto-detected from `$KUBECONFIG`,
+`~/.kube/config`, or k3s/kubeadm locations, or forced with `--kubeconfig
+<path>`), points the source at it, and verifies it can read the resource.
+If you need to (re)configure kubectl access separately, run:
+
+```bash
+sudo tracer-collector kubectl-setup          # auto-detect the source config
+sudo tracer-collector kubectl-setup --kubeconfig /path/to/kubeconfig
+```
+
+It verifies the config works, copies it to `/etc/tracer/kubeconfig`, and
+verifies the copy.
 
 ### Point the collector at your panel
 

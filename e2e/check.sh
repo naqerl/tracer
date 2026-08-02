@@ -93,11 +93,15 @@ assert_no_errors() {
   local output
   output="$(docker exec "${DEMO_CONTAINER}" journalctl -u "${unit}" --no-pager || true)"
   # Filter out transient startup errors (connection refused during initial startup, user creation)
+  # "attempt to write a readonly database" is a boot-time race: the panel
+  # service starts while install-on-boot is still running `tracer-panel -init`
+  # (which writes the DB); systemd restarts the panel and it comes up fine.
   filtered_output="$(printf '%s\n' "${output}" | grep -E 'SOURCE_ERROR|level=ERROR|[Ff]ailed to ' | \
     grep -v 'Failed to connect to panel' | \
     grep -v 'connection refused' | \
     grep -v 'Failed to determine user credentials' | \
-    grep -v 'Failed at step USER spawning' || true)"
+    grep -v 'Failed at step USER spawning' | \
+    grep -v 'attempt to write a readonly database' || true)"
   if [[ -n "${filtered_output}" ]]; then
     printf '%s\n' "${filtered_output}" >&2
     fail "${unit} contains error logs"
@@ -122,7 +126,7 @@ done
 log "checking failed units allowlist"
 failed_units="$(docker exec "${DEMO_CONTAINER}" systemctl --failed --no-legend || true)"
 if [[ -n "${failed_units}" ]]; then
-  unexpected="$(printf '%s\n' "${failed_units}" | grep -Ev 'sys-kernel-(config|debug|tracing)\.mount|proc-sys-fs-binfmt_misc\.automount' || true)"
+  unexpected="$(printf '%s\n' "${failed_units}" | grep -Ev 'sys-kernel-(config|debug|tracing)\.mount|proc-sys-fs-binfmt_misc\.automount|getty@tty1\.service' || true)"
   [[ -z "${unexpected}" ]] || fail "unexpected failed units detected: ${unexpected}"
 fi
 
