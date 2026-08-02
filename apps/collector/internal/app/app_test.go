@@ -81,6 +81,36 @@ func TestProduce_EmitsLogAndSourceReadError(t *testing.T) {
 	}
 }
 
+// alwaysFailParser never parses; used to verify parse failures are dropped.
+type alwaysFailParser struct{}
+
+func (alwaysFailParser) Parse(string) (types.LogEntry, error) {
+	return types.LogEntry{}, errors.New("parse failed: invalid character 'ð' looking for beginning of value")
+}
+
+// TestProduce_ParseErrorIsDropped verifies that an unparseable line is not
+// emitted as a parse_error entry into the panel stream (it is logged locally
+// by the collector instead).
+func TestProduce_ParseErrorIsDropped(t *testing.T) {
+	src := &stubSource{
+		lines: []string{"not-json"},
+	}
+	a := New(src, alwaysFailParser{}, lifecycle.Detector{}, "demo-app")
+
+	ctx, cancel := context.WithTimeout(t.Context(), 500*time.Millisecond)
+	defer cancel()
+
+	stream := a.Produce(ctx)
+
+	for evt := range stream {
+		if e, ok := evt.(types.ErrorEvent); ok {
+			if e.ErrType == "parse_error" {
+				t.Fatalf("expected no parse_error event, got: %s", e.Message)
+			}
+		}
+	}
+}
+
 // TestProduce_EOFIsSilentRetry verifies that a clean end of stream (io.EOF)
 // is not reported as a source_read_failure: the producer should retry quietly
 // instead of spamming error events.

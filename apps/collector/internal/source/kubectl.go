@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -202,9 +203,11 @@ func (ks *kubectlSource) startKubectl(follow bool) error {
 	flags := ks.buildFlags(follow)
 	cmd := exec.CommandContext(ks.ctx, "kubectl", flags...)
 
-	// Set kubeconfig if specified
+	// Set kubeconfig if specified. cmd.Env starts nil, so appending to it
+	// would replace the entire environment (dropping PATH, HOME, etc.);
+	// inherit the parent env and add ours on top.
 	if ks.kubeconfig != "" {
-		cmd.Env = append(cmd.Env, "KUBECONFIG="+ks.kubeconfig)
+		cmd.Env = append(os.Environ(), "KUBECONFIG="+ks.kubeconfig)
 	}
 
 	// Capture stderr instead of letting it go to /dev/null, so a failing

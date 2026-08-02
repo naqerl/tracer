@@ -51,6 +51,12 @@ tracer-collector add /var/log/myapp.log
 tracer-collector add deployment/myapp -n default
 ```
 
+`tracer-collector -help` prints the complete CLI — every command and its
+flags. `tracer-collector <command> -help` shows a single command's usage
+(e.g. `tracer-collector add -help`), and `tracer-collector help` is an alias
+for the top-level help. Help works even when the collector is not yet
+configured.
+
 Kubectl sources are read by the collector daemon, which runs as the
 `tracer-collector` service user — a user with no home directory and no
 kubeconfig of its own. `add` handles this automatically: it installs a
@@ -64,8 +70,10 @@ sudo tracer-collector kubectl-setup          # auto-detect the source config
 sudo tracer-collector kubectl-setup --kubeconfig /path/to/kubeconfig
 ```
 
-It verifies the config works, copies it to `/etc/tracer/kubeconfig`, and
-verifies the copy.
+It verifies the config works, copies it to `/etc/tracer/kubeconfig`, verifies
+the copy, and points every existing kubectl source that does not already set a
+`kubeconfig` at the installed file — so a kubectl source can never silently
+fall back to an unreadable system default.
 
 ### Point the collector at your panel
 

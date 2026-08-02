@@ -31,6 +31,15 @@ func New(s source.Source, p parser.Parser, lifecycle lifecycle.Detector, name st
 	}
 }
 
+// truncateLine bounds a raw log line for inclusion in structured log output,
+// so a huge or binary line cannot bloat the collector journal.
+func truncateLine(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen-3] + "..."
+}
+
 func (a App) Produce(ctx context.Context) <-chan types.Event {
 	out := make(chan types.Event, 100)
 	go func() {
@@ -108,17 +117,19 @@ func (a App) Produce(ctx context.Context) <-chan types.Event {
 						}) {
 							return
 						}
-					} else {
-						if !emit(types.ErrorEvent{
-							Time:    time.Now().UTC(),
-							App:     a.Name,
-							Source:  "parser",
-							ErrType: "parse_error",
-							Message: err.Error(),
-						}) {
-							return
-						}
+						continue
 					}
+					// An unparseable line is collector-internal noise (mixed
+					// formats, stderr lines captured by kubectl logs, binary
+					// fragments), not an application error. Log it locally so
+					// it is diagnosable in the collector journal, and drop the
+					// line instead of surfacing a parse_error entry in the
+					// panel next to real application logs. Error level: every
+					// dropped line is a missed log entry — a critical loss of
+					// observability data. The offending line is included
+					// (truncated) so the journal says which line failed.
+					slog.Error("could not parse log line, dropping",
+						"app", a.Name, "error", err, "line", truncateLine(line, 200))
 				}
 			}
 

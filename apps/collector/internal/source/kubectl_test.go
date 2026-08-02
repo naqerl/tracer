@@ -378,6 +378,46 @@ echo '{"level":"info","msg":"ready","ts":"2025-03-30T10:00:01Z"}'
 }
 
 // ---------------------------------------------------------------------------
+// Layer 1 – KUBECONFIG must not replace the child's environment
+// ---------------------------------------------------------------------------
+
+func TestKubectlSourceEnvInheritsParent(t *testing.T) {
+	// The fake kubectl echoes PATH and KUBECONFIG. With the old bug
+	// (append to nil cmd.Env) PATH would be empty in the child and kubectl
+	// could not even resolve its own subprocesses.
+	writeFakeScript(t, `
+echo "PATH=$PATH"
+echo "KUBECONFIG=$KUBECONFIG"
+`)
+
+	src := NewKubectl(KubectlConfig{
+		Resource:   "deployment/myapp",
+		Namespace:  "default",
+		Kubeconfig: "/etc/tracer/kubeconfig",
+	})
+	if err := src.Open(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = src.Close() })
+
+	line1, err := src.Next(t.Context())
+	if err != nil {
+		t.Fatalf("first Next: %v", err)
+	}
+	if !strings.HasPrefix(line1, "PATH=") || strings.TrimPrefix(line1, "PATH=") == "" {
+		t.Fatalf("child PATH should be inherited, got: %q", line1)
+	}
+
+	line2, err := src.Next(t.Context())
+	if err != nil {
+		t.Fatalf("second Next: %v", err)
+	}
+	if want := "KUBECONFIG=/etc/tracer/kubeconfig"; line2 != want {
+		t.Fatalf("child KUBECONFIG = %q, want %q", line2, want)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Layer 1 – A failing kubectl must surface its stderr, not a bare EOF
 // ---------------------------------------------------------------------------
 

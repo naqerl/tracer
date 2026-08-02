@@ -41,16 +41,42 @@ import (
 )
 
 func main() {
-	// Define flags
-	addCmd := flag.NewFlagSet("add", flag.ExitOnError)
-	setCmd := flag.NewFlagSet("set", flag.ExitOnError)
-	setupKubectlCmd := flag.NewFlagSet("kubectl-setup", flag.ExitOnError)
-
-	setupKubectlKubeconfig := setupKubectlCmd.String("kubeconfig", "", "kubeconfig to install (default: auto-detect from $KUBECONFIG, ~/.kube/config, or system locations)")
-
+	// Global flags
 	configPath := flag.String("config", "", "path to config file")
 	printDefaults := flag.Bool("print-defaults", false, "print default configuration and exit")
 	printVersion := flag.Bool("version", false, "print version and exit")
+
+	// Subcommand flag sets. Flags are registered up front (not lazily inside
+	// the handlers) so `-help` can enumerate the complete CLI interface.
+	addOpts := &addOptions{}
+	addCmd := newAddFlagSet(addOpts)
+	setCmd := flag.NewFlagSet("set", flag.ExitOnError)
+	verifyCmd := flag.NewFlagSet("verify", flag.ExitOnError)
+	updateCmd := flag.NewFlagSet("update", flag.ExitOnError)
+	installCmd := flag.NewFlagSet("install", flag.ExitOnError)
+	setupKubectlCmd := flag.NewFlagSet("kubectl-setup", flag.ExitOnError)
+	setupKubectlKubeconfig := setupKubectlCmd.String("kubeconfig", "", "kubeconfig to install (default: auto-detect from $KUBECONFIG, ~/.kube/config, or system locations)")
+
+	commands := []commandHelp{
+		{name: "add", args: "<source>", summary: "Add a log source: a systemd unit, a log file path, or a Kubernetes resource (e.g. deployment/myapp)", flags: addCmd},
+		{name: "set", args: "<key> <value>", summary: "Set a config value. Supported keys: api-key, panel-host, name"},
+		{name: "verify", summary: "Check that the collector can reach the panel, authenticate, and register"},
+		{name: "update", summary: "Update the collector binary"},
+		{name: "install", summary: "Install the collector service, users, and default config"},
+		{name: "kubectl-setup", summary: "Install a kubeconfig the collector can use for kubectl sources", flags: setupKubectlCmd},
+	}
+
+	// Complete help: -help/-h show the full CLI. The flag package calls
+	// flag.Usage both for an explicit -help and for parse errors, so it
+	// writes to stderr (matching Go's flag conventions); the `help` command
+	// and early wantsHelp exits write to stdout for piping.
+	flag.Usage = func() { printUsage(os.Stderr, flag.CommandLine, commands) }
+	setCommandUsage(addCmd, "tracer-collector add [flags] <source>")
+	setCommandUsage(setCmd, "tracer-collector set <key> <value>")
+	setCommandUsage(verifyCmd, "tracer-collector verify")
+	setCommandUsage(updateCmd, "tracer-collector update")
+	setCommandUsage(installCmd, "tracer-collector install")
+	setCommandUsage(setupKubectlCmd, "tracer-collector kubectl-setup [flags]")
 
 	flag.Parse()
 
@@ -77,14 +103,39 @@ func main() {
 
 	if flag.NArg() > 0 {
 		switch flag.Arg(0) {
+		case "help":
+			// `help [command]` delegates to a single command's usage when a
+			// known command is named, otherwise prints the full interface.
+			if len(flag.Args()) > 1 {
+				for _, c := range commands {
+					if c.name == flag.Arg(1) {
+						printCommandUsage(c)
+						return
+					}
+				}
+			}
+			printUsage(os.Stdout, flag.CommandLine, commands)
+			return
 		case "add":
+			// add reorders flags before parsing, so help may follow the
+			// positional source argument.
+			if wantsHelp(flag.Args()[1:], addCmd, true) {
+				addCmd.Usage()
+				return
+			}
 			cfg, err := config.Load(cfgPath)
 			if err != nil {
 				log.Fatalf("failed to load config: %s", err)
 			}
-			handleAdd(ctx, cfgPath, cfg, addCmd)
+			handleAdd(ctx, cfgPath, cfg, addCmd, addOpts)
 			return
 		case "set":
+			// set parses without reordering: flags after the first positional
+			// are values, not help requests.
+			if wantsHelp(flag.Args()[1:], setCmd, false) {
+				setCmd.Usage()
+				return
+			}
 			// set mutates the config, which is owned by the service user.
 			// Check privileges before loading so a plain user gets a clear
 			// error instead of a raw permission denied.
@@ -96,6 +147,10 @@ func main() {
 			handleSet(cfgPath, cfg, setCmd)
 			return
 		case "verify":
+			if wantsHelp(flag.Args()[1:], verifyCmd, false) {
+				verifyCmd.Usage()
+				return
+			}
 			cfg, err := config.Load(cfgPath)
 			if err != nil {
 				log.Fatalf("failed to load config: %s", err)
@@ -103,14 +158,26 @@ func main() {
 			handleVerify(ctx, cfg)
 			return
 		case "update":
+			if wantsHelp(flag.Args()[1:], updateCmd, false) {
+				updateCmd.Usage()
+				return
+			}
 			handleUpdate()
 			return
 		case "install":
+			if wantsHelp(flag.Args()[1:], installCmd, false) {
+				installCmd.Usage()
+				return
+			}
 			handleInstall()
 			return
 		case "kubectl-setup":
+			if wantsHelp(flag.Args()[1:], setupKubectlCmd, false) {
+				setupKubectlCmd.Usage()
+				return
+			}
 			setupKubectlCmd.Parse(flag.Args()[1:])
-			handleKubectlSetup(*setupKubectlKubeconfig)
+			handleKubectlSetup(cfgPath, *setupKubectlKubeconfig)
 			return
 		default:
 			log.Fatalf("Unknown command: %s\n", flag.Arg(0))
@@ -256,6 +323,55 @@ func serve(ctx context.Context, cfg config.Config) error {
 	return nil
 }
 
+// wantsHelp reports whether args explicitly request help (-h/-help/--help).
+// It is checked before a subcommand loads config or enforces privileges, so
+// `tracer-collector add -help` works even when the config is missing or the
+// caller lacks the service user's permissions. A -h that is the value of a
+// value-taking flag (e.g. `add --favour -h`) is not help — mirroring how the
+// flag parser treats it.
+//
+// reorder mirrors whether the command's dispatch calls reorderFlags before
+// flag.Parse. Commands that reorder (add) promote flags that follow the
+// positional argument, so wantsHelp scans every token; commands that parse
+// in place (set, verify, update, install, kubectl-setup) stop at the first
+// positional, because Go's flag parser stops there and everything after is a
+// value or a positional argument, not a help request.
+func wantsHelp(args []string, fs *flag.FlagSet, reorder bool) bool {
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		// -h/-help/--help, exact or with =value: the flag package treats
+		// -help=... as ErrHelp when no such flag is registered (none of the
+		// command flags are named h or help). The =form check only applies
+		// to dash-prefixed tokens — a plain positional word "help" is not a
+		// help request.
+		isFlagToken := strings.HasPrefix(a, "-") && a != "-"
+		name := strings.TrimLeft(a, "-")
+		hasInlineValue := false
+		if eq := strings.IndexByte(name, '='); eq >= 0 {
+			name = name[:eq]
+			hasInlineValue = true
+		}
+		if a == "-h" || a == "-help" || a == "--help" || (isFlagToken && (name == "h" || name == "help")) {
+			return true
+		}
+		// A value-taking flag's value is the next token unless given inline
+		// with `--flag=value`; skip that value, it is not a flag.
+		if f := fs.Lookup(name); f != nil {
+			if bv, ok := f.Value.(interface{ IsBoolFlag() bool }); !ok || !bv.IsBoolFlag() {
+				if !hasInlineValue {
+					i++
+				}
+			}
+		}
+		// In-place parsers stop at the first positional; anything after it
+		// is an argument, not a flag.
+		if !reorder && (!strings.HasPrefix(a, "-") || a == "-") {
+			return false
+		}
+	}
+	return false
+}
+
 // reorderFlags moves all flag tokens (and the value of value-taking flags) to
 // the front of args so Go's flag parser sees them before the first positional
 // argument. Go's flag package stops at the first non-flag token, which would
@@ -268,13 +384,16 @@ func reorderFlags(args []string, fs *flag.FlagSet) []string {
 		if strings.HasPrefix(a, "-") && a != "-" {
 			flags = append(flags, a)
 			name := strings.TrimLeft(a, "-")
+			hasInlineValue := false
 			if eq := strings.IndexByte(name, '='); eq >= 0 {
 				name = name[:eq]
+				hasInlineValue = true
 			}
 			if f := fs.Lookup(name); f != nil {
 				if bv, ok := f.Value.(interface{ IsBoolFlag() bool }); !ok || !bv.IsBoolFlag() {
-					// Value-taking flag: its value is the next token.
-					if i+1 < len(args) {
+					// Value-taking flag: the value is the next token unless it
+					// was already given inline with `--flag=value`.
+					if !hasInlineValue && i+1 < len(args) {
 						i++
 						flags = append(flags, args[i])
 					}
@@ -287,20 +406,38 @@ func reorderFlags(args []string, fs *flag.FlagSet) []string {
 	return append(flags, positional...)
 }
 
-func handleAdd(ctx context.Context, path string, cfg config.Config, addCmd *flag.FlagSet) {
-	override := addCmd.Bool("override", false, "override the app unit in the config")
-	healthURL := addCmd.String("health", "", "health check URL to attach as an HTTP health probe")
-	favourRaw := addCmd.String("favour", "", `favour specific parser settings when conflicts occur (e.g., 'type:"json",level_field:"status"')`)
-	noConfirm := addCmd.Bool("no-confirm", false, "skip confirmation prompt and save immediately")
-	namespace := addCmd.String("n", "default", "Kubernetes namespace (for kubectl sources)")
-	kubeconfigPath := addCmd.String("kubeconfig", "", "kubeconfig to install for the collector (default: auto-detect)")
+// addOptions holds the flags of the `add` command. Flags are registered in
+// main (via newAddFlagSet) so -help can enumerate them.
+type addOptions struct {
+	override   bool
+	healthURL  string
+	favourRaw  string
+	noConfirm  bool
+	namespace  string
+	kubeconfig string
+}
+
+// newAddFlagSet registers the `add` flags on a FlagSet, storing parsed values
+// into opts. It must be called exactly once per process.
+func newAddFlagSet(opts *addOptions) *flag.FlagSet {
+	fs := flag.NewFlagSet("add", flag.ExitOnError)
+	fs.BoolVar(&opts.override, "override", false, "override the app unit in the config")
+	fs.StringVar(&opts.healthURL, "health", "", "health check URL to attach as an HTTP health probe")
+	fs.StringVar(&opts.favourRaw, "favour", "", `favour specific parser settings when conflicts occur (e.g., 'type:"json",level_field:"status"')`)
+	fs.BoolVar(&opts.noConfirm, "no-confirm", false, "skip confirmation prompt and save immediately")
+	fs.StringVar(&opts.namespace, "n", "default", "Kubernetes namespace (for kubectl sources)")
+	fs.StringVar(&opts.kubeconfig, "kubeconfig", "", "kubeconfig to install for the collector (default: auto-detect)")
+	return fs
+}
+
+func handleAdd(ctx context.Context, path string, cfg config.Config, addCmd *flag.FlagSet, opts *addOptions) {
 	addCmd.Parse(reorderFlags(flag.Args()[1:], addCmd))
 	remaining := addCmd.Args()
 
 	if len(remaining) != 1 {
 		log.Fatalf("Unexpected arguments: %v. Usage: tracer-collector add [flags] <source>", remaining)
 	}
-	name, spec := inferSourceSpec(remaining[0], *namespace)
+	name, spec := inferSourceSpec(remaining[0], opts.namespace)
 
 	fmt.Printf("Adding log source: %s\n", remaining[0])
 	switch spec.Type {
@@ -320,7 +457,7 @@ func handleAdd(ctx context.Context, path string, cfg config.Config, addCmd *flag
 	// directory or kubeconfig of its own. Install a kubeconfig it can read
 	// and point the source at it, so kubectl keeps working after add.
 	if spec.Type == "kubectl" {
-		installed, err := kubeconfig.Ensure(*kubeconfigPath)
+		installed, err := kubeconfig.Ensure(opts.kubeconfig)
 		switch {
 		case err == nil:
 			spec.Params["kubeconfig"] = installed
@@ -332,7 +469,7 @@ func handleAdd(ctx context.Context, path string, cfg config.Config, addCmd *flag
 			// The current user has a kubeconfig but only root can install it
 			// for the daemon. Failing here beats saving a config that cannot
 			// work and only breaking at runtime.
-			src := *kubeconfigPath
+			src := opts.kubeconfig
 			if src == "" {
 				if cur, cerr := kubeconfig.Current(); cerr == nil {
 					src = cur
@@ -348,13 +485,13 @@ func handleAdd(ctx context.Context, path string, cfg config.Config, addCmd *flag
 	}
 
 	// Parse the favour spec
-	favour, err := parseFavourSpec(*favourRaw)
+	favour, err := parseFavourSpec(opts.favourRaw)
 	if err != nil {
 		log.Fatalf("Invalid --favour value: %v", err)
 	}
 
 	result, err := formatguesser.Add(ctx, &cfg, name, spec, formatguesser.AddRequest{
-		Override: *override,
+		Override: opts.override,
 		Favour:   favour,
 	})
 	if err != nil {
@@ -399,7 +536,7 @@ func handleAdd(ctx context.Context, path string, cfg config.Config, addCmd *flag
 					}
 					fmt.Printf("Retrying with %s...\n\n", formatFavourSpec(merged))
 					result, err = formatguesser.Add(ctx, &cfg, name, spec, formatguesser.AddRequest{
-						Override: *override,
+						Override: opts.override,
 						Favour:   merged,
 					})
 					if err == nil {
@@ -424,7 +561,7 @@ func handleAdd(ctx context.Context, path string, cfg config.Config, addCmd *flag
 					fmt.Printf("Retrying with %s=%q...\n\n", consistencyErr.Field, favourSpec.Params[consistencyErr.Field])
 				}
 				result, err = formatguesser.Add(ctx, &cfg, name, spec, formatguesser.AddRequest{
-					Override: *override,
+					Override: opts.override,
 					Favour:   favourSpec,
 				})
 				if err == nil {
@@ -473,13 +610,13 @@ func handleAdd(ctx context.Context, path string, cfg config.Config, addCmd *flag
 		}
 	}
 
-	if strings.TrimSpace(*healthURL) != "" {
-		fmt.Printf("\nAttaching health check: %s\n", strings.TrimSpace(*healthURL))
-		attachHTTPHealth(&cfg, name, spec, strings.TrimSpace(*healthURL))
+	if strings.TrimSpace(opts.healthURL) != "" {
+		fmt.Printf("\nAttaching health check: %s\n", strings.TrimSpace(opts.healthURL))
+		attachHTTPHealth(&cfg, name, spec, strings.TrimSpace(opts.healthURL))
 	}
 
 	// Confirmation prompt
-	if !*noConfirm {
+	if !opts.noConfirm {
 		fmt.Printf("\nSave this configuration to %s? [Y/n]: ", path)
 		reader := bufio.NewReader(os.Stdin)
 		response, _ := reader.ReadString('\n')
@@ -792,8 +929,11 @@ func handleVerify(ctx context.Context, cfg config.Config) {
 
 // handleKubectlSetup installs a kubeconfig the collector service user can
 // read, so kubectl sources keep working under the daemon. It verifies the
-// source config, copies it to /etc/tracer/kubeconfig, and verifies the copy.
-func handleKubectlSetup(kubeconfigPath string) {
+// source config, copies it to /etc/tracer/kubeconfig, verifies the copy, and
+// points every existing kubectl source in the collector config at the
+// installed file — so a kubectl source can never silently fall back to an
+// unreadable system kubeconfig.
+func handleKubectlSetup(cfgPath, kubeconfigPath string) {
 	if os.Getuid() != 0 {
 		log.Fatalf("kubectl-setup must be run as root: sudo tracer-collector kubectl-setup")
 	}
@@ -824,9 +964,57 @@ func handleKubectlSetup(kubeconfigPath string) {
 		log.Fatalf("The installed kubeconfig does not work: %v", err)
 	}
 
+	// Point existing kubectl sources at the installed file so they use it
+	// instead of the (unreadable) system default. Config may be absent on a
+	// fresh install; the next `add` wires new sources.
+	if installx.FileExists(cfgPath) {
+		if err := wireKubeconfigIntoConfig(cfgPath); err != nil {
+			log.Fatalf("Could not update %s: %v", cfgPath, err)
+		}
+	}
+
 	fmt.Printf("Kubectl access configured for the collector: %s\n", kubeconfig.Path)
 	fmt.Printf("Kubectl sources added via `tracer-collector add` will use it automatically.\n")
 	fmt.Printf("Restart the collector to apply: sudo systemctl restart tracer-collector\n")
+}
+
+// wireKubeconfigIntoConfig sets params.kubeconfig on every kubectl source in
+// the collector config that does not already set it, and persists the result.
+func wireKubeconfigIntoConfig(cfgPath string) error {
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		return fmt.Errorf("could not load config: %w", err)
+	}
+
+	if !wireKubeconfig(&cfg) {
+		return nil
+	}
+	if err := cfg.Persist(cfgPath); err != nil {
+		return fmt.Errorf("could not persist config: %w", err)
+	}
+	fmt.Printf("Updated %s: kubectl sources now use %s\n", cfgPath, kubeconfig.Path)
+	return nil
+}
+
+// wireKubeconfig mutates cfg in place, setting params.kubeconfig on every
+// kubectl source that does not already set it. It reports whether anything
+// changed.
+func wireKubeconfig(cfg *config.Config) bool {
+	changed := false
+	for i := range cfg.Apps {
+		app := &cfg.Apps[i]
+		if app.Source.Type != "kubectl" {
+			continue
+		}
+		if app.Source.Params == nil {
+			app.Source.Params = make(map[string]string)
+		}
+		if strings.TrimSpace(app.Source.Params["kubeconfig"]) == "" {
+			app.Source.Params["kubeconfig"] = kubeconfig.Path
+			changed = true
+		}
+	}
+	return changed
 }
 
 func handleUpdate() {
