@@ -13,6 +13,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -290,25 +291,45 @@ func handleAdd(ctx context.Context, path string, cfg config.Config, addCmd *flag
 		// Show specific error details with the problematic line
 		var guessErr formatguesser.GuessError
 		var consistencyErr formatguesser.ConsistencyError
-		if errors.As(err, &guessErr) {
+		switch {
+		case errors.As(err, &guessErr):
 			fmt.Printf("Could not parse this log line:\n")
 			fmt.Printf("  %s\n\n", truncateLine(guessErr.Line, 200))
-			fmt.Printf("Make sure the log is in JSON or slog text format.\n")
-			fmt.Printf("For JSON: fields like level, msg, time, trace_id are expected\n")
-			fmt.Printf("For slog text: format like 'time=... level=... msg=...'\n")
-		} else if errors.As(err, &consistencyErr) {
+			fmt.Printf("Reason: %s\n\n", describeGuessFailure(guessErr.Unwrap()))
+			fmt.Printf("The log must have a level, message, and timestamp field.\n")
+		case errors.As(err, &consistencyErr):
 			fmt.Printf("Found inconsistent log format\n\n")
 			fmt.Printf("First line (established format):\n")
 			fmt.Printf("  %s\n\n", truncateLine(consistencyErr.FirstLine, 200))
 			fmt.Printf("Conflicting line:\n")
 			fmt.Printf("  %s\n\n", truncateLine(consistencyErr.Line, 200))
 			fmt.Printf("Issue: %v\n\n", consistencyErr.Unwrap())
-			fmt.Printf("To resolve, run again with:\n")
+
+			// Offer an interactive selection of the favour before giving up.
+			if favourSpec, ok := promptFavour(consistencyErr); ok {
+				if favourSpec.Type != "" {
+					fmt.Printf("Retrying with format %q...\n\n", favourSpec.Type)
+				} else {
+					fmt.Printf("Retrying with %s=%q...\n\n", consistencyErr.Field, favourSpec.Params[consistencyErr.Field])
+				}
+				result, err = formatguesser.Add(ctx, &cfg, name, spec, formatguesser.AddRequest{
+					Override: *override,
+					Favour:   favourSpec,
+				})
+				if err == nil {
+					break // retry succeeded; continue to the success output below
+				}
+				fmt.Printf("Still failed: %v\n\n", err)
+			}
+
+			fmt.Printf("To resolve non-interactively, run again with:\n")
 			fmt.Printf("  %s\n\n", consistencyErr.SuggestFavour())
-		} else {
+		default:
 			fmt.Printf("%v\n\n", err)
 		}
-		os.Exit(1)
+		if result == nil {
+			os.Exit(1)
+		}
 	}
 
 	parserSpec := result.ParserSpec
@@ -376,6 +397,78 @@ func truncateLine(s string, maxLen int) string {
 		return s
 	}
 	return s[:maxLen-3] + "..."
+}
+
+// describeGuessFailure turns a guess failure into a precise, user-facing
+// statement of which required fields are missing. MissingFieldsError carries
+// the field keys as structured data, so no error-message parsing is needed.
+// trace_id is optional and never listed; level, message, and timestamp are
+// required. Unknown errors pass through unchanged.
+func describeGuessFailure(err error) string {
+	var mf *formatguesser.MissingFieldsError
+	if errors.As(err, &mf) {
+		// The guesser reports missing fields in map-iteration order; sort so
+		// the message is stable: level, message, timestamp.
+		names := make([]string, 0, len(mf.Fields))
+		for _, f := range mf.Fields {
+			names = append(names, fieldDisplayName(f))
+		}
+		sort.Strings(names)
+		return "missing required field(s): " + strings.Join(names, ", ")
+	}
+	return err.Error()
+}
+
+func fieldDisplayName(field string) string {
+	return strings.TrimSuffix(field, "_field")
+}
+
+// promptFavour interactively asks the user which parser setting to prefer when
+// the guesser hit an inconsistency (mixed formats or a field that changes
+// between lines). It returns the chosen favour spec and true when the user
+// picked an option, or false when they skipped the prompt (or stdin is not a
+// terminal). The returned spec can be passed straight back to formatguesser.Add.
+func promptFavour(ce formatguesser.ConsistencyError) (parser.Spec, bool) {
+	if fi, err := os.Stdin.Stat(); err != nil || fi.Mode()&os.ModeCharDevice == 0 {
+		return parser.Spec{}, false
+	}
+
+	options := []string{ce.PrevValue, ce.CurrValue}
+	if ce.Field == "type" {
+		fmt.Printf("Which log format should be used?\n")
+	} else {
+		fmt.Printf("Which field should be used for %s?\n", ce.Field)
+	}
+	for i, opt := range options {
+		fmt.Printf("  %d) %s\n", i+1, opt)
+	}
+	fmt.Printf("Select a number (or press Enter to skip): ")
+
+	reader := bufio.NewReader(os.Stdin)
+	response, _ := reader.ReadString('\n')
+	return parseFavourChoice(ce, strings.TrimSpace(response))
+}
+
+// parseFavourChoice maps a user's interactive answer to a favour spec.
+// An empty response skips (returns false); an invalid number is reported and
+// skipped. The two offered options are the previous and the conflicting value.
+func parseFavourChoice(ce formatguesser.ConsistencyError, response string) (parser.Spec, bool) {
+	if response == "" {
+		return parser.Spec{}, false
+	}
+
+	options := []string{ce.PrevValue, ce.CurrValue}
+	idx, err := strconv.Atoi(response)
+	if err != nil || idx < 1 || idx > len(options) {
+		fmt.Printf("Invalid selection %q.\n", response)
+		return parser.Spec{}, false
+	}
+
+	chosen := options[idx-1]
+	if ce.Field == "type" {
+		return parser.Spec{Type: chosen}, true
+	}
+	return parser.Spec{Params: map[string]string{ce.Field: chosen}}, true
 }
 
 // parseFavourSpec parses a favour spec string like: type:"json",level_field:"status"

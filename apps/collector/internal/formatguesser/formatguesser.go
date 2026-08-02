@@ -209,6 +209,18 @@ func (e GuessError) Unwrap() error {
 	return e.Err
 }
 
+// MissingFieldsError reports which required fields could not be found in a log
+// line. The Fields slice holds the internal parser field keys (e.g.
+// "level_field", "message_field", "timestamp_field"); trace_id_field is
+// optional and never appears here.
+type MissingFieldsError struct {
+	Fields []string
+}
+
+func (e *MissingFieldsError) Error() string {
+	return fmt.Sprintf("failed to find the following fields: %v", e.Fields)
+}
+
 // ConsistencyError represents an error when log lines have inconsistent formats
 type ConsistencyError struct {
 	Line      string      // The problematic line
@@ -382,7 +394,7 @@ func fillSpec(ps parser.Spec, data map[string]any) (parser.Spec, error) {
 		}
 	}
 	if len(notFound) > 0 {
-		return ps, fmt.Errorf("failed to find the following fields: %v", notFound)
+		return ps, &MissingFieldsError{Fields: notFound}
 	}
 
 	dateStr := fmt.Sprint(data[params["timestamp_field"]])

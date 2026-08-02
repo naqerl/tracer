@@ -288,6 +288,11 @@ func TestGuessFormat(t *testing.T) {
 			},
 			wantErr: false,
 		},
+		{
+			name:    "JSON without level field is rejected (level is required)",
+			line:    `{"message": "104.28.196.105:0 - \"GET /api/v1/mobile/home HTTP/1.1\" 200", "timestamp": "2026-08-01T11:52:19.611285+00:00"}`,
+			wantErr: true,
+		},
 
 		// Slogtext format tests
 		{
@@ -623,7 +628,7 @@ func TestGuessFormat(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name:    "Logfmt without level",
+			name:    "Logfmt without level is rejected (level is required)",
 			line:    `time=2026-03-10T19:05:18Z msg="Message without level"`,
 			wantErr: true,
 		},
