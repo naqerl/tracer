@@ -95,14 +95,20 @@ func (s *Service) Start(ctx context.Context) error {
 
 // panelWSURL builds a WebSocket URL from the panel_host config value.
 // It accepts host:port, ws://host:port, wss://host:port, http://host:port,
-// or https://host:port. The /ingest/ws path is appended.
+// or https://host:port. Bare hosts without a scheme default to wss:// when
+// no port is given (public TLS panel) and to ws:// when a port is given
+// (local/self-hosted plain panel). The /ingest/ws path is appended.
 func panelWSURL(panelHost string) (string, error) {
 	raw := strings.TrimSpace(panelHost)
 	if raw == "" {
 		return "", fmt.Errorf("panel_host is empty")
 	}
 	if !strings.Contains(raw, "://") {
-		raw = "ws://" + raw
+		if strings.Contains(raw, ":") {
+			raw = "ws://" + raw
+		} else {
+			raw = "wss://" + raw
+		}
 	}
 
 	u, err := url.Parse(raw)
