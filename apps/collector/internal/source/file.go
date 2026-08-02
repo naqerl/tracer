@@ -24,6 +24,12 @@ type fileSource struct {
 	partial string
 	offset  int64
 
+	// seeked is set by Seek. A seek switches the source into a bounded
+	// historical read: Next returns io.EOF once the file is drained instead of
+	// blocking for appends. Only the format guesser seeks; the daemon never
+	// does and keeps the follow behavior.
+	seeked bool
+
 	watchFD int
 	dirWD   int
 	fileWD  int

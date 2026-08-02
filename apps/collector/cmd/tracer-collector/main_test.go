@@ -1,10 +1,60 @@
 package main
 
 import (
+	"flag"
+	"reflect"
 	"testing"
 
 	"tracer/apps/collector/internal/formatguesser"
+	"tracer/apps/collector/internal/parser"
 )
+
+func TestReorderFlags(t *testing.T) {
+	fs := flag.NewFlagSet("add", flag.ContinueOnError)
+	fs.Bool("no-confirm", false, "")
+	fs.String("n", "default", "")
+	fs.String("favour", "", "")
+
+	tests := []struct {
+		name string
+		args []string
+		want []string
+	}{
+		{
+			name: "flags before positional stay put",
+			args: []string{"--no-confirm", "myapp"},
+			want: []string{"--no-confirm", "myapp"},
+		},
+		{
+			name: "flags after positional move to front",
+			args: []string{"myapp", "--no-confirm"},
+			want: []string{"--no-confirm", "myapp"},
+		},
+		{
+			name: "value flag after positional keeps its value",
+			args: []string{"myapp", "--favour", `timestamp_field:"time"`},
+			want: []string{"--favour", `timestamp_field:"time"`, "myapp"},
+		},
+		{
+			name: "mixed order",
+			args: []string{"myapp", "-n", "prod", "--no-confirm"},
+			want: []string{"-n", "prod", "--no-confirm", "myapp"},
+		},
+		{
+			name: "equals form value flag",
+			args: []string{"myapp", "--favour=type:json"},
+			want: []string{"--favour=type:json", "myapp"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := reorderFlags(tt.args, fs)
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Fatalf("reorderFlags(%v) = %v, want %v", tt.args, got, tt.want)
+			}
+		})
+	}
+}
 
 func TestParseFavourChoiceTypeConflict(t *testing.T) {
 	ce := formatguesser.ConsistencyError{Field: "type", PrevValue: "json", CurrValue: "slogtext"}
@@ -88,6 +138,15 @@ func TestDescribeGuessFailureWrapped(t *testing.T) {
 
 	if got := describeGuessFailure(wrapped); got != "missing required field(s): level" {
 		t.Fatalf("got %q, want %q", got, "missing required field(s): level")
+	}
+}
+
+func TestFormatFavourSpec(t *testing.T) {
+	spec := parser.Spec{Params: map[string]string{"timestamp_field": "time", "level_field": "level"}}
+	got := formatFavourSpec(spec)
+	want := "--favour 'level_field:\"level\",timestamp_field:\"time\"'"
+	if got != want {
+		t.Fatalf("got %q, want %q", got, want)
 	}
 }
 

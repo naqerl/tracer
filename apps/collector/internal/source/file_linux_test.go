@@ -4,6 +4,7 @@ package source
 
 import (
 	"context"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -249,12 +250,10 @@ func TestFileSourceSeekToEnd(t *testing.T) {
 		t.Fatalf("expected position %d, got %d", info.Size(), pos)
 	}
 
-	// Next read should timeout (no new content)
-	ctx2, cancel2 := context.WithTimeout(t.Context(), 200*time.Millisecond)
-	defer cancel2()
-	_, err = src.Next(ctx2)
-	if err != context.DeadlineExceeded {
-		t.Fatalf("expected timeout at EOF, got: %v", err)
+	// A seek switches to a bounded read: drained at EOF means io.EOF, not a
+	// block waiting for appends (the format guesser relies on this).
+	if _, err := src.Next(t.Context()); !errors.Is(err, io.EOF) {
+		t.Fatalf("expected io.EOF after seek at end, got: %v", err)
 	}
 }
 
@@ -387,6 +386,46 @@ func TestFileSourceSeekClearsPartialBuffer(t *testing.T) {
 	// Since we seeked back, we should see partial-rest as a new line
 	if line != "partial-rest" {
 		t.Fatalf("expected 'partial-rest', got %q", line)
+	}
+}
+
+// TestFileSourceSeekYieldsEOFAtDrain verifies the bounded-read contract: after
+// a seek, Next returns io.EOF once the file is drained instead of blocking for
+// appends. The format guesser depends on this; the daemon never seeks and keeps
+// the follow behavior (covered by the append/rotate/truncate tests).
+func TestFileSourceSeekYieldsEOFAtDrain(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "app.log")
+	if err := os.WriteFile(path, []byte("line1\nline2\n"), 0o644); err != nil {
+		t.Fatalf("write initial file: %v", err)
+	}
+
+	src := NewFile(FileConfig{Path: path, ReadFrom: "start"})
+	if err := src.Open(t.Context()); err != nil {
+		t.Fatalf("open source: %v", err)
+	}
+	defer src.Close()
+
+	seeker := src.(io.Seeker)
+	if _, err := seeker.Seek(0, io.SeekStart); err != nil {
+		t.Fatalf("seek to start: %v", err)
+	}
+
+	for _, want := range []string{"line1", "line2"} {
+		line, err := src.Next(t.Context())
+		if err != nil {
+			t.Fatalf("next: %v", err)
+		}
+		if line != want {
+			t.Fatalf("expected %q, got %q", want, line)
+		}
+	}
+
+	// Drained: must be io.EOF, not a block.
+	if _, err := src.Next(t.Context()); !errors.Is(err, io.EOF) {
+		t.Fatalf("expected io.EOF at drain after seek, got: %v", err)
 	}
 }
 

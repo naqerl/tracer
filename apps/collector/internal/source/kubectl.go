@@ -203,7 +203,10 @@ func (ks *kubectlSource) buildFlags(follow bool) []string {
 		flags = append(flags, "logs", ks.resource)
 	}
 
-	flags = append(flags, "-n", ks.namespace, "--prefix=true")
+	// Do NOT pass --prefix: kubectl would prepend "[pod/<pod>/<container>] " to
+	// every line, which corrupts JSON/slog text parsing (the prefix merges into
+	// the first key, e.g. "[pod/x/y] time=..."). Emit raw container log lines.
+	flags = append(flags, "-n", ks.namespace)
 
 	if ks.container != "" {
 		flags = append(flags, "-c", ks.container)

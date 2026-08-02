@@ -19,6 +19,8 @@ import (
 	"syscall"
 	"time"
 
+	"golang.org/x/sys/unix"
+
 	"tracer/apps/collector"
 	"tracer/apps/collector/internal/app"
 	"tracer/apps/collector/internal/config"
@@ -247,17 +249,48 @@ func serve(ctx context.Context, cfg config.Config) error {
 	return nil
 }
 
+// reorderFlags moves all flag tokens (and the value of value-taking flags) to
+// the front of args so Go's flag parser sees them before the first positional
+// argument. Go's flag package stops at the first non-flag token, which would
+// otherwise silently ignore flags placed after the source (e.g. `add
+// myapp --no-confirm`).
+func reorderFlags(args []string, fs *flag.FlagSet) []string {
+	var flags, positional []string
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		if strings.HasPrefix(a, "-") && a != "-" {
+			flags = append(flags, a)
+			name := strings.TrimLeft(a, "-")
+			if eq := strings.IndexByte(name, '='); eq >= 0 {
+				name = name[:eq]
+			}
+			if f := fs.Lookup(name); f != nil {
+				if bv, ok := f.Value.(interface{ IsBoolFlag() bool }); !ok || !bv.IsBoolFlag() {
+					// Value-taking flag: its value is the next token.
+					if i+1 < len(args) {
+						i++
+						flags = append(flags, args[i])
+					}
+				}
+			}
+			continue
+		}
+		positional = append(positional, a)
+	}
+	return append(flags, positional...)
+}
+
 func handleAdd(ctx context.Context, path string, cfg config.Config, addCmd *flag.FlagSet) {
 	override := addCmd.Bool("override", false, "override the app unit in the config")
 	healthURL := addCmd.String("health", "", "health check URL to attach as an HTTP health probe")
 	favourRaw := addCmd.String("favour", "", `favour specific parser settings when conflicts occur (e.g., 'type:"json",level_field:"status"')`)
 	noConfirm := addCmd.Bool("no-confirm", false, "skip confirmation prompt and save immediately")
 	namespace := addCmd.String("n", "default", "Kubernetes namespace (for kubectl sources)")
-	addCmd.Parse(flag.Args()[1:])
+	addCmd.Parse(reorderFlags(flag.Args()[1:], addCmd))
 	remaining := addCmd.Args()
 
-	if len(remaining) == 0 {
-		log.Fatal("Missing source: must be a file path, kubectl resource, or systemd unit name")
+	if len(remaining) != 1 {
+		log.Fatalf("Unexpected arguments: %v. Usage: tracer-collector add [flags] <source>", remaining)
 	}
 	name, spec := inferSourceSpec(remaining[0], *namespace)
 
@@ -296,7 +329,46 @@ func handleAdd(ctx context.Context, path string, cfg config.Config, addCmd *flag
 			fmt.Printf("Could not parse this log line:\n")
 			fmt.Printf("  %s\n\n", truncateLine(guessErr.Line, 200))
 			fmt.Printf("Reason: %s\n\n", describeGuessFailure(guessErr.Unwrap()))
-			fmt.Printf("The log must have a level, message, and timestamp field.\n")
+
+			var mf *formatguesser.MissingFieldsError
+			if errors.As(guessErr.Unwrap(), &mf) {
+				requiredNames := make([]string, 0, len(mf.Fields))
+				for _, f := range mf.Fields {
+					requiredNames = append(requiredNames, fieldDisplayName(f))
+				}
+				fmt.Printf("Fields with %s are required\n\n", strings.Join(requiredNames, ", "))
+				if len(mf.Optional) > 0 {
+					names := make([]string, 0, len(mf.Optional))
+					for _, f := range mf.Optional {
+						names = append(names, fieldDisplayName(f))
+					}
+					fmt.Printf("Optional field(s) not found: %s (may be ignored)\n\n", strings.Join(names, ", "))
+				}
+				fmt.Printf("Available keys in the log line:\n")
+				fmt.Printf("  %s\n\n", strings.Join(mf.Keys, ", "))
+
+				// Offer an interactive field mapping before giving up, just
+				// like the conflict path offers a favour choice. The prompt
+				// mapping wins over any explicit --favour the user passed.
+				if favourSpec, ok := promptMissingFieldMapping(mf.Fields, mf.Optional, mf.Keys); ok {
+					merged := favour
+					if merged.Params == nil {
+						merged.Params = make(map[string]string)
+					}
+					for k, v := range favourSpec.Params {
+						merged.Params[k] = v
+					}
+					fmt.Printf("Retrying with %s...\n\n", formatFavourSpec(merged))
+					result, err = formatguesser.Add(ctx, &cfg, name, spec, formatguesser.AddRequest{
+						Override: *override,
+						Favour:   merged,
+					})
+					if err == nil {
+						break // retry succeeded; continue to the success output below
+					}
+					fmt.Printf("Still failed: %v\n\n", err)
+				}
+			}
 		case errors.As(err, &consistencyErr):
 			fmt.Printf("Found inconsistent log format\n\n")
 			fmt.Printf("First line (established format):\n")
@@ -423,13 +495,22 @@ func fieldDisplayName(field string) string {
 	return strings.TrimSuffix(field, "_field")
 }
 
+// stdinIsTerminal reports whether stdin is a real interactive terminal. The
+// ModeCharDevice check alone is not enough: /dev/null is also a character
+// device but reading from it yields immediate EOF, which would print prompts
+// into non-interactive output.
+func stdinIsTerminal() bool {
+	_, err := unix.IoctlGetTermios(int(os.Stdin.Fd()), unix.TCGETS)
+	return err == nil
+}
+
 // promptFavour interactively asks the user which parser setting to prefer when
 // the guesser hit an inconsistency (mixed formats or a field that changes
 // between lines). It returns the chosen favour spec and true when the user
 // picked an option, or false when they skipped the prompt (or stdin is not a
 // terminal). The returned spec can be passed straight back to formatguesser.Add.
 func promptFavour(ce formatguesser.ConsistencyError) (parser.Spec, bool) {
-	if fi, err := os.Stdin.Stat(); err != nil || fi.Mode()&os.ModeCharDevice == 0 {
+	if !stdinIsTerminal() {
 		return parser.Spec{}, false
 	}
 
@@ -469,6 +550,96 @@ func parseFavourChoice(ce formatguesser.ConsistencyError, response string) (pars
 		return parser.Spec{Type: chosen}, true
 	}
 	return parser.Spec{Params: map[string]string{ce.Field: chosen}}, true
+}
+
+// promptMissingFieldMapping interactively asks the user which key in the log
+// line maps to each missing field. Required fields (level, message, timestamp)
+// must each be mapped to proceed; optional fields (e.g. trace_id) may be
+// ignored by pressing Enter. It returns a favour spec and true when the user
+// answered for every required field, or false when they skipped a required
+// field (or stdin is not a terminal). The returned spec can be passed straight
+// back to formatguesser.Add.
+func promptMissingFieldMapping(required, optional, keys []string) (parser.Spec, bool) {
+	if !stdinIsTerminal() {
+		return parser.Spec{}, false
+	}
+	if len(keys) == 0 {
+		return parser.Spec{}, false
+	}
+
+	spec := parser.Spec{Params: make(map[string]string)}
+	reader := bufio.NewReader(os.Stdin)
+
+	// Required fields: each one must be mapped or the user gives up.
+	for _, field := range required {
+		key, ok := askFieldMapping(reader, field, keys, false)
+		if !ok {
+			return parser.Spec{}, false
+		}
+		spec.Params[field] = key
+	}
+
+	// Optional fields: map them or press Enter to ignore their absence.
+	for _, field := range optional {
+		if key, ok := askFieldMapping(reader, field, keys, true); ok {
+			spec.Params[field] = key
+		}
+	}
+
+	return spec, true
+}
+
+// askFieldMapping prints one field-mapping question and reads the answer. It
+// returns the chosen key and true, or ("", false) when the user pressed Enter
+// to skip/ignore. An invalid selection re-prompts rather than aborting the
+// whole flow.
+func askFieldMapping(reader *bufio.Reader, field string, keys []string, ignorable bool) (string, bool) {
+	fmt.Printf("Which field should be used for %s?\n", fieldDisplayName(field))
+	for i, k := range keys {
+		fmt.Printf("  %d) %s\n", i+1, k)
+	}
+	if ignorable {
+		fmt.Printf("Select a number (or press Enter to ignore): ")
+	} else {
+		fmt.Printf("Select a number (or press Enter to skip): ")
+	}
+
+	for {
+		response, _ := reader.ReadString('\n')
+		response = strings.TrimSpace(response)
+		if response == "" {
+			return "", false
+		}
+		idx, err := strconv.Atoi(response)
+		if err != nil || idx < 1 || idx > len(keys) {
+			fmt.Printf("Invalid selection %q. ", response)
+			if ignorable {
+				fmt.Printf("Enter a number or press Enter to ignore: ")
+			} else {
+				fmt.Printf("Enter a number or press Enter to skip: ")
+			}
+			continue
+		}
+		return keys[idx-1], true
+	}
+}
+
+// formatFavourSpec renders a parser.Spec as a `--favour '...'` value, the
+// inverse of parseFavourSpec.
+func formatFavourSpec(spec parser.Spec) string {
+	var parts []string
+	if spec.Type != "" {
+		parts = append(parts, fmt.Sprintf("type:%q", spec.Type))
+	}
+	keys := make([]string, 0, len(spec.Params))
+	for k := range spec.Params {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		parts = append(parts, fmt.Sprintf("%s:%q", k, spec.Params[k]))
+	}
+	return "--favour '" + strings.Join(parts, ",") + "'"
 }
 
 // parseFavourSpec parses a favour spec string like: type:"json",level_field:"status"

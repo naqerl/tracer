@@ -191,56 +191,56 @@ func TestKubectlSourceBuildFlags(t *testing.T) {
 			cfg:          KubectlConfig{Resource: "deployment/myapp", Namespace: "default"},
 			follow:       true,
 			linesFromEnd: 0,
-			wantArgs:     []string{"logs", "deployment/myapp", "-n", "default", "--prefix=true", "-f", "--tail=0"},
+			wantArgs:     []string{"logs", "deployment/myapp", "-n", "default", "-f", "--tail=0"},
 		},
 		{
 			name:         "no follow from now",
 			cfg:          KubectlConfig{Resource: "deployment/myapp", Namespace: "default"},
 			follow:       false,
 			linesFromEnd: 0,
-			wantArgs:     []string{"logs", "deployment/myapp", "-n", "default", "--prefix=true", "--tail=0"},
+			wantArgs:     []string{"logs", "deployment/myapp", "-n", "default", "--tail=0"},
 		},
 		{
 			name:         "follow last 100 lines",
 			cfg:          KubectlConfig{Resource: "deployment/myapp", Namespace: "default"},
 			follow:       true,
 			linesFromEnd: 100,
-			wantArgs:     []string{"logs", "deployment/myapp", "-n", "default", "--prefix=true", "-f", "--tail=100"},
+			wantArgs:     []string{"logs", "deployment/myapp", "-n", "default", "-f", "--tail=100"},
 		},
 		{
 			name:         "no follow last 100 lines",
 			cfg:          KubectlConfig{Resource: "deployment/myapp", Namespace: "default"},
 			follow:       false,
 			linesFromEnd: 100,
-			wantArgs:     []string{"logs", "deployment/myapp", "-n", "default", "--prefix=true", "--tail=100"},
+			wantArgs:     []string{"logs", "deployment/myapp", "-n", "default", "--tail=100"},
 		},
 		{
 			name:         "follow from beginning",
 			cfg:          KubectlConfig{Resource: "deployment/myapp", Namespace: "default"},
 			follow:       true,
 			linesFromEnd: -1,
-			wantArgs:     []string{"logs", "deployment/myapp", "-n", "default", "--prefix=true", "-f"},
+			wantArgs:     []string{"logs", "deployment/myapp", "-n", "default", "-f"},
 		},
 		{
 			name:         "no follow from beginning",
 			cfg:          KubectlConfig{Resource: "deployment/myapp", Namespace: "default"},
 			follow:       false,
 			linesFromEnd: -1,
-			wantArgs:     []string{"logs", "deployment/myapp", "-n", "default", "--prefix=true"},
+			wantArgs:     []string{"logs", "deployment/myapp", "-n", "default"},
 		},
 		{
 			name:         "with container",
 			cfg:          KubectlConfig{Resource: "deployment/myapp", Namespace: "flux-system", Container: "tracer"},
 			follow:       true,
 			linesFromEnd: 100,
-			wantArgs:     []string{"logs", "deployment/myapp", "-n", "flux-system", "--prefix=true", "-c", "tracer", "-f", "--tail=100"},
+			wantArgs:     []string{"logs", "deployment/myapp", "-n", "flux-system", "-c", "tracer", "-f", "--tail=100"},
 		},
 		{
 			name:         "with label selector",
 			cfg:          KubectlConfig{Resource: "-l app=tracer", Namespace: "default"},
 			follow:       true,
 			linesFromEnd: 50,
-			wantArgs:     []string{"logs", "-l", "app=tracer", "-n", "default", "--prefix=true", "-f", "--tail=50"},
+			wantArgs:     []string{"logs", "-l", "app=tracer", "-n", "default", "-f", "--tail=50"},
 		},
 	}
 
@@ -270,7 +270,7 @@ func TestKubectlSourceBuildFlagsWithKubeconfig(t *testing.T) {
 		})
 		src.linesFromEnd = 100
 		got := src.buildFlags(true)
-		want := []string{"logs", "deployment/myapp", "-n", "default", "--prefix=true", "-f", "--tail=100"}
+		want := []string{"logs", "deployment/myapp", "-n", "default", "-f", "--tail=100"}
 		if len(got) != len(want) {
 			t.Fatalf("buildFlags() = %v (len=%d), want %v (len=%d)", got, len(got), want, len(want))
 		}

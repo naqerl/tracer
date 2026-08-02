@@ -2,7 +2,9 @@ package formatguesser
 
 import (
 	"context"
+	"errors"
 	"io"
+	"reflect"
 	"testing"
 
 	"github.com/go-test/deep"
@@ -718,6 +720,126 @@ func TestBuildParserSpecResolvesTimestampConflictWithFavour(t *testing.T) {
 	// The favoured timestamp_field should be used
 	if result.Spec.Params["timestamp_field"] != "ts" {
 		t.Fatalf("expected timestamp_field='ts', got %q", result.Spec.Params["timestamp_field"])
+	}
+}
+
+func TestFavourFillsMissingField(t *testing.T) {
+	// The key "when" is not a timestamp synonym, so without favour the line
+	// fails with a missing-field error...
+	_, _, err := guessParserSpecWithData(`{"when":"2026-03-10T19:05:18Z","level":"INFO","msg":"hi"}`, parser.Spec{})
+	var mf *MissingFieldsError
+	if !errors.As(err, &mf) {
+		t.Fatalf("expected MissingFieldsError, got %v", err)
+	}
+	if mf.Fields[0] != "timestamp_field" {
+		t.Fatalf("expected timestamp_field missing, got %v", mf.Fields)
+	}
+	// The error must carry every key in the line (sorted) so the CLI can
+	// offer the user a selection without re-parsing the line itself.
+	if want := []string{"level", "msg", "when"}; !reflect.DeepEqual(mf.Keys, want) {
+		t.Fatalf("expected Keys=%v, got %v", want, mf.Keys)
+	}
+	// The line has no trace_id synonym, so the optional field is reported
+	// missing too — callers may present it as ignorable.
+	if want := []string{"trace_id_field"}; !reflect.DeepEqual(mf.Optional, want) {
+		t.Fatalf("expected Optional=%v, got %v", want, mf.Optional)
+	}
+
+	// ...but --favour maps it to the timestamp field.
+	spec, _, err := guessParserSpecWithData(
+		`{"when":"2026-03-10T19:05:18Z","level":"INFO","msg":"hi"}`,
+		parser.Spec{Params: map[string]string{"timestamp_field": "when"}},
+	)
+	if err != nil {
+		t.Fatalf("guessParserSpecWithData with favour: %v", err)
+	}
+	if spec.Params["timestamp_field"] != "when" {
+		t.Fatalf("expected timestamp_field='when', got %q", spec.Params["timestamp_field"])
+	}
+	if spec.Params["level_field"] != "level" || spec.Params["message_field"] != "msg" {
+		t.Fatalf("synonym detection broken: %v", spec.Params)
+	}
+}
+
+func TestFavourMapsOptionalTraceID(t *testing.T) {
+	// "when" and "uuid" are not synonyms, so without favour the line fails
+	// with a missing required timestamp and reports the optional trace_id as
+	// missing too...
+	_, _, err := guessParserSpecWithData(
+		`{"when":"2026-03-10T19:05:18Z","level":"INFO","msg":"hi","uuid":"abc123"}`,
+		parser.Spec{},
+	)
+	var mf *MissingFieldsError
+	if !errors.As(err, &mf) {
+		t.Fatalf("expected MissingFieldsError, got %v", err)
+	}
+	if want := []string{"trace_id_field"}; !reflect.DeepEqual(mf.Optional, want) {
+		t.Fatalf("expected Optional=%v, got %v", want, mf.Optional)
+	}
+
+	// ...but --favour maps both, including the optional field.
+	spec, _, err := guessParserSpecWithData(
+		`{"when":"2026-03-10T19:05:18Z","level":"INFO","msg":"hi","uuid":"abc123"}`,
+		parser.Spec{Params: map[string]string{"timestamp_field": "when", "trace_id_field": "uuid"}},
+	)
+	if err != nil {
+		t.Fatalf("guessParserSpecWithData with favour: %v", err)
+	}
+	if spec.Params["timestamp_field"] != "when" {
+		t.Fatalf("expected timestamp_field='when', got %q", spec.Params["timestamp_field"])
+	}
+	if spec.Params["trace_id_field"] != "uuid" {
+		t.Fatalf("expected trace_id_field='uuid', got %q", spec.Params["trace_id_field"])
+	}
+}
+
+func TestMissingFieldsErrorOptionalPresent(t *testing.T) {
+	// A line with a trace_id synonym (request_id) has no missing optional
+	// field; only the required timestamp is missing.
+	_, _, err := guessParserSpecWithData(
+		`{"when":"2026-03-10T19:05:18Z","level":"INFO","msg":"hi","request_id":"abc"}`,
+		parser.Spec{},
+	)
+	var mf *MissingFieldsError
+	if !errors.As(err, &mf) {
+		t.Fatalf("expected MissingFieldsError, got %v", err)
+	}
+	if len(mf.Optional) != 0 {
+		t.Fatalf("expected no missing optional fields, got %v", mf.Optional)
+	}
+	if mf.Fields[0] != "timestamp_field" {
+		t.Fatalf("expected timestamp_field missing, got %v", mf.Fields)
+	}
+}
+
+func TestFavourOverridesSynonymPick(t *testing.T) {
+	// When a line has both "level" and "status", the guesser prefers "level";
+	// an explicit --favour should win even with consistent (non-conflicting) lines.
+	result, err := buildParserSpec(context.Background(), &stubSourceSeeker{
+		lines: []string{
+			`{"ts":"2026-03-10T19:05:18Z","level":"INFO","status":"200","msg":"ok"}`,
+		},
+	}, parser.Spec{
+		Params: map[string]string{
+			"level_field": "status",
+		},
+	})
+	if err != nil {
+		t.Fatalf("buildParserSpec() error = %v", err)
+	}
+	if result.Spec.Params["level_field"] != "status" {
+		t.Fatalf("expected level_field='status', got %q", result.Spec.Params["level_field"])
+	}
+}
+
+func TestFavourIgnoredWhenKeyMissingFromLine(t *testing.T) {
+	// Favour must not invent a field: the mapped key has to exist in the line.
+	_, _, err := guessParserSpecWithData(
+		`{"level":"INFO","msg":"hi"}`,
+		parser.Spec{Params: map[string]string{"timestamp_field": "when"}},
+	)
+	if err == nil {
+		t.Fatal("expected error when favoured key is absent from the line")
 	}
 }
 

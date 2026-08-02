@@ -63,6 +63,52 @@ To resolve, run again with:
   --favour 'level_field:"status"'
 ```
 
+When a log line is missing a required field entirely, the collector reports which fields are missing and lists every key present in the offending line:
+
+```
+$ tracer-collector add deployment/tracer
+...
+Error: Could not analyze log format
+
+Could not parse this log line:
+  when=2026-08-02T09:58:45.457Z level=INFO msg="HTTP Request" method=GET path=/auth/login
+
+Reason: missing required field(s): timestamp
+
+Fields with level, message, timestamp are required
+
+Optional field(s) not found: trace_id (may be ignored)
+
+Available keys in the log line:
+  duration_ms, level, method, msg, path, when
+```
+
+On a terminal it then offers an interactive mapping for each missing field — you pick which key from the line to use, and it retries automatically. Missing required fields must each be mapped (press Enter to give up); missing optional fields such as `trace_id` can be ignored by pressing Enter:
+
+```
+Which field should be used for timestamp?
+  1) duration_ms
+  2) level
+  3) method
+  4) msg
+  5) path
+  6) when
+Select a number (or press Enter to skip): 6
+Which field should be used for trace_id?
+  1) duration_ms
+  2) level
+  3) method
+  4) msg
+  5) path
+  6) when
+Select a number (or press Enter to ignore):
+Retrying with --favour 'timestamp_field:"when"'...
+```
+
+The retry maps the chosen fields and continues to the preview; ignored optional fields are simply left unmapped.
+
+`--favour` also works when a required field uses a key the guesser does not recognize — the mapped key just has to exist in the log line.
+
 After resolving the last conflict, the detected configuration is shown and saved:
 
 ```
@@ -104,8 +150,12 @@ The suggested `--favour` value uses the name from the *conflicting* line.
 | Flag | Description |
 |---|---|
 | `--override` | Replace existing app config instead of erroring |
-| `--favour` | Specify field mappings to resolve conflicts |
+| `--favour` | Specify field mappings to resolve conflicts or fill in missing fields |
 | `--no-confirm` | Skip confirmation prompt and save immediately |
+
+Flags may appear before or after the source argument, e.g. both
+`tracer-collector add --favour 'level_field:"status"' myapp` and
+`tracer-collector add myapp --no-confirm` work.
 
 ## Requirements
 

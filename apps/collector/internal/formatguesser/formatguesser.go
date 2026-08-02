@@ -116,21 +116,39 @@ type BuildResult struct {
 	Parsed map[string]string // sample parsed fields from first line
 }
 
+// maxSampleLines caps how many log lines the guesser reads from a source.
+const maxSampleLines = 100
+
 func buildParserSpec(ctx context.Context, ss source.SourceSeeker, favour parser.Spec) (BuildResult, error) {
 	result := BuildResult{
 		Parsed: make(map[string]string),
 	}
+
+	// Seek toward the end of the log. The first line read from a byte-addressed
+	// file source may be a partial tail, so it is primed and discarded; the
+	// lines that follow are complete.
 	logSize := 100
-	var logErr error
 	foundLine := false
 	for !foundLine && logSize > 1 {
-		if _, logErr = ss.Seek(int64(-logSize), io.SeekEnd); logErr != nil {
+		if _, logErr := ss.Seek(int64(-logSize), io.SeekEnd); logErr != nil {
 			logSize = logSize / 2
 			continue
 		}
-		if _, logErr = ss.Next(ctx); logErr != nil {
+		if _, logErr := ss.Next(ctx); logErr != nil {
 			logSize = logSize / 2
 			continue
+		}
+		foundLine = true
+	}
+
+	// Files shorter than the smallest seek window (e.g. a 2-byte file) can
+	// never satisfy a negative end seek; read from the start instead.
+	if !foundLine {
+		if _, err := ss.Seek(0, io.SeekStart); err != nil {
+			return result, fmt.Errorf("could not seek in the source: %w", err)
+		}
+		if _, err := ss.Next(ctx); err != nil {
+			return result, errors.New("no logs found in the source")
 		}
 		foundLine = true
 	}
@@ -139,26 +157,24 @@ func buildParserSpec(ctx context.Context, ss source.SourceSeeker, favour parser.
 	}
 
 	var prev parser.Spec
-	lines := make([]string, logSize)
-	var i int
+	var lines []string
 	var firstLine string
 	var firstParsed map[string]any
-	for {
-		if i >= logSize {
-			break
-		}
 
+	// collect reads and processes one complete line. It returns false when the
+	// source is exhausted (io.EOF) and true when a line was collected.
+	collect := func() (bool, error) {
 		line, err := ss.Next(ctx)
 		if err != nil {
 			if errors.Is(err, io.EOF) {
-				break
+				return false, nil
 			}
-			return result, fmt.Errorf("failed to read from source: %w", err)
+			return false, fmt.Errorf("could not read from source: %w", err)
 		}
 
-		curr, parsed, err := guessParserSpecWithData(line)
+		curr, parsed, err := guessParserSpecWithData(line, favour)
 		if err != nil {
-			return result, GuessError{Line: line, Err: err}
+			return false, GuessError{Line: line, Err: err}
 		}
 
 		if firstLine == "" {
@@ -168,7 +184,7 @@ func buildParserSpec(ctx context.Context, ss source.SourceSeeker, favour parser.
 
 		next, conflict, err := compareOrUpdate(prev, curr, favour)
 		if err != nil {
-			return result, ConsistencyError{
+			return false, ConsistencyError{
 				Line:      line,
 				FirstLine: firstLine,
 				Err:       err,
@@ -180,9 +196,39 @@ func buildParserSpec(ctx context.Context, ss source.SourceSeeker, favour parser.
 			}
 		}
 		prev = next
+		lines = append(lines, line)
+		return true, nil
+	}
 
-		lines[i] = line
-		i++
+	for len(lines) < maxSampleLines {
+		ok, err := collect()
+		if err != nil {
+			return result, err
+		}
+		if !ok {
+			break
+		}
+	}
+
+	if len(lines) == 0 {
+		// The tail seek landed past every complete line (e.g. the last line is
+		// longer than the seek window). Fall back to the start of the log.
+		if _, err := ss.Seek(0, io.SeekStart); err != nil {
+			return result, fmt.Errorf("could not seek in the source: %w", err)
+		}
+		for len(lines) < maxSampleLines {
+			ok, err := collect()
+			if err != nil {
+				return result, err
+			}
+			if !ok {
+				break
+			}
+		}
+	}
+
+	if len(lines) == 0 {
+		return result, errors.New("could not read any complete log lines from the source")
 	}
 
 	// Populate parsed fields from first line for preview
@@ -191,7 +237,7 @@ func buildParserSpec(ctx context.Context, ss source.SourceSeeker, favour parser.
 	}
 
 	result.Spec = prev
-	result.Lines = lines[:i]
+	result.Lines = lines
 	return result, nil
 }
 
@@ -209,12 +255,16 @@ func (e GuessError) Unwrap() error {
 	return e.Err
 }
 
-// MissingFieldsError reports which required fields could not be found in a log
-// line. The Fields slice holds the internal parser field keys (e.g.
-// "level_field", "message_field", "timestamp_field"); trace_id_field is
-// optional and never appears here.
+// MissingFieldsError reports which fields could not be found in a log line.
+// Fields holds the missing required parser field keys ("level_field",
+// "message_field", "timestamp_field"); Optional holds missing optional fields
+// ("trace_id_field"), whose absence callers may present as ignorable. Keys
+// lists every field name present in the offending line (sorted), so callers
+// can offer the user a choice of which key maps to each missing field.
 type MissingFieldsError struct {
-	Fields []string
+	Fields   []string
+	Optional []string
+	Keys     []string
 }
 
 func (e *MissingFieldsError) Error() string {
@@ -250,18 +300,18 @@ func (e ConsistencyError) SuggestFavour() string {
 }
 
 func guessParserSpec(line string) (parser.Spec, error) {
-	ps, _, err := guessParserSpecWithData(line)
+	ps, _, err := guessParserSpecWithData(line, parser.Spec{})
 	return ps, err
 }
 
-func guessParserSpecWithData(line string) (parser.Spec, map[string]any, error) {
+func guessParserSpecWithData(line string, favour parser.Spec) (parser.Spec, map[string]any, error) {
 	var ps parser.Spec
 
 	var jsonData map[string]any
 	err := json.Unmarshal([]byte(line), &jsonData)
 	if err == nil {
 		ps.Type = "json"
-		result, err := fillSpec(ps, jsonData)
+		result, err := fillSpec(ps, jsonData, favour)
 		return result, jsonData, err
 	}
 	slog.Debug("failed to unmarshal the line to JSON")
@@ -273,7 +323,7 @@ func guessParserSpecWithData(line string) (parser.Spec, map[string]any, error) {
 		for k, v := range tempSlogText {
 			slogTextData[k] = v
 		}
-		result, err := fillSpec(ps, slogTextData)
+		result, err := fillSpec(ps, slogTextData, favour)
 		return result, slogTextData, err
 	}
 	slog.Debug("failed to unmarshal the line to SlogText")
@@ -325,7 +375,7 @@ var fieldPriority = map[string]int{
 	"msg": 1, "message": 2, "body": 3,
 }
 
-func fillSpec(ps parser.Spec, data map[string]any) (parser.Spec, error) {
+func fillSpec(ps parser.Spec, data map[string]any, favour parser.Spec) (parser.Spec, error) {
 	// First pass: collect all potential matches for each field
 	potentialMatches := make(map[string][]string) // field -> []dataKey
 	for dk := range data {
@@ -341,6 +391,12 @@ func fillSpec(ps parser.Spec, data map[string]any) (parser.Spec, error) {
 	// For each field, pick the best match
 	for gk, matches := range potentialMatches {
 		if len(matches) == 0 {
+			continue
+		}
+
+		// An explicit --favour mapping wins over synonym guessing
+		if favoured := favouredKey(favour, gk, data); favoured != "" {
+			params[gk] = favoured
 			continue
 		}
 
@@ -384,9 +440,26 @@ func fillSpec(ps parser.Spec, data map[string]any) (parser.Spec, error) {
 		params[gk] = bestMatch
 	}
 
+	// Fall back to --favour for fields that no synonym matched. This covers
+	// optional fields too (trace_id_field): the favour value names a key that
+	// must actually exist in the line, and optionalNotFound is computed below
+	// so a successful mapping stays out of the missing list.
+	for k := range commonLogSynonyms {
+		if _, ok := params[k]; ok {
+			continue
+		}
+		if favoured := favouredKey(favour, k, data); favoured != "" {
+			params[k] = favoured
+		}
+	}
+
 	var notFound []string
+	var optionalNotFound []string
 	for k := range commonLogSynonyms {
 		if k == "trace_id_field" {
+			if _, ok := params[k]; !ok {
+				optionalNotFound = append(optionalNotFound, k)
+			}
 			continue
 		}
 		if _, ok := params[k]; !ok {
@@ -394,7 +467,12 @@ func fillSpec(ps parser.Spec, data map[string]any) (parser.Spec, error) {
 		}
 	}
 	if len(notFound) > 0 {
-		return ps, &MissingFieldsError{Fields: notFound}
+		keys := make([]string, 0, len(data))
+		for dk := range data {
+			keys = append(keys, dk)
+		}
+		slices.Sort(keys)
+		return ps, &MissingFieldsError{Fields: notFound, Optional: optionalNotFound, Keys: keys}
 	}
 
 	dateStr := fmt.Sprint(data[params["timestamp_field"]])
@@ -406,6 +484,23 @@ func fillSpec(ps parser.Spec, data map[string]any) (parser.Spec, error) {
 
 	ps.Params = params
 	return ps, nil
+}
+
+// favouredKey returns the --favour mapping for a parser field (e.g.
+// "timestamp_field") when it names a key that exists in the line, otherwise
+// an empty string.
+func favouredKey(favour parser.Spec, field string, data map[string]any) string {
+	if favour.Params == nil {
+		return ""
+	}
+	key, ok := favour.Params[field]
+	if !ok || key == "" {
+		return ""
+	}
+	if _, exists := data[key]; !exists {
+		return ""
+	}
+	return key
 }
 
 func prepareKey(s string) string {

@@ -48,6 +48,12 @@ func (fs *fileSource) Next(ctx context.Context) (string, error) {
 			return line, nil
 		}
 
+		// After a seek the caller wants a bounded read of the file's current
+		// contents; report EOF instead of waiting for appends.
+		if fs.seeked {
+			return "", io.EOF
+		}
+
 		select {
 		case <-ctx.Done():
 			return "", ctx.Err()
@@ -138,6 +144,7 @@ func (fs *fileSource) Seek(offset int64, whence int) (int64, error) {
 	fs.reader.Reset(fs.file)
 	fs.partial = ""
 	fs.offset = targetOffset
+	fs.seeked = true
 
 	return targetOffset, nil
 }

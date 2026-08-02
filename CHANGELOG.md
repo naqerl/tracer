@@ -2,7 +2,15 @@
 
 ## Unreleased
 
+### Fixed
+- Collector kubectl sources no longer pass `--prefix=true`, so `kubectl logs` emits raw container log lines. The `[pod/<pod>/<container>]` prefix was merged into the first key by the slog text tokenizer (e.g. `[pod/x/y] time=...`), which broke both `tracer-collector add` format guessing ("missing required field(s): timestamp") and runtime parsing of JSON/slog text logs
+- `tracer-collector add` no longer hangs when sampling a file source: a seek switches the file source into a bounded historical read that returns `io.EOF` once drained (the daemon's follow behavior is unchanged since it never seeks), and the sampler falls back to the start of the log when the tail seek lands past every complete line
+- `tracer-collector add` prompts are only shown on a real terminal (an `isatty` check replaces the character-device heuristic, which treated `/dev/null` as interactive)
+- `tracer-collector add` flags now work before or after the source argument (Go's flag parser stops at the first positional, so previously `add myapp --no-confirm` silently ignored the flag); unexpected trailing arguments are rejected instead of silently dropped
+
 ### Added
+- `tracer-collector add` now offers follow-up actions when format guessing fails on missing fields: it lists every key present in the offending line (carried by the guesser's `MissingFieldsError`), and on a terminal interactively maps each missing field to a chosen key, retrying with the resulting `--favour`. Missing optional fields (e.g. `trace_id`) are also reported and prompted, but can be ignored with Enter instead of mapped
+- `--favour` can now supply a field mapping for fields the guesser cannot find at all (previously it only resolved conflicts between lines); the mapped key must exist in the log line. This includes optional fields: mapping `trace_id_field` to a non-synonym key works
 - `tracer-panel -init -force` overwrites the password of the given admin user when the panel is already initialized and exits 0 instead of 2 (existing sessions are invalidated, missing user is created as admin)
 - Collector API key detail page: reveal the full key with an eye icon (POST-backed, so it is rejected by the read-only middleware — keys can never be exposed in read-only mode)
 - Collector API key plaintext is now encrypted at rest (AES-256-GCM) with a master key in `{dataDir}/keys.key` (0600) or `TRACER_KEY_SECRET` env var; keys created before this version have no stored plaintext and show "Not revealable"
