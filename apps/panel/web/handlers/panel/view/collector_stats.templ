@@ -56,6 +56,11 @@ templ CollectorStatsContent(props CollectorStatsProps) {
 // CollectorStatsData renders the stats data with charts and table.
 templ CollectorStatsData(props CollectorStatsProps) {
 	if len(props.CPUPeriods) > 0 || len(props.MemPeriods) > 0 || len(props.DiskPeriods) > 0 {
+		<div id="resources-data"
+			 hx-get={ "/panel/collectors/" + props.CollectorName + "/resources" }
+			 hx-trigger="every 15s"
+			 hx-select="#resources-data"
+			 hx-swap="innerHTML">
 		<!-- Charts Container -->
 		<div id="charts-container">
 			<div id="cpu-chart"></div>
@@ -167,10 +172,18 @@ templ CollectorStatsData(props CollectorStatsProps) {
 				</tbody>
 			</table>
 		</details>
+		</div>
 
 		<!-- Chart Rendering Script -->
 		<script>
 			(function() {
+				let instances = [];
+
+				function destroyCharts() {
+					instances.forEach(u => u.destroy());
+					instances = [];
+				}
+
 				function initCharts() {
 					if (typeof uPlot === 'undefined') {
 						setTimeout(initCharts, 50);
@@ -180,6 +193,7 @@ templ CollectorStatsData(props CollectorStatsProps) {
 				}
 				
 				function renderCharts() {
+				destroyCharts();
 				const containerWidth = document.getElementById('charts-container').offsetWidth;
 				const isMobile = window.innerWidth < 768;
 				const commonOpts = {
@@ -211,8 +225,8 @@ templ CollectorStatsData(props CollectorStatsProps) {
 					}
 				};
 
-				// Store chart instances for resize handling
-				const instances = [];
+				// Chart instances live in the IIFE scope so destroyCharts can reset them
+				// before each render.
 
 				// Build stepped data from periods: each period becomes two points (start, end)
 				// For open periods (end=0), emit current time as endpoint so the line extends to "now"
@@ -339,6 +353,14 @@ templ CollectorStatsData(props CollectorStatsProps) {
 					}, [diskTs, diskVals], document.getElementById('disk-chart')));
 				}
 
+				}
+
+				document.body.addEventListener('htmx:afterSwap', function(evt) {
+					if (evt.target && evt.target.id === 'resources-data') {
+						renderCharts();
+					}
+				});
+
 				let resizeTimeout;
 				window.addEventListener('resize', () => {
 					clearTimeout(resizeTimeout);
@@ -355,7 +377,6 @@ templ CollectorStatsData(props CollectorStatsProps) {
 						});
 					}, 150);
 				});
-				}
 				
 				initCharts();
 			})();
