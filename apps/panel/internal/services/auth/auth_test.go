@@ -207,6 +207,130 @@ func TestResetPasswordOverwritesPasswordAndInvalidatesSessions(t *testing.T) {
 	}
 }
 
+func TestResetPasswordSamePasswordKeepsSessions(t *testing.T) {
+	ctx := t.Context()
+	db := testutil.NewTestDB(t)
+
+	svc := New(db, testutil.TestKeySecret(), bcrypt.MinCost)
+
+	user, err := svc.Register(ctx, RegisterRequest{
+		Username: "admin",
+		Password: "same-password",
+		IsAdmin:  true,
+	})
+	if err != nil {
+		t.Fatalf("register user: %v", err)
+	}
+
+	// Create a session before the reset; it must survive the no-op reset.
+	token, err := svc.CreateSession(ctx, user.ID)
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+
+	// Capture the stored hash before the reset to prove no write happens.
+	before, err := paneldb.New(db.Read()).GetUserByID(ctx, user.ID)
+	if err != nil {
+		t.Fatalf("get user by id: %v", err)
+	}
+
+	if err := svc.ResetPassword(ctx, "admin", "same-password"); err != nil {
+		t.Fatalf("reset password with unchanged value: %v", err)
+	}
+
+	// The stored hash must be untouched: the reset is a true no-op write-wise.
+	after, err := paneldb.New(db.Read()).GetUserByID(ctx, user.ID)
+	if err != nil {
+		t.Fatalf("get user by id: %v", err)
+	}
+	if before.PasswordHash != after.PasswordHash {
+		t.Fatal("expected no-op reset to leave the password hash untouched")
+	}
+
+	// Pre-reset session token must still be valid.
+	if _, err := svc.ValidateSession(ctx, token); err != nil {
+		t.Fatalf("expected session to survive no-op reset, got %v", err)
+	}
+
+	// The unchanged password must still log in.
+	if _, err := svc.Login(ctx, "admin", "same-password"); err != nil {
+		t.Fatalf("login with unchanged password after no-op reset: %v", err)
+	}
+}
+
+func TestResetPasswordSamePasswordPromotesToAdmin(t *testing.T) {
+	ctx := t.Context()
+	db := testutil.NewTestDB(t)
+
+	svc := New(db, testutil.TestKeySecret(), bcrypt.MinCost)
+
+	// Register as a regular user: the no-op reset must still promote them to
+	// admin, preserving the reset contract without purging sessions.
+	user, err := svc.Register(ctx, RegisterRequest{
+		Username: "admin",
+		Password: "same-password",
+		IsAdmin:  false,
+	})
+	if err != nil {
+		t.Fatalf("register user: %v", err)
+	}
+
+	token, err := svc.CreateSession(ctx, user.ID)
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+
+	if err := svc.ResetPassword(ctx, "admin", "same-password"); err != nil {
+		t.Fatalf("reset password with unchanged value: %v", err)
+	}
+
+	// Sessions survive the no-op reset...
+	if _, err := svc.ValidateSession(ctx, token); err != nil {
+		t.Fatalf("expected session to survive no-op reset, got %v", err)
+	}
+
+	// ...and the user is promoted to admin.
+	row, err := paneldb.New(db.Read()).GetUserByID(ctx, user.ID)
+	if err != nil {
+		t.Fatalf("get user by id: %v", err)
+	}
+	if row.IsAdmin != 1 {
+		t.Fatalf("expected user to be admin after no-op reset, got is_admin=%d", row.IsAdmin)
+	}
+}
+
+func TestResetPasswordRepairsCorruptHash(t *testing.T) {
+	ctx := t.Context()
+	db := testutil.NewTestDB(t)
+
+	svc := New(db, testutil.TestKeySecret(), bcrypt.MinCost)
+
+	// A corrupt stored hash must not short-circuit the reset into a no-op:
+	// the check fails (not with ErrInvalidCredentials), the reset proceeds,
+	// and the re-hash repairs the stored hash.
+	err := db.Write(ctx, func(tx paneldb.DBTX) error {
+		_, err := paneldb.New(tx).CreateUser(ctx, paneldb.CreateUserParams{
+			Username:     "admin",
+			PasswordHash: "not-a-valid-bcrypt-hash",
+			IsAdmin:      1,
+			CreatedAt:    time.Now().UTC().Unix(),
+		})
+		return err
+	})
+	if err != nil {
+		t.Fatalf("create user with corrupt hash: %v", err)
+	}
+
+	if err := svc.ResetPassword(ctx, "admin", "new-password"); err != nil {
+		t.Fatalf("reset password over corrupt hash: %v", err)
+	}
+
+	// The new password must work, proving the hash was repaired.
+	if _, err := svc.Login(ctx, "admin", "new-password"); err != nil {
+		t.Fatalf("login with new password after repair: %v", err)
+	}
+}
+
 func TestResetPasswordUserNotFound(t *testing.T) {
 	ctx := t.Context()
 	db := testutil.NewTestDB(t)

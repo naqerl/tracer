@@ -193,6 +193,12 @@ func (s *Service) HasAnyUsers(ctx context.Context) (bool, error) {
 // ResetPassword replaces the password of the user with the given username,
 // promotes them to admin, and invalidates all of their existing sessions.
 // Returns ErrUserNotFound if no user with that username exists.
+//
+// If newPassword matches the user's current password, the password write and
+// session purge are skipped — sessions survive — but the user is still
+// promoted to admin. This keeps repeated `-init -force` runs (e.g. on every
+// container boot) from logging everyone out when the password has not
+// actually changed.
 func (s *Service) ResetPassword(ctx context.Context, username, newPassword string) error {
 	if err := (RegisterRequest{Username: username, Password: newPassword}).Validate(); err != nil {
 		return fmt.Errorf("validate reset request: %w", err)
@@ -204,6 +210,27 @@ func (s *Service) ResetPassword(ctx context.Context, username, newPassword strin
 	}
 	if err != nil {
 		return fmt.Errorf("could not find user by username: %w", err)
+	}
+
+	// The password is already the stored one: a reset has nothing to do, and
+	// purging sessions — the whole point of a real reset — is the bug this
+	// avoids. Still assert admin so the "ensure the admin user has this
+	// password" contract holds, via a cheap idempotent UPDATE instead of a
+	// re-hash + session purge.
+	err = checkPassword(newPassword, creds.PasswordHash)
+	if err == nil {
+		if err := s.handle.Write(ctx, func(tx db.DBTX) error {
+			return db.New(tx).SetUserAdmin(ctx, creds.ID)
+		}); err != nil {
+			return fmt.Errorf("could not reset password: %w", err)
+		}
+		slog.Info("Password unchanged, reset is a no-op", "username", username)
+		return nil
+	}
+	if !errors.Is(err, ErrInvalidCredentials) {
+		// Unexpected check failure (e.g. a corrupt stored hash): log it and
+		// let the reset below re-hash, which repairs the stored hash.
+		slog.Warn("Password check failed, proceeding with reset", "username", username, "error", err)
 	}
 
 	hash, err := s.hashPassword(newPassword)
