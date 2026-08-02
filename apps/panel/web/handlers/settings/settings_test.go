@@ -1,14 +1,12 @@
 package settings
 
 import (
-	"database/sql"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
-	"github.com/pressly/goose/v3"
+	"golang.org/x/crypto/bcrypt"
 	_ "modernc.org/sqlite"
 
 	paneldb "tracer/apps/panel/db"
@@ -18,36 +16,9 @@ import (
 	ingestsvc "tracer/apps/panel/internal/services/ingest"
 	notifysvc "tracer/apps/panel/internal/services/notify"
 	usersvc "tracer/apps/panel/internal/services/user"
-	panelmigrations "tracer/apps/panel/sql/panel"
+	"tracer/apps/panel/internal/testutil"
 	authmw "tracer/apps/panel/web/middleware/auth"
 )
-
-func newTestDB(t *testing.T) *dbmanager.DBHandle {
-	t.Helper()
-
-	// Unique in-memory database per test so parallel or repeated runs
-	// cannot share state through sqlite's shared cache.
-	name := strings.ReplaceAll(t.Name(), "/", "_")
-	db, err := sql.Open("sqlite", fmt.Sprintf("file:%s?mode=memory&cache=shared", name))
-	if err != nil {
-		t.Fatalf("open db: %v", err)
-	}
-	t.Cleanup(func() {
-		if err := db.Close(); err != nil {
-			t.Errorf("close db: %v", err)
-		}
-	})
-
-	provider, err := goose.NewProvider(goose.DialectSQLite3, db, panelmigrations.Embed)
-	if err != nil {
-		t.Fatalf("create goose provider: %v", err)
-	}
-	if _, err := provider.Up(t.Context()); err != nil {
-		t.Fatalf("run migrations: %v", err)
-	}
-
-	return dbmanager.NewDBHandle(db, "test-panel")
-}
 
 // newAuthedHandler builds the settings mux behind the auth middleware and
 // registers a user (admin or not). It returns the handler, the auth service
@@ -56,8 +27,9 @@ func newTestDB(t *testing.T) *dbmanager.DBHandle {
 func newAuthedHandler(t *testing.T, isAdmin, readOnly bool) (http.Handler, *authsvc.Service, *dbmanager.DBHandle, string) {
 	t.Helper()
 
-	db := newTestDB(t)
-	authService := authsvc.New(db, testKeySecret())
+	db := testutil.NewTestDB(t)
+	// Low bcrypt cost: cost 12 is ~250ms per hash, too slow for the suite.
+	authService := authsvc.New(db, testutil.TestKeySecret(), bcrypt.MinCost)
 	userService := usersvc.NewService(db)
 
 	user, err := authService.Register(t.Context(), authsvc.RegisterRequest{
@@ -294,9 +266,4 @@ func TestRevealCollectorAPIKeyDecryptFailureShowsError(t *testing.T) {
 	if !strings.Contains(body, "Could not decrypt the key") {
 		t.Fatalf("expected decrypt error message, got %q", body)
 	}
-}
-
-// testKeySecret returns a fixed 32-byte master key for tests.
-func testKeySecret() []byte {
-	return []byte("0123456789abcdef0123456789abcdef")
 }

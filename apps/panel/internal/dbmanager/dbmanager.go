@@ -29,6 +29,11 @@ type Manager struct {
 	collectorsDir string
 	appDBs        map[string]*DBHandle // key: collector\x00app
 	collectorDBs  map[string]*DBHandle // key: collector (for stats)
+
+	// dsnBuilder builds the DSN for a database path. Production uses
+	// disk-backed WAL SQLite; tests override it with :memory: DSNs so the
+	// suite does not pay per-test disk I/O.
+	dsnBuilder func(dbPath string) string
 }
 
 func New(baseDir string) (*Manager, error) {
@@ -41,7 +46,19 @@ func New(baseDir string) (*Manager, error) {
 		collectorsDir: collectorsDir,
 		appDBs:        make(map[string]*DBHandle),
 		collectorDBs:  make(map[string]*DBHandle),
+		dsnBuilder:    buildDSN,
 	}, nil
+}
+
+// NewWithDSN is a test-only constructor that overrides how SQLite DSNs are
+// built. Tests use it to point all databases at :memory: instead of disk.
+func NewWithDSN(baseDir string, dsn func(dbPath string) string) (*Manager, error) {
+	m, err := New(baseDir)
+	if err != nil {
+		return nil, err
+	}
+	m.dsnBuilder = dsn
+	return m, nil
 }
 
 // ListCollectors returns all collector names from filesystem.
@@ -140,7 +157,7 @@ func (m *Manager) CreateAppDB(collectorName, appName string) (*DBHandle, error) 
 	}
 
 	dbPath := m.appDBPath(collectorName, appName)
-	sqlDB, err := openSQLiteDB(buildDSN(dbPath))
+	sqlDB, err := openSQLiteDB(m.dsnBuilder(dbPath))
 	if err != nil {
 		return nil, fmt.Errorf("open database for app %s/%s: %w", collectorName, appName, err)
 	}
@@ -171,7 +188,7 @@ func (m *Manager) openAppDB(collectorName, appName string) (*DBHandle, error) {
 	}
 
 	dbPath := m.appDBPath(collectorName, appName)
-	sqlDB, err := openSQLiteDB(buildDSN(dbPath))
+	sqlDB, err := openSQLiteDB(m.dsnBuilder(dbPath))
 	if err != nil {
 		return nil, fmt.Errorf("open database for app %s/%s: %w", collectorName, appName, err)
 	}
@@ -225,7 +242,7 @@ func (m *Manager) CreateCollectorDB(collectorName string) (*DBHandle, error) {
 	}
 
 	dbPath := m.collectorDBPath(collectorName)
-	sqlDB, err := openSQLiteDB(buildDSN(dbPath))
+	sqlDB, err := openSQLiteDB(m.dsnBuilder(dbPath))
 	if err != nil {
 		return nil, fmt.Errorf("open collector db for %s: %w", collectorName, err)
 	}
@@ -253,7 +270,7 @@ func (m *Manager) openCollectorDB(collectorName string) (*DBHandle, error) {
 	}
 
 	dbPath := m.collectorDBPath(collectorName)
-	sqlDB, err := openSQLiteDB(buildDSN(dbPath))
+	sqlDB, err := openSQLiteDB(m.dsnBuilder(dbPath))
 	if err != nil {
 		return nil, fmt.Errorf("open collector db for %s: %w", collectorName, err)
 	}
@@ -325,7 +342,7 @@ func (m *Manager) RunMigrationsForAll() error {
 	for _, collector := range collectors {
 		// Run collector DB migrations
 		if _, err := m.GetCollectorDB(collector); err == nil {
-			sqlDB, err := openSQLiteDB(buildDSN(m.collectorDBPath(collector)))
+			sqlDB, err := openSQLiteDB(m.dsnBuilder(m.collectorDBPath(collector)))
 			if err != nil {
 				errs = append(errs, fmt.Errorf("open collector db %s: %w", collector, err))
 				continue
@@ -349,7 +366,7 @@ func (m *Manager) RunMigrationsForAll() error {
 
 		for _, app := range apps {
 			if _, err := m.GetAppDB(collector, app); err == nil {
-				sqlDB, err := openSQLiteDB(buildDSN(m.appDBPath(collector, app)))
+				sqlDB, err := openSQLiteDB(m.dsnBuilder(m.appDBPath(collector, app)))
 				if err != nil {
 					errs = append(errs, fmt.Errorf("open app db %s/%s: %w", collector, app, err))
 					continue

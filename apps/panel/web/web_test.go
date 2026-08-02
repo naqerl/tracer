@@ -1,16 +1,13 @@
 package web_test
 
 import (
-	"database/sql"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/pressly/goose/v3"
-	_ "modernc.org/sqlite"
+	"golang.org/x/crypto/bcrypt"
 
 	"tracer/apps/panel/internal/config"
 	"tracer/apps/panel/internal/dbmanager"
@@ -20,7 +17,7 @@ import (
 	panelsvc "tracer/apps/panel/internal/services/panel"
 	topologysvc "tracer/apps/panel/internal/services/topology"
 	usersvc "tracer/apps/panel/internal/services/user"
-	panelmigrations "tracer/apps/panel/sql/panel"
+	"tracer/apps/panel/internal/testutil"
 	"tracer/apps/panel/web"
 )
 
@@ -30,33 +27,10 @@ import (
 func newServer(t *testing.T, readOnly bool) (http.Handler, string) {
 	t.Helper()
 
-	name := strings.ReplaceAll(t.Name(), "/", "_")
-	raw, err := sql.Open("sqlite", fmt.Sprintf("file:%s?mode=memory&cache=shared", name))
-	if err != nil {
-		t.Fatalf("open db: %v", err)
-	}
-	t.Cleanup(func() {
-		if err := raw.Close(); err != nil {
-			t.Errorf("close db: %v", err)
-		}
-	})
+	panelHandle := testutil.NewTestDB(t)
 
-	provider, err := goose.NewProvider(goose.DialectSQLite3, raw, panelmigrations.Embed)
-	if err != nil {
-		t.Fatalf("create goose provider: %v", err)
-	}
-	if _, err := provider.Up(t.Context()); err != nil {
-		t.Fatalf("run migrations: %v", err)
-	}
-
-	panelHandle := dbmanager.NewDBHandle(raw, "test-panel")
-	t.Cleanup(func() {
-		if err := panelHandle.Close(); err != nil {
-			t.Errorf("close panel handle: %v", err)
-		}
-	})
-
-	authService := authsvc.New(panelHandle, testKeySecret())
+	// Low bcrypt cost: cost 12 is ~250ms per hash, too slow for the suite.
+	authService := authsvc.New(panelHandle, testutil.TestKeySecret(), bcrypt.MinCost)
 	userService := usersvc.NewService(panelHandle)
 
 	user, err := authService.Register(t.Context(), authsvc.RegisterRequest{
@@ -164,9 +138,4 @@ func TestReadWriteServerAllowsKeyReveal(t *testing.T) {
 	if rr.Header().Get("Cache-Control") != "no-store" {
 		t.Fatalf("expected Cache-Control no-store, got %q", rr.Header().Get("Cache-Control"))
 	}
-}
-
-// testKeySecret returns a fixed 32-byte master key for tests.
-func testKeySecret() []byte {
-	return []byte("0123456789abcdef0123456789abcdef")
 }

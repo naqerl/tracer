@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"golang.org/x/crypto/bcrypt"
 	_ "modernc.org/sqlite"
 
 	"tracer/apps/panel/db"
@@ -16,10 +17,8 @@ import (
 	authsvc "tracer/apps/panel/internal/services/auth"
 	ingestsvc "tracer/apps/panel/internal/services/ingest"
 	usersvc "tracer/apps/panel/internal/services/user"
-	panelmigrations "tracer/apps/panel/sql/panel"
+	"tracer/apps/panel/internal/testutil"
 	"tracer/libs/types"
-
-	"github.com/pressly/goose/v3"
 )
 
 // testIngestConfig implements ingest.IngestConfig for testing.
@@ -35,39 +34,6 @@ func (c *testIngestConfig) GetMemDeltaKB() int          { return c.memDeltaKB }
 func (c *testIngestConfig) GetDiskDeltaKB() int         { return c.diskDeltaKB }
 func (c *testIngestConfig) GetSampleRate() float64      { return c.sampleRate }
 
-// newTestPanelDB creates an in-memory panel database with migrations applied.
-func newTestPanelDB(t *testing.T) *dbmanager.DBHandle {
-	t.Helper()
-
-	db, err := sql.Open("sqlite", "file::memory:?cache=shared")
-	if err != nil {
-		t.Fatalf("open panel db: %v", err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-
-	provider, err := goose.NewProvider(goose.DialectSQLite3, db, panelmigrations.Embed)
-	if err != nil {
-		t.Fatalf("create goose provider: %v", err)
-	}
-	if _, err := provider.Up(t.Context()); err != nil {
-		t.Fatalf("run migrations: %v", err)
-	}
-
-	return dbmanager.NewDBHandle(db, "test-panel")
-}
-
-// newTestDBManager creates a dbmanager.Manager backed by a temp directory.
-func newTestDBManager(t *testing.T) *dbmanager.Manager {
-	t.Helper()
-
-	dir := t.TempDir()
-	mgr, err := dbmanager.New(dir)
-	if err != nil {
-		t.Fatalf("create dbmanager: %v", err)
-	}
-	return mgr
-}
-
 // setupTestService creates a fully wired panel Service for testing.
 // It creates a test user (admin), registers a collector+app DB, and grants access.
 func setupTestService(t *testing.T) (*Service, *dbmanager.DBHandle, int64, string, string) {
@@ -75,10 +41,10 @@ func setupTestService(t *testing.T) (*Service, *dbmanager.DBHandle, int64, strin
 	ctx := context.Background()
 
 	// --- Panel DB ---
-	panelDB := newTestPanelDB(t)
+	panelDB := testutil.NewTestDB(t)
 
 	// --- DBManager ---
-	mgr := newTestDBManager(t)
+	mgr := testutil.NewTestDBManager(t)
 
 	// --- Tracker ---
 	tracker := ingestsvc.NewTracker()
@@ -87,7 +53,9 @@ func setupTestService(t *testing.T) (*Service, *dbmanager.DBHandle, int64, strin
 	userSvc := usersvc.NewService(panelDB)
 
 	// --- Auth service (to create user) ---
-	authSvc := authsvc.New(panelDB, testKeySecret())
+	// Use the minimum bcrypt cost: cost 12 is ~250ms per hash, which would
+	// add ~30s to the suite across all tests.
+	authSvc := authsvc.New(panelDB, testutil.TestKeySecret(), bcrypt.MinCost)
 
 	user, err := authSvc.Register(ctx, authsvc.RegisterRequest{
 		Username: "admin",
@@ -130,11 +98,11 @@ func setupTestServiceNoAccess(t *testing.T) (*Service, int64) {
 	t.Helper()
 	ctx := context.Background()
 
-	panelDB := newTestPanelDB(t)
-	mgr := newTestDBManager(t)
+	panelDB := testutil.NewTestDB(t)
+	mgr := testutil.NewTestDBManager(t)
 	tracker := ingestsvc.NewTracker()
 	userSvc := usersvc.NewService(panelDB)
-	authSvc := authsvc.New(panelDB, testKeySecret())
+	authSvc := authsvc.New(panelDB, testutil.TestKeySecret(), bcrypt.MinCost)
 
 	// Register collector anyway (so it exists)
 	ingestSvc := ingestsvc.New(mgr, nil, nil, &testIngestConfig{
@@ -939,11 +907,13 @@ func TestCollectorStats_Staleness_Fresh(t *testing.T) {
 	}
 }
 
-// TestCollectorStats_Staleness_Stale verifies staleness="stale" for a 45-min-old stat.
+// TestCollectorStats_Staleness_Stale verifies staleness="stale" for a
+// 45-min-old stat via the public GetCollector API.
 func TestCollectorStats_Staleness_Stale(t *testing.T) {
 	svc, _, userID, collectorName, _ := setupTestService(t)
 	ctx := context.Background()
 
+	ts := time.Now().Add(-45 * time.Minute)
 	saveStats(t, ctx, svc, collectorName, types.Stats{
 		CPUUsagePercent: 10.0,
 		MemTotalMB:      4096,
@@ -952,7 +922,7 @@ func TestCollectorStats_Staleness_Stale(t *testing.T) {
 		DiskTotalGB:     100,
 		DiskUsedGB:      50,
 		DiskAvailGB:     50,
-		Timestamp:       time.Now().Add(-45 * time.Minute),
+		Timestamp:       ts,
 	})
 
 	c, err := svc.GetCollector(ctx, GetCollectorRequest{
@@ -962,16 +932,18 @@ func TestCollectorStats_Staleness_Stale(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetCollector: %v", err)
 	}
-	if c.Stats.Staleness != "stale" {
-		t.Fatalf("expected stale, got %q", c.Stats.Staleness)
+	if want := wantStaleness(ts); c.Stats.Staleness != want {
+		t.Fatalf("expected %q staleness, got %q", want, c.Stats.Staleness)
 	}
 }
 
-// TestCollectorStats_Staleness_Warning verifies staleness="warning" for a 7-min-old stat.
+// TestCollectorStats_Staleness_Warning verifies staleness="warning" for a
+// 7-min-old stat via the public GetCollector API.
 func TestCollectorStats_Staleness_Warning(t *testing.T) {
 	svc, _, userID, collectorName, _ := setupTestService(t)
 	ctx := context.Background()
 
+	ts := time.Now().Add(-7 * time.Minute)
 	saveStats(t, ctx, svc, collectorName, types.Stats{
 		CPUUsagePercent: 10.0,
 		MemTotalMB:      4096,
@@ -980,7 +952,7 @@ func TestCollectorStats_Staleness_Warning(t *testing.T) {
 		DiskTotalGB:     100,
 		DiskUsedGB:      50,
 		DiskAvailGB:     50,
-		Timestamp:       time.Now().Add(-7 * time.Minute),
+		Timestamp:       ts,
 	})
 
 	c, err := svc.GetCollector(ctx, GetCollectorRequest{
@@ -990,8 +962,8 @@ func TestCollectorStats_Staleness_Warning(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetCollector: %v", err)
 	}
-	if c.Stats.Staleness != "warning" {
-		t.Fatalf("expected warning, got %q", c.Stats.Staleness)
+	if want := wantStaleness(ts); c.Stats.Staleness != want {
+		t.Fatalf("expected %q staleness, got %q", want, c.Stats.Staleness)
 	}
 }
 
@@ -1020,6 +992,54 @@ func TestCollectorStats_Staleness_Old(t *testing.T) {
 	}
 	if c.Stats.Staleness != "old" {
 		t.Fatalf("expected old, got %q", c.Stats.Staleness)
+	}
+}
+
+// TestFormatCollectorStats_StalenessBuckets verifies the staleness buckets
+// deterministically with a fixed reference time. The integration tests above
+// go through the public API and therefore depend on the wall clock; this test
+// pins the actual bucket boundaries.
+func TestFormatCollectorStats_StalenessBuckets(t *testing.T) {
+	now := time.Date(2026, 8, 2, 12, 0, 0, 0, time.UTC)
+	tests := []struct {
+		name string
+		age  time.Duration
+		want string
+	}{
+		{name: "fresh", age: time.Minute, want: "fresh"},
+		{name: "warning", age: 7 * time.Minute, want: "warning"},
+		{name: "stale", age: 45 * time.Minute, want: "stale"},
+		{name: "old same time yesterday", age: 24 * time.Hour, want: "old"},
+		{name: "old across midnight", age: 25 * time.Hour, want: "old"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			stats := ingestsvc.SystemStat{Timestamp: now.Add(-tt.age).Unix()}
+			got := formatCollectorStats(stats, now)
+			if got.Staleness != tt.want {
+				t.Fatalf("staleness for age %v = %q, want %q", tt.age, got.Staleness, tt.want)
+			}
+		})
+	}
+}
+
+// wantStaleness mirrors the staleness rules in formatCollectorStats so the
+// integration assertions above are independent of the wall clock: a stat 45
+// minutes old must not flip from "stale" to "old" merely because the test runs
+// shortly after midnight.
+func wantStaleness(ts time.Time) string {
+	now := time.Now()
+	age := now.Sub(ts)
+	sameDate := now.Year() == ts.Year() && now.YearDay() == ts.YearDay()
+	switch {
+	case !sameDate:
+		return "old"
+	case age > 30*time.Minute:
+		return "stale"
+	case age > 5*time.Minute:
+		return "warning"
+	default:
+		return "fresh"
 	}
 }
 
@@ -1854,9 +1874,4 @@ func TestGetStatsHistory_PanelService_Integration(t *testing.T) {
 	if len(result.DiskPeriods) != 1 {
 		t.Fatalf("expected 1 Disk period, got %d", len(result.DiskPeriods))
 	}
-}
-
-// testKeySecret returns a fixed 32-byte master key for tests.
-func testKeySecret() []byte {
-	return []byte("0123456789abcdef0123456789abcdef")
 }

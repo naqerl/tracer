@@ -7,10 +7,12 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"tracer/apps/panel/internal/testutil"
 )
 
 func TestEncryptDecryptKeyRoundtrip(t *testing.T) {
-	key := testKeySecret()
+	key := testutil.TestKeySecret()
 	plaintext := "deadbeefcafebabe"
 
 	encoded, err := encryptKey(key, plaintext)
@@ -31,7 +33,7 @@ func TestEncryptDecryptKeyRoundtrip(t *testing.T) {
 }
 
 func TestEncryptKeyIsRandomized(t *testing.T) {
-	key := testKeySecret()
+	key := testutil.TestKeySecret()
 	plaintext := "same-plaintext-every-time"
 
 	first, err := encryptKey(key, plaintext)
@@ -48,14 +50,14 @@ func TestEncryptKeyIsRandomized(t *testing.T) {
 }
 
 func TestDecryptKeyEmptyCiphertextReturnsErrKeyNotRevealable(t *testing.T) {
-	_, err := decryptKey(testKeySecret(), "")
+	_, err := decryptKey(testutil.TestKeySecret(), "")
 	if !errors.Is(err, ErrKeyNotRevealable) {
 		t.Fatalf("expected ErrKeyNotRevealable, got %v", err)
 	}
 }
 
 func TestDecryptKeyTamperedCiphertextReturnsErrKeyDecryptFailed(t *testing.T) {
-	key := testKeySecret()
+	key := testutil.TestKeySecret()
 
 	encoded, err := encryptKey(key, "secret-key")
 	if err != nil {
@@ -77,13 +79,13 @@ func TestDecryptKeyTamperedCiphertextReturnsErrKeyDecryptFailed(t *testing.T) {
 }
 
 func TestDecryptKeyWrongMasterKeyReturnsErrKeyDecryptFailed(t *testing.T) {
-	encoded, err := encryptKey(testKeySecret(), "secret-key")
+	encoded, err := encryptKey(testutil.TestKeySecret(), "secret-key")
 	if err != nil {
 		t.Fatalf("encrypt key: %v", err)
 	}
 
 	other := []byte("fedcba9876543210fedcba9876543210")
-	if string(other) == string(testKeySecret()) {
+	if string(other) == string(testutil.TestKeySecret()) {
 		t.Fatal("test setup: expected different master keys")
 	}
 

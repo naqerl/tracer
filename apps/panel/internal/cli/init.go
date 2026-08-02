@@ -6,21 +6,18 @@ import (
 	"fmt"
 	"os"
 
-	"tracer/apps/panel/internal/config"
-	"tracer/apps/panel/internal/dbmanager"
 	"tracer/apps/panel/internal/services/auth"
-	"tracer/build"
-	"tracer/libs/installx"
 )
 
 // InitPanel creates the admin user and initial collector API key.
-// It opens the database, resolves credentials from env vars if needed,
-// checks if already initialized, creates the admin user, and generates
-// a collector API key.
+// It resolves credentials from env vars if needed, checks if already
+// initialized, creates the admin user, and generates a collector API key.
+// authSvc is the already-constructed auth service; main.go builds it once with
+// the production bcrypt cost and shares it across all CLI commands.
 // Returns ErrAlreadyInitialized if users already exist and Force is not set.
 // When Force is set and users already exist, the password of the given admin
 // user is overwritten instead.
-func InitPanel(ctx context.Context, opts InitOptions) (InitResult, error) {
+func InitPanel(ctx context.Context, authSvc *auth.Service, opts InitOptions) (InitResult, error) {
 	// Resolve credentials from env vars if not provided
 	username := opts.Username
 	if username == "" {
@@ -46,33 +43,13 @@ func InitPanel(ctx context.Context, opts InitOptions) (InitResult, error) {
 		}
 	}
 
-	// Open database with migrations
-	handle, err := dbmanager.OpenPanelDB(config.DataDir())
-	if err != nil {
-		return InitResult{}, fmt.Errorf("open panel database: %w", err)
-	}
-	defer handle.Close()
-
-	// Load (or create) the master key used to encrypt API key plaintext at rest.
-	keySecret, err := auth.LoadKeySecret(config.DataDir())
-	if err != nil {
-		return InitResult{}, fmt.Errorf("load key secret: %w", err)
-	}
-
-	// Ensure data dir files are owned by the service user.
-	// -init may run as root during installation, but the panel service
-	// runs as a non-root user and needs write access to the database.
-	if err := installx.ChownDirRecursive(config.DataDir(), build.PanelUser, build.TracerGroup); err != nil {
-		return InitResult{}, fmt.Errorf("chown data dir: %w", err)
-	}
-
-	return initWithHandle(ctx, handle, keySecret, username, password, isNewPassword, opts.Force)
+	return initWithHandle(ctx, authSvc, username, password, isNewPassword, opts.Force)
 }
 
-// initWithHandle runs the init logic against an already-open database handle.
-func initWithHandle(ctx context.Context, handle *dbmanager.DBHandle, keySecret []byte, username, password string, isNewPassword, force bool) (InitResult, error) {
-	authSvc := auth.New(handle, keySecret)
-
+// initWithHandle runs the init logic against an already-constructed auth
+// service. Production builds it with auth.DefaultBcryptCost; tests build it
+// with a lower cost (e.g. bcrypt.MinCost) to keep the suite fast.
+func initWithHandle(ctx context.Context, authSvc *auth.Service, username, password string, isNewPassword, force bool) (InitResult, error) {
 	registerReq := auth.RegisterRequest{
 		Username: username,
 		Password: password,

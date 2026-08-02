@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"tracer/apps/panel/internal/dbmanager"
+	"tracer/apps/panel/internal/testutil"
 	"tracer/libs/types"
 
 	_ "modernc.org/sqlite"
@@ -24,19 +24,9 @@ func (c *testIngestConfig) GetMemDeltaKB() int          { return c.memDeltaKB }
 func (c *testIngestConfig) GetDiskDeltaKB() int         { return c.diskDeltaKB }
 func (c *testIngestConfig) GetSampleRate() float64      { return c.sampleRate }
 
-func newTestDBManager(t *testing.T) *dbmanager.Manager {
-	t.Helper()
-	dir := t.TempDir()
-	mgr, err := dbmanager.New(dir)
-	if err != nil {
-		t.Fatalf("create dbmanager: %v", err)
-	}
-	return mgr
-}
-
 func TestRuntimeConfigDeltaChange(t *testing.T) {
 	ctx := context.Background()
-	mgr := newTestDBManager(t)
+	mgr := testutil.NewTestDBManager(t)
 
 	cfg := &testIngestConfig{
 		sampleRate:      1.0,

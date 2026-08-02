@@ -185,7 +185,7 @@ func (s *Service) getCollector(ctx context.Context, collectorName string) (Colle
 
 	stats, err := s.ingestSvc.GetLatestStats(ctx, collectorName)
 	if err == nil {
-		view.Stats = formatCollectorStats(stats)
+		view.Stats = formatCollectorStats(stats, time.Now())
 		return view, nil
 	}
 	if errors.Is(err, sql.ErrNoRows) {
@@ -776,8 +776,11 @@ func (s *Service) queriesForApp(collectorName, appName string) (*db.Queries, err
 	return db.New(handle.Read()), nil
 }
 
-func formatCollectorStats(stats ingest.SystemStat) *CollectorStats {
-	now := time.Now()
+// formatCollectorStats formats a system stat for display. now is the
+// reference time used for staleness; production passes time.Now(), tests pass
+// a fixed value so staleness buckets are deterministic regardless of the wall
+// clock (a stat 45 min old must not flip from "stale" to "old" at midnight).
+func formatCollectorStats(stats ingest.SystemStat, now time.Time) *CollectorStats {
 	createdAt := time.Unix(stats.Timestamp, 0)
 	age := now.Sub(createdAt)
 

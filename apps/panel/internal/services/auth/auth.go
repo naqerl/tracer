@@ -21,7 +21,10 @@ import (
 )
 
 const (
-	bcryptCost        = 12
+	// DefaultBcryptCost is the production bcrypt cost. It is deliberately
+	// expensive (~250ms per hash) to slow brute-force attempts.
+	DefaultBcryptCost = 12
+
 	sessionTokenSize  = 32
 	apiKeySize        = 32
 	maxUsernameLength = 32
@@ -37,8 +40,9 @@ var (
 )
 
 type Service struct {
-	handle    *dbmanager.DBHandle
-	keySecret []byte
+	handle     *dbmanager.DBHandle
+	keySecret  []byte
+	bcryptCost int
 }
 
 type RegisterRequest struct {
@@ -90,21 +94,27 @@ func (r GenerateUserAPIKeyRequest) Validate() error {
 	return domain.ValidateAPIKeyName(r.Name)
 }
 
-// New creates a Service with the given panel database handle.
+// New creates a Service with the given panel database handle, master key, and
+// bcrypt work factor.
+//
 // keySecret is the master key used to encrypt API key plaintext at rest so it
 // can be revealed later. Load it with LoadKeySecret. New panics if keySecret
 // is not exactly keySecretSize bytes, catching misconfiguration at startup.
-func New(handle *dbmanager.DBHandle, keySecret []byte) *Service {
+//
+// bcryptCost is the work factor for password hashing. Production must pass
+// DefaultBcryptCost; tests pass a lower cost (e.g. bcrypt.MinCost) because
+// cost 12 is ~250ms per hash and would slow the suite to tens of seconds.
+func New(handle *dbmanager.DBHandle, keySecret []byte, bcryptCost int) *Service {
 	if len(keySecret) != keySecretSize {
 		panic(fmt.Sprintf("auth.New: key secret must be %d bytes, got %d", keySecretSize, len(keySecret)))
 	}
-	return &Service{handle: handle, keySecret: keySecret}
+	return &Service{handle: handle, keySecret: keySecret, bcryptCost: bcryptCost}
 }
 
 // Password hashing
 
-func hashPassword(password string) (string, error) {
-	bytes, err := bcrypt.GenerateFromPassword([]byte(password), bcryptCost)
+func (s *Service) hashPassword(password string) (string, error) {
+	bytes, err := bcrypt.GenerateFromPassword([]byte(password), s.bcryptCost)
 	if err != nil {
 		return "", err
 	}
@@ -138,7 +148,7 @@ func GenerateAPIKey() (string, error) {
 
 // Register creates a new user with hashed password.
 func (s *Service) Register(ctx context.Context, req RegisterRequest) (*db.User, error) {
-	hash, err := hashPassword(req.Password)
+	hash, err := s.hashPassword(req.Password)
 	if err != nil {
 		return nil, fmt.Errorf("hash password: %w", err)
 	}
@@ -196,7 +206,7 @@ func (s *Service) ResetPassword(ctx context.Context, username, newPassword strin
 		return fmt.Errorf("could not find user by username: %w", err)
 	}
 
-	hash, err := hashPassword(newPassword)
+	hash, err := s.hashPassword(newPassword)
 	if err != nil {
 		return fmt.Errorf("could not hash password: %w", err)
 	}

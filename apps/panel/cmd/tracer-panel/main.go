@@ -149,10 +149,45 @@ func printDefaultsCmd() error {
 	return nil
 }
 
+// openAuthService opens the panel database, loads (or creates) the master key,
+// ensures the data dir files are owned by the service user, and constructs the
+// auth service. The bcrypt work factor is set here, once, and the returned
+// service is shared by all CLI commands. The caller owns the returned handle.
+func openAuthService() (*dbmanager.DBHandle, *auth.Service, error) {
+	handle, err := dbmanager.OpenPanelDB(config.DataDir())
+	if err != nil {
+		return nil, nil, fmt.Errorf("open panel database: %w", err)
+	}
+
+	// Load (or create) the master key used to encrypt API key plaintext at rest.
+	keySecret, err := auth.LoadKeySecret(config.DataDir())
+	if err != nil {
+		handle.Close()
+		return nil, nil, fmt.Errorf("load key secret: %w", err)
+	}
+
+	// Ensure data dir files (including the freshly created keys.key) are owned
+	// by the service user. These commands may run as root during installation,
+	// but the panel service runs as a non-root user and needs to read the key
+	// file; otherwise startup would fail.
+	if err := installx.ChownDirRecursive(config.DataDir(), build.PanelUser, build.TracerGroup); err != nil {
+		handle.Close()
+		return nil, nil, fmt.Errorf("chown data dir: %w", err)
+	}
+
+	return handle, auth.New(handle, keySecret, auth.DefaultBcryptCost), nil
+}
+
 func generateAPIKeyCmd(name string) error {
 	ctx := context.Background()
 
-	apiKey, err := cli.GenerateCollectorAPIKey(ctx, name)
+	handle, authSvc, err := openAuthService()
+	if err != nil {
+		return err
+	}
+	defer handle.Close()
+
+	apiKey, err := cli.GenerateCollectorAPIKey(ctx, authSvc, name)
 	if err != nil {
 		return err
 	}
@@ -164,7 +199,13 @@ func generateAPIKeyCmd(name string) error {
 func initPanelCmd(username, password string, force bool) error {
 	ctx := context.Background()
 
-	result, err := cli.InitPanel(ctx, cli.InitOptions{
+	handle, authSvc, err := openAuthService()
+	if err != nil {
+		return err
+	}
+	defer handle.Close()
+
+	result, err := cli.InitPanel(ctx, authSvc, cli.InitOptions{
 		Username: username,
 		Password: password,
 		Force:    force,
@@ -210,7 +251,7 @@ func serve(ctx context.Context, cfg *config.Config, noAuth, readOnly bool) error
 	}
 
 	// Initialize services
-	authService := auth.New(panelHandle, keySecret)
+	authService := auth.New(panelHandle, keySecret, auth.DefaultBcryptCost)
 	userService := user.NewService(panelHandle)
 
 	// Check if first run (no users exist)

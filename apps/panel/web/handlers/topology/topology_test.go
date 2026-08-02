@@ -2,7 +2,6 @@ package topology
 
 import (
 	"context"
-	"database/sql"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -10,44 +9,24 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pressly/goose/v3"
+	"golang.org/x/crypto/bcrypt"
 	_ "modernc.org/sqlite"
 
-	"tracer/apps/panel/internal/dbmanager"
 	authsvc "tracer/apps/panel/internal/services/auth"
 	topologysvc "tracer/apps/panel/internal/services/topology"
 	usersvc "tracer/apps/panel/internal/services/user"
-	panelmigrations "tracer/apps/panel/sql/panel"
+	"tracer/apps/panel/internal/testutil"
 	authmw "tracer/apps/panel/web/middleware/auth"
 	"tracer/libs/types"
 )
 
-func newTestDB(t *testing.T) *dbmanager.DBHandle {
-	t.Helper()
-
-	db, err := sql.Open("sqlite", "file::memory:?cache=shared")
-	if err != nil {
-		t.Fatalf("open db: %v", err)
-	}
-
-	provider, err := goose.NewProvider(goose.DialectSQLite3, db, panelmigrations.Embed)
-	if err != nil {
-		t.Fatalf("create goose provider: %v", err)
-	}
-	if _, err := provider.Up(t.Context()); err != nil {
-		t.Fatalf("run migrations: %v", err)
-	}
-
-	return dbmanager.NewDBHandle(db, "test-panel")
-}
-
 func newAuthedHandler(t *testing.T) (http.Handler, *topologysvc.Service, string) {
 	t.Helper()
 
-	db := newTestDB(t)
-	t.Cleanup(func() { _ = db.Close() })
+	db := testutil.NewTestDB(t)
 
-	authService := authsvc.New(db, testKeySecret())
+	// Low bcrypt cost: cost 12 is ~250ms per hash, too slow for the suite.
+	authService := authsvc.New(db, testutil.TestKeySecret(), bcrypt.MinCost)
 	userService := usersvc.NewService(db)
 	topologyService := topologysvc.NewService(nil)
 
@@ -188,9 +167,4 @@ func TestDecodeDataInvalid(t *testing.T) {
 	if err := env.DecodeData(&evt); err == nil {
 		t.Fatal("expected error for int data, got nil")
 	}
-}
-
-// testKeySecret returns a fixed 32-byte master key for tests.
-func testKeySecret() []byte {
-	return []byte("0123456789abcdef0123456789abcdef")
 }

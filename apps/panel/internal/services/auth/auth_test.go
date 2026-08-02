@@ -3,52 +3,21 @@ package auth
 import (
 	"database/sql"
 	"errors"
-	"fmt"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/pressly/goose/v3"
-	_ "modernc.org/sqlite"
+	"golang.org/x/crypto/bcrypt"
 
 	paneldb "tracer/apps/panel/db"
-	"tracer/apps/panel/internal/dbmanager"
-	panelmigrations "tracer/apps/panel/sql/panel"
+	"tracer/apps/panel/internal/testutil"
 )
-
-func newTestDB(t *testing.T) *dbmanager.DBHandle {
-	t.Helper()
-
-	// Unique in-memory database per test so parallel or repeated runs
-	// cannot share state through sqlite's shared cache.
-	name := strings.ReplaceAll(t.Name(), "/", "_")
-	db, err := sql.Open("sqlite", fmt.Sprintf("file:%s?mode=memory&cache=shared", name))
-	if err != nil {
-		t.Fatalf("open db: %v", err)
-	}
-	t.Cleanup(func() {
-		if err := db.Close(); err != nil {
-			t.Errorf("close db: %v", err)
-		}
-	})
-
-	provider, err := goose.NewProvider(goose.DialectSQLite3, db, panelmigrations.Embed)
-	if err != nil {
-		t.Fatalf("create goose provider: %v", err)
-	}
-
-	if _, err := provider.Up(t.Context()); err != nil {
-		t.Fatalf("run migrations: %v", err)
-	}
-
-	return dbmanager.NewDBHandle(db, "test-panel")
-}
 
 func TestGenerateAndValidateCollectorAPIKey(t *testing.T) {
 	ctx := t.Context()
-	db := newTestDB(t)
+	db := testutil.NewTestDB(t)
 
-	svc := New(db, testKeySecret())
+	svc := New(db, testutil.TestKeySecret(), bcrypt.MinCost)
 
 	req := GenerateCollectorAPIKeyRequest{Name: "prod-a"}
 	if err := req.Validate(); err != nil {
@@ -91,9 +60,9 @@ func TestGenerateAndValidateCollectorAPIKey(t *testing.T) {
 
 func TestListCollectorAPIKeysReturnsMaskedDisplay(t *testing.T) {
 	ctx := t.Context()
-	db := newTestDB(t)
+	db := testutil.NewTestDB(t)
 
-	svc := New(db, testKeySecret())
+	svc := New(db, testutil.TestKeySecret(), bcrypt.MinCost)
 
 	req := GenerateCollectorAPIKeyRequest{Name: "prod-a"}
 	if err := req.Validate(); err != nil {
@@ -118,9 +87,9 @@ func TestListCollectorAPIKeysReturnsMaskedDisplay(t *testing.T) {
 
 func TestValidateCollectorAPIKeyUpdatesLastUsedAt(t *testing.T) {
 	ctx := t.Context()
-	db := newTestDB(t)
+	db := testutil.NewTestDB(t)
 
-	svc := New(db, testKeySecret())
+	svc := New(db, testutil.TestKeySecret(), bcrypt.MinCost)
 
 	req := GenerateCollectorAPIKeyRequest{Name: "prod-a"}
 	if err := req.Validate(); err != nil {
@@ -189,9 +158,9 @@ func TestGenerateCollectorAPIKeyRejectsTooLongName(t *testing.T) {
 
 func TestResetPasswordOverwritesPasswordAndInvalidatesSessions(t *testing.T) {
 	ctx := t.Context()
-	db := newTestDB(t)
+	db := testutil.NewTestDB(t)
 
-	svc := New(db, testKeySecret())
+	svc := New(db, testutil.TestKeySecret(), bcrypt.MinCost)
 
 	// Register as a regular user: the reset must promote them to admin.
 	user, err := svc.Register(ctx, RegisterRequest{
@@ -240,9 +209,9 @@ func TestResetPasswordOverwritesPasswordAndInvalidatesSessions(t *testing.T) {
 
 func TestResetPasswordUserNotFound(t *testing.T) {
 	ctx := t.Context()
-	db := newTestDB(t)
+	db := testutil.NewTestDB(t)
 
-	svc := New(db, testKeySecret())
+	svc := New(db, testutil.TestKeySecret(), bcrypt.MinCost)
 
 	err := svc.ResetPassword(ctx, "ghost", "new-password")
 	if !errors.Is(err, ErrUserNotFound) {
@@ -252,9 +221,9 @@ func TestResetPasswordUserNotFound(t *testing.T) {
 
 func TestResetPasswordRejectsInvalidPassword(t *testing.T) {
 	ctx := t.Context()
-	db := newTestDB(t)
+	db := testutil.NewTestDB(t)
 
-	svc := New(db, testKeySecret())
+	svc := New(db, testutil.TestKeySecret(), bcrypt.MinCost)
 
 	if _, err := svc.Register(ctx, RegisterRequest{
 		Username: "admin",
@@ -277,9 +246,9 @@ func TestResetPasswordRejectsInvalidPassword(t *testing.T) {
 
 func TestRevealCollectorAPIKeyReturnsPlaintext(t *testing.T) {
 	ctx := t.Context()
-	db := newTestDB(t)
+	db := testutil.NewTestDB(t)
 
-	svc := New(db, testKeySecret())
+	svc := New(db, testutil.TestKeySecret(), bcrypt.MinCost)
 
 	key, row, err := svc.GenerateCollectorAPIKey(ctx, GenerateCollectorAPIKeyRequest{Name: "prod-a"})
 	if err != nil {
@@ -300,9 +269,9 @@ func TestRevealCollectorAPIKeyReturnsPlaintext(t *testing.T) {
 
 func TestRevealCollectorAPIKeyUnknownNameReturnsNoRows(t *testing.T) {
 	ctx := t.Context()
-	db := newTestDB(t)
+	db := testutil.NewTestDB(t)
 
-	svc := New(db, testKeySecret())
+	svc := New(db, testutil.TestKeySecret(), bcrypt.MinCost)
 
 	// The caller fetches the row first; unknown names surface as sql.ErrNoRows
 	// from the getter, which the handler maps to 404.
@@ -314,9 +283,9 @@ func TestRevealCollectorAPIKeyUnknownNameReturnsNoRows(t *testing.T) {
 
 func TestRevealCollectorAPIKeyLegacyKeyWithoutCiphertext(t *testing.T) {
 	ctx := t.Context()
-	db := newTestDB(t)
+	db := testutil.NewTestDB(t)
 
-	svc := New(db, testKeySecret())
+	svc := New(db, testutil.TestKeySecret(), bcrypt.MinCost)
 
 	// Simulate a key created before reveal support: store only the hash.
 	err := db.Write(ctx, func(tx paneldb.DBTX) error {
@@ -345,23 +314,18 @@ func TestRevealCollectorAPIKeyLegacyKeyWithoutCiphertext(t *testing.T) {
 
 func TestRevealCollectorAPIKeyFailsWithWrongMasterKey(t *testing.T) {
 	ctx := t.Context()
-	db := newTestDB(t)
+	db := testutil.NewTestDB(t)
 
-	svc := New(db, testKeySecret())
+	svc := New(db, testutil.TestKeySecret(), bcrypt.MinCost)
 	_, row, err := svc.GenerateCollectorAPIKey(ctx, GenerateCollectorAPIKeyRequest{Name: "prod-a"})
 	if err != nil {
 		t.Fatalf("generate collector api key: %v", err)
 	}
 
 	// A service constructed with a different master key cannot reveal.
-	other := New(db, []byte("fedcba9876543210fedcba9876543210"))
+	other := New(db, []byte("fedcba9876543210fedcba9876543210"), bcrypt.MinCost)
 	_, err = other.RevealCollectorAPIKey(*row)
 	if !errors.Is(err, ErrKeyDecryptFailed) {
 		t.Fatalf("expected ErrKeyDecryptFailed with wrong master key, got %v", err)
 	}
-}
-
-// testKeySecret returns a fixed 32-byte master key for tests.
-func testKeySecret() []byte {
-	return []byte("0123456789abcdef0123456789abcdef")
 }
