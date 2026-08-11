@@ -5,10 +5,11 @@ import (
 )
 
 type CollectorOverviewProps struct {
-	Title         string
-	CollectorName string
-	Since         string
-	Stats         *CollectorStatsView
+	Title              string
+	CollectorName      string
+	Since              string
+	Stats              *CollectorStatsView
+	AccessibleAppCount int
 }
 
 // CollectorOverview renders the collector overview page
@@ -33,6 +34,7 @@ templ CollectorOverviewData(props CollectorOverviewProps) {
 			<span class="text-fg-secondary text-xl mr-1">[</span>
 			<h2 class="text-xl font-semibold">{ props.CollectorName }</h2>
 			<span class="text-fg-secondary text-xl ml-1">]</span>
+			@templates.Indicator("apps-loading", "Refreshing…")
 			<hr class="flex-1 mx-4 border-bg-secondary" />
 			if props.Stats != nil {
 				<span class="text-fg-secondary text-xs mr-1">[</span>
@@ -47,14 +49,15 @@ templ CollectorOverviewData(props CollectorOverviewProps) {
 			}
 		</div>
 
-	<!-- Stats Row -->
-	<div
-		hx-get={ "/panel/collectors/" + props.CollectorName + "/stats" }
-		hx-trigger="every 15s"
-		hx-swap="innerHTML"
-	>
-		@StatsRow(props.Stats, props.CollectorName)
-	</div>
+		<!-- Stats Row -->
+		<div
+			hx-get={ "/panel/collectors/" + props.CollectorName + "/stats" }
+			hx-trigger="every 15s"
+			hx-swap="innerHTML"
+			hx-indicator="#apps-loading"
+		>
+			@StatsRow(props.Stats, props.CollectorName)
+		</div>
 
 		<!-- Apps Grid -->
 		<div
@@ -63,7 +66,7 @@ templ CollectorOverviewData(props CollectorOverviewProps) {
 			hx-swap="innerHTML"
 			hx-indicator="#apps-loading"
 		>
-			@templates.Indicator("apps-loading", "Loading apps...")
+			@CollectorAppsSkeleton(props.AccessibleAppCount)
 		</div>
 	</div>
 }

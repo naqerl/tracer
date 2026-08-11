@@ -94,10 +94,30 @@ func (h *handler) getDashboard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	collectorViews := make([]view.CollectorView, 0, len(collectors))
+	for _, collector := range collectors {
+		apps, err := h.svc.ListCollectorApps(r.Context(), panelsvc.ListCollectorAppsRequest{
+			UserID:        userID,
+			CollectorName: collector.Name,
+		})
+		if err != nil {
+			slog.Error("could not count accessible apps", "collector", collector.Name, "error", err)
+		}
+		collectorViews = append(collectorViews, view.CollectorView{
+			Name:               collector.Name,
+			RemoteAddr:         collector.RemoteAddr,
+			IsConnected:        collector.IsConnected,
+			ConnectedAt:        collector.ConnectedAt,
+			LastSeenAt:         collector.LastSeenAt,
+			Stats:              collectorStatsView(collector.Stats),
+			AccessibleAppCount: len(apps),
+		})
+	}
+
 	view.Dashboard(view.DashboardProps{
 		Title:      "Panel",
 		Since:      sinceLabel,
-		Collectors: dashboardCollectorsView(collectors),
+		Collectors: collectorViews,
 	}).Render(r.Context(), w)
 }
 
@@ -131,12 +151,24 @@ func (h *handler) getCollector(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	apps, err := h.svc.ListCollectorApps(r.Context(), panelsvc.ListCollectorAppsRequest{
+		UserID:        userID,
+		CollectorName: req.CollectorName,
+	})
+	if err != nil {
+		// Existence and access were validated by GetCollector; a count
+		// failure only degrades the skeleton to its empty state.
+		slog.Error("could not count accessible apps", "collector", req.CollectorName, "error", err)
+		apps = nil
+	}
+
 	sinceLabel := ensureSinceCookie(w, r)
 	view.CollectorOverview(view.CollectorOverviewProps{
-		Title:         req.CollectorName,
-		CollectorName: req.CollectorName,
-		Since:         sinceLabel,
-		Stats:         collectorStatsView(coll.Stats),
+		Title:              req.CollectorName,
+		CollectorName:      req.CollectorName,
+		Since:              sinceLabel,
+		Stats:              collectorStatsView(coll.Stats),
+		AccessibleAppCount: len(apps),
 	}).Render(r.Context(), w)
 }
 
@@ -494,21 +526,6 @@ func sanitizeSinceLabel(label string) string {
 	default:
 		return defaultSinceLabel
 	}
-}
-
-func dashboardCollectorsView(collectors []panelsvc.Collector) []view.CollectorView {
-	result := make([]view.CollectorView, 0, len(collectors))
-	for _, collector := range collectors {
-		result = append(result, view.CollectorView{
-			Name:        collector.Name,
-			RemoteAddr:  collector.RemoteAddr,
-			IsConnected: collector.IsConnected,
-			ConnectedAt: collector.ConnectedAt,
-			LastSeenAt:  collector.LastSeenAt,
-			Stats:       collectorStatsView(collector.Stats),
-		})
-	}
-	return result
 }
 
 // collectorStatsView converts service-level collector stats to the view layer,

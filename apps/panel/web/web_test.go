@@ -206,6 +206,18 @@ func TestAutoRefreshDashboardRendersPollingTriggers(t *testing.T) {
 	if !strings.Contains(body, "/panel/collectors/demo/apps") {
 		t.Fatal("expected dashboard apps grid fragment URL")
 	}
+	if strings.Count(body, `hx-indicator="#apps-loading-64656d6f"`) < 2 {
+		t.Fatal("expected both dashboard polling sections (stats + apps) to reference the per-collector indicator")
+	}
+	if !strings.Contains(body, `id="apps-loading-64656d6f"`) || !strings.Contains(body, "Refreshing…") {
+		t.Fatal("expected dashboard collector title to carry the refresh indicator")
+	}
+	if !strings.Contains(body, "animate-pulse") {
+		t.Fatal("expected dashboard to render app skeleton cards")
+	}
+	if strings.Contains(body, "Loading apps...") {
+		t.Fatal("expected the app skeleton to replace the loading indicator")
+	}
 }
 
 func TestAutoRefreshAppsGridBakesStats(t *testing.T) {
@@ -237,6 +249,36 @@ func TestAutoRefreshAppsGridBakesStats(t *testing.T) {
 
 	if strings.Contains(body, "uptime/percentage") || strings.Contains(body, "errors/count") {
 		t.Fatalf("expected no per-app hx-get in grid, got %q", body)
+	}
+}
+
+func TestAutoRefreshCollectorOverviewRendersPollingTriggers(t *testing.T) {
+	handler, token, _ := newServer(t, false)
+
+	req := httptest.NewRequest(http.MethodGet, "/panel/collectors/demo", nil)
+	req.AddCookie(&http.Cookie{Name: "tracer_session", Value: token})
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200 for collector overview, got %d", rr.Code)
+	}
+	body := rr.Body.String()
+	if !strings.Contains(body, "/panel/collectors/demo/stats") {
+		t.Fatal("expected overview stats row fragment URL")
+	}
+	if !strings.Contains(body, "/panel/collectors/demo/apps") {
+		t.Fatal("expected overview apps grid fragment URL")
+	}
+	// The overview uses a single shared indicator id for both polling sections.
+	if strings.Count(body, `hx-indicator="#apps-loading"`) < 2 {
+		t.Fatal("expected both overview polling sections (stats + apps) to reference the shared indicator")
+	}
+	if !strings.Contains(body, `id="apps-loading"`) || !strings.Contains(body, "Refreshing…") {
+		t.Fatal("expected overview header to carry the refresh indicator")
+	}
+	if !strings.Contains(body, "apps-grid") || !strings.Contains(body, "animate-pulse") {
+		t.Fatal("expected overview to render the apps skeleton")
 	}
 }
 

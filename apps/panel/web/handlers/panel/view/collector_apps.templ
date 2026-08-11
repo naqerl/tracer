@@ -18,20 +18,51 @@ type AppView struct {
 	ErrorClass  string
 }
 
+// AppCard renders a single app card in the apps grid. When loading it renders
+// the card shell with placeholder bars and a breath animation; otherwise it
+// renders the app link with its uptime and error stats.
+templ AppCard(collectorName string, app AppView, loading bool) {
+	<div class="block bg-bg-secondary p-4">
+		if loading {
+			<div class="animate-pulse" aria-hidden="true">
+				<div class="h-6 w-2/3 rounded bg-fg/10"></div>
+				<div class="mt-2 h-4 w-1/2 rounded bg-fg/10"></div>
+			</div>
+		} else {
+			<a href={ "/panel/collectors/" + collectorName + "/apps/" + app.Name } class="block hover:bg-bg-secondary/80 transition-all hover:-translate-y-0.5">
+				<div class="font-medium">{ app.Name }</div>
+				<div class="mt-2 text-xs text-fg-secondary">
+					<span>uptime: <span class={ "inline-block w-[3ch] tabular-nums text-right whitespace-nowrap " + app.UptimeClass }>{ app.UptimeText }</span></span>
+					<span class="text-fg-secondary"> | </span>
+					<span>errors: <span class={ "inline-block w-[3ch] tabular-nums text-left whitespace-nowrap " + app.ErrorClass }>{ strconv.FormatInt(app.ErrorCount, 10) }</span></span>
+				</div>
+			</a>
+		}
+	</div>
+}
+
+// CollectorAppsSkeleton renders placeholder app cards matching the apps grid.
+// When no apps are accessible a single bar matching the empty-state line
+// height is shown.
+templ CollectorAppsSkeleton(count int) {
+	if count > 0 {
+		<div class="apps-grid" aria-hidden="true">
+			for i := 0; i < count; i++ {
+				@AppCard("", AppView{}, true)
+			}
+		</div>
+	} else {
+		<div class="h-5 w-40 rounded bg-fg/10 animate-pulse" aria-hidden="true"></div>
+	}
+}
+
 // CollectorApps renders the apps grid for a collector with uptime and
 // error-count stats.
 templ CollectorApps(props CollectorAppsProps) {
 	if len(props.Apps) > 0 {
-		<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+		<div class="apps-grid">
 			for _, app := range props.Apps {
-				<a href={ "/panel/collectors/" + props.CollectorName + "/apps/" + app.Name } class="block bg-bg-secondary hover:bg-bg-secondary/80 p-4 transition-all hover:-translate-y-0.5">
-					<div class="font-medium">{ app.Name }</div>
-					<div class="mt-2 text-xs text-fg-secondary">
-						<span>uptime: <span class={ "inline-block w-[3ch] tabular-nums text-right whitespace-nowrap " + app.UptimeClass }>{ app.UptimeText }</span></span>
-						<span class="text-fg-secondary"> | </span>
-						<span>errors: <span class={ "inline-block w-[3ch] tabular-nums text-left whitespace-nowrap " + app.ErrorClass }>{ strconv.FormatInt(app.ErrorCount, 10) }</span></span>
-					</div>
-				</a>
+				@AppCard(props.CollectorName, app, false)
 			}
 		</div>
 	} else {

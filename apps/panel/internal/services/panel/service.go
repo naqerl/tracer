@@ -95,7 +95,6 @@ func (s *Service) ListCollectors(ctx context.Context, userID int64) ([]Collector
 		collectors[i] = collector
 		i++
 	}
-
 	return collectors[:i], nil
 }
 
@@ -302,17 +301,22 @@ func (s *Service) listAccessibleApps(ctx context.Context, userID int64, collecto
 	if err != nil {
 		return nil, fmt.Errorf("could not list apps for collector %s: %w", collectorName, err)
 	}
-	if access.Apps == nil {
-		return apps, nil
-	}
+	return filterAccessibleApps(access, collectorName, apps), nil
+}
 
+// filterAccessibleApps returns the subset of the collector's apps the user may
+// see. Admins (no access policy rows) see every app.
+func filterAccessibleApps(access user.AccessPolicy, collectorName string, apps []string) []string {
+	if access.Apps == nil {
+		return apps
+	}
 	filtered := make([]string, 0, len(apps))
 	for _, app := range apps {
 		if access.AllowedTo(collectorName, app) {
 			filtered = append(filtered, app)
 		}
 	}
-	return filtered, nil
+	return filtered
 }
 
 // appStats reads the uptime percentage and error count for a single app.

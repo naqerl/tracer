@@ -38,7 +38,7 @@ func (c *testIngestConfig) GetSampleRate() float64      { return c.sampleRate }
 // It creates a test user (admin), registers a collector+app DB, and grants access.
 func setupTestService(t *testing.T) (*Service, *dbmanager.DBHandle, int64, string, string) {
 	t.Helper()
-	ctx := context.Background()
+	ctx := t.Context()
 
 	// --- Panel DB ---
 	panelDB := testutil.NewTestDB(t)
@@ -96,7 +96,7 @@ func setupTestService(t *testing.T) (*Service, *dbmanager.DBHandle, int64, strin
 // setupTestServiceNoAccess creates a service with a user that has no access grants.
 func setupTestServiceNoAccess(t *testing.T) (*Service, int64) {
 	t.Helper()
-	ctx := context.Background()
+	ctx := t.Context()
 
 	panelDB := testutil.NewTestDB(t)
 	mgr := testutil.NewTestDBManager(t)
@@ -132,10 +132,10 @@ func setupTestServiceNoAccess(t *testing.T) (*Service, int64) {
 
 // --- Tests ---
 
-func TestListCollectors_NoCollectors(t *testing.T) {
+func TestListCollectors_SingleCollector(t *testing.T) {
 	svc, _, userID, _, _ := setupTestService(t)
 
-	collectors, err := svc.ListCollectors(context.Background(), userID)
+	collectors, err := svc.ListCollectors(t.Context(), userID)
 	if err != nil {
 		t.Fatalf("ListCollectors: %v", err)
 	}
@@ -147,10 +147,56 @@ func TestListCollectors_NoCollectors(t *testing.T) {
 	}
 }
 
+func TestListCollectorApps_RespectsAccess(t *testing.T) {
+	svc, panelDB, userID, collectorName, _ := setupTestService(t)
+	ctx := t.Context()
+
+	// Register a second app on the same collector without granting access.
+	if err := svc.ingestSvc.RegisterCollector(ctx, ingestsvc.RegisterCollectorRequest{
+		CollectorName: collectorName,
+		Apps:          []string{"second-app"},
+	}); err != nil {
+		t.Fatalf("register second app: %v", err)
+	}
+
+	// The restricted user sees only the granted app.
+	apps, err := svc.ListCollectorApps(ctx, ListCollectorAppsRequest{
+		UserID:        userID,
+		CollectorName: collectorName,
+	})
+	if err != nil {
+		t.Fatalf("ListCollectorApps: %v", err)
+	}
+	if len(apps) != 1 {
+		t.Fatalf("expected 1 app (only the granted one), got %d: %v", len(apps), apps)
+	}
+
+	// An admin (no access policy rows) sees every app on disk.
+	authSvc := authsvc.New(panelDB, testutil.TestKeySecret(), bcrypt.MinCost)
+	admin, err := authSvc.Register(ctx, authsvc.RegisterRequest{
+		Username: "admin2",
+		Password: "secret123",
+		IsAdmin:  true,
+	})
+	if err != nil {
+		t.Fatalf("register admin user: %v", err)
+	}
+	adminApps, err := svc.ListCollectorApps(ctx, ListCollectorAppsRequest{
+		UserID:        admin.ID,
+		CollectorName: collectorName,
+	})
+	if err != nil {
+		t.Fatalf("ListCollectorApps for admin: %v", err)
+	}
+	if len(adminApps) != 2 {
+		t.Fatalf("expected admin to see 2 apps, got %d: %v", len(adminApps), adminApps)
+	}
+}
+
 func TestListCollectors_AccessFiltering(t *testing.T) {
 	svc, noAccessUserID := setupTestServiceNoAccess(t)
 
-	collectors, err := svc.ListCollectors(context.Background(), noAccessUserID)
+	collectors, err := svc.ListCollectors(t.Context(), noAccessUserID)
 	if err != nil {
 		t.Fatalf("ListCollectors: %v", err)
 	}
@@ -161,10 +207,7 @@ func TestListCollectors_AccessFiltering(t *testing.T) {
 
 func TestGetCollector_Found(t *testing.T) {
 	svc, _, userID, collectorName, _ := setupTestService(t)
-	ctx := context.Background()
-
-	// Insert some stats so the collector has data
-	_ = svc // We'll use the mgr through svc's internal fields
+	ctx := t.Context()
 
 	c, err := svc.GetCollector(ctx, GetCollectorRequest{
 		UserID:        userID,
@@ -180,7 +223,7 @@ func TestGetCollector_Found(t *testing.T) {
 
 func TestGetCollector_NotFound(t *testing.T) {
 	svc, _, userID, _, _ := setupTestService(t)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	_, err := svc.GetCollector(ctx, GetCollectorRequest{
 		UserID:        userID,
@@ -193,7 +236,7 @@ func TestGetCollector_NotFound(t *testing.T) {
 
 func TestGetCollector_AccessDenied(t *testing.T) {
 	svc, noAccessUserID := setupTestServiceNoAccess(t)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	_, err := svc.GetCollector(ctx, GetCollectorRequest{
 		UserID:        noAccessUserID,
@@ -231,7 +274,7 @@ func TestGetCollector_ValidRequest(t *testing.T) {
 
 func TestListCollectorApps_Success(t *testing.T) {
 	svc, _, userID, collectorName, appName := setupTestService(t)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	apps, err := svc.ListCollectorApps(ctx, ListCollectorAppsRequest{
 		UserID:        userID,
@@ -250,7 +293,7 @@ func TestListCollectorApps_Success(t *testing.T) {
 
 func TestListCollectorApps_NotFound(t *testing.T) {
 	svc, _, userID, _, _ := setupTestService(t)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	_, err := svc.ListCollectorApps(ctx, ListCollectorAppsRequest{
 		UserID:        userID,
@@ -263,7 +306,7 @@ func TestListCollectorApps_NotFound(t *testing.T) {
 
 func TestListCollectorApps_AccessDenied(t *testing.T) {
 	svc, noAccessUserID := setupTestServiceNoAccess(t)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	_, err := svc.ListCollectorApps(ctx, ListCollectorAppsRequest{
 		UserID:        noAccessUserID,
@@ -294,7 +337,7 @@ func TestListCollectorApps_InvalidRequest(t *testing.T) {
 
 func TestGetAppHealth_Success(t *testing.T) {
 	svc, _, userID, collectorName, appName := setupTestService(t)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	health, err := svc.GetAppHealth(ctx, GetAppHealthRequest{
 		UserID:        userID,
@@ -312,7 +355,7 @@ func TestGetAppHealth_Success(t *testing.T) {
 
 func TestGetAppHealth_AccessDenied(t *testing.T) {
 	svc, noAccessUserID := setupTestServiceNoAccess(t)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	_, err := svc.GetAppHealth(ctx, GetAppHealthRequest{
 		UserID:        noAccessUserID,
@@ -327,7 +370,7 @@ func TestGetAppHealth_AccessDenied(t *testing.T) {
 
 func TestGetAppHealth_AppNotFound(t *testing.T) {
 	svc, _, userID, collectorName, _ := setupTestService(t)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	_, err := svc.GetAppHealth(ctx, GetAppHealthRequest{
 		UserID:        userID,
@@ -364,7 +407,7 @@ func TestGetAppHealth_InvalidRequest(t *testing.T) {
 
 func TestListCollectorAppsWithStats(t *testing.T) {
 	svc, _, userID, collectorName, appName := setupTestService(t)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	if _, err := svc.ingestSvc.StoreLog(ctx, ingestsvc.StoreLogRequest{
 		CollectorName: collectorName,
@@ -413,7 +456,7 @@ func TestListCollectorAppsWithStats(t *testing.T) {
 
 func TestListCollectorAppsWithStats_EmptyApp(t *testing.T) {
 	svc, _, userID, collectorName, _ := setupTestService(t)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	// A newly registered app has a DB but no data yet.
 	if err := svc.ingestSvc.RegisterCollector(ctx, ingestsvc.RegisterCollectorRequest{
@@ -451,7 +494,7 @@ func TestListCollectorAppsWithStats_EmptyApp(t *testing.T) {
 
 func TestListCollectorAppsWithStats_NotFound(t *testing.T) {
 	svc, _, userID, _, _ := setupTestService(t)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	_, err := svc.ListCollectorAppsWithStats(ctx, ListCollectorAppsWithStatsRequest{
 		UserID:        userID,
@@ -465,7 +508,7 @@ func TestListCollectorAppsWithStats_NotFound(t *testing.T) {
 
 func TestListCollectorAppsWithStats_AccessDenied(t *testing.T) {
 	svc, noAccessUserID := setupTestServiceNoAccess(t)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	_, err := svc.ListCollectorAppsWithStats(ctx, ListCollectorAppsWithStatsRequest{
 		UserID:        noAccessUserID,
@@ -498,7 +541,7 @@ func TestListCollectorAppsWithStats_InvalidRequest(t *testing.T) {
 
 func TestGetStatsHistory_Success(t *testing.T) {
 	svc, _, userID, collectorName, appName := setupTestService(t)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	// Insert some stats via the ingest service
 	ingestSvc := svc.ingestSvc
@@ -543,7 +586,7 @@ func TestGetStatsHistory_Success(t *testing.T) {
 
 func TestGetStatsHistory_AccessDenied(t *testing.T) {
 	svc, noAccessUserID := setupTestServiceNoAccess(t)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	_, err := svc.GetStatsHistory(ctx, GetStatsHistoryRequest{
 		UserID:        noAccessUserID,
@@ -575,7 +618,7 @@ func TestGetStatsHistory_InvalidRequest(t *testing.T) {
 
 func TestGetAppStats_Success(t *testing.T) {
 	svc, _, userID, collectorName, appName := setupTestService(t)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	stats, err := svc.GetAppStats(ctx, GetAppStatsRequest{
 		UserID:        userID,
@@ -593,7 +636,7 @@ func TestGetAppStats_Success(t *testing.T) {
 
 func TestGetAppStats_AccessDenied(t *testing.T) {
 	svc, noAccessUserID := setupTestServiceNoAccess(t)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	_, err := svc.GetAppStats(ctx, GetAppStatsRequest{
 		UserID:        noAccessUserID,
@@ -627,7 +670,7 @@ func TestGetAppStats_InvalidRequest(t *testing.T) {
 
 func TestGetLogGroups_Success(t *testing.T) {
 	svc, _, userID, collectorName, appName := setupTestService(t)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	groups, err := svc.GetLogGroups(ctx, GetLogGroupsRequest{
 		UserID:        userID,
@@ -651,7 +694,7 @@ func TestGetLogGroups_Success(t *testing.T) {
 
 func TestGetLogGroups_AccessDenied(t *testing.T) {
 	svc, noAccessUserID := setupTestServiceNoAccess(t)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	_, err := svc.GetLogGroups(ctx, GetLogGroupsRequest{
 		UserID:        noAccessUserID,
@@ -691,7 +734,7 @@ func TestGetLogGroups_InvalidRequest(t *testing.T) {
 
 func TestGetLogGroup_NotFound(t *testing.T) {
 	svc, _, userID, collectorName, appName := setupTestService(t)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	_, err := svc.GetLogGroup(ctx, GetLogGroupRequest{
 		UserID:        userID,
@@ -706,7 +749,7 @@ func TestGetLogGroup_NotFound(t *testing.T) {
 
 func TestGetLogGroupSurfacesIssueLink(t *testing.T) {
 	svc, _, userID, collectorName, appName := setupTestService(t)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	// Create the log group through the public ingest API.
 	if _, err := svc.ingestSvc.StoreLog(ctx, ingestsvc.StoreLogRequest{
@@ -767,7 +810,7 @@ func TestGetLogGroupSurfacesIssueLink(t *testing.T) {
 
 func TestGetLogGroup_AccessDenied(t *testing.T) {
 	svc, noAccessUserID := setupTestServiceNoAccess(t)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	_, err := svc.GetLogGroup(ctx, GetLogGroupRequest{
 		UserID:        noAccessUserID,
@@ -803,7 +846,7 @@ func TestGetLogGroup_InvalidRequest(t *testing.T) {
 
 func TestListGroupLogs_Empty(t *testing.T) {
 	svc, _, userID, collectorName, appName := setupTestService(t)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	entries, err := svc.ListGroupLogs(ctx, ListGroupLogsRequest{
 		UserID:        userID,
@@ -827,7 +870,7 @@ func TestListGroupLogs_Empty(t *testing.T) {
 
 func TestListGroupLogs_AccessDenied(t *testing.T) {
 	svc, noAccessUserID := setupTestServiceNoAccess(t)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	_, err := svc.ListGroupLogs(ctx, ListGroupLogsRequest{
 		UserID:        noAccessUserID,
@@ -865,7 +908,7 @@ func TestListGroupLogs_InvalidRequest(t *testing.T) {
 
 func TestGetLogByID_NotFound(t *testing.T) {
 	svc, _, userID, collectorName, appName := setupTestService(t)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	_, err := svc.GetLogByID(ctx, GetLogByIDRequest{
 		UserID:        userID,
@@ -880,7 +923,7 @@ func TestGetLogByID_NotFound(t *testing.T) {
 
 func TestGetLogByID_AccessDenied(t *testing.T) {
 	svc, noAccessUserID := setupTestServiceNoAccess(t)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	_, err := svc.GetLogByID(ctx, GetLogByIDRequest{
 		UserID:        noAccessUserID,
@@ -916,7 +959,7 @@ func TestGetLogByID_InvalidRequest(t *testing.T) {
 
 func TestDeleteLogGroup_NotFound(t *testing.T) {
 	svc, _, userID, collectorName, appName := setupTestService(t)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	err := svc.DeleteLogGroup(ctx, DeleteLogGroupRequest{
 		UserID:        userID,
@@ -931,7 +974,7 @@ func TestDeleteLogGroup_NotFound(t *testing.T) {
 
 func TestDeleteLogGroup_AccessDenied(t *testing.T) {
 	svc, noAccessUserID := setupTestServiceNoAccess(t)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	err := svc.DeleteLogGroup(ctx, DeleteLogGroupRequest{
 		UserID:        noAccessUserID,
@@ -967,7 +1010,7 @@ func TestDeleteLogGroup_InvalidRequest(t *testing.T) {
 
 func TestGetLogVolumeTimeSeries_Success(t *testing.T) {
 	svc, _, _, collectorName, appName := setupTestService(t)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	rows, err := svc.GetLogVolumeTimeSeries(ctx, collectorName, appName, time.Now().Add(-1*time.Hour), "hour")
 	if err != nil {
@@ -980,7 +1023,7 @@ func TestGetLogVolumeTimeSeries_Success(t *testing.T) {
 
 func TestGetLogVolumeTimeSeries_AppNotFound(t *testing.T) {
 	svc, _, _, collectorName, _ := setupTestService(t)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	_, err := svc.GetLogVolumeTimeSeries(ctx, collectorName, "nonexistent", time.Now().Add(-1*time.Hour), "hour")
 	if err != ErrAppNotFound {
@@ -1016,7 +1059,7 @@ func TestSinceWithinRange(t *testing.T) {
 // using the public GetCollector API.
 func TestCollectorStats_Staleness_Fresh(t *testing.T) {
 	svc, _, userID, collectorName, _ := setupTestService(t)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	saveStats(t, ctx, svc, collectorName, types.Stats{
 		CPUUsagePercent: 50.0,
@@ -1054,7 +1097,7 @@ func TestCollectorStats_Staleness_Fresh(t *testing.T) {
 // 45-min-old stat via the public GetCollector API.
 func TestCollectorStats_Staleness_Stale(t *testing.T) {
 	svc, _, userID, collectorName, _ := setupTestService(t)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	ts := time.Now().Add(-45 * time.Minute)
 	saveStats(t, ctx, svc, collectorName, types.Stats{
@@ -1084,7 +1127,7 @@ func TestCollectorStats_Staleness_Stale(t *testing.T) {
 // 7-min-old stat via the public GetCollector API.
 func TestCollectorStats_Staleness_Warning(t *testing.T) {
 	svc, _, userID, collectorName, _ := setupTestService(t)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	ts := time.Now().Add(-7 * time.Minute)
 	saveStats(t, ctx, svc, collectorName, types.Stats{
@@ -1113,7 +1156,7 @@ func TestCollectorStats_Staleness_Warning(t *testing.T) {
 // TestCollectorStats_Staleness_Old verifies staleness="old" for a 24h-old stat.
 func TestCollectorStats_Staleness_Old(t *testing.T) {
 	svc, _, userID, collectorName, _ := setupTestService(t)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	saveStats(t, ctx, svc, collectorName, types.Stats{
 		CPUUsagePercent: 10.0,
@@ -1338,7 +1381,7 @@ func TestBuildHealthBuckets(t *testing.T) {
 
 func TestGetCollector_WithStats(t *testing.T) {
 	svc, _, userID, collectorName, _ := setupTestService(t)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	// Insert stats
 	if err := svc.ingestSvc.SaveSystemStats(ctx, ingestsvc.SaveSystemStatsRequest{
@@ -1374,7 +1417,7 @@ func TestGetCollector_WithStats(t *testing.T) {
 
 func TestGetCollector_WithTrackerData(t *testing.T) {
 	svc, _, userID, collectorName, _ := setupTestService(t)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	// Register the collector in the tracker
 	svc.tracker.Register("conn-1", collectorName, "192.168.1.1:1234", []string{"test-app"})
@@ -1396,7 +1439,7 @@ func TestGetCollector_WithTrackerData(t *testing.T) {
 
 func TestGetCollector_Disconnected(t *testing.T) {
 	svc, _, userID, collectorName, _ := setupTestService(t)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	// Register then disconnect
 	svc.tracker.Register("conn-1", collectorName, "192.168.1.1:1234", []string{"test-app"})
@@ -1416,7 +1459,7 @@ func TestGetCollector_Disconnected(t *testing.T) {
 
 func TestListCollectorApps_AppFiltering(t *testing.T) {
 	svc, _, userID, collectorName, _ := setupTestService(t)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	// Register a second app for the same collector
 	mgr := svc.dbManager
@@ -1440,7 +1483,7 @@ func TestListCollectorApps_AppFiltering(t *testing.T) {
 
 func TestReadAppHealth_OpenPeriod(t *testing.T) {
 	svc, _, userID, collectorName, appName := setupTestService(t)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	// Insert a health period via the ingest service
 	if err := svc.ingestSvc.SaveHealthPeriod(ctx, ingestsvc.StoreHealthRequest{
@@ -1471,7 +1514,7 @@ func TestReadAppHealth_OpenPeriod(t *testing.T) {
 
 func TestGetLogGroups_LevelFiltering(t *testing.T) {
 	svc, _, userID, collectorName, appName := setupTestService(t)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	// Test with specific level that has no data
 	groups, err := svc.GetLogGroups(ctx, GetLogGroupsRequest{
@@ -1493,7 +1536,7 @@ func TestGetLogGroups_LevelFiltering(t *testing.T) {
 
 func TestGetLogVolumeTimeSeries_EmptyResult(t *testing.T) {
 	svc, _, _, collectorName, appName := setupTestService(t)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	rows, err := svc.GetLogVolumeTimeSeries(ctx, collectorName, appName, time.Now().Add(-1*time.Hour), "hour")
 	if err != nil {
@@ -1599,7 +1642,7 @@ func getLatestStats(t *testing.T, ctx context.Context, svc *Service, collectorNa
 
 func TestSaveSystemStats_NoData_ReturnsErrNoRows(t *testing.T) {
 	svc, _, _, collectorName, _ := setupTestService(t)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	_, err := svc.ingestSvc.GetLatestStats(ctx, collectorName)
 	if err != sql.ErrNoRows {
@@ -1609,7 +1652,7 @@ func TestSaveSystemStats_NoData_ReturnsErrNoRows(t *testing.T) {
 
 func TestSaveSystemStats_FirstSave_CreatesOpenPeriods(t *testing.T) {
 	svc, _, _, collectorName, _ := setupTestService(t)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	now := time.Now().Truncate(time.Second)
 	stats := types.Stats{
@@ -1649,7 +1692,7 @@ func TestSaveSystemStats_FirstSave_CreatesOpenPeriods(t *testing.T) {
 
 func TestSaveSystemStats_NoopOnSameValue_PeriodCountUnchanged(t *testing.T) {
 	svc, _, _, collectorName, _ := setupTestService(t)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	now := time.Now().Truncate(time.Second)
 	stats := types.Stats{
@@ -1700,7 +1743,7 @@ func TestSaveSystemStats_NoopOnSameValue_PeriodCountUnchanged(t *testing.T) {
 
 func TestSaveSystemStats_ValueChange_ClosesOldAndCreatesNewPeriod(t *testing.T) {
 	svc, _, _, collectorName, _ := setupTestService(t)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	t0 := time.Now().Truncate(time.Second).Add(-10 * time.Second)
 	t1 := t0.Add(5 * time.Second)
@@ -1776,7 +1819,7 @@ func TestSaveSystemStats_ValueChange_ClosesOldAndCreatesNewPeriod(t *testing.T) 
 
 func TestSaveSystemStats_PartialCPUOnly_OtherResourcesZero(t *testing.T) {
 	svc, _, _, collectorName, _ := setupTestService(t)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	now := time.Now().Truncate(time.Second)
 	// Save only CPU data (all other fields zero)
@@ -1806,7 +1849,7 @@ func TestSaveSystemStats_PartialCPUOnly_OtherResourcesZero(t *testing.T) {
 
 func TestGetStatsHistory_SinceFilter_ExcludesOldPeriods(t *testing.T) {
 	svc, _, _, collectorName, _ := setupTestService(t)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	now := time.Now().Truncate(time.Second)
 
@@ -1864,7 +1907,7 @@ func TestGetStatsHistory_SinceFilter_ExcludesOldPeriods(t *testing.T) {
 
 func TestGetCollector_NoStats_ReturnsNilStats(t *testing.T) {
 	svc, _, userID, collectorName, _ := setupTestService(t)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	c, err := svc.GetCollector(ctx, GetCollectorRequest{
 		UserID:        userID,
@@ -1880,7 +1923,7 @@ func TestGetCollector_NoStats_ReturnsNilStats(t *testing.T) {
 
 func TestGetCollector_WithStats_ReturnsFormattedStats(t *testing.T) {
 	svc, _, userID, collectorName, _ := setupTestService(t)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	now := time.Now().Truncate(time.Second)
 	saveStats(t, ctx, svc, collectorName, types.Stats{
@@ -1917,7 +1960,7 @@ func TestGetCollector_WithStats_ReturnsFormattedStats(t *testing.T) {
 
 func TestDeleteOldStats_RemovesOnlyClosedPeriods(t *testing.T) {
 	svc, _, _, collectorName, _ := setupTestService(t)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	now := time.Now().Truncate(time.Second)
 
@@ -1979,7 +2022,7 @@ func TestDeleteOldStats_RemovesOnlyClosedPeriods(t *testing.T) {
 
 func TestGetStatsHistory_PanelService_Integration(t *testing.T) {
 	svc, _, userID, collectorName, _ := setupTestService(t)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	now := time.Now().Truncate(time.Second)
 
