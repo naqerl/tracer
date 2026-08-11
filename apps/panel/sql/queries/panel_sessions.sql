@@ -16,6 +16,11 @@ WHERE id = ?;
 DELETE FROM session
 WHERE expires_at < ?;
 
+-- name: RefreshSession :exec
+UPDATE session
+SET expires_at = ?
+WHERE id = ?;
+
 -- name: DeleteSessionsByUser :exec
 DELETE FROM session
 WHERE user_id = ?;

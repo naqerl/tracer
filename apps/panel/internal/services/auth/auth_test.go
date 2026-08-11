@@ -10,6 +10,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 
 	paneldb "tracer/apps/panel/db"
+	"tracer/apps/panel/internal/dbmanager"
 	"tracer/apps/panel/internal/testutil"
 )
 
@@ -193,7 +194,7 @@ func TestResetPasswordOverwritesPasswordAndInvalidatesSessions(t *testing.T) {
 	}
 
 	// Pre-reset session token must be invalidated.
-	if _, err := svc.ValidateSession(ctx, oldToken); !errors.Is(err, ErrSessionExpired) {
+	if _, _, err := svc.ValidateSession(ctx, oldToken); !errors.Is(err, ErrSessionExpired) {
 		t.Fatalf("expected ErrSessionExpired for pre-reset session, got %v", err)
 	}
 
@@ -248,7 +249,7 @@ func TestResetPasswordSamePasswordKeepsSessions(t *testing.T) {
 	}
 
 	// Pre-reset session token must still be valid.
-	if _, err := svc.ValidateSession(ctx, token); err != nil {
+	if _, _, err := svc.ValidateSession(ctx, token); err != nil {
 		t.Fatalf("expected session to survive no-op reset, got %v", err)
 	}
 
@@ -285,7 +286,7 @@ func TestResetPasswordSamePasswordPromotesToAdmin(t *testing.T) {
 	}
 
 	// Sessions survive the no-op reset...
-	if _, err := svc.ValidateSession(ctx, token); err != nil {
+	if _, _, err := svc.ValidateSession(ctx, token); err != nil {
 		t.Fatalf("expected session to survive no-op reset, got %v", err)
 	}
 
@@ -365,6 +366,125 @@ func TestResetPasswordRejectsInvalidPassword(t *testing.T) {
 	// Original password must be untouched.
 	if _, err := svc.Login(ctx, "admin", "old-password"); err != nil {
 		t.Fatalf("login with original password after rejected reset: %v", err)
+	}
+}
+
+// backdateSession rewrites a session's expires_at, the way a test-only
+// helper must: no public service method can create a session with an
+// arbitrary deadline.
+func backdateSession(t *testing.T, db *dbmanager.DBHandle, token string, expiresAt int64) {
+	t.Helper()
+	if err := db.Write(t.Context(), func(tx paneldb.DBTX) error {
+		return paneldb.New(tx).RefreshSession(t.Context(), paneldb.RefreshSessionParams{
+			ExpiresAt: expiresAt,
+			ID:        token,
+		})
+	}); err != nil {
+		t.Fatalf("backdate session: %v", err)
+	}
+}
+
+func sessionExpiry(t *testing.T, db *dbmanager.DBHandle, token string) int64 {
+	t.Helper()
+	session, err := paneldb.New(db.Read()).GetSession(t.Context(), token)
+	if err != nil {
+		t.Fatalf("get session: %v", err)
+	}
+	return session.ExpiresAt
+}
+
+func TestValidateSessionNoRefreshWithinHalfLife(t *testing.T) {
+	ctx := t.Context()
+	db := testutil.NewTestDB(t)
+	svc := New(db, testutil.TestKeySecret(), bcrypt.MinCost)
+
+	user, err := svc.Register(ctx, RegisterRequest{Username: "admin", Password: "password", IsAdmin: true})
+	if err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	token, err := svc.CreateSession(ctx, user.ID)
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+
+	// A session that has used less than half of its lifetime must validate
+	// without a refresh. A deadline with 22h remaining is inside the first
+	// half of its 24h lifetime.
+	backdateSession(t, db, token, time.Now().Add(SessionDuration-2*time.Hour).Unix())
+	before := sessionExpiry(t, db, token)
+
+	userID, refresh, err := svc.ValidateSession(ctx, token)
+	if err != nil {
+		t.Fatalf("validate: %v", err)
+	}
+	if userID != user.ID {
+		t.Fatalf("expected user %d, got %d", user.ID, userID)
+	}
+	if refresh {
+		t.Fatal("expected no refresh within the first half of the session lifetime")
+	}
+	if got := sessionExpiry(t, db, token); got != before {
+		t.Fatalf("expected expires_at untouched, got %d want %d", got, before)
+	}
+}
+
+func TestValidateSessionRefreshesWhenHalfExpired(t *testing.T) {
+	ctx := t.Context()
+	db := testutil.NewTestDB(t)
+	svc := New(db, testutil.TestKeySecret(), bcrypt.MinCost)
+
+	user, err := svc.Register(ctx, RegisterRequest{Username: "admin", Password: "password", IsAdmin: true})
+	if err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	token, err := svc.CreateSession(ctx, user.ID)
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+
+	// More than half of the lifetime has elapsed: the deadline must be
+	// extended by SessionDuration and refresh reported. A deadline with 11h
+	// remaining is past the halfway point of its 24h lifetime but not yet
+	// expired.
+	backdateSession(t, db, token, time.Now().Add(SessionDuration/2-time.Hour).Unix())
+
+	userID, refresh, err := svc.ValidateSession(ctx, token)
+	if err != nil {
+		t.Fatalf("validate: %v", err)
+	}
+	if userID != user.ID {
+		t.Fatalf("expected user %d, got %d", user.ID, userID)
+	}
+	if !refresh {
+		t.Fatal("expected refresh once half the session lifetime has elapsed")
+	}
+	now := time.Now().Unix()
+	if got := sessionExpiry(t, db, token); got < now+int64(SessionDuration.Seconds()) {
+		t.Fatalf("expected expires_at extended to at least %d, got %d", now+int64(SessionDuration.Seconds()), got)
+	}
+}
+
+func TestValidateSessionDeletesExpired(t *testing.T) {
+	ctx := t.Context()
+	db := testutil.NewTestDB(t)
+	svc := New(db, testutil.TestKeySecret(), bcrypt.MinCost)
+
+	user, err := svc.Register(ctx, RegisterRequest{Username: "admin", Password: "password", IsAdmin: true})
+	if err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	token, err := svc.CreateSession(ctx, user.ID)
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+
+	backdateSession(t, db, token, time.Now().Add(-time.Second).Unix())
+
+	if _, _, err := svc.ValidateSession(ctx, token); !errors.Is(err, ErrSessionExpired) {
+		t.Fatalf("expected ErrSessionExpired, got %v", err)
+	}
+	if _, err := paneldb.New(db.Read()).GetSession(ctx, token); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("expected expired session row deleted, got %v", err)
 	}
 }
 

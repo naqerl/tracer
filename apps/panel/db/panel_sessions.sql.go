@@ -79,3 +79,19 @@ func (q *Queries) GetSession(ctx context.Context, id string) (Session, error) {
 	)
 	return i, err
 }
+
+const refreshSession = `-- name: RefreshSession :exec
+UPDATE session
+SET expires_at = ?
+WHERE id = ?
+`
+
+type RefreshSessionParams struct {
+	ExpiresAt int64
+	ID        string
+}
+
+func (q *Queries) RefreshSession(ctx context.Context, arg RefreshSessionParams) error {
+	_, err := q.db.ExecContext(ctx, refreshSession, arg.ExpiresAt, arg.ID)
+	return err
+}

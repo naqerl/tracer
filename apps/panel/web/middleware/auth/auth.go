@@ -118,7 +118,7 @@ func attachSessionContext(w http.ResponseWriter, r *http.Request, next http.Hand
 		return
 	}
 
-	userID, err := authService.ValidateSession(r.Context(), cookie.Value)
+	userID, refresh, err := authService.ValidateSession(r.Context(), cookie.Value)
 	if err != nil {
 		http.SetCookie(w, &http.Cookie{
 			Name:   sessionCookie,
@@ -128,6 +128,12 @@ func attachSessionContext(w http.ResponseWriter, r *http.Request, next http.Hand
 		})
 		next.ServeHTTP(w, r)
 		return
+	}
+
+	// A half-expired session was extended server-side; re-issue the cookie so
+	// its browser-side expiry matches the new deadline.
+	if refresh {
+		SetSessionCookie(w, r, cookie.Value, int(authsvc.SessionDuration.Seconds()))
 	}
 
 	r = middleware.SetUserID(r, userID)

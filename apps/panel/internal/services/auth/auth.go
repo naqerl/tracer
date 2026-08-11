@@ -291,26 +291,45 @@ func (s *Service) CreateSession(ctx context.Context, userID int64) (string, erro
 	return token, nil
 }
 
-func (s *Service) ValidateSession(ctx context.Context, token string) (int64, error) {
+// ValidateSession returns the session's user ID. Expired sessions are deleted
+// and reported as ErrSessionExpired. When at least half of the session's
+// lifetime has elapsed, the deadline is extended by SessionDuration and
+// refresh is true so the caller can re-issue the cookie; sessions that still
+// have more than half their lifetime keep their deadline untouched.
+func (s *Service) ValidateSession(ctx context.Context, token string) (userID int64, refresh bool, err error) {
 	session, err := db.New(s.handle.Read()).GetSession(ctx, token)
 	if errors.Is(err, sql.ErrNoRows) {
-		return 0, ErrSessionExpired
+		return 0, false, ErrSessionExpired
 	}
 	if err != nil {
-		return 0, fmt.Errorf("could not get data from db: %w", err)
+		return 0, false, fmt.Errorf("could not get data from db: %w", err)
 	}
 
-	if time.Now().Unix() > session.ExpiresAt {
+	now := time.Now().Unix()
+	if now > session.ExpiresAt {
 		err = s.handle.Write(ctx, func(tx db.DBTX) error {
 			return db.New(tx).DeleteSession(ctx, token)
 		})
 		if err != nil {
-			return 0, fmt.Errorf("could not delete session: %w", err)
+			return 0, false, fmt.Errorf("could not delete session: %w", err)
 		}
-		return 0, ErrSessionExpired
+		return 0, false, ErrSessionExpired
 	}
 
-	return session.UserID, nil
+	if session.ExpiresAt-now <= int64(SessionDuration.Seconds())/2 {
+		err = s.handle.Write(ctx, func(tx db.DBTX) error {
+			return db.New(tx).RefreshSession(ctx, db.RefreshSessionParams{
+				ExpiresAt: now + int64(SessionDuration.Seconds()),
+				ID:        token,
+			})
+		})
+		if err != nil {
+			return 0, false, fmt.Errorf("could not refresh session: %w", err)
+		}
+		refresh = true
+	}
+
+	return session.UserID, refresh, nil
 }
 
 func (s *Service) DeleteSession(ctx context.Context, token string) error {

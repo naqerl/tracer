@@ -103,6 +103,7 @@ type Querier interface {
 	LogGroupExists(ctx context.Context, arg LogGroupExistsParams) (bool, error)
 	// Recalculate last_log_at for all groups after log deletion
 	RecalculateLogGroupCounters(ctx context.Context) error
+	RefreshSession(ctx context.Context, arg RefreshSessionParams) error
 	RemoveAllNotifierSubscriptions(ctx context.Context, notifierID int64) error
 	RevokeAppAccess(ctx context.Context, arg RevokeAppAccessParams) error
 	SaveHealthPeriod(ctx context.Context, arg SaveHealthPeriodParams) error
