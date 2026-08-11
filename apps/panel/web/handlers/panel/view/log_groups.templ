@@ -111,7 +111,7 @@ templ LogGroupsTable(props LogGroupsProps) {
 				<tr class="group opacity-60 hover:opacity-100 transition-opacity duration-700 hover:duration-150">
 					<td class="hidden">{ strconv.FormatInt(g.ID, 10) }</td>
 					<td class="w-full align-top">
-						<a href={ "/panel/collectors/" + props.Collector + "/apps/" + props.App + "/logs/groups/" + strconv.FormatInt(g.ID, 10) } class="block py-2 sm:py-1 capitalize break-all">{ g.Message }</a>
+						<a href={ "/panel/collectors/" + props.Collector + "/apps/" + props.App + "/logs/groups/" + strconv.FormatInt(g.ID, 10) } class="block py-2 sm:py-1 capitalize">{ g.Message }</a>
 					</td>
 				<td class="w-[1%] whitespace-nowrap align-top pr-2 pt-2 sm:pt-1">
 					if props.Level == "all" {

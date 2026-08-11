@@ -91,7 +91,7 @@ func levelDotClass(level string) string {
 templ LogMessage(message string, level string) {
 	<div class="mb-2">
 		<span class={ "inline-block w-2 h-2 rounded-full mr-3 mt-2 " + levelDotClass(level) }></span>
-		<span class="text-xl font-medium break-all">{ message }</span>
+		<span class="text-xl font-medium">{ message }</span>
 	</div>
 }
 

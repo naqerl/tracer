@@ -55,7 +55,7 @@ func AppCard(collectorName string, app AppView, loading bool) templ.Component {
 			return templ_7745c5c3_Err
 		}
 		if loading {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "<div class=\"animate-pulse\" aria-hidden=\"true\"><div class=\"h-6 w-2/3 rounded bg-fg/10\"></div><div class=\"mt-2 h-4 w-1/2 rounded bg-fg/10\"></div></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "<div class=\"animate-pulse\" aria-hidden=\"true\"><div class=\"h-4 w-2/3 rounded bg-fg/10\"></div><div class=\"mt-2 h-4 w-1/2 rounded bg-fg/10\"></div></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
