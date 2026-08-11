@@ -20,12 +20,18 @@ fi
 
 tracer-collector set name demo
 
-# Add no-auth and readonly flags for demo iframes
+# Add no-auth and optional readonly flags for demo iframes. The panel stays
+# read-only by default; set E2E_PANEL_READONLY=0 (via `make -C e2e up`) to
+# allow state-changing requests such as notifier management.
 mkdir -p /etc/systemd/system/tracer-panel.service.d
-cat > /etc/systemd/system/tracer-panel.service.d/demo-flags.conf <<'EOF'
+panel_flags="-no-auth"
+if [ "${E2E_PANEL_READONLY:-1}" != "0" ]; then
+    panel_flags="$panel_flags -readonly"
+fi
+cat > /etc/systemd/system/tracer-panel.service.d/demo-flags.conf <<EOF
 [Service]
 ExecStart=
-ExecStart=/usr/local/bin/tracer-panel -config /etc/tracer/panel.yaml -no-auth -readonly
+ExecStart=/usr/local/bin/tracer-panel -config /etc/tracer/panel.yaml $panel_flags
 EOF
 systemctl daemon-reload
 

@@ -6,6 +6,7 @@ Wants=network.target
 [Service]
 Type=oneshot
 EnvironmentFile=-/etc/tracer/e2e.env
+PassEnvironment=E2E_PANEL_READONLY
 ExecStart=/opt/tracer/e2e/install-on-boot.sh
 RemainAfterExit=yes
 

@@ -119,25 +119,11 @@ func (d *Dispatcher) getNotifiers(ctx context.Context, collectorName, appName st
 	return notifiers, err
 }
 
-// dispatch formats and sends a notification to all provided notifiers.
+// dispatch sends a notification to all provided notifiers. Notifications
+// carry structured data; each notifier renders its own presentation.
 func (d *Dispatcher) dispatch(n Notification, notifiers []Notifier) {
-	// Build final formatted message: {app}@{collector}\n\n{message}
-	header := n.AppName
-	if n.CollectorName != "" {
-		header = fmt.Sprintf("%s@%s", n.AppName, n.CollectorName)
-	}
-	formattedMessage := fmt.Sprintf("%s\n\n%s", header, n.Message)
-
-	// Create notification with formatted message for sending
-	finalNotification := Notification{
-		Type:          n.Type,
-		CollectorName: n.CollectorName,
-		AppName:       n.AppName,
-		Message:       formattedMessage,
-	}
-
 	for _, notifier := range notifiers {
-		if err := notifier.Notify(finalNotification); err != nil {
+		if err := notifier.Notify(n); err != nil {
 			slog.Error("Failed to send notification",
 				"notifier_type", notifier.Type(),
 				"notifier_name", notifier.Name(),

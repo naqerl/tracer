@@ -18,14 +18,16 @@ type LogGroupProps struct {
 }
 
 type LogGroupData struct {
-	ID        int64
-	Message   string
-	Level     string
-	Count     int64
-	CreatedAt int64
-	LastLogAt int64
-	Since     int64
-	NewLogs   int64
+	ID          int64
+	Message     string
+	Level       string
+	Count       int64
+	CreatedAt   int64
+	LastLogAt   int64
+	Since       int64
+	NewLogs     int64
+	IssueNumber int64
+	IssueURL    string
 }
 
 // LogGroup renders the log group detail page.
@@ -63,9 +65,10 @@ templ LogGroupContent(props LogGroupProps) {
 	<div id="log-entries-container" class="mt-6 space-y-3"
 		 hx-get={ "/panel/collectors/" + props.CollectorName + "/apps/" + props.AppName + "/logs/groups/" + strconv.FormatInt(props.LogGroup.ID, 10) + "/entries?level=" + props.LogGroup.Level }
 		 hx-trigger="load"
-		 hx-swap="innerHTML">
+		 hx-swap="innerHTML"
+		 hx-indicator="#log-entries-loading">
 		<div class="text-center text-sm text-fg-secondary/60 py-12">
-			<p>Loading log entries...</p>
+			@templates.Indicator("log-entries-loading", "Loading log entries...")
 		</div>
 	</div>
 }
@@ -104,6 +107,9 @@ templ LogGroupSummary(group LogGroupData) {
 		if group.NewLogs > 0 {
 			<span class="cursor-help font-medium text-yellow-400"
 				  title="There are new log records, refresh the page to see them">+{ strconv.FormatInt(group.NewLogs, 10) }</span>
+		}
+		if group.IssueURL != "" {
+			<a href={ group.IssueURL } target="_blank" rel="noopener noreferrer" class="text-accent hover:underline">issue #{ strconv.FormatInt(group.IssueNumber, 10) }</a>
 		}
 	</div>
 }

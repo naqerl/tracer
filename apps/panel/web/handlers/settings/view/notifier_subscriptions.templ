@@ -10,6 +10,7 @@ type NotifierSubscriptionsProps struct {
 	Title         string
 	NotifierID    int64
 	NotifierName  string
+	NotifierType  string
 	Apps          []NotifierAppView
 }
 
@@ -27,7 +28,10 @@ templ NotifierSubscriptions(props NotifierSubscriptionsProps) {
 				<a href="/settings" class="text-sm text-fg-secondary hover:text-fg transition-colors">&larr; Back to settings</a>
 			</div>
 			<h2 class="text-xl font-medium mb-2">Subscriptions</h2>
-			<p class="text-base text-fg-secondary mb-6">{ props.NotifierName }</p>
+			<p class={ "text-base text-fg-secondary " + tern(props.NotifierType == "forgejo", "mb-2", "mb-6") }>{ props.NotifierName }</p>
+			if props.NotifierType == "forgejo" {
+				<p class="text-sm text-fg-secondary/70 mb-6">An issue will be created for the first error of each group in the selected apps.</p>
+			}
 			<form hx-put={ "/settings/notifiers/" + strconv.FormatInt(props.NotifierID, 10) + "/subscriptions" }
 				  hx-target="closest .max-w-5xl"
 				  hx-swap="innerHTML"

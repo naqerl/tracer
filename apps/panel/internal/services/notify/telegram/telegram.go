@@ -46,11 +46,9 @@ func (t *Notifier) Name() string {
 	return t.name
 }
 
-// Notify sends a notification.
+// Notify sends a notification rendered from the structured data.
 func (t *Notifier) Notify(n notify.Notification) error {
-	// Message is already fully formatted by dispatcher
-	// Just convert to Telegram MarkdownV2 format and send
-	telegramText := tgmd.Telegramify(n.Message)
+	telegramText := tgmd.Telegramify(notify.FormatMessage(n))
 
 	msg := tgbotapi.NewMessage(t.chatID, telegramText)
 	msg.ParseMode = "MarkdownV2"

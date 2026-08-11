@@ -61,8 +61,9 @@ templ CollectorOverviewData(props CollectorOverviewProps) {
 			hx-get={ "/panel/collectors/" + props.CollectorName + "/apps" }
 			hx-trigger="load, every 15s"
 			hx-swap="innerHTML"
+			hx-indicator="#apps-loading"
 		>
-			<div class="text-fg-secondary text-sm">Loading apps...</div>
+			@templates.Indicator("apps-loading", "Loading apps...")
 		</div>
 	</div>
 }

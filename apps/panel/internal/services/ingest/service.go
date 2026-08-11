@@ -51,8 +51,15 @@ type Service struct {
 	cfg            IngestConfig
 }
 
-// New creates a new ingest service.
+// New creates a new ingest service. A nil notifyChan or alertFormatter is
+// replaced with a safe no-op so notifications can always be attempted.
 func New(dbManager DBManager, notifyChan chan<- notify.Notification, alertFormatter func(collectorName, appName string, logID int64) string, cfg IngestConfig) *Service {
+	if notifyChan == nil {
+		notifyChan = make(chan notify.Notification)
+	}
+	if alertFormatter == nil {
+		alertFormatter = func(_, _ string, _ int64) string { return "" }
+	}
 	return &Service{
 		dbManager:      dbManager,
 		notifyChan:     notifyChan,
@@ -489,7 +496,9 @@ func (r StoreLogRequest) Validate() error {
 // StoreLog stores a log entry for a specific app.
 // It handles log group creation and insertion of the log entry.
 // Returns the log ID for potential notifications.
-// Includes sampling logic and notification sending for errors.
+// Includes sampling logic and notification sending for errors. The entry
+// that creates a new error group announces the group instead of the usual
+// per-entry alert; later entries alert normally.
 func (s *Service) StoreLog(ctx context.Context, req StoreLogRequest) (int64, error) {
 	// Check if this is an error level log
 	isError := req.Entry.Level == types.LevelError
@@ -514,10 +523,23 @@ func (s *Service) StoreLog(ctx context.Context, req StoreLogRequest) (int64, err
 
 	var logID int64
 	var logGroupID int64
+	newGroup := false
 	err = handle.Write(ctx, func(tx db.DBTX) error {
 		q := db.New(tx)
 
-		// Get or create log group for this message and level
+		// A group is "new" only when no row exists yet; the upsert below
+		// reuses rows whose logs were pruned by retention, so last_log_at == 0
+		// cannot tell a fresh insert apart. Writes are serialized per app DB,
+		// so the existence check sees a stable state.
+		exists, err := q.LogGroupExists(ctx, db.LogGroupExistsParams{
+			Message: req.Entry.Message,
+			Level:   string(req.Entry.Level),
+		})
+		if err != nil {
+			return err
+		}
+		newGroup = isError && !exists
+
 		logGroup, err := q.GetOrCreateLogGroup(ctx, db.GetOrCreateLogGroupParams{
 			Message: req.Entry.Message,
 			Level:   string(req.Entry.Level),
@@ -552,9 +574,12 @@ func (s *Service) StoreLog(ctx context.Context, req StoreLogRequest) (int64, err
 		return 0, err
 	}
 
-	// Send notification for errors
-	if isError && s.notifyChan != nil {
-		s.sendErrorNotification(req, logID, logGroupID)
+	if isError {
+		typ := notify.TypeAlert
+		if newGroup {
+			typ = notify.TypeNewErrorGroup
+		}
+		s.sendLogNotification(req, typ, logID, logGroupID)
 	}
 
 	return logID, nil
@@ -602,17 +627,15 @@ func (s *Service) StoreLifecycle(ctx context.Context, req StoreLifecycleRequest)
 		return err
 	}
 
-	if s.notifyChan != nil {
-		select {
-		case s.notifyChan <- notify.Notification{
-			Type:          notify.TypeLifecycle,
-			CollectorName: req.CollectorName,
-			AppName:       req.AppName,
-			Message:       string(req.Kind),
-		}:
-		default:
-			slog.Error("Notification channel full, dropping lifecycle notification")
-		}
+	select {
+	case s.notifyChan <- notify.Notification{
+		Type:          notify.TypeLifecycle,
+		CollectorName: req.CollectorName,
+		AppName:       req.AppName,
+		Payload:       string(req.Kind),
+	}:
+	default:
+		slog.Error("Notification channel full, dropping lifecycle notification")
 	}
 
 	return nil
@@ -677,24 +700,24 @@ func (s *Service) SaveHealthPeriod(ctx context.Context, req StoreHealthRequest) 
 	})
 }
 
-// sendErrorNotification sends a notification for error logs
-func (s *Service) sendErrorNotification(req StoreLogRequest, logID, groupID int64) {
-	// Build the alert message with markdown link
-	alertMessage := fmt.Sprintf("```%s```", req.Entry.Message)
-	if s.alertFormatter != nil {
-		// Include log ID and group ID in URL
-		logsURL := s.alertFormatter(req.CollectorName, req.AppName, logID)
-		if logsURL != "" {
-			alertMessage += fmt.Sprintf("\n\n[view log](%s)", logsURL)
-		}
+// sendLogNotification sends a log-derived notification with its structured
+// LogEntry payload; notifiers render their own presentation.
+func (s *Service) sendLogNotification(req StoreLogRequest, typ notify.NotificationType, logID, groupID int64) {
+	log := notify.LogEntry{
+		Level:     req.Entry.Level,
+		Message:   req.Entry.Message,
+		GroupID:   groupID,
+		LogID:     logID,
+		CreatedAt: req.Entry.Timestamp,
+		LogURL:    s.alertFormatter(req.CollectorName, req.AppName, logID),
 	}
 
 	select {
 	case s.notifyChan <- notify.Notification{
-		Type:          notify.TypeAlert,
+		Type:          typ,
 		CollectorName: req.CollectorName,
 		AppName:       req.AppName,
-		Message:       alertMessage,
+		Payload:       log,
 	}:
 	default:
 		slog.Error("Notification channel full, dropping notification")

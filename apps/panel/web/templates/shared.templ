@@ -11,6 +11,7 @@ templ Head() {
 	<link rel="stylesheet" href="/static/scrollbar.css"/>
 	<link rel="stylesheet" href="/static/app.css"/>
 	<script src="https://cdn.tailwindcss.com?plugins=forms"></script>
+	<meta name="htmx-config" content='{"responseHandling":[{"code":"204","swap":false},{"code":"[23]..","swap":true},{"code":"422","swap":true},{"code":"[45]..","swap":false,"error":true},{"code":"...","swap":false}]}'/>
 	<script src="/static/htmx.min.js"></script>
 	<script src="/static/anime.umd.min.js" defer="defer"></script>
 	<script src="/static/uPlot.iife.min.js" async="async"></script>
@@ -182,6 +183,31 @@ templ ErrorPage(title string, message string, status int, nav NavData) {
 			<p class="text-fg-secondary">{ message }</p>
 		</div>
 	}
+}
+
+// Indicator renders an inline spinner with a message. It stays hidden until
+// the triggering element references its id via hx-indicator.
+templ Indicator(id, text string) {
+	<span id={ id } class="htmx-indicator inline-flex items-center gap-1 ml-2 text-fg-secondary">
+		<span class="inline-block w-3 h-3 rounded-full border-2 border-fg/30 border-t-accent animate-spin"></span>
+		{ text }
+	</span>
+}
+
+// Required renders a red asterisk marking a required field label.
+templ Required() {
+	<span class="text-red-500 ml-1" aria-hidden="true">*</span>
+}
+
+// FieldStatus renders a status message next to a field label. It stays hidden
+// while empty and colors green/red based on ok. When oob is true the span is
+// marked hx-swap-oob so response fragments can update it in place.
+templ FieldStatus(id, text string, ok, oob bool) {
+	<span id={ id } if oob { hx-swap-oob="true" } class={ tern(text == "", "hidden", "") + " ml-2" }>
+		if text != "" {
+			<span class={ "text-sm " + tern(ok, "text-green-500", "text-red-500") }>{ text }</span>
+		}
+	</span>
 }
 
 // MarkdownCheckbox renders an interactive markdown-style checkbox

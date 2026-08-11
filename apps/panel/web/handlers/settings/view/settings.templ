@@ -3,6 +3,7 @@ package view
 import (
 	"fmt"
 	"strconv"
+	"strings"
 	"tracer/apps/panel/web/templates"
 )
 
@@ -61,11 +62,60 @@ type NotifierView struct {
 }
 
 type NotifierFormView struct {
-	ActiveType      string
-	NtfyURL         string
-	NtfyTopic       string
-	TelegramToken   string
-	TelegramChatID  string
+	ActiveType     string
+	NtfyURL        string
+	NtfyTopic      string
+	TelegramToken  string
+	TelegramChatID string
+	ForgejoBaseURL string
+}
+
+// ForgejoOption is a selectable label or milestone.
+type ForgejoOption struct {
+	ID   int64
+	Name string
+}
+
+// ForgejoOwnerRepoBoxProps holds the merged owner/repository autocomplete
+// state. Options are "owner/repo" pairs collected across every visible owner.
+type ForgejoOwnerRepoBoxProps struct {
+	Value   string
+	Options []string
+}
+
+// optionPreview returns the first few option names joined for use as an input
+// placeholder, e.g. "bug, ops, ...". It returns "" when there are no options.
+func optionPreview(opts []ForgejoOption) string {
+	const max = 3
+	if len(opts) == 0 {
+		return ""
+	}
+	names := make([]string, 0, min(len(opts), max))
+	for i, o := range opts {
+		if i >= max {
+			break
+		}
+		names = append(names, o.Name)
+	}
+	preview := strings.Join(names, ", ")
+	if len(opts) > max {
+		preview += ", ..."
+	}
+	return preview
+}
+
+// ForgejoSelectsProps holds the label/milestone input state.
+type ForgejoSelectsProps struct {
+	Labels     []ForgejoOption
+	Milestones []ForgejoOption
+	Loaded     bool
+	Status     string
+}
+
+// ForgejoLookupProps holds the whole dynamic lookup area state.
+type ForgejoLookupProps struct {
+	OwnerRepoBox ForgejoOwnerRepoBoxProps
+	Loaded       bool // authentication succeeded
 }
 
 // SettingsPage renders the main settings page.
@@ -334,6 +384,13 @@ templ NotifierForm(form NotifierFormView) {
 			   class={ "px-4 py-3 border-l border-bg-secondary/70 transition-colors " + tern(form.ActiveType == "telegram", "text-fg", "text-fg-secondary hover:text-fg") }>
 				Telegram
 			</a>
+			<a href="/settings/notifiers/new?type=forgejo"
+			   hx-get="/settings/notifiers/new?type=forgejo"
+			   hx-target="#notifier-form-panel"
+			   hx-swap="outerHTML"
+			   class={ "px-4 py-3 border-l border-bg-secondary/70 transition-colors " + tern(form.ActiveType == "forgejo", "text-fg", "text-fg-secondary hover:text-fg") }>
+				Forgejo
+			</a>
 		</div>
 		<form hx-post="/settings/notifiers"
 			  hx-target="next .error"
@@ -341,34 +398,163 @@ templ NotifierForm(form NotifierFormView) {
 			<input type="hidden" name="type" value={ form.ActiveType }/>
 			<div class="mb-4 space-y-4">
 				<div class="w-full">
+					<label class="block text-sm text-fg-secondary mb-1">
+						Name
+						@templates.Required()
+					</label>
 					<input type="text" id="notifier_name" name="name" placeholder="Name" required="required" maxlength="64"
 						   class="w-full max-w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg placeholder:text-fg-secondary/50 md:w-[40ch]"/>
 				</div>
 				if form.ActiveType == "telegram" {
 					<div class="w-full">
+						<label class="block text-sm text-fg-secondary mb-1">
+							Bot token
+							@templates.Required()
+						</label>
 						<input type="text" id="telegram_token" name="telegram_token" placeholder="Bot token" required="required"
 							   class="w-full max-w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg placeholder:text-fg-secondary/50 md:w-[40ch]"/>
 					</div>
 					<div class="w-full">
+						<label class="block text-sm text-fg-secondary mb-1">
+							Chat ID
+							@templates.Required()
+						</label>
 						<input type="text" id="telegram_chat_id" name="telegram_chat_id" placeholder="Chat ID" required="required"
 							   class="w-full max-w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg placeholder:text-fg-secondary/50 md:w-[20ch]"/>
 					</div>
 				} else if form.ActiveType == "ntfy" {
 					<div class="w-full">
+						<label class="block text-sm text-fg-secondary mb-1">
+							Server URL
+							@templates.Required()
+						</label>
 						<input type="url" id="ntfy_url" name="ntfy_url" value={ form.NtfyURL } required="required"
 							   placeholder="Server URL"
 							   class="w-full max-w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg placeholder:text-fg-secondary/50 md:w-[48ch]"/>
 					</div>
 					<div class="w-full">
+						<label class="block text-sm text-fg-secondary mb-1">
+							Topic
+							@templates.Required()
+						</label>
 						<input type="text" id="ntfy_topic" name="ntfy_topic" value={ form.NtfyTopic } required="required"
 							   placeholder="Topic" maxlength="64"
 							   class="w-full max-w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg placeholder:text-fg-secondary/50 md:w-[64ch]"/>
 					</div>
+				} else if form.ActiveType == "forgejo" {
+					<div class="w-full">
+						<label class="block text-sm text-fg-secondary mb-1">
+							Forgejo base URL
+							@templates.Required()
+						</label>
+						<input type="url" id="forgejo_base_url" name="base_url" value={ form.ForgejoBaseURL } required="required"
+							   placeholder="Forgejo base URL" hx-post="/settings/notifiers/forgejo/lookup" hx-trigger="change" hx-target="#forgejo-lookup" hx-swap="outerHTML" hx-indicator="#forgejo-fetching"
+							   class="w-full max-w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg placeholder:text-fg-secondary/50 md:w-[48ch]"/>
+					</div>
+					<div class="w-full">
+						<label class="block text-sm text-fg-secondary mb-1">
+							<span class="mr-1">API token</span>
+							@templates.Required()
+							@templates.FieldStatus("forgejo-auth-status", "", false, false)
+							@templates.Indicator("forgejo-fetching", "Verifying connection…")
+						</label>
+						<input type="password" id="forgejo_token" name="token" placeholder="API token" required="required"
+							   autocomplete="new-password" hx-post="/settings/notifiers/forgejo/lookup" hx-trigger="change, input changed delay:1s" hx-target="#forgejo-lookup" hx-swap="outerHTML" hx-indicator="#forgejo-fetching"
+							   class="w-full max-w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg placeholder:text-fg-secondary/50 md:w-[48ch]"/>
+					</div>
+					@ForgejoLookup(ForgejoLookupProps{})
 				}
 			</div>
 			<button type="submit" class="text-sm text-fg border border-fg px-4 py-2 hover:bg-fg hover:text-bg transition-colors">Add Notifier</button>
 		</form>
 		<span class="error"></span>
+	</div>
+}
+
+// ForgejoLookup renders the dynamic forgejo setup area. It stays empty until
+// authentication succeeds, then shows the merged owner/repository input.
+templ ForgejoLookup(props ForgejoLookupProps) {
+	<div id="forgejo-lookup" class="space-y-4">
+		if props.Loaded {
+			@ForgejoOwnerRepoBox(props.OwnerRepoBox)
+		}
+	</div>
+}
+
+// ForgejoOwnerRepoBox renders a single autocomplete input suggesting
+// "owner/repo" pairs. Picking one loads the label/milestone inputs into the
+// placeholder below; the spinner shows while those options are fetched.
+templ ForgejoOwnerRepoBox(props ForgejoOwnerRepoBoxProps) {
+	<div id="forgejo-owner-repo-box" class="w-full space-y-4">
+		<div class="w-full">
+			<label class="block text-sm text-fg-secondary mb-1">
+				<span class="mr-1">Owner/Repository</span>
+				@templates.Required()
+				@templates.FieldStatus("forgejo-owner-repo-error", "", false, false)
+				@templates.Indicator("forgejo-repo-fetching", "Loading labels and milestones…")
+			</label>
+			<input type="text" id="forgejo_owner_repo" name="owner_repo" list="forgejo-owner-repos" value={ props.Value }
+				   placeholder="owner/repo" required="required" maxlength="128"
+				   hx-post="/settings/notifiers/forgejo/options"
+				   hx-target="#forgejo-selects-box"
+				   hx-swap="outerHTML"
+				   hx-trigger="change"
+				   hx-indicator="#forgejo-repo-fetching"
+				   class="w-full max-w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg placeholder:text-fg-secondary/50 md:w-[48ch]"/>
+			<datalist id="forgejo-owner-repos">
+				for _, opt := range props.Options {
+					<option value={ opt }></option>
+				}
+			</datalist>
+		</div>
+		<div id="forgejo-selects-box" class="space-y-4"></div>
+	</div>
+}
+
+// ForgejoSelects renders the optional label and milestone inputs once a
+// repository is selected. Errors render as a status line only. Fields with no
+// found options are disabled; placeholders preview the real found names.
+templ ForgejoSelects(props ForgejoSelectsProps) {
+	<div id="forgejo-selects-box" class="space-y-4">
+		if props.Status != "" {
+			<p class="text-sm text-red-500">{ props.Status }</p>
+		}
+		if props.Loaded {
+			<div class="w-full">
+				<label class="block text-sm text-fg-secondary mb-1">
+					Labels (found { len(props.Labels) })
+					@templates.FieldStatus("forgejo-labels-error", "", false, false)
+				</label>
+				<input type="text" id="forgejo_labels" name="labels" list="forgejo-labels"
+					   placeholder={ optionPreview(props.Labels) }
+					   if len(props.Labels) == 0 {
+						   disabled
+					   }
+					   class="w-full max-w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg placeholder:text-fg-secondary/50 md:w-[48ch] disabled:opacity-50"/>
+				<datalist id="forgejo-labels">
+					for _, l := range props.Labels {
+						<option value={ l.Name }></option>
+					}
+				</datalist>
+			</div>
+			<div class="w-full">
+				<label class="block text-sm text-fg-secondary mb-1">
+					Milestone (found { len(props.Milestones) })
+					@templates.FieldStatus("forgejo-milestone-error", "", false, false)
+				</label>
+				<input type="text" id="forgejo_milestone" name="milestone_name" list="forgejo-milestones"
+					   placeholder={ optionPreview(props.Milestones) }
+					   if len(props.Milestones) == 0 {
+						   disabled
+					   }
+					   class="w-full max-w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg placeholder:text-fg-secondary/50 md:w-[48ch] disabled:opacity-50"/>
+				<datalist id="forgejo-milestones">
+					for _, m := range props.Milestones {
+						<option value={ m.Name }></option>
+					}
+				</datalist>
+			</div>
+		}
 	</div>
 }
 

@@ -66,11 +66,13 @@ type Log struct {
 }
 
 type LogGroup struct {
-	ID        int64
-	Message   string
-	Level     string
-	CreatedAt int64
-	LastLogAt int64
+	ID          int64
+	Message     string
+	Level       string
+	CreatedAt   int64
+	LastLogAt   int64
+	IssueNumber sql.NullInt64
+	IssueUrl    sql.NullString
 }
 
 type MemPeriod struct {

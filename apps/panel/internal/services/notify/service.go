@@ -18,6 +18,9 @@ var (
 	ErrNotifierNotFound = errors.New("notifier not found")
 	ErrAccessDenied     = errors.New("access denied")
 	ErrInvalidNotifier  = errors.New("invalid notifier ID")
+	// ErrWelcomeValidation marks a notifier that failed its connection check
+	// when being saved (e.g. bad token, unreachable server).
+	ErrWelcomeValidation = errors.New("welcome validation failed")
 )
 
 // Subscription represents a subscription to a specific collector-app pair.
@@ -93,10 +96,10 @@ func (s *Service) Add(ctx context.Context, req AddNotifierRequest) error {
 	// 2. Send welcome notification - must succeed before saving to DB
 	welcomeNotif := Notification{
 		Type:    TypeWelcome,
-		Message: "Cheers, love! The cavalry's here!",
+		Payload: "Cheers, love! The cavalry's here!",
 	}
 	if err := instance.Notify(welcomeNotif); err != nil {
-		return fmt.Errorf("cound not send welcome notification: %w", err)
+		return fmt.Errorf("could not send welcome notification: %w", err)
 	}
 	slog.Info("Sent welcome notification", "notifier", req.Name)
 

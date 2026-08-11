@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -20,6 +21,7 @@ import (
 	"tracer/apps/panel/internal/services/auth"
 	"tracer/apps/panel/internal/services/ingest"
 	"tracer/apps/panel/internal/services/notify"
+	"tracer/apps/panel/internal/services/notify/forgejo"
 	usersvc "tracer/apps/panel/internal/services/user"
 	"tracer/apps/panel/web/handlers/settings/view"
 	"tracer/apps/panel/web/htmx"
@@ -40,6 +42,9 @@ type handler struct {
 func appKey(collectorName, appName string) string {
 	return collectorName + ":" + appName
 }
+
+// defaultForgejoBaseURL pre-fills the Forgejo base URL in the notifier form.
+const defaultForgejoBaseURL = "https://git.naqerl.com"
 
 func InitMux(authService *auth.Service, userService *usersvc.Service, ingestService *ingest.Service, dbManager *dbmanager.Manager, notifyService *notify.Service, cfg *config.Config, readOnly bool) *http.ServeMux {
 	m := http.NewServeMux()
@@ -73,6 +78,8 @@ func InitMux(authService *auth.Service, userService *usersvc.Service, ingestServ
 
 	// Notifiers management
 	m.HandleFunc("GET /notifiers/new", h.notifierForm)
+	m.HandleFunc("POST /notifiers/forgejo/lookup", h.forgejoLookup)
+	m.HandleFunc("POST /notifiers/forgejo/options", h.forgejoOptions)
 	m.HandleFunc("GET /notifiers/{id}", h.getNotifier)
 	m.HandleFunc("POST /notifiers", h.createNotifier)
 	m.HandleFunc("DELETE /notifiers/{id}", h.deleteNotifier)
@@ -118,8 +125,9 @@ func (h *handler) settingsPage(w http.ResponseWriter, r *http.Request) {
 		CurrentUser: view.CurrentUserView{Username: user.Username, IsAdmin: user.IsAdmin},
 		IsAdmin:     user.IsAdmin,
 		NotifierForm: view.NotifierFormView{
-			ActiveType: "ntfy",
-			NtfyURL:    "https://ntfy.sh",
+			ActiveType:     "ntfy",
+			NtfyURL:        "https://ntfy.sh",
+			ForgejoBaseURL: defaultForgejoBaseURL,
 		},
 		CPUDeltaPercent: h.cfg.GetCPUDeltaPercent(),
 		MemDeltaKB:      h.cfg.GetMemDeltaKB(),
@@ -616,6 +624,8 @@ func (h *handler) getNotifier(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	// The page shows notifier config; keep secrets out of caches and history.
+	w.Header().Set("Cache-Control", "no-store")
 	view.NotifierDetail(data).Render(r.Context(), w)
 }
 
@@ -664,14 +674,15 @@ func (h *handler) notifierForm(w http.ResponseWriter, r *http.Request) {
 	switch activeType {
 	case "", "ntfy":
 		activeType = "ntfy"
-	case "telegram":
+	case "telegram", "forgejo":
 	default:
 		activeType = "ntfy"
 	}
 
 	form := view.NotifierFormView{
-		ActiveType: activeType,
-		NtfyURL:    "https://ntfy.sh",
+		ActiveType:     activeType,
+		NtfyURL:        "https://ntfy.sh",
+		ForgejoBaseURL: defaultForgejoBaseURL,
 	}
 
 	if activeType == "ntfy" {
@@ -756,6 +767,110 @@ func (h *handler) createNotifier(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		configJSON = string(cfgBytes)
+	case "forgejo":
+		creds, err := forgejoCredentialsFromRequest(r)
+		if err != nil {
+			switch {
+			case errors.Is(err, errForgejoFieldsMissing):
+				renderForgejoCreateFieldError(w, r, "forgejo-auth-status", "Forgejo base URL and token are required")
+			default:
+				renderForgejoCreateFieldError(w, r, "forgejo-auth-status", err.Error())
+			}
+			return
+		}
+
+		ownerRepoValue := strings.TrimSpace(r.FormValue("owner_repo"))
+		ownerRepo, err := splitForgejoOwnerRepo(ownerRepoValue)
+		if err != nil {
+			switch {
+			case errors.Is(err, errForgejoMalformedOwnerRepo):
+				renderForgejoCreateFieldError(w, r, "forgejo-owner-repo-error", "enter a repository as owner/repo")
+			default:
+				renderForgejoCreateFieldError(w, r, "forgejo-owner-repo-error", err.Error())
+			}
+			return
+		}
+
+		// Only autocomplete options are valid: the token must be able to see
+		// the chosen owner/repo among its fetched repository pairs.
+		pairs, err := creds.client.ListOwnerRepos(r.Context())
+		if err != nil {
+			if errors.Is(err, forgejo.ErrUnauthorized) {
+				renderForgejoCreateFieldError(w, r, "forgejo-auth-status", err.Error())
+				return
+			}
+			slog.Error("Failed to fetch forgejo owner repos for validation", "error", err)
+			http.Error(w, "Could not validate owner/repo", http.StatusInternalServerError)
+			return
+		}
+		if !slices.Contains(pairs, ownerRepoValue) {
+			slog.Warn("owner/repo not visible to the provided token", "owner_repo", ownerRepoValue)
+			renderForgejoCreateFieldError(w, r, "forgejo-owner-repo-error", fmt.Sprintf("owner/repo %q does not exist", ownerRepoValue))
+			return
+		}
+
+		// Parse comma-separated label names
+		var labelNames []string
+		if labelsStr := strings.TrimSpace(r.FormValue("labels")); labelsStr != "" {
+			for _, name := range strings.Split(labelsStr, ",") {
+				if name = strings.TrimSpace(name); name != "" {
+					labelNames = append(labelNames, name)
+				}
+			}
+		}
+		milestoneName := strings.TrimSpace(r.FormValue("milestone_name"))
+
+		var labels []int64
+		if len(labelNames) > 0 {
+			actualLabels, err := creds.client.ListLabels(r.Context(), ownerRepo.owner, ownerRepo.repo)
+			if err != nil {
+				slog.Error("Failed to fetch labels for validation", "error", err)
+				http.Error(w, "Could not validate labels", http.StatusInternalServerError)
+				return
+			}
+			ids := forgejoLabelIDs(actualLabels)
+			for _, name := range labelNames {
+				id, ok := ids[name]
+				if !ok {
+					slog.Warn("Label not found in repository", "label", name)
+					renderForgejoCreateFieldError(w, r, "forgejo-labels-error", fmt.Sprintf("label %q does not exist", name))
+					return
+				}
+				labels = append(labels, id)
+			}
+		}
+
+		var milestone int64
+		if milestoneName != "" {
+			actualMilestones, err := creds.client.ListMilestones(r.Context(), ownerRepo.owner, ownerRepo.repo)
+			if err != nil {
+				slog.Error("Failed to fetch milestones for validation", "error", err)
+				http.Error(w, "Could not validate milestone", http.StatusInternalServerError)
+				return
+			}
+			id, ok := forgejoMilestoneIDs(actualMilestones)[milestoneName]
+			if !ok {
+				slog.Warn("Milestone not found in repository", "milestone", milestoneName)
+				renderForgejoCreateFieldError(w, r, "forgejo-milestone-error", fmt.Sprintf("milestone %q does not exist", milestoneName))
+				return
+			}
+			milestone = id
+		}
+
+		cfgBytes, err := json.Marshal(forgejo.Config{
+			BaseURL:   creds.baseURL,
+			Token:     creds.token,
+			Owner:     ownerRepo.owner,
+			Repo:      ownerRepo.repo,
+			Labels:    labels,
+			Milestone: milestone,
+		})
+		if err != nil {
+			slog.Error("Failed to marshal forgejo config", "error", err)
+			http.Error(w, "Failed to process config", http.StatusInternalServerError)
+			return
+		}
+		configJSON = string(cfgBytes)
 	default:
 		http.Error(w, "Unknown notifier type", http.StatusBadRequest)
 		return
@@ -775,11 +890,125 @@ func (h *handler) createNotifier(w http.ResponseWriter, r *http.Request) {
 	// Create notifier through service (handles DB, welcome notification, registration)
 	if err := h.notifyService.Add(r.Context(), req); err != nil {
 		slog.Error("Failed to add notifier", "error", err)
+		if errors.Is(err, notify.ErrWelcomeValidation) {
+			renderForgejoCreateFieldError(w, r, "forgejo-auth-status", welcomeValidationMessage(err))
+			return
+		}
 		http.Error(w, "Failed to create notifier", http.StatusInternalServerError)
 		return
 	}
 
 	htmx.Redirect(w, r, "/settings/")
+}
+
+// forgejoLookup validates the token against the Forgejo API and loads every
+// visible "owner/repo" pair into the merged autocomplete. The connection
+// status is rendered into #forgejo-auth-status (out-of-band) while the owner
+// box is swapped into #forgejo-lookup.
+func (h *handler) forgejoLookup(w http.ResponseWriter, r *http.Request) {
+	if _, err := h.requireAuthenticatedUser(w, r); err != nil {
+		return
+	}
+
+	creds, err := forgejoCredentialsFromRequest(r)
+	if err != nil {
+		switch {
+		case errors.Is(err, errForgejoFieldsMissing):
+			renderForgejoLookupError(w, r, "")
+		default:
+			renderForgejoLookupError(w, r, err.Error())
+		}
+		return
+	}
+
+	pairs, err := creds.client.ListOwnerRepos(r.Context())
+	if err != nil {
+		renderForgejoLookupError(w, r, err.Error())
+		return
+	}
+
+	templates.FieldStatus("forgejo-auth-status", fmt.Sprintf("authenticated (found %d repositories)", len(pairs)), true, true).Render(r.Context(), w)
+	view.ForgejoLookup(view.ForgejoLookupProps{
+		Loaded: true,
+		OwnerRepoBox: view.ForgejoOwnerRepoBoxProps{
+			Value:   strings.TrimSpace(r.FormValue("owner_repo")),
+			Options: pairs,
+		},
+	}).Render(r.Context(), w)
+}
+
+// forgejoOptions validates the chosen owner/repo against the autocomplete
+// options and loads its labels and milestones into the optional inputs.
+func (h *handler) forgejoOptions(w http.ResponseWriter, r *http.Request) {
+	if _, err := h.requireAuthenticatedUser(w, r); err != nil {
+		return
+	}
+
+	ownerRepo := strings.TrimSpace(r.FormValue("owner_repo"))
+	if ownerRepo == "" {
+		view.ForgejoSelects(view.ForgejoSelectsProps{}).Render(r.Context(), w)
+		return
+	}
+
+	creds, err := forgejoCredentialsFromRequest(r)
+	if err != nil {
+		switch {
+		case errors.Is(err, errForgejoFieldsMissing):
+			renderForgejoOptionsOwnerRepoError(w, r, "Forgejo base URL and token are required")
+		default:
+			renderForgejoOptionsOwnerRepoError(w, r, err.Error())
+		}
+		return
+	}
+
+	ownerRepoPair, err := splitForgejoOwnerRepo(ownerRepo)
+	if err != nil {
+		renderForgejoOptionsOwnerRepoError(w, r, err.Error())
+		return
+	}
+
+	pairs, err := creds.client.ListOwnerRepos(r.Context())
+	if err != nil {
+		if errors.Is(err, forgejo.ErrUnauthorized) {
+			renderForgejoOptionsOwnerRepoError(w, r, err.Error())
+			return
+		}
+		slog.Error("Failed to fetch forgejo owner repos", "error", err)
+		view.ForgejoSelects(view.ForgejoSelectsProps{Status: "could not load repositories: " + err.Error()}).Render(r.Context(), w)
+		return
+	}
+	if !slices.Contains(pairs, ownerRepo) {
+		renderForgejoOptionsOwnerRepoError(w, r, fmt.Sprintf("owner/repo %q does not exist", ownerRepo))
+		return
+	}
+
+	labels, err := creds.client.ListLabels(r.Context(), ownerRepoPair.owner, ownerRepoPair.repo)
+	if err != nil {
+		slog.Error("Failed to list forgejo labels", "owner", ownerRepoPair.owner, "repo", ownerRepoPair.repo, "error", err)
+		view.ForgejoSelects(view.ForgejoSelectsProps{Status: "could not load labels: " + err.Error()}).Render(r.Context(), w)
+		return
+	}
+	milestones, err := creds.client.ListMilestones(r.Context(), ownerRepoPair.owner, ownerRepoPair.repo)
+	if err != nil {
+		slog.Error("Failed to list forgejo milestones", "owner", ownerRepoPair.owner, "repo", ownerRepoPair.repo, "error", err)
+		view.ForgejoSelects(view.ForgejoSelectsProps{Status: "could not load milestones: " + err.Error()}).Render(r.Context(), w)
+		return
+	}
+
+	labelOpts := make([]view.ForgejoOption, 0, len(labels))
+	for _, l := range labels {
+		labelOpts = append(labelOpts, view.ForgejoOption{ID: l.ID, Name: l.Name})
+	}
+	milestoneOpts := make([]view.ForgejoOption, 0, len(milestones))
+	for _, m := range milestones {
+		milestoneOpts = append(milestoneOpts, view.ForgejoOption{ID: m.ID, Name: m.Title})
+	}
+
+	view.ForgejoSelects(view.ForgejoSelectsProps{
+		Labels:     labelOpts,
+		Milestones: milestoneOpts,
+		Loaded:     true,
+	}).Render(r.Context(), w)
 }
 
 func (h *handler) deleteNotifier(w http.ResponseWriter, r *http.Request) {
@@ -973,6 +1202,7 @@ func (h *handler) buildNotifierSubscriptionsData(w http.ResponseWriter, r *http.
 		Title:        "Edit Notifier Apps - Tracer",
 		NotifierID:   id,
 		NotifierName: setup.Name,
+		NotifierType: setup.Type,
 		Apps:         apps,
 	}
 

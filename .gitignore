@@ -5,5 +5,5 @@ tasks/
 /.agent-shell/
 /.tasks/
 .cptr
-tracer-panel
-tracer-test-config.yaml
+/tracer-panel
+/tracer-test-config.yaml

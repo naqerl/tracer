@@ -66,6 +66,41 @@ func parsedJSONItems(data string) []jsonKV {
 	return flattenJSON(parseJSON(data))
 }
 
+// secretKeySet are JSON keys whose values must never be rendered verbatim
+// (API tokens, passwords, secrets).
+var secretKeySet = map[string]bool{
+	"token": true, "api_key": true, "apikey": true, "key": true,
+	"secret": true, "password": true, "passwd": true, "auth": true,
+}
+
+// isSecretKey reports whether a flattened JSON key (e.g. "forgejo.token")
+// refers to a secret value.
+func isSecretKey(key string) bool {
+	parts := strings.Split(key, ".")
+	return secretKeySet[strings.ToLower(parts[len(parts)-1])]
+}
+
+// renderJSONKV renders one key-value pair, masking secret values.
+func renderJSONKV(kv jsonKV) string {
+	if isSecretKey(kv.Key) {
+		return renderJSONValue(maskSecret(kv.Value))
+	}
+	return renderJSONValue(kv.Value)
+}
+
+// maskSecret replaces a secret string with "••••" plus its last four
+// characters, keeping non-string secrets fully hidden.
+func maskSecret(v any) string {
+	s, ok := v.(string)
+	if !ok || s == "" {
+		return "••••"
+	}
+	if len(s) <= 4 {
+		return "••••"
+	}
+	return "••••" + s[len(s)-4:]
+}
+
 // jsonViewerHTML generates HTML for a JSON viewer
 func jsonViewerHTML(data string, valid bool) string {
 	if !valid {
@@ -81,7 +116,7 @@ func jsonViewerHTML(data string, valid bool) string {
 		b.WriteString(`<span class="text-fg-secondary whitespace-nowrap">`)
 		b.WriteString(kv.Key)
 		b.WriteString(`</span><span>`)
-		b.WriteString(renderJSONValue(kv.Value))
+		b.WriteString(renderJSONKV(kv))
 		b.WriteString(`</span>`)
 	}
 	b.WriteString(`</div></div>`)
@@ -103,7 +138,7 @@ func jsonViewerFullHTML(data string, valid bool) string {
 		b.WriteString(`<span class="text-fg-secondary whitespace-nowrap">`)
 		b.WriteString(kv.Key)
 		b.WriteString(`:</span><span>`)
-		b.WriteString(renderJSONValue(kv.Value))
+		b.WriteString(renderJSONKV(kv))
 		b.WriteString(`</span>`)
 	}
 	b.WriteString(`</div></div>`)

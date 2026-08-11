@@ -736,14 +736,16 @@ func (h *handler) getLogGroupByID(w http.ResponseWriter, r *http.Request) {
 		SinceStart:    since.Unix(),
 		SinceEnd:      now.Unix(),
 		LogGroup: view.LogGroupData{
-			ID:        group.ID,
-			Message:   group.Message,
-			Level:     group.Level,
-			Count:     group.Count,
-			CreatedAt: group.CreatedAt.Unix(),
-			LastLogAt: group.LastLogAt.Unix(),
-			Since:     now.Unix(),
-			NewLogs:   0,
+			ID:          group.ID,
+			Message:     group.Message,
+			Level:       group.Level,
+			Count:       group.Count,
+			CreatedAt:   group.CreatedAt.Unix(),
+			LastLogAt:   group.LastLogAt.Unix(),
+			Since:       now.Unix(),
+			NewLogs:     0,
+			IssueNumber: group.IssueNumber,
+			IssueURL:    group.IssueURL,
 		},
 	}).Render(r.Context(), w)
 }
@@ -797,14 +799,16 @@ func (h *handler) getLogGroupSummary(w http.ResponseWriter, r *http.Request) {
 	}
 
 	view.LogGroupSummary(view.LogGroupData{
-		ID:        summary.ID,
-		Message:   summary.Message,
-		Level:     summary.Level,
-		Count:     summary.Count,
-		CreatedAt: summary.CreatedAt.Unix(),
-		LastLogAt: summary.LastLogAt.Unix(),
-		Since:     time.Now().Unix(),
-		NewLogs:   summary.NewLogs,
+		ID:          summary.ID,
+		Message:     summary.Message,
+		Level:       summary.Level,
+		Count:       summary.Count,
+		CreatedAt:   summary.CreatedAt.Unix(),
+		LastLogAt:   summary.LastLogAt.Unix(),
+		Since:       time.Now().Unix(),
+		NewLogs:     summary.NewLogs,
+		IssueNumber: summary.IssueNumber,
+		IssueURL:    summary.IssueURL,
 	}).Render(r.Context(), w)
 }
 

@@ -24,6 +24,7 @@ import (
 	"tracer/apps/panel/internal/services/auth"
 	"tracer/apps/panel/internal/services/ingest"
 	"tracer/apps/panel/internal/services/notify"
+	"tracer/apps/panel/internal/services/notify/forgejo"
 	"tracer/apps/panel/internal/services/notify/ntfy"
 	"tracer/apps/panel/internal/services/notify/telegram"
 	"tracer/apps/panel/internal/services/panel"
@@ -275,6 +276,9 @@ func serve(ctx context.Context, cfg *config.Config, noAuth, readOnly bool) error
 	notifierFactories := map[string]notify.FromRawJSON{
 		"telegram": telegram.FromRawJSON,
 		"ntfy":     ntfy.FromRawJSON,
+		"forgejo": func(name, config string) (notify.Notifier, error) {
+			return forgejo.New(name, config, dbManager)
+		},
 	}
 
 	// Create notification channel (shared between dispatcher and ingest service)

@@ -1,6 +1,7 @@
 package view
 
 import (
+	"strings"
 	"time"
 	"tracer/apps/panel/web/templates"
 )
@@ -31,6 +32,12 @@ type DashboardProps struct {
 	Title     string
 	Since     string
 	Collectors []CollectorView
+}
+
+// indicatorID returns a CSS-safe id suffix for a collector name. Dots are
+// replaced because they would be read as class separators in a CSS selector.
+func indicatorID(name string) string {
+	return strings.ReplaceAll(name, ".", "-")
 }
 
 // cpuClass returns a CSS class based on CPU usage.
@@ -112,8 +119,9 @@ templ Dashboard(p DashboardProps) {
 							hx-get={ "/panel/collectors/" + c.Name + "/apps" }
 							hx-trigger="load, every 15s"
 							hx-swap="innerHTML"
+							hx-indicator={ "#apps-loading-" + indicatorID(c.Name) }
 						>
-							<div class="text-fg-secondary text-sm">Loading apps...</div>
+							@templates.Indicator("apps-loading-"+indicatorID(c.Name), "Loading apps...")
 						</div>
 					</div>
 				}

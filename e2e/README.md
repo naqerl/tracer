@@ -14,6 +14,20 @@ make -C e2e check
 
 Default login: `demo` / `demo1234`.
 
+## Read-only panel
+
+The demo panel starts in **read-only mode** by default (`-readonly`), so
+state-changing actions such as creating or deleting notifiers are rejected.
+To start the panel with write access:
+
+```bash
+E2E_PANEL_READONLY=0 make -C e2e up
+```
+
+`E2E_PANEL_READONLY` defaults to `1`; the value is passed into the container
+and read by the boot script that writes the panel's systemd drop-in. It also
+applies to `make -C e2e up-release`.
+
 ## Log profiles
 
 Switch the mock services between logging profiles:

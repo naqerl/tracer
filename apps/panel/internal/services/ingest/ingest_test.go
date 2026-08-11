@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"tracer/apps/panel/db"
+	"tracer/apps/panel/internal/services/notify"
 	"tracer/apps/panel/internal/testutil"
 	"tracer/libs/types"
 
@@ -23,6 +25,229 @@ func (c *testIngestConfig) GetCPUDeltaPercent() float64 { return c.cpuDeltaPerce
 func (c *testIngestConfig) GetMemDeltaKB() int          { return c.memDeltaKB }
 func (c *testIngestConfig) GetDiskDeltaKB() int         { return c.diskDeltaKB }
 func (c *testIngestConfig) GetSampleRate() float64      { return c.sampleRate }
+
+// notifyCounts tracks which notification types one StoreLog produced.
+type notifyCounts struct {
+	newGroups int
+	alerts    int
+}
+
+// storeLogAndCount stores one log entry and drains the channel, counting the
+// notification types it produced.
+func storeLogAndCount(t *testing.T, svc *Service, ch chan notify.Notification, collector, app string, level types.LogLevel, message string) notifyCounts {
+	t.Helper()
+
+	_, err := svc.StoreLog(t.Context(), StoreLogRequest{
+		CollectorName: collector,
+		AppName:       app,
+		Entry: types.LogEntry{
+			Level:     level,
+			Message:   message,
+			Timestamp: time.Now(),
+		},
+	})
+	if err != nil {
+		t.Fatalf("store log: %v", err)
+	}
+
+	var counts notifyCounts
+	for {
+		select {
+		case n := <-ch:
+			switch n.Type {
+			case notify.TypeNewErrorGroup:
+				counts.newGroups++
+			case notify.TypeAlert:
+				counts.alerts++
+			}
+		default:
+			return counts
+		}
+	}
+}
+
+func TestStoreLogNewErrorGroupNotification(t *testing.T) {
+	mgr := testutil.NewTestDBManager(t)
+	ch := make(chan notify.Notification, 32)
+	cfg := &testIngestConfig{sampleRate: 1.0}
+	svc := New(mgr, ch, nil, cfg)
+
+	if err := svc.RegisterCollector(t.Context(), RegisterCollectorRequest{
+		CollectorName: "test-collector",
+		Apps:          []string{"test-app"},
+	}); err != nil {
+		t.Fatalf("register collector: %v", err)
+	}
+
+	// The entry that creates a new error group announces the group instead
+	// of the usual per-entry alert.
+	counts := storeLogAndCount(t, svc, ch, "test-collector", "test-app", types.LevelError, "boom: connection refused")
+	if counts.newGroups != 1 || counts.alerts != 0 {
+		t.Fatalf("first error of new group: expected 1 new-group and 0 alerts, got %+v", counts)
+	}
+
+	// Later entries for the same group alert normally.
+	counts = storeLogAndCount(t, svc, ch, "test-collector", "test-app", types.LevelError, "boom: connection refused")
+	if counts.newGroups != 0 || counts.alerts != 1 {
+		t.Fatalf("second error of same group: expected 0 new-group and 1 alert, got %+v", counts)
+	}
+
+	// A different error group announces once more.
+	counts = storeLogAndCount(t, svc, ch, "test-collector", "test-app", types.LevelError, "boom: timeout")
+	if counts.newGroups != 1 || counts.alerts != 0 {
+		t.Fatalf("first error of different group: expected 1 new-group and 0 alerts, got %+v", counts)
+	}
+
+	// Non-error levels never announce or alert.
+	counts = storeLogAndCount(t, svc, ch, "test-collector", "test-app", types.LevelWarn, "boom: timeout")
+	if counts.newGroups != 0 || counts.alerts != 0 {
+		t.Fatalf("warn new group: expected no notifications, got %+v", counts)
+	}
+	counts = storeLogAndCount(t, svc, ch, "test-collector", "test-app", types.LevelInfo, "boom: connection refused")
+	if counts.newGroups != 0 || counts.alerts != 0 {
+		t.Fatalf("info new group: expected no notifications, got %+v", counts)
+	}
+}
+
+func TestStoreLogAfterRetentionPruneDoesNotReannounceGroup(t *testing.T) {
+	mgr := testutil.NewTestDBManager(t)
+	ch := make(chan notify.Notification, 32)
+	cfg := &testIngestConfig{sampleRate: 1.0}
+	svc := New(mgr, ch, nil, cfg)
+
+	if err := svc.RegisterCollector(t.Context(), RegisterCollectorRequest{
+		CollectorName: "test-collector",
+		Apps:          []string{"test-app"},
+	}); err != nil {
+		t.Fatalf("register collector: %v", err)
+	}
+
+	counts := storeLogAndCount(t, svc, ch, "test-collector", "test-app", types.LevelError, "boom: connection refused")
+	if counts.newGroups != 1 || counts.alerts != 0 {
+		t.Fatalf("first error of new group: expected 1 new-group and 0 alerts, got %+v", counts)
+	}
+
+	// Simulate retention pruning: the log rows are deleted and last_log_at is
+	// reset to 0, but the group row persists. No public API exposes this yet,
+	// so the queries run directly against the app DB.
+	handle, err := mgr.GetAppDB("test-collector", "test-app")
+	if err != nil {
+		t.Fatalf("get app db: %v", err)
+	}
+	if err := handle.Write(t.Context(), func(tx db.DBTX) error {
+		q := db.New(tx)
+		if err := q.DeleteOldLogs(t.Context(), time.Now().Add(time.Hour).Unix()); err != nil {
+			return err
+		}
+		return q.RecalculateLogGroupCounters(t.Context())
+	}); err != nil {
+		t.Fatalf("simulate retention prune: %v", err)
+	}
+
+	// The re-emerging error belongs to an existing group: it must alert
+	// normally instead of announcing a new group (which would create a
+	// duplicate issue and overwrite the recorded link).
+	counts = storeLogAndCount(t, svc, ch, "test-collector", "test-app", types.LevelError, "boom: connection refused")
+	if counts.newGroups != 0 || counts.alerts != 1 {
+		t.Fatalf("after retention prune: expected 0 new-group and 1 alert, got %+v", counts)
+	}
+}
+
+// drainNotifications reads every notification currently queued on ch.
+func drainNotifications(ch chan notify.Notification) []notify.Notification {
+	var ns []notify.Notification
+	for {
+		select {
+		case n := <-ch:
+			ns = append(ns, n)
+		default:
+			return ns
+		}
+	}
+}
+
+// TestStoreLogNotificationPayloadMapping locks in the payload-type contract
+// per notification type: log-derived notifications carry a notify.LogEntry,
+// lifecycle notifications carry a plain string.
+func TestStoreLogNotificationPayloadMapping(t *testing.T) {
+	mgr := testutil.NewTestDBManager(t)
+	ch := make(chan notify.Notification, 32)
+	cfg := &testIngestConfig{sampleRate: 1.0}
+	svc := New(mgr, ch, nil, cfg)
+
+	if err := svc.RegisterCollector(t.Context(), RegisterCollectorRequest{
+		CollectorName: "test-collector",
+		Apps:          []string{"test-app"},
+	}); err != nil {
+		t.Fatalf("register collector: %v", err)
+	}
+
+	// New error group → TypeNewErrorGroup with a LogEntry payload.
+	if _, err := svc.StoreLog(t.Context(), StoreLogRequest{
+		CollectorName: "test-collector",
+		AppName:       "test-app",
+		Entry: types.LogEntry{
+			Level:     types.LevelError,
+			Message:   "boom: connection refused",
+			Timestamp: time.Now(),
+		},
+	}); err != nil {
+		t.Fatalf("store log: %v", err)
+	}
+	ns := drainNotifications(ch)
+	if len(ns) != 1 || ns[0].Type != notify.TypeNewErrorGroup {
+		t.Fatalf("expected a single TypeNewErrorGroup notification, got %+v", ns)
+	}
+	entry, ok := ns[0].Payload.(notify.LogEntry)
+	if !ok {
+		t.Fatalf("TypeNewErrorGroup: expected LogEntry payload, got %T", ns[0].Payload)
+	}
+	if entry.Level != types.LevelError || entry.Message != "boom: connection refused" || entry.GroupID != 1 || entry.LogID == 0 || entry.CreatedAt.IsZero() {
+		t.Errorf("TypeNewErrorGroup: unexpected LogEntry: %+v", entry)
+	}
+
+	// Later error of the same group → TypeAlert with a LogEntry payload.
+	if _, err := svc.StoreLog(t.Context(), StoreLogRequest{
+		CollectorName: "test-collector",
+		AppName:       "test-app",
+		Entry: types.LogEntry{
+			Level:     types.LevelError,
+			Message:   "boom: connection refused",
+			Timestamp: time.Now(),
+		},
+	}); err != nil {
+		t.Fatalf("store log: %v", err)
+	}
+	ns = drainNotifications(ch)
+	if len(ns) != 1 || ns[0].Type != notify.TypeAlert {
+		t.Fatalf("expected a single TypeAlert notification, got %+v", ns)
+	}
+	entry, ok = ns[0].Payload.(notify.LogEntry)
+	if !ok {
+		t.Fatalf("TypeAlert: expected LogEntry payload, got %T", ns[0].Payload)
+	}
+	if entry.Level != types.LevelError || entry.Message != "boom: connection refused" || entry.GroupID != 1 || entry.LogID == 0 || entry.CreatedAt.IsZero() {
+		t.Errorf("TypeAlert: unexpected LogEntry: %+v", entry)
+	}
+
+	// Lifecycle → TypeLifecycle with a string payload.
+	if err := svc.StoreLifecycle(t.Context(), StoreLifecycleRequest{
+		CollectorName: "test-collector",
+		AppName:       "test-app",
+		Kind:          types.LifecycleRestart,
+		RawLine:       "restart",
+		Timestamp:     time.Now(),
+	}); err != nil {
+		t.Fatalf("store lifecycle: %v", err)
+	}
+	ns = drainNotifications(ch)
+	if len(ns) != 1 || ns[0].Type != notify.TypeLifecycle {
+		t.Fatalf("expected a single TypeLifecycle notification, got %+v", ns)
+	}
+	if payload, ok := ns[0].Payload.(string); !ok || payload != "restart" {
+		t.Fatalf("TypeLifecycle: expected string payload %q, got %v (%T)", "restart", ns[0].Payload, ns[0].Payload)
+	}
+}
 
 func TestRuntimeConfigDeltaChange(t *testing.T) {
 	ctx := context.Background()

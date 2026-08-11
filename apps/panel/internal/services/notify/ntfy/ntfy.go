@@ -54,9 +54,9 @@ func (n *Notifier) Name() string {
 	return n.name
 }
 
-// Notify sends a notification.
+// Notify sends a notification rendered from the structured data.
 func (n *Notifier) Notify(notification notify.Notification) error {
-	req, err := http.NewRequest(http.MethodPost, n.url+"/"+n.topic, bytes.NewBufferString(notification.Message))
+	req, err := http.NewRequest(http.MethodPost, n.url+"/"+n.topic, bytes.NewBufferString(notify.FormatMessage(notification)))
 	if err != nil {
 		return fmt.Errorf("build ntfy request: %w", err)
 	}

@@ -502,12 +502,14 @@ type GetLogGroupsRequest struct {
 }
 
 type LogGroup struct {
-	ID        int64
-	Message   string
-	Level     string
-	Count     int64
-	LastLogAt time.Time
-	CreatedAt time.Time
+	ID          int64
+	Message     string
+	Level       string
+	Count       int64
+	LastLogAt   time.Time
+	CreatedAt   time.Time
+	IssueNumber int64  // 0 when no issue has been created for the group
+	IssueURL    string // "" when no issue has been created for the group
 }
 
 func (r GetLogGroupsRequest) Validate() error {
@@ -621,12 +623,14 @@ func (s *Service) GetLogGroup(ctx context.Context, req GetLogGroupRequest) (LogG
 	}
 
 	return LogGroup{
-		ID:        req.GroupID,
-		Message:   row.Message,
-		Level:     row.Level,
-		Count:     row.LogCount,
-		CreatedAt: time.Unix(row.CreatedAt, 0),
-		LastLogAt: time.Unix(row.LastLogAt, 0),
+		ID:          req.GroupID,
+		Message:     row.Message,
+		Level:       row.Level,
+		Count:       row.LogCount,
+		CreatedAt:   time.Unix(row.CreatedAt, 0),
+		LastLogAt:   time.Unix(row.LastLogAt, 0),
+		IssueNumber: row.IssueNumber.Int64,
+		IssueURL:    row.IssueUrl.String,
 	}, nil
 }
 
@@ -690,12 +694,14 @@ func (s *Service) GetLogGroupSummary(ctx context.Context, req GetLogGroupSummary
 	}
 
 	summary.LogGroup = LogGroup{
-		ID:        req.GroupID,
-		Message:   row.Message,
-		Level:     row.Level,
-		Count:     row.LogCount,
-		CreatedAt: time.Unix(row.CreatedAt, 0),
-		LastLogAt: time.Unix(row.LastLogAt, 0),
+		ID:          req.GroupID,
+		Message:     row.Message,
+		Level:       row.Level,
+		Count:       row.LogCount,
+		CreatedAt:   time.Unix(row.CreatedAt, 0),
+		LastLogAt:   time.Unix(row.LastLogAt, 0),
+		IssueNumber: row.IssueNumber.Int64,
+		IssueURL:    row.IssueUrl.String,
 	}
 
 	if req.Since > 0 {

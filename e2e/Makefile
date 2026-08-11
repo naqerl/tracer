@@ -12,6 +12,10 @@ DEMO_PORT ?= 18081
 DEMO_PANEL_URL ?= http://localhost:$(DEMO_PORT)
 DEMO_UNITS := demo-api.service demo-worker.service demo-cron.service
 
+# Panel starts read-only by default; set E2E_PANEL_READONLY=0 to allow
+# state-changing requests (e.g. notifier management) in the demo panel.
+E2E_PANEL_READONLY ?= 1
+
 build:
 	docker build -t $(DEMO_IMAGE) -f $(DEMO_DIR)/Dockerfile $(ROOT_DIR)
 
@@ -23,6 +27,7 @@ up: down build
 		--privileged \
 		--cgroupns=host \
 		-p $(DEMO_PORT):8080 \
+		-e E2E_PANEL_READONLY=$(E2E_PANEL_READONLY) \
 		-v /sys/fs/cgroup:/sys/fs/cgroup:rw \
 		--tmpfs /run \
 		--tmpfs /run/lock \
@@ -38,6 +43,7 @@ up-release: down build-release
 		--privileged \
 		--cgroupns=host \
 		-p $(DEMO_PORT):8080 \
+		-e E2E_PANEL_READONLY=$(E2E_PANEL_READONLY) \
 		-v /sys/fs/cgroup:/sys/fs/cgroup:rw \
 		--tmpfs /run \
 		--tmpfs /run/lock \
@@ -49,7 +55,7 @@ up-release: down build-release
 	@echo "  Logs: make -C e2e logs"
 
 down:
-	@docker inspect $(DEMO_CONTAINER) >/dev/null 2>&1 && docker rm -f -t 10 $(DEMO_CONTAINER) >/dev/null || true
+	@docker inspect $(DEMO_CONTAINER) >/dev/null 2>&1 && docker stop -t 10 $(DEMO_CONTAINER) >/dev/null && docker rm -f $(DEMO_CONTAINER) >/dev/null || true
 	@echo "E2E demo stopped"
 
 logs:

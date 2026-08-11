@@ -704,6 +704,67 @@ func TestGetLogGroup_NotFound(t *testing.T) {
 	}
 }
 
+func TestGetLogGroupSurfacesIssueLink(t *testing.T) {
+	svc, _, userID, collectorName, appName := setupTestService(t)
+	ctx := context.Background()
+
+	// Create the log group through the public ingest API.
+	if _, err := svc.ingestSvc.StoreLog(ctx, ingestsvc.StoreLogRequest{
+		CollectorName: collectorName,
+		AppName:       appName,
+		Entry: types.LogEntry{
+			Level:     types.LevelError,
+			Message:   "boom",
+			Timestamp: time.Now(),
+		},
+	}); err != nil {
+		t.Fatalf("store log: %v", err)
+	}
+
+	// Record the issue the way the forgejo recorder adapter does. No public
+	// service method exposes this, so the update runs on the app DB.
+	handle, err := svc.dbManager.GetAppDB(collectorName, appName)
+	if err != nil {
+		t.Fatalf("get app db: %v", err)
+	}
+	if err := handle.Write(ctx, func(tx db.DBTX) error {
+		return db.New(tx).SetLogGroupIssue(ctx, db.SetLogGroupIssueParams{
+			IssueNumber: sql.NullInt64{Int64: 42, Valid: true},
+			IssueUrl:    sql.NullString{String: "https://git.naqerl.com/x/barse/issues/42", Valid: true},
+			ID:          1,
+		})
+	}); err != nil {
+		t.Fatalf("set log group issue: %v", err)
+	}
+
+	group, err := svc.GetLogGroup(ctx, GetLogGroupRequest{
+		UserID:        userID,
+		CollectorName: collectorName,
+		AppName:       appName,
+		GroupID:       1,
+	})
+	if err != nil {
+		t.Fatalf("GetLogGroup: %v", err)
+	}
+	if group.IssueNumber != 42 || group.IssueURL != "https://git.naqerl.com/x/barse/issues/42" {
+		t.Errorf("expected issue surfaced on log group, got %+v", group)
+	}
+
+	summary, err := svc.GetLogGroupSummary(ctx, GetLogGroupSummaryRequest{
+		UserID:        userID,
+		CollectorName: collectorName,
+		AppName:       appName,
+		GroupID:       1,
+		Since:         0,
+	})
+	if err != nil {
+		t.Fatalf("GetLogGroupSummary: %v", err)
+	}
+	if summary.IssueNumber != 42 || summary.IssueURL != "https://git.naqerl.com/x/barse/issues/42" {
+		t.Errorf("expected issue surfaced in summary, got %+v", summary)
+	}
+}
+
 func TestGetLogGroup_AccessDenied(t *testing.T) {
 	svc, noAccessUserID := setupTestServiceNoAccess(t)
 	ctx := context.Background()
