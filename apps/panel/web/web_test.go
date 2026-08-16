@@ -458,6 +458,14 @@ func TestAutoRefreshAppPageRendersPollingTriggers(t *testing.T) {
 	if !strings.Contains(body, "/panel/collectors/demo/apps/myapp/logs/groups?level=error") {
 		t.Fatal("expected app page log groups fragment URL")
 	}
+	// The stats and log-groups fragments must render skeletons so the page
+	// does not jump when they load.
+	if !strings.Contains(body, "id=\"app-stats\"") || !strings.Contains(body, "h-8 w-14") {
+		t.Fatal("expected app page stats skeleton")
+	}
+	if !strings.Contains(body, "Log Groups") || !strings.Contains(body, "h-6 w-3/4") {
+		t.Fatal("expected app page log groups skeleton")
+	}
 }
 
 func TestAutoRefreshUptimeFragmentSuccess(t *testing.T) {
@@ -731,9 +739,13 @@ func TestMarkdownAcceptAppPage(t *testing.T) {
 	if !strings.Contains(body, "Uptime") {
 		t.Fatalf("expected uptime heading in converted markdown, got:\n%s", body)
 	}
-	// The log groups div is hx-get loaded on mount; the anchor conversion
-	// turns it into a link so the log groups route appears in the markdown.
-	if !strings.Contains(body, "[collectors/demo/apps/myapp/logs/groups?level=error](/panel/collectors/demo/apps/myapp/logs/groups?level=error)") {
+	// The stats and log-groups divs render skeletons before their hx-get
+	// loads; the anchor conversion wraps the skeleton content (with its
+	// heading) in a link to the fragment route.
+	if !strings.Contains(body, "[**Overview**](/panel/collectors/demo/apps/myapp/stats)") {
+		t.Fatalf("expected stats anchor in converted markdown, got:\n%s", body)
+	}
+	if !strings.Contains(body, "[**Log Groups**](/panel/collectors/demo/apps/myapp/logs/groups?level=error)") {
 		t.Fatalf("expected log groups anchor in converted markdown, got:\n%s", body)
 	}
 }

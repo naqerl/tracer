@@ -27,6 +27,45 @@ type LevelFilterItem struct {
 	Color string
 }
 
+// LogGroupsSkeleton renders placeholder content matching LogGroups (heading,
+// level-filter row, table header and a few rows) so the app page does not
+// jump when the fragment loads. Bars are sized to the real line boxes
+// (text-sm = 20px, base text = 24px) and rows carry the same padding and no
+// borders, matching the real table.
+templ LogGroupsSkeleton() {
+	<div aria-hidden="true">
+		<h2 class="text-lg font-medium mb-4">Log Groups</h2>
+		<div class="flex flex-col gap-2 mb-6">
+			<div class="flex flex-wrap gap-6">
+				for i := 0; i < 4; i++ {
+					<span class="flex flex-col items-center gap-1">
+						<span class="inline-block h-5 w-12 rounded bg-fg/10 animate-pulse"></span>
+						<span class="inline-block h-1.5 w-1.5 rounded-full bg-fg/10 animate-pulse"></span>
+					</span>
+				}
+			</div>
+		</div>
+		<table class="w-full">
+			<thead class="border-b border-bg-secondary">
+				<tr class="text-left text-sm">
+					<th class="pb-2"><span class="inline-block h-5 w-24 rounded bg-fg/10 animate-pulse"></span></th>
+					<th class="pb-2 w-[1%]"></th>
+					<th class="pb-2 w-[1%]"><span class="inline-block h-5 w-10 rounded bg-fg/10 animate-pulse"></span></th>
+				</tr>
+			</thead>
+			<tbody>
+				for i := 0; i < 4; i++ {
+					<tr>
+						<td class="w-full"><span class="block my-2 sm:my-1 h-6 w-3/4 rounded bg-fg/10 animate-pulse"></span></td>
+						<td></td>
+						<td class="w-[1%] whitespace-nowrap align-top text-right"><span class="inline-block my-2 sm:my-1 h-5 w-6 rounded bg-fg/10 animate-pulse"></span></td>
+					</tr>
+				}
+			</tbody>
+		</table>
+	</div>
+}
+
 // LogGroups renders the log groups page.
 templ LogGroups(props LogGroupsProps) {
 	<div id="log-groups"

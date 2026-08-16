@@ -30,12 +30,16 @@ templ App(props AppProps) {
 			<div
 			  hx-get={ "/panel/collectors/" + props.Collector + "/apps/" + props.App + "/stats" }
 			  hx-trigger="load, every 15s"
-			></div>
+			>
+				@AppStatsSkeleton()
+			</div>
 
 			<div
 			  hx-get={ "/panel/collectors/" + props.Collector + "/apps/" + props.App + "/logs/groups?level=" + props.Level }
 			  hx-trigger="load"
-			></div>
+			>
+				@LogGroupsSkeleton()
+			</div>
 		</div>
 	}
 }

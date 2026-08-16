@@ -20,12 +20,14 @@ type AppView struct {
 
 // AppCard renders a single app card in the apps grid. When loading it renders
 // the card shell with placeholder bars and a breath animation; otherwise it
-// renders the app link with its uptime and error stats.
+// renders the app link with its uptime and error stats. The placeholder bars
+// match the real card's line boxes (font-medium = 24px, text-xs = 16px) so
+// the swap does not change the grid height.
 templ AppCard(collectorName string, app AppView, loading bool) {
 	<div class="block bg-bg-secondary p-4">
 		if loading {
 			<div class="animate-pulse" aria-hidden="true">
-				<div class="h-4 w-2/3 rounded bg-fg/10"></div>
+				<div class="h-6 w-2/3 rounded bg-fg/10"></div>
 				<div class="mt-2 h-4 w-1/2 rounded bg-fg/10"></div>
 			</div>
 		} else {

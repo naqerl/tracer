@@ -16,6 +16,25 @@ type AppStatsData struct {
 	Infos    int64
 }
 
+// AppStatsSkeleton renders placeholder stat cards matching AppStats (same
+// grid, same p-4 cards, bars sized to text-2xl/text-xs line boxes) so the
+// fragment swap does not shift the page height.
+templ AppStatsSkeleton() {
+	<div id="app-stats" aria-hidden="true">
+		<h2 class="text-lg font-medium mb-4">Overview</h2>
+		<div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+			for i := 0; i < 4; i++ {
+				<div class="bg-bg-secondary p-4 text-center">
+					<div class="animate-pulse">
+						<div class="mx-auto h-8 w-14 rounded bg-fg/10"></div>
+						<div class="mx-auto h-4 w-16 rounded bg-fg/10"></div>
+					</div>
+				</div>
+			}
+		</div>
+	</div>
+}
+
 // AppStats renders the app stats overview fragment. The counts carry the
 // value-breath class so they brighten on each 15s refresh while the labels
 // stay static.
