@@ -12,6 +12,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 	_ "modernc.org/sqlite"
 
+	panelbuild "tracer/apps/panel"
 	paneldb "tracer/apps/panel/db"
 	"tracer/apps/panel/internal/config"
 	"tracer/apps/panel/internal/dbmanager"
@@ -663,6 +664,27 @@ func TestUserAPIKeyTableLinksToDetailPage(t *testing.T) {
 	}
 }
 
+func TestSettingsPageShowsVersionFooter(t *testing.T) {
+	handler, _, _, token := newAuthedHandler(t, true, false)
+
+	req := httptest.NewRequest(http.MethodGet, "/settings/", nil)
+	req.AddCookie(&http.Cookie{Name: "tracer_session", Value: token})
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+	body := rr.Body.String()
+	if !strings.Contains(body, `class="mt-12 pt-6 border-t border-bg-secondary/50 text-xs text-fg-secondary/60"`) {
+		t.Fatalf("expected version footer element on the settings page, got %q", body)
+	}
+	// Tests build without ldflags, so panelbuild.Version is "unknown".
+	if !strings.Contains(body, "tracer "+panelbuild.Version) {
+		t.Fatalf("expected version footer %q, got %q", "tracer "+panelbuild.Version, body)
+	}
+}
+
 func TestCreateForgejoNotifier(t *testing.T) {
 	repoValidated := false
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -972,6 +994,11 @@ func TestForgejoFormInitialStateAndFetchingIndicator(t *testing.T) {
 	// The auth status placeholder sits right after the token field.
 	if !strings.Contains(out, `id="forgejo-auth-status"`) {
 		t.Errorf("expected auth status element after token field, got: %s", out)
+	}
+
+	// The token placeholder documents the scopes the API token needs.
+	if !strings.Contains(out, `placeholder="API token — scopes: read:user, read:organization, read:repository, write:issue"`) {
+		t.Errorf("expected token placeholder to document required scopes, got: %s", out)
 	}
 }
 

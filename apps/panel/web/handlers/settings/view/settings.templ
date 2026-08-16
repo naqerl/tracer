@@ -11,6 +11,7 @@ import (
 // SettingsPageProps holds data for the settings page.
 type SettingsPageProps struct {
 	Title                   string
+	Version                 string
 	CurrentUser             domain.User
 	IsAdmin                 bool
 	Users                   []domain.User
@@ -344,6 +345,9 @@ templ SettingsPage(props SettingsPageProps) {
 					<p class="text-sm text-fg-secondary/60 py-6 text-center">No notifiers configured.</p>
 				}
 			</div>
+			<div class="mt-12 pt-6 border-t border-bg-secondary/50 text-xs text-fg-secondary/60">
+				tracer { props.Version }
+			</div>
 			@templates.MarkdownCheckboxScript()
 		</div>
 	}
@@ -441,9 +445,9 @@ templ NotifierForm(form NotifierFormView) {
 							@templates.FieldStatus("forgejo-auth-status", "", false, false)
 							@templates.Indicator("forgejo-fetching", "Verifying connection…")
 						</label>
-						<input type="password" id="forgejo_token" name="token" placeholder="API token" required="required"
+						<input type="password" id="forgejo_token" name="token" placeholder="API token — scopes: read:user, read:organization, read:repository, write:issue" required="required"
 							   autocomplete="new-password" hx-post="/settings/notifiers/forgejo/lookup" hx-trigger="change, input changed delay:1s" hx-target="#forgejo-lookup" hx-swap="outerHTML" hx-indicator="#forgejo-fetching"
-							   class="w-full max-w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg placeholder:text-fg-secondary/50 md:w-[48ch]"/>
+							   class="w-full max-w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg placeholder:text-fg-secondary/50 md:w-[64ch]"/>
 					</div>
 					@ForgejoLookup(ForgejoLookupProps{})
 				}

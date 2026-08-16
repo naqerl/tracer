@@ -7,8 +7,9 @@ RUN go mod download
 COPY . .
 
 ARG E2E_INSTALL_MODE=build
+ARG VERSION=unknown
 
-RUN WITH_SYSTEMD=yes make build && \
+RUN WITH_SYSTEMD=yes VERSION=${VERSION} make build && \
     CGO_ENABLED=0 go build -ldflags="-s -w" -o /out/tracer-demo-loggen ./e2e/mocklog/main.go
 
 FROM debian:bookworm

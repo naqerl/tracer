@@ -58,6 +58,7 @@ jobs:
       - name: Build panel image
         run: |
           docker build \
+            --build-arg VERSION=${{ github.ref_name }} \
             -t git.naqerl.com/naqerl/tracer-panel:${{ github.ref_name }} \
             -f apps/panel/Dockerfile \
             .
@@ -65,6 +66,7 @@ jobs:
       - name: Build demo image
         run: |
           docker build \
+            --build-arg VERSION=${{ github.ref_name }} \
             -t git.naqerl.com/naqerl/tracer-demo:${{ github.ref_name }} \
             -f e2e/Dockerfile \
             .

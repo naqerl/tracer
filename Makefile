@@ -12,9 +12,9 @@ OWNER   ?= naqerl
 IMAGE_PANEL  ?= $(REGISTRY)/$(OWNER)/panel
 IMAGE_DEMO   ?= $(REGISTRY)/$(OWNER)/tracer-demo
 
-# Build version (set VERSION env var to inject, e.g. `make build VERSION=v1.2.3`)
-# Defaults to "unknown" when not set (CI passes github.ref_name via VERSION).
-VERSION ?= unknown
+# Build version (set VERSION env var to inject, e.g. `make build VERSION=v1.2.3`).
+# Derives from git when unset (CI passes github.ref_name via VERSION).
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "unknown")
 
 LDFLAGS := -s -w \
 	-X tracer/build.Commit=$(VERSION) \

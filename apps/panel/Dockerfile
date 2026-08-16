@@ -34,7 +34,8 @@ RUN go mod download
 COPY . .
 
 ENV CGO_ENABLED=0
-RUN WITH_SYSTEMD=no make build-panel
+ARG VERSION=unknown
+RUN WITH_SYSTEMD=no VERSION=${VERSION} make build-panel
 
 # ── Stage 2: Runtime ─────────────────────────────────────────────────────────
 FROM debian:bookworm-slim

@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 
+	panelbuild "tracer/apps/panel"
 	"tracer/apps/panel/internal/config"
 	"tracer/apps/panel/internal/dbmanager"
 	"tracer/apps/panel/internal/domain"
@@ -104,6 +105,7 @@ func (h *handler) settingsPage(w http.ResponseWriter, r *http.Request) {
 
 	props := view.SettingsPageProps{
 		Title:       "Settings - Tracer",
+		Version:     panelbuild.Version,
 		CurrentUser: user,
 		IsAdmin:     user.Role == domain.RoleAdmin,
 		NotifierForm: view.NotifierFormView{
