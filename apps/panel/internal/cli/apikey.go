@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"tracer/apps/panel/internal/domain"
 	"tracer/apps/panel/internal/services/auth"
 )
 
@@ -16,7 +17,7 @@ func GenerateCollectorAPIKey(ctx context.Context, authSvc *auth.Service, name st
 		return "", fmt.Errorf("validate collector api key request: %w", err)
 	}
 
-	apiKey, _, err := authSvc.GenerateCollectorAPIKey(ctx, req)
+	apiKey, err := authSvc.GenerateCollectorAPIKey(ctx, domain.System{}, req)
 	if err != nil {
 		return "", fmt.Errorf("generate collector api key: %w", err)
 	}

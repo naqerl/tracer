@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"tracer/apps/panel/internal/domain"
 	panelsvc "tracer/apps/panel/internal/services/panel"
 	"tracer/libs/types"
 )
@@ -98,7 +99,22 @@ func (s *Service) Subscribe() (<-chan Message, func()) {
 	return ch, unsubscribe
 }
 
-func (s *Service) GetSnapshot(ctx context.Context, userID int64) (Snapshot, error) {
+// GetSnapshot returns the topology visible to the actor. Only authenticated
+// users have a user ID to scope collector/app listing against; the system and
+// unauthenticated actors are denied.
+func (s *Service) GetSnapshot(ctx context.Context, actor domain.Actor) (Snapshot, error) {
+	var userID int64
+	switch a := actor.(type) {
+	case domain.User:
+		userID = a.ID
+	case domain.System:
+		return Snapshot{}, panelsvc.ErrAccessDenied
+	case domain.Unauthenticated:
+		return Snapshot{}, panelsvc.ErrAccessDenied
+	default:
+		return Snapshot{}, domain.ErrUnexpectedActor
+	}
+
 	collectors, err := s.panel.ListCollectors(ctx, userID)
 	if err != nil {
 		return Snapshot{}, fmt.Errorf("list collectors: %w", err)

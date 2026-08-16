@@ -4,15 +4,16 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"tracer/apps/panel/internal/domain"
 	"tracer/apps/panel/web/templates"
 )
 
 // SettingsPageProps holds data for the settings page.
 type SettingsPageProps struct {
 	Title                   string
-	CurrentUser             CurrentUserView
+	CurrentUser             domain.User
 	IsAdmin                 bool
-	Users                   []UserView
+	Users                   []domain.User
 	CollectorAPIKeys        []CollectorAPIKeyView
 	NewUserAPIKey           string
 	NewUserAPIKeyName       string
@@ -26,21 +27,9 @@ type SettingsPageProps struct {
 	DiskDeltaKB             int
 }
 
-type CurrentUserView struct {
-	Username string
-	IsAdmin  bool
-}
-
-type UserView struct {
-	ID        int64
-	Username  string
-	IsAdmin   bool
-	CreatedAt int64
-}
-
 type CollectorAPIKeyView struct {
+	ID            int64
 	Name          string
-	KeySuffix     string
 	CreatedAt     int64
 	LastUsed      int64 // 0 = never
 	LastUsedValid bool
@@ -49,7 +38,6 @@ type CollectorAPIKeyView struct {
 type UserAPIKeyView struct {
 	ID            int64
 	Name          string
-	KeySuffix     string
 	LastUsed      int64
 	LastUsedValid bool
 }
@@ -128,7 +116,7 @@ templ SettingsPage(props SettingsPageProps) {
 					<div>
 						<p class="text-lg text-fg">{ props.CurrentUser.Username }</p>
 						<p class="text-sm text-fg-secondary mt-1">
-							if props.CurrentUser.IsAdmin {
+							if props.CurrentUser.Role == domain.RoleAdmin {
 								Administrator
 							} else {
 								User
@@ -172,26 +160,21 @@ templ SettingsPage(props SettingsPageProps) {
 								<th class="pb-2 font-medium">Name</th>
 								<th class="pb-2 font-medium">Key</th>
 								<th class="pb-2 font-medium">Last Used</th>
-								<th class="pb-2 font-medium"></th>
 							</tr>
 						</thead>
 						<tbody class="text-base">
 							for _, k := range props.UserAPIKeys {
 								<tr class="group opacity-60 hover:opacity-100 transition-opacity duration-700 hover:duration-150 border-b border-bg-secondary/50">
-									<td class="py-3">{ k.Name }</td>
-									<td class="py-3"><code class="text-sm font-mono">****{ k.KeySuffix }</code></td>
-									<td class="py-3 text-sm text-fg-secondary">
-										if k.LastUsedValid {
-											{ formatTimestamp(k.LastUsed) }
-										} else {
-											Never
-										}
-									</td>
-									<td class="py-3 text-right">
-										<button hx-delete={ "/settings/api-keys/" + strconv.FormatInt(k.ID, 10) }
-												hx-confirm={ "Delete API key " + k.Name + "?" }
-												hx-target="body" hx-swap="outerHTML"
-												class="text-sm text-fg-secondary hover:text-red-500 underline transition-colors">Delete</button>
+									<td class="py-0"><a href={ "/settings/api-keys/" + strconv.FormatInt(k.ID, 10) } class="block py-3">{ k.Name }</a></td>
+									<td class="py-0"><a href={ "/settings/api-keys/" + strconv.FormatInt(k.ID, 10) } class="block py-3">View</a></td>
+									<td class="py-0 text-sm text-fg-secondary">
+										<a href={ "/settings/api-keys/" + strconv.FormatInt(k.ID, 10) } class="block py-3">
+											if k.LastUsedValid {
+												{ formatTimestamp(k.LastUsed) }
+											} else {
+												Never
+											}
+										</a>
 									</td>
 								</tr>
 							}
@@ -265,7 +248,7 @@ templ SettingsPage(props SettingsPageProps) {
 									<tr class="group opacity-60 hover:opacity-100 transition-opacity duration-700 hover:duration-150 border-b border-bg-secondary/50">
 										<td class="py-0"><a href={ "/settings/users/" + strconv.FormatInt(user.ID, 10) } class="block py-3">{ user.Username }</a></td>
 										<td class="py-0 text-sm text-fg"><a href={ "/settings/users/" + strconv.FormatInt(user.ID, 10) } class="block py-3">
-											if user.IsAdmin {
+											if user.Role == domain.RoleAdmin {
 												Admin
 											} else {
 												User
@@ -607,13 +590,13 @@ templ CollectorAPIKeyTable(keys []CollectorAPIKeyView) {
 			for _, k := range keys {
 				<tr class="border-b border-bg-secondary/50">
 					<td class="py-0">
-						<a href={ "/settings/admin/collector-api-keys/" + k.Name } class="block py-3">{ k.Name }</a>
+						<a href={ "/settings/admin/collector-api-keys/" + strconv.FormatInt(k.ID, 10) } class="block py-3">{ k.Name }</a>
 					</td>
 					<td class="py-0">
-						<a href={ "/settings/admin/collector-api-keys/" + k.Name } class="block py-3"><code class="text-sm font-mono">****{ k.KeySuffix }</code></a>
+						<a href={ "/settings/admin/collector-api-keys/" + strconv.FormatInt(k.ID, 10) } class="block py-3">View</a>
 					</td>
 					<td class="py-0 text-sm text-fg-secondary">
-						<a href={ "/settings/admin/collector-api-keys/" + k.Name } class="block py-3">
+						<a href={ "/settings/admin/collector-api-keys/" + strconv.FormatInt(k.ID, 10) } class="block py-3">
 							if k.LastUsedValid {
 								{ formatTimestamp(k.LastUsed) }
 							} else {

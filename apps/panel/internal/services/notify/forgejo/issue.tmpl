@@ -1,0 +1,17 @@
+{{- define "title" -}}
+[tracer] {{ .Hash }} {{ .App }}@{{ .Collector }}: {{ if .First }}{{ .First }}{{ else }}(no message){{ end }}
+{{- end -}}
+
+{{- define "body" -}}
+**App:** {{ .App }}
+**Collector:** {{ .Collector }}
+**Group ID:** {{ .GroupID }}
+**Message hash:** `{{ .Hash }}`
+
+```
+{{ .Message }}
+```
+{{- if .LogURL }}
+
+[view log]({{ .LogURL }}){{- end }}
+{{- end -}}

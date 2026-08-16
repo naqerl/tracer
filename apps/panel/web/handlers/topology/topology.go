@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	"tracer/apps/panel/internal/domain"
 	topologysvc "tracer/apps/panel/internal/services/topology"
 	usersvc "tracer/apps/panel/internal/services/user"
 	authmw "tracer/apps/panel/web/middleware/auth"
@@ -36,12 +37,12 @@ func InitMux(svc *topologysvc.Service, userSvc *usersvc.Service) *http.ServeMux 
 }
 
 func (h *handler) getTopologyPage(w http.ResponseWriter, r *http.Request) {
-	userID, err := authmw.RequireOrRedirect(w, r)
+	user, err := authmw.RequireUser(w, r)
 	if err != nil {
 		return
 	}
 
-	_, err = h.svc.GetSnapshot(r.Context(), userID)
+	_, err = h.svc.GetSnapshot(r.Context(), user)
 	if err != nil {
 		templates.ErrorPage("Error", "Failed to load topology", http.StatusInternalServerError, templates.NavData{Since: "24h"}).Render(r.Context(), w)
 		return
@@ -55,12 +56,12 @@ func (h *handler) getTopologyPage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) getTopologyGraph(w http.ResponseWriter, r *http.Request) {
-	userID, err := authmw.RequireOrRedirect(w, r)
+	user, err := authmw.RequireUser(w, r)
 	if err != nil {
 		return
 	}
 
-	snapshot, err := h.svc.GetSnapshot(r.Context(), userID)
+	snapshot, err := h.svc.GetSnapshot(r.Context(), user)
 	if err != nil {
 		templates.ErrorPage("Error", "Failed to load topology", http.StatusInternalServerError, templates.NavData{Since: "24h"}).Render(r.Context(), w)
 		return
@@ -79,10 +80,12 @@ func (h *handler) getTopologyGraph(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) streamTopologyEvents(w http.ResponseWriter, r *http.Request) {
-	userID, err := authmw.Require(w, r)
-	if err != nil {
+	user, ok := authmw.GetActor(r).(domain.User)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
+	userID := user.ID
 
 	flusher, ok := w.(http.Flusher)
 	if !ok {

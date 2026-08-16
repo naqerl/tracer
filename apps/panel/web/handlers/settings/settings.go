@@ -18,6 +18,7 @@ import (
 
 	"tracer/apps/panel/internal/config"
 	"tracer/apps/panel/internal/dbmanager"
+	"tracer/apps/panel/internal/domain"
 	"tracer/apps/panel/internal/services/auth"
 	"tracer/apps/panel/internal/services/ingest"
 	"tracer/apps/panel/internal/services/notify"
@@ -68,12 +69,14 @@ func InitMux(authService *auth.Service, userService *usersvc.Service, ingestServ
 
 	// Collector API keys
 	m.HandleFunc("POST /admin/collector-api-keys", h.createCollectorAPIKey)
-	m.HandleFunc("GET /admin/collector-api-keys/{name}", h.getCollectorAPIKey)
-	m.HandleFunc("POST /admin/collector-api-keys/{name}/reveal", h.revealCollectorAPIKey)
-	m.HandleFunc("DELETE /admin/collector-api-keys/{name}", h.deleteCollectorAPIKey)
+	m.HandleFunc("GET /admin/collector-api-keys/{id}", h.getCollectorAPIKey)
+	m.HandleFunc("POST /admin/collector-api-keys/{id}/reveal", h.revealCollectorAPIKey)
+	m.HandleFunc("DELETE /admin/collector-api-keys/{id}", h.deleteCollectorAPIKey)
 
 	// User API keys (LLM compatibility)
 	m.HandleFunc("POST /api-keys", h.createAPIKey)
+	m.HandleFunc("GET /api-keys/{id}", h.getAPIKey)
+	m.HandleFunc("POST /api-keys/{id}/reveal", h.revealAPIKey)
 	m.HandleFunc("DELETE /api-keys/{id}", h.deleteAPIKey)
 
 	// Notifiers management
@@ -93,37 +96,16 @@ func InitMux(authService *auth.Service, userService *usersvc.Service, ingestServ
 	return m
 }
 
-func (h *handler) requireAuthenticatedUser(w http.ResponseWriter, r *http.Request) (usersvc.User, error) {
-	userID, err := authmw.GetUserID(r)
-	if err != nil {
-		authmw.RedirectToLogin(w, r)
-		return usersvc.User{}, err
-	}
-	return h.userService.FindByID(r.Context(), userID)
-}
-
-func (h *handler) requireAdminUser(w http.ResponseWriter, r *http.Request) (usersvc.User, error) {
-	user, err := h.requireAuthenticatedUser(w, r)
-	if err != nil {
-		return usersvc.User{}, err
-	}
-	if !user.IsAdmin {
-		http.Error(w, "Forbidden", http.StatusForbidden)
-		return usersvc.User{}, authmw.ErrForbidden
-	}
-	return user, nil
-}
-
 func (h *handler) settingsPage(w http.ResponseWriter, r *http.Request) {
-	user, err := h.requireAuthenticatedUser(w, r)
+	user, err := authmw.RequireUser(w, r)
 	if err != nil {
 		return
 	}
 
 	props := view.SettingsPageProps{
 		Title:       "Settings - Tracer",
-		CurrentUser: view.CurrentUserView{Username: user.Username, IsAdmin: user.IsAdmin},
-		IsAdmin:     user.IsAdmin,
+		CurrentUser: user,
+		IsAdmin:     user.Role == domain.RoleAdmin,
 		NotifierForm: view.NotifierFormView{
 			ActiveType:     "ntfy",
 			NtfyURL:        "https://ntfy.sh",
@@ -151,7 +133,7 @@ func (h *handler) settingsPage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Load user's API keys (all users can have API keys)
-	userAPIKeys, err := h.authService.ListUserAPIKeys(r.Context(), user.ID)
+	userAPIKeys, err := h.authService.ListUserAPIKeys(r.Context(), user, user.ID)
 	if err != nil {
 		slog.Error("Failed to list user API keys", "error", err)
 	} else {
@@ -159,31 +141,23 @@ func (h *handler) settingsPage(w http.ResponseWriter, r *http.Request) {
 			props.UserAPIKeys = append(props.UserAPIKeys, view.UserAPIKeyView{
 				ID:            k.ID,
 				Name:          k.Name,
-				KeySuffix:     k.KeySuffix,
-				LastUsed:      k.LastUsedAt.Int64,
-				LastUsedValid: k.LastUsedAt.Valid,
+				LastUsed:      k.LastUsedAt,
+				LastUsedValid: k.LastUsedSet,
 			})
 		}
 	}
 
 	// Admin-only data
-	if user.IsAdmin {
-		users, err := h.userService.List(r.Context())
+	if user.Role == domain.RoleAdmin {
+		users, err := h.userService.List(r.Context(), user)
 		if err != nil {
 			slog.Error("Failed to list users", "error", err)
 			templates.ErrorPage("Error", "Failed to list users", http.StatusInternalServerError, templates.NavData{Since: "24h"}).Render(r.Context(), w)
 			return
 		}
-		for _, u := range users {
-			props.Users = append(props.Users, view.UserView{
-				ID:        u.ID,
-				Username:  u.Username,
-				IsAdmin:   u.IsAdmin == 1,
-				CreatedAt: u.CreatedAt,
-			})
-		}
+		props.Users = append(props.Users, users...)
 
-		collectorAPIKeys, err := h.authService.ListCollectorAPIKeys(r.Context())
+		collectorAPIKeys, err := h.authService.ListCollectorAPIKeys(r.Context(), user)
 		if err != nil {
 			slog.Error("Failed to list collector API keys", "error", err)
 			templates.ErrorPage("Error", "Failed to list collector API keys", http.StatusInternalServerError, templates.NavData{Since: "24h"}).Render(r.Context(), w)
@@ -191,11 +165,11 @@ func (h *handler) settingsPage(w http.ResponseWriter, r *http.Request) {
 		}
 		for _, k := range collectorAPIKeys {
 			props.CollectorAPIKeys = append(props.CollectorAPIKeys, view.CollectorAPIKeyView{
+				ID:            k.ID,
 				Name:          k.Name,
-				KeySuffix:     k.KeySuffix,
 				CreatedAt:     k.CreatedAt,
-				LastUsed:      k.LastUsedAt.Int64,
-				LastUsedValid: k.LastUsedAt.Valid,
+				LastUsed:      k.LastUsedAt,
+				LastUsedValid: k.LastUsedSet,
 			})
 		}
 	}
@@ -212,7 +186,12 @@ func (h *handler) settingsPage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) createUser(w http.ResponseWriter, r *http.Request) {
-	if _, err := h.requireAdminUser(w, r); err != nil {
+	user, err := authmw.RequireUser(w, r)
+	if err != nil {
+		return
+	}
+	if user.Role != domain.RoleAdmin {
+		http.Error(w, "Forbidden", http.StatusForbidden)
 		return
 	}
 
@@ -229,7 +208,7 @@ func (h *handler) createUser(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	_, err := h.authService.Register(r.Context(), req)
+	_, err = h.authService.Register(r.Context(), req)
 	if err != nil {
 		slog.Error("Failed to create user", "error", err)
 		http.Error(w, "Failed to create user", http.StatusInternalServerError)
@@ -240,8 +219,12 @@ func (h *handler) createUser(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) deleteUser(w http.ResponseWriter, r *http.Request) {
-	currentUser, err := h.requireAdminUser(w, r)
+	currentUser, err := authmw.RequireUser(w, r)
 	if err != nil {
+		return
+	}
+	if currentUser.Role != domain.RoleAdmin {
+		http.Error(w, "Forbidden", http.StatusForbidden)
 		return
 	}
 
@@ -271,8 +254,12 @@ func (h *handler) getUserApps(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) getUser(w http.ResponseWriter, r *http.Request) {
-	currentUser, err := h.requireAdminUser(w, r)
+	user, err := authmw.RequireUser(w, r)
 	if err != nil {
+		return
+	}
+	if user.Role != domain.RoleAdmin {
+		http.Error(w, "Not Found", http.StatusNotFound)
 		return
 	}
 
@@ -283,7 +270,7 @@ func (h *handler) getUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := h.userService.FindByID(r.Context(), id)
+	target, err := h.userService.FindByID(r.Context(), user, id)
 	if err != nil {
 		templates.ErrorPage("Error", "User not found", http.StatusNotFound, templates.NavData{Since: "24h"}).Render(r.Context(), w)
 		return
@@ -321,12 +308,10 @@ func (h *handler) getUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	view.UserApps(view.UserAppsProps{
-		UserID:   user.ID,
-		UserName: user.Username,
+		UserID:   target.ID,
+		UserName: target.Username,
 		Apps:     apps,
 	}).Render(r.Context(), w)
-
-	_ = currentUser
 }
 
 // listAppsByCollector returns all apps grouped by collector name
@@ -349,7 +334,12 @@ func (h *handler) listAppsByCollector(ctx context.Context) (map[string][]string,
 }
 
 func (h *handler) updateUserApps(w http.ResponseWriter, r *http.Request) {
-	if _, err := h.requireAdminUser(w, r); err != nil {
+	user, err := authmw.RequireUser(w, r)
+	if err != nil {
+		return
+	}
+	if user.Role != domain.RoleAdmin {
+		http.Error(w, "Forbidden", http.StatusForbidden)
 		return
 	}
 
@@ -414,7 +404,8 @@ func (h *handler) updateUserApps(w http.ResponseWriter, r *http.Request) {
 // Collector API key handlers
 
 func (h *handler) createCollectorAPIKey(w http.ResponseWriter, r *http.Request) {
-	if _, err := h.requireAdminUser(w, r); err != nil {
+	user, err := authmw.RequireUser(w, r)
+	if err != nil {
 		return
 	}
 
@@ -426,10 +417,15 @@ func (h *handler) createCollectorAPIKey(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	_, _, err := h.authService.GenerateCollectorAPIKey(r.Context(), req)
+	_, err = h.authService.GenerateCollectorAPIKey(r.Context(), user, req)
 	if err != nil {
-		slog.Error("Failed to generate collector API key", "error", err)
-		http.Error(w, "Failed to generate collector API key", http.StatusInternalServerError)
+		switch {
+		case errors.Is(err, auth.ErrAccessDenied):
+			http.Error(w, "Forbidden", http.StatusForbidden)
+		default:
+			slog.Error("Failed to generate collector API key", "error", err)
+			http.Error(w, "Failed to generate collector API key", http.StatusInternalServerError)
+		}
 		return
 	}
 
@@ -438,19 +434,27 @@ func (h *handler) createCollectorAPIKey(w http.ResponseWriter, r *http.Request) 
 }
 
 func (h *handler) deleteCollectorAPIKey(w http.ResponseWriter, r *http.Request) {
-	if _, err := h.requireAdminUser(w, r); err != nil {
+	user, err := authmw.RequireUser(w, r)
+	if err != nil {
 		return
 	}
 
-	name := r.PathValue("name")
-	if name == "" {
-		http.Error(w, "Invalid collector API key name", http.StatusBadRequest)
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		http.Error(w, "Invalid collector API key id", http.StatusBadRequest)
 		return
 	}
 
-	if err := h.authService.DeleteCollectorAPIKey(r.Context(), name); err != nil {
-		slog.Error("Failed to delete collector API key", "error", err)
-		http.Error(w, "Failed to delete collector API key", http.StatusInternalServerError)
+	if err := h.authService.DeleteCollectorAPIKey(r.Context(), user, id); err != nil {
+		switch {
+		case errors.Is(err, auth.ErrAccessDenied):
+			http.Error(w, "Forbidden", http.StatusForbidden)
+		case errors.Is(err, sql.ErrNoRows):
+			http.Error(w, "Collector API key not found", http.StatusNotFound)
+		default:
+			slog.Error("Failed to delete collector API key", "id", id, "error", err)
+			http.Error(w, "Failed to delete collector API key", http.StatusInternalServerError)
+		}
 		return
 	}
 
@@ -458,35 +462,37 @@ func (h *handler) deleteCollectorAPIKey(w http.ResponseWriter, r *http.Request) 
 }
 
 func (h *handler) getCollectorAPIKey(w http.ResponseWriter, r *http.Request) {
-	if _, err := h.requireAdminUser(w, r); err != nil {
+	user, err := authmw.RequireUser(w, r)
+	if err != nil {
 		return
 	}
 
-	name := r.PathValue("name")
-	if name == "" {
-		http.Error(w, "Invalid collector API key name", http.StatusBadRequest)
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		http.Error(w, "Invalid collector API key id", http.StatusBadRequest)
 		return
 	}
 
-	key, err := h.authService.GetCollectorAPIKeyByName(r.Context(), name)
-	if errors.Is(err, sql.ErrNoRows) {
+	key, err := h.authService.GetCollectorAPIKeyByID(r.Context(), user, id)
+	// Access denied reads as not found so key existence is not revealed.
+	switch {
+	case errors.Is(err, auth.ErrAccessDenied), errors.Is(err, sql.ErrNoRows):
 		templates.RenderError(w, r, "Error", "Collector API key not found", http.StatusNotFound)
 		return
-	}
-	if err != nil {
-		slog.Error("Failed to get collector API key", "name", name, "error", err)
+	case err != nil:
+		slog.Error("Failed to get collector API key", "id", id, "error", err)
 		templates.RenderError(w, r, "Error", "Failed to get collector API key", http.StatusInternalServerError)
 		return
 	}
 
 	view.CollectorAPIKeyDetail(view.CollectorAPIKeyDetailProps{
 		Title:         "Collector API Key - Tracer",
+		KeyID:         key.ID,
 		KeyName:       key.Name,
-		KeySuffix:     key.KeySuffix,
 		CreatedAt:     key.CreatedAt,
-		LastUsed:      key.LastUsedAt.Int64,
-		LastUsedValid: key.LastUsedAt.Valid,
-		CanReveal:     key.KeyEncrypted != "",
+		LastUsed:      key.LastUsedAt,
+		LastUsedValid: key.LastUsedSet,
+		CanReveal:     key.CanReveal,
 		ReadOnly:      h.readOnly,
 	}).Render(r.Context(), w)
 }
@@ -497,44 +503,51 @@ func (h *handler) getCollectorAPIKey(w http.ResponseWriter, r *http.Request) {
 // middleware (which rejects every non-GET request) makes reveal impossible in
 // read-only mode.
 func (h *handler) revealCollectorAPIKey(w http.ResponseWriter, r *http.Request) {
-	if _, err := h.requireAdminUser(w, r); err != nil {
+	user, err := authmw.RequireUser(w, r)
+	if err != nil {
 		return
 	}
 
-	name := r.PathValue("name")
-	if name == "" {
-		http.Error(w, "Invalid collector API key name", http.StatusBadRequest)
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		http.Error(w, "Invalid collector API key id", http.StatusBadRequest)
 		return
 	}
 
-	key, err := h.authService.GetCollectorAPIKeyByName(r.Context(), name)
-	if errors.Is(err, sql.ErrNoRows) {
+	key, err := h.authService.GetCollectorAPIKeyByID(r.Context(), user, id)
+	switch {
+	case errors.Is(err, auth.ErrAccessDenied):
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	case errors.Is(err, sql.ErrNoRows):
 		templates.RenderError(w, r, "Error", "Collector API key not found", http.StatusNotFound)
 		return
-	}
-	if err != nil {
-		slog.Error("Failed to get collector API key", "name", name, "error", err)
+	case err != nil:
+		slog.Error("Failed to get collector API key", "id", id, "error", err)
 		templates.RenderError(w, r, "Error", "Failed to get collector API key", http.StatusInternalServerError)
 		return
 	}
 
-	props := view.CollectorAPIKeyKeyRowProps{
-		KeyName:   key.Name,
-		KeySuffix: key.KeySuffix,
-		CanReveal: key.KeyEncrypted != "",
+	props := view.APIKeyValueProps{
+		RevealURL: "/settings/admin/collector-api-keys/" + strconv.FormatInt(id, 10) + "/reveal",
+		TargetID:  "collector-api-key-value",
+		CanReveal: key.CanReveal,
 		Revealed:  r.FormValue("revealed") == "1",
 		ReadOnly:  h.readOnly,
 	}
 
 	if props.Revealed {
-		plaintext, err := h.authService.RevealCollectorAPIKey(key)
+		plaintext, err := h.authService.RevealCollectorAPIKey(r.Context(), user, key.ID)
 		switch {
+		case errors.Is(err, auth.ErrAccessDenied):
+			http.Error(w, "Forbidden", http.StatusForbidden)
+			return
 		case errors.Is(err, auth.ErrKeyNotRevealable):
 			props.RevealError = "This key was created before reveal support and cannot be shown again."
 		case errors.Is(err, auth.ErrKeyDecryptFailed):
 			props.RevealError = "Could not decrypt the key. Check that the key secret is unchanged."
 		case err != nil:
-			slog.Error("Failed to reveal collector API key", "name", name, "error", err)
+			slog.Error("Failed to reveal collector API key", "id", id, "error", err)
 			props.RevealError = "Failed to reveal the API key."
 		default:
 			props.PlaintextKey = plaintext
@@ -543,19 +556,20 @@ func (h *handler) revealCollectorAPIKey(w http.ResponseWriter, r *http.Request) 
 
 	// Never let a browser cache the plaintext.
 	w.Header().Set("Cache-Control", "no-store")
-	view.CollectorAPIKeyKeyRow(props).Render(r.Context(), w)
+	view.APIKeyValue(props).Render(r.Context(), w)
 }
 
 // User API key handlers (LLM compatibility)
 
 func (h *handler) createAPIKey(w http.ResponseWriter, r *http.Request) {
-	user, err := h.requireAuthenticatedUser(w, r)
+	user, err := authmw.RequireUser(w, r)
 	if err != nil {
 		return
 	}
+	userID := user.ID
 
 	req := auth.GenerateUserAPIKeyRequest{
-		UserID: user.ID,
+		UserID: userID,
 		Name:   strings.TrimSpace(r.FormValue("name")),
 	}
 	if err := req.Validate(); err != nil {
@@ -563,10 +577,15 @@ func (h *handler) createAPIKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, _, err = h.authService.GenerateUserAPIKey(r.Context(), req)
+	_, err = h.authService.GenerateUserAPIKey(r.Context(), user, req)
 	if err != nil {
-		slog.Error("Failed to generate user API key", "error", err)
-		http.Error(w, "Failed to generate API key", http.StatusInternalServerError)
+		switch {
+		case errors.Is(err, auth.ErrAccessDenied):
+			http.Error(w, "Forbidden", http.StatusForbidden)
+		default:
+			slog.Error("Failed to generate user API key", "error", err)
+			http.Error(w, "Failed to generate API key", http.StatusInternalServerError)
+		}
 		return
 	}
 
@@ -575,7 +594,7 @@ func (h *handler) createAPIKey(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) deleteAPIKey(w http.ResponseWriter, r *http.Request) {
-	user, err := h.requireAuthenticatedUser(w, r)
+	user, err := authmw.RequireUser(w, r)
 	if err != nil {
 		return
 	}
@@ -587,34 +606,122 @@ func (h *handler) deleteAPIKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get the key to verify ownership
-	keys, err := h.authService.ListUserAPIKeys(r.Context(), user.ID)
-	if err != nil {
-		http.Error(w, "Failed to verify key ownership", http.StatusInternalServerError)
-		return
-	}
-
-	// Check if user owns this key
-	owned := false
-	for _, k := range keys {
-		if k.ID == id {
-			owned = true
-			break
+	if err := h.authService.DeleteUserAPIKey(r.Context(), user, id); err != nil {
+		switch {
+		case errors.Is(err, auth.ErrAccessDenied):
+			http.Error(w, "Forbidden", http.StatusForbidden)
+		case errors.Is(err, sql.ErrNoRows):
+			http.Error(w, "API key not found", http.StatusNotFound)
+		default:
+			slog.Error("Failed to delete user API key", "id", id, "error", err)
+			http.Error(w, "Failed to delete API key", http.StatusInternalServerError)
 		}
-	}
-
-	if !owned && !user.IsAdmin {
-		http.Error(w, "Forbidden", http.StatusForbidden)
-		return
-	}
-
-	if err := h.authService.DeleteUserAPIKey(r.Context(), id); err != nil {
-		slog.Error("Failed to delete user API key", "error", err)
-		http.Error(w, "Failed to delete API key", http.StatusInternalServerError)
 		return
 	}
 
 	htmx.Redirect(w, r, "/settings/")
+}
+
+// getAPIKey renders the user API key detail page, mirroring the collector API
+// key detail page: the key is shown masked and can be revealed in place, and
+// deletion happens on this page rather than in the settings table.
+func (h *handler) getAPIKey(w http.ResponseWriter, r *http.Request) {
+	user, err := authmw.RequireUser(w, r)
+	if err != nil {
+		return
+	}
+
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		http.Error(w, "Invalid API key ID", http.StatusBadRequest)
+		return
+	}
+
+	key, err := h.authService.GetUserAPIKeyByID(r.Context(), user, id)
+	// Access denied reads as not found so key existence is not revealed to
+	// non-owners (key IDs are sequential).
+	switch {
+	case errors.Is(err, auth.ErrAccessDenied), errors.Is(err, sql.ErrNoRows):
+		templates.RenderError(w, r, "Error", "API key not found", http.StatusNotFound)
+		return
+	case err != nil:
+		slog.Error("Failed to get user API key", "id", id, "error", err)
+		templates.RenderError(w, r, "Error", "Failed to get API key", http.StatusInternalServerError)
+		return
+	}
+
+	view.UserAPIKeyDetail(view.UserAPIKeyDetailProps{
+		Title:         "API Key - Tracer",
+		KeyID:         key.ID,
+		KeyName:       key.Name,
+		CreatedAt:     key.CreatedAt,
+		LastUsed:      key.LastUsedAt,
+		LastUsedValid: key.LastUsedSet,
+		CanReveal:     key.CanReveal,
+		ReadOnly:      h.readOnly,
+	}).Render(r.Context(), w)
+}
+
+// revealAPIKey toggles the plaintext visibility of a user API key. The key is
+// decrypted server-side and rendered as a fragment that htmx swaps into the
+// detail page. It is registered as POST so the global read-only middleware
+// (which rejects every non-GET request) makes reveal impossible in read-only
+// mode.
+func (h *handler) revealAPIKey(w http.ResponseWriter, r *http.Request) {
+	user, err := authmw.RequireUser(w, r)
+	if err != nil {
+		return
+	}
+
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		http.Error(w, "Invalid API key ID", http.StatusBadRequest)
+		return
+	}
+
+	key, err := h.authService.GetUserAPIKeyByID(r.Context(), user, id)
+	switch {
+	case errors.Is(err, auth.ErrAccessDenied):
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	case errors.Is(err, sql.ErrNoRows):
+		templates.RenderError(w, r, "Error", "API key not found", http.StatusNotFound)
+		return
+	case err != nil:
+		slog.Error("Failed to get user API key", "id", id, "error", err)
+		templates.RenderError(w, r, "Error", "Failed to get API key", http.StatusInternalServerError)
+		return
+	}
+
+	props := view.APIKeyValueProps{
+		RevealURL: "/settings/api-keys/" + strconv.FormatInt(id, 10) + "/reveal",
+		TargetID:  "user-api-key-value",
+		CanReveal: key.CanReveal,
+		Revealed:  r.FormValue("revealed") == "1",
+		ReadOnly:  h.readOnly,
+	}
+
+	if props.Revealed {
+		plaintext, err := h.authService.RevealUserAPIKey(r.Context(), user, key.ID)
+		switch {
+		case errors.Is(err, auth.ErrAccessDenied):
+			http.Error(w, "Forbidden", http.StatusForbidden)
+			return
+		case errors.Is(err, auth.ErrKeyNotRevealable):
+			props.RevealError = "This key was created before reveal support and cannot be shown again."
+		case errors.Is(err, auth.ErrKeyDecryptFailed):
+			props.RevealError = "Could not decrypt the key. Check that the key secret is unchanged."
+		case err != nil:
+			slog.Error("Failed to reveal user API key", "id", id, "error", err)
+			props.RevealError = "Failed to reveal the API key."
+		default:
+			props.PlaintextKey = plaintext
+		}
+	}
+
+	// Never let a browser cache the plaintext.
+	w.Header().Set("Cache-Control", "no-store")
+	view.APIKeyValue(props).Render(r.Context(), w)
 }
 
 // Notifier handlers
@@ -630,7 +737,7 @@ func (h *handler) getNotifier(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) buildNotifierDetailData(w http.ResponseWriter, r *http.Request) (view.NotifierDetailProps, bool) {
-	user, err := h.requireAuthenticatedUser(w, r)
+	user, err := authmw.RequireUser(w, r)
 	if err != nil {
 		return view.NotifierDetailProps{}, false
 	}
@@ -645,10 +752,8 @@ func (h *handler) buildNotifierDetailData(w http.ResponseWriter, r *http.Request
 	setup, err := h.notifyService.GetSetup(r.Context(), user, id)
 	if err != nil {
 		switch {
-		case errors.Is(err, notify.ErrNotifierNotFound):
+		case errors.Is(err, notify.ErrNotifierNotFound), errors.Is(err, notify.ErrAccessDenied):
 			templates.ErrorPage("Error", "Notifier not found", http.StatusNotFound, templates.NavData{Since: "24h"}).Render(r.Context(), w)
-		case errors.Is(err, notify.ErrAccessDenied):
-			templates.ErrorPage("Forbidden", "You don't have access to this notifier", http.StatusForbidden, templates.NavData{Since: "24h"}).Render(r.Context(), w)
 		default:
 			templates.ErrorPage("Error", "Failed to get notifier", http.StatusInternalServerError, templates.NavData{Since: "24h"}).Render(r.Context(), w)
 		}
@@ -666,7 +771,7 @@ func (h *handler) buildNotifierDetailData(w http.ResponseWriter, r *http.Request
 }
 
 func (h *handler) notifierForm(w http.ResponseWriter, r *http.Request) {
-	if _, err := h.requireAuthenticatedUser(w, r); err != nil {
+	if _, err := authmw.RequireUser(w, r); err != nil {
 		return
 	}
 
@@ -699,7 +804,7 @@ func (h *handler) notifierForm(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) createNotifier(w http.ResponseWriter, r *http.Request) {
-	user, err := h.requireAuthenticatedUser(w, r)
+	user, err := authmw.RequireUser(w, r)
 	if err != nil {
 		return
 	}
@@ -888,7 +993,7 @@ func (h *handler) createNotifier(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create notifier through service (handles DB, welcome notification, registration)
-	if err := h.notifyService.Add(r.Context(), req); err != nil {
+	if err := h.notifyService.Add(r.Context(), user, req); err != nil {
 		slog.Error("Failed to add notifier", "error", err)
 		if errors.Is(err, notify.ErrWelcomeValidation) {
 			renderForgejoCreateFieldError(w, r, "forgejo-auth-status", welcomeValidationMessage(err))
@@ -906,7 +1011,7 @@ func (h *handler) createNotifier(w http.ResponseWriter, r *http.Request) {
 // status is rendered into #forgejo-auth-status (out-of-band) while the owner
 // box is swapped into #forgejo-lookup.
 func (h *handler) forgejoLookup(w http.ResponseWriter, r *http.Request) {
-	if _, err := h.requireAuthenticatedUser(w, r); err != nil {
+	if _, err := authmw.RequireUser(w, r); err != nil {
 		return
 	}
 
@@ -940,7 +1045,7 @@ func (h *handler) forgejoLookup(w http.ResponseWriter, r *http.Request) {
 // forgejoOptions validates the chosen owner/repo against the autocomplete
 // options and loads its labels and milestones into the optional inputs.
 func (h *handler) forgejoOptions(w http.ResponseWriter, r *http.Request) {
-	if _, err := h.requireAuthenticatedUser(w, r); err != nil {
+	if _, err := authmw.RequireUser(w, r); err != nil {
 		return
 	}
 
@@ -1012,7 +1117,7 @@ func (h *handler) forgejoOptions(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) deleteNotifier(w http.ResponseWriter, r *http.Request) {
-	user, err := h.requireAuthenticatedUser(w, r)
+	user, err := authmw.RequireUser(w, r)
 	if err != nil {
 		return
 	}
@@ -1041,7 +1146,7 @@ func (h *handler) deleteNotifier(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) toggleNotifier(w http.ResponseWriter, r *http.Request) {
-	user, err := h.requireAuthenticatedUser(w, r)
+	user, err := authmw.RequireUser(w, r)
 	if err != nil {
 		return
 	}
@@ -1100,7 +1205,7 @@ func (h *handler) getNotifierSubscriptions(w http.ResponseWriter, r *http.Reques
 }
 
 func (h *handler) buildNotifierSubscriptionsData(w http.ResponseWriter, r *http.Request) (view.NotifierSubscriptionsProps, bool) {
-	user, err := h.requireAuthenticatedUser(w, r)
+	user, err := authmw.RequireUser(w, r)
 	if err != nil {
 		return view.NotifierSubscriptionsProps{}, false
 	}
@@ -1115,10 +1220,8 @@ func (h *handler) buildNotifierSubscriptionsData(w http.ResponseWriter, r *http.
 	setup, err := h.notifyService.GetSetup(r.Context(), user, id)
 	if err != nil {
 		switch {
-		case errors.Is(err, notify.ErrNotifierNotFound):
+		case errors.Is(err, notify.ErrNotifierNotFound), errors.Is(err, notify.ErrAccessDenied):
 			templates.ErrorPage("Error", "Notifier not found", http.StatusNotFound, templates.NavData{Since: "24h"}).Render(r.Context(), w)
-		case errors.Is(err, notify.ErrAccessDenied):
-			templates.ErrorPage("Forbidden", "You don't have access to this notifier", http.StatusForbidden, templates.NavData{Since: "24h"}).Render(r.Context(), w)
 		default:
 			templates.ErrorPage("Error", "Failed to get notifier", http.StatusInternalServerError, templates.NavData{Since: "24h"}).Render(r.Context(), w)
 		}
@@ -1159,7 +1262,7 @@ func (h *handler) buildNotifierSubscriptionsData(w http.ResponseWriter, r *http.
 	}
 
 	// Filter by user access for non-admins
-	if !user.IsAdmin {
+	if user.Role != domain.RoleAdmin {
 		userApps, err := h.userService.FindAccessPolicy(r.Context(), user.ID)
 		if err != nil {
 			templates.ErrorPage("Error", "Failed to get user apps", http.StatusInternalServerError, templates.NavData{Since: "24h"}).Render(r.Context(), w)
@@ -1210,7 +1313,7 @@ func (h *handler) buildNotifierSubscriptionsData(w http.ResponseWriter, r *http.
 }
 
 func (h *handler) updateNotifierSubscriptions(w http.ResponseWriter, r *http.Request) {
-	user, err := h.requireAuthenticatedUser(w, r)
+	user, err := authmw.RequireUser(w, r)
 	if err != nil {
 		return
 	}
@@ -1269,7 +1372,12 @@ func generateNtfyTopic() (string, error) {
 }
 
 func (h *handler) updateConfig(w http.ResponseWriter, r *http.Request) {
-	if _, err := h.requireAdminUser(w, r); err != nil {
+	user, err := authmw.RequireUser(w, r)
+	if err != nil {
+		return
+	}
+	if user.Role != domain.RoleAdmin {
+		http.Error(w, "Forbidden", http.StatusForbidden)
 		return
 	}
 

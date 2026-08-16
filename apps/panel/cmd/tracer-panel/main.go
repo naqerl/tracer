@@ -19,6 +19,7 @@ import (
 	"tracer/apps/panel/internal/cli"
 	"tracer/apps/panel/internal/config"
 	"tracer/apps/panel/internal/dbmanager"
+	"tracer/apps/panel/internal/domain"
 	"tracer/apps/panel/internal/install"
 	"tracer/apps/panel/internal/retention"
 	"tracer/apps/panel/internal/services/auth"
@@ -265,19 +266,22 @@ func serve(ctx context.Context, cfg *config.Config, noAuth, readOnly bool) error
 		slog.Info("No users found. Visit /setup to create the admin account.",
 			"url", fmt.Sprintf("http://localhost:%s/setup", cfg.GetPort()))
 	} else {
-		collectorKeys, err := authService.ListCollectorAPIKeys(ctx)
+		collectorKeys, err := authService.ListCollectorAPIKeys(ctx, domain.System{})
 		if err != nil {
 			return fmt.Errorf("list collector api keys: %w", err)
 		}
 		slog.Info("Collector API keys loaded", "count", len(collectorKeys))
 	}
 
-	// Setup notifier factories
+	// Setup notifier factories. The forgejo cache is created once and shared
+	// by every forgejo notifier instance (the dispatcher builds a fresh
+	// notifier per notification, so per-instance state would be lost).
+	forgejoCache := forgejo.NewCache(forgejo.IssueCacheTTL)
 	notifierFactories := map[string]notify.FromRawJSON{
 		"telegram": telegram.FromRawJSON,
 		"ntfy":     ntfy.FromRawJSON,
 		"forgejo": func(name, config string) (notify.Notifier, error) {
-			return forgejo.New(name, config, dbManager)
+			return forgejo.New(name, config, forgejoCache)
 		},
 	}
 

@@ -94,21 +94,17 @@ SELECT
     level,
     created_at,
     CAST(COALESCE((SELECT MAX(created_at) FROM log WHERE log.group_id = ?1), 0) AS INTEGER) as last_log_at,
-    (SELECT COUNT(*) FROM log WHERE log.group_id = ?1) as log_count,
-    issue_number,
-    issue_url
+    (SELECT COUNT(*) FROM log WHERE log.group_id = ?1) as log_count
 FROM log_group
 WHERE id = ?1
 `
 
 type GetLogGroupByIDRow struct {
-	Message     string
-	Level       string
-	CreatedAt   int64
-	LastLogAt   int64
-	LogCount    int64
-	IssueNumber sql.NullInt64
-	IssueUrl    sql.NullString
+	Message   string
+	Level     string
+	CreatedAt int64
+	LastLogAt int64
+	LogCount  int64
 }
 
 func (q *Queries) GetLogGroupByID(ctx context.Context, groupID sql.NullInt64) (GetLogGroupByIDRow, error) {
@@ -120,8 +116,6 @@ func (q *Queries) GetLogGroupByID(ctx context.Context, groupID sql.NullInt64) (G
 		&i.CreatedAt,
 		&i.LastLogAt,
 		&i.LogCount,
-		&i.IssueNumber,
-		&i.IssueUrl,
 	)
 	return i, err
 }
@@ -251,18 +245,10 @@ type GetOrCreateLogGroupParams struct {
 	CreatedAt int64
 }
 
-type GetOrCreateLogGroupRow struct {
-	ID        int64
-	Message   string
-	Level     string
-	CreatedAt int64
-	LastLogAt int64
-}
-
 // Get existing log group by message and level, or create if doesn't exist
-func (q *Queries) GetOrCreateLogGroup(ctx context.Context, arg GetOrCreateLogGroupParams) (GetOrCreateLogGroupRow, error) {
+func (q *Queries) GetOrCreateLogGroup(ctx context.Context, arg GetOrCreateLogGroupParams) (LogGroup, error) {
 	row := q.db.QueryRowContext(ctx, getOrCreateLogGroup, arg.Message, arg.Level, arg.CreatedAt)
-	var i GetOrCreateLogGroupRow
+	var i LogGroup
 	err := row.Scan(
 		&i.ID,
 		&i.Message,
@@ -431,23 +417,6 @@ func (q *Queries) ListLogGroups(ctx context.Context, arg ListLogGroupsParams) ([
 	return items, nil
 }
 
-const logGroupExists = `-- name: LogGroupExists :one
-SELECT EXISTS(SELECT 1 FROM log_group WHERE message = ? AND level = ?)
-`
-
-type LogGroupExistsParams struct {
-	Message string
-	Level   string
-}
-
-// Reports whether a log group row already exists for the message/level pair.
-func (q *Queries) LogGroupExists(ctx context.Context, arg LogGroupExistsParams) (bool, error) {
-	row := q.db.QueryRowContext(ctx, logGroupExists, arg.Message, arg.Level)
-	var exists bool
-	err := row.Scan(&exists)
-	return exists, err
-}
-
 const recalculateLogGroupCounters = `-- name: RecalculateLogGroupCounters :exec
 UPDATE log_group
 SET last_log_at = COALESCE((SELECT MAX(created_at) FROM log l WHERE l.group_id = log_group.id), 0)
@@ -456,22 +425,5 @@ SET last_log_at = COALESCE((SELECT MAX(created_at) FROM log l WHERE l.group_id =
 // Recalculate last_log_at for all groups after log deletion
 func (q *Queries) RecalculateLogGroupCounters(ctx context.Context) error {
 	_, err := q.db.ExecContext(ctx, recalculateLogGroupCounters)
-	return err
-}
-
-const setLogGroupIssue = `-- name: SetLogGroupIssue :exec
-UPDATE log_group SET issue_number = ?, issue_url = ?
-WHERE id = ?
-`
-
-type SetLogGroupIssueParams struct {
-	IssueNumber sql.NullInt64
-	IssueUrl    sql.NullString
-	ID          int64
-}
-
-// Record the created issue on a log group.
-func (q *Queries) SetLogGroupIssue(ctx context.Context, arg SetLogGroupIssueParams) error {
-	_, err := q.db.ExecContext(ctx, setLogGroupIssue, arg.IssueNumber, arg.IssueUrl, arg.ID)
 	return err
 }

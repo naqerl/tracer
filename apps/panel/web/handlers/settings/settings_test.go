@@ -1,12 +1,13 @@
 package settings
 
 import (
-	"context"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"golang.org/x/crypto/bcrypt"
 	_ "modernc.org/sqlite"
@@ -14,6 +15,7 @@ import (
 	paneldb "tracer/apps/panel/db"
 	"tracer/apps/panel/internal/config"
 	"tracer/apps/panel/internal/dbmanager"
+	"tracer/apps/panel/internal/domain"
 	authsvc "tracer/apps/panel/internal/services/auth"
 	ingestsvc "tracer/apps/panel/internal/services/ingest"
 	notifysvc "tracer/apps/panel/internal/services/notify"
@@ -83,27 +85,44 @@ func newAuthedHandlerWithFactories(t *testing.T, isAdmin, readOnly bool, factori
 	return handler, authService, db, token, notifyService
 }
 
-func revealRequest(name, token string, revealed bool) *http.Request {
+func revealRequest(id int64, token string, revealed bool) *http.Request {
 	body := "revealed=0"
 	if revealed {
 		body = "revealed=1"
 	}
-	req := httptest.NewRequest(http.MethodPost, "/settings/admin/collector-api-keys/"+name+"/reveal", strings.NewReader(body))
+	req := httptest.NewRequest(http.MethodPost, "/settings/admin/collector-api-keys/"+strconv.FormatInt(id, 10)+"/reveal", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.AddCookie(&http.Cookie{Name: "tracer_session", Value: token})
 	return req
 }
 
+// collectorKeyID resolves the id of the collector API key with the given name
+// through the public list API.
+func collectorKeyID(t *testing.T, authService *authsvc.Service, name string) int64 {
+	t.Helper()
+	keys, err := authService.ListCollectorAPIKeys(t.Context(), domain.System{})
+	if err != nil {
+		t.Fatalf("list collector api keys: %v", err)
+	}
+	for _, k := range keys {
+		if k.Name == name {
+			return k.ID
+		}
+	}
+	t.Fatalf("collector api key %q not found", name)
+	return 0
+}
+
 func TestRevealCollectorAPIKeyReturnsPlaintextForAdmin(t *testing.T) {
 	handler, authService, _, token := newAuthedHandler(t, true, false)
 
-	key, _, err := authService.GenerateCollectorAPIKey(t.Context(), authsvc.GenerateCollectorAPIKeyRequest{Name: "prod-a"})
+	key, err := authService.GenerateCollectorAPIKey(t.Context(), domain.System{}, authsvc.GenerateCollectorAPIKeyRequest{Name: "prod-a"})
 	if err != nil {
 		t.Fatalf("generate collector api key: %v", err)
 	}
 
 	rr := httptest.NewRecorder()
-	handler.ServeHTTP(rr, revealRequest("prod-a", token, true))
+	handler.ServeHTTP(rr, revealRequest(collectorKeyID(t, authService, "prod-a"), token, true))
 
 	if rr.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d (body: %s)", rr.Code, rr.Body.String())
@@ -119,13 +138,13 @@ func TestRevealCollectorAPIKeyReturnsPlaintextForAdmin(t *testing.T) {
 func TestRevealCollectorAPIKeyHidesPlaintextForAdmin(t *testing.T) {
 	handler, authService, _, token := newAuthedHandler(t, true, false)
 
-	key, _, err := authService.GenerateCollectorAPIKey(t.Context(), authsvc.GenerateCollectorAPIKeyRequest{Name: "prod-a"})
+	key, err := authService.GenerateCollectorAPIKey(t.Context(), domain.System{}, authsvc.GenerateCollectorAPIKeyRequest{Name: "prod-a"})
 	if err != nil {
 		t.Fatalf("generate collector api key: %v", err)
 	}
 
 	rr := httptest.NewRecorder()
-	handler.ServeHTTP(rr, revealRequest("prod-a", token, false))
+	handler.ServeHTTP(rr, revealRequest(collectorKeyID(t, authService, "prod-a"), token, false))
 
 	if rr.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d (body: %s)", rr.Code, rr.Body.String())
@@ -133,20 +152,20 @@ func TestRevealCollectorAPIKeyHidesPlaintextForAdmin(t *testing.T) {
 	if strings.Contains(rr.Body.String(), key) {
 		t.Fatal("expected plaintext NOT to be in the hidden fragment")
 	}
-	if !strings.Contains(rr.Body.String(), "****") {
-		t.Fatalf("expected masked suffix in hidden fragment, got %q", rr.Body.String())
+	if !strings.Contains(rr.Body.String(), "\u2022") {
+		t.Fatalf("expected masked placeholder in hidden fragment, got %q", rr.Body.String())
 	}
 }
 
 func TestRevealCollectorAPIKeyForbiddenForNonAdmin(t *testing.T) {
 	handler, authService, _, token := newAuthedHandler(t, false, false)
 
-	if _, _, err := authService.GenerateCollectorAPIKey(t.Context(), authsvc.GenerateCollectorAPIKeyRequest{Name: "prod-a"}); err != nil {
+	if _, err := authService.GenerateCollectorAPIKey(t.Context(), domain.System{}, authsvc.GenerateCollectorAPIKeyRequest{Name: "prod-a"}); err != nil {
 		t.Fatalf("generate collector api key: %v", err)
 	}
 
 	rr := httptest.NewRecorder()
-	handler.ServeHTTP(rr, revealRequest("prod-a", token, true))
+	handler.ServeHTTP(rr, revealRequest(collectorKeyID(t, authService, "prod-a"), token, true))
 
 	if rr.Code != http.StatusForbidden {
 		t.Fatalf("expected 403 for non-admin reveal, got %d", rr.Code)
@@ -157,7 +176,7 @@ func TestRevealCollectorAPIKeyNotFound(t *testing.T) {
 	handler, _, _, token := newAuthedHandler(t, true, false)
 
 	rr := httptest.NewRecorder()
-	handler.ServeHTTP(rr, revealRequest("ghost", token, true))
+	handler.ServeHTTP(rr, revealRequest(999999, token, true))
 
 	if rr.Code != http.StatusNotFound {
 		t.Fatalf("expected 404 for unknown key, got %d", rr.Code)
@@ -167,12 +186,12 @@ func TestRevealCollectorAPIKeyNotFound(t *testing.T) {
 func TestCollectorAPIKeyDetailPageDoesNotLeakPlaintext(t *testing.T) {
 	handler, authService, _, token := newAuthedHandler(t, true, false)
 
-	key, _, err := authService.GenerateCollectorAPIKey(t.Context(), authsvc.GenerateCollectorAPIKeyRequest{Name: "prod-a"})
+	key, err := authService.GenerateCollectorAPIKey(t.Context(), domain.System{}, authsvc.GenerateCollectorAPIKeyRequest{Name: "prod-a"})
 	if err != nil {
 		t.Fatalf("generate collector api key: %v", err)
 	}
 
-	req := httptest.NewRequest(http.MethodGet, "/settings/admin/collector-api-keys/prod-a", nil)
+	req := httptest.NewRequest(http.MethodGet, "/settings/admin/collector-api-keys/"+strconv.FormatInt(collectorKeyID(t, authService, "prod-a"), 10), nil)
 	req.AddCookie(&http.Cookie{Name: "tracer_session", Value: token})
 	rr := httptest.NewRecorder()
 	handler.ServeHTTP(rr, req)
@@ -183,19 +202,19 @@ func TestCollectorAPIKeyDetailPageDoesNotLeakPlaintext(t *testing.T) {
 	if strings.Contains(rr.Body.String(), key) {
 		t.Fatal("expected detail page GET to never contain the plaintext key")
 	}
-	if !strings.Contains(rr.Body.String(), "****") {
-		t.Fatalf("expected masked suffix on detail page, got %q", rr.Body.String())
+	if !strings.Contains(rr.Body.String(), "\u2022") {
+		t.Fatalf("expected masked placeholder on detail page, got %q", rr.Body.String())
 	}
 }
 
 func TestCollectorAPIKeyDetailPageReadOnlyHidesRevealButton(t *testing.T) {
 	handler, authService, _, token := newAuthedHandler(t, true, true)
 
-	if _, _, err := authService.GenerateCollectorAPIKey(t.Context(), authsvc.GenerateCollectorAPIKeyRequest{Name: "prod-a"}); err != nil {
+	if _, err := authService.GenerateCollectorAPIKey(t.Context(), domain.System{}, authsvc.GenerateCollectorAPIKeyRequest{Name: "prod-a"}); err != nil {
 		t.Fatalf("generate collector api key: %v", err)
 	}
 
-	req := httptest.NewRequest(http.MethodGet, "/settings/admin/collector-api-keys/prod-a", nil)
+	req := httptest.NewRequest(http.MethodGet, "/settings/admin/collector-api-keys/"+strconv.FormatInt(collectorKeyID(t, authService, "prod-a"), 10), nil)
 	req.AddCookie(&http.Cookie{Name: "tracer_session", Value: token})
 	rr := httptest.NewRecorder()
 	handler.ServeHTTP(rr, req)
@@ -214,14 +233,13 @@ func TestCollectorAPIKeyDetailPageReadOnlyHidesRevealButton(t *testing.T) {
 
 func TestRevealCollectorAPIKeyLegacyFragmentShowsNotRevealable(t *testing.T) {
 	ctx := t.Context()
-	handler, _, db, token := newAuthedHandler(t, true, false)
+	handler, authService, db, token := newAuthedHandler(t, true, false)
 
 	// Simulate a key created before reveal support: empty ciphertext.
 	if err := db.Write(ctx, func(tx paneldb.DBTX) error {
 		_, err := paneldb.New(tx).CreateCollectorAPIKey(ctx, paneldb.CreateCollectorAPIKeyParams{
 			Name:      "legacy",
 			KeyHash:   "deadbeef",
-			KeySuffix: "c0ffee",
 			CreatedAt: 1,
 		})
 		return err
@@ -230,14 +248,14 @@ func TestRevealCollectorAPIKeyLegacyFragmentShowsNotRevealable(t *testing.T) {
 	}
 
 	rr := httptest.NewRecorder()
-	handler.ServeHTTP(rr, revealRequest("legacy", token, true))
+	handler.ServeHTTP(rr, revealRequest(collectorKeyID(t, authService, "legacy"), token, true))
 
 	if rr.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d (body: %s)", rr.Code, rr.Body.String())
 	}
 	body := rr.Body.String()
-	if !strings.Contains(body, "****c0ffee") {
-		t.Fatalf("expected masked suffix in legacy fragment, got %q", body)
+	if !strings.Contains(body, "\u2022") {
+		t.Fatalf("expected masked placeholder in legacy fragment, got %q", body)
 	}
 	if !strings.Contains(body, "created before reveal support") {
 		t.Fatalf("expected not-revealable message, got %q", body)
@@ -246,14 +264,13 @@ func TestRevealCollectorAPIKeyLegacyFragmentShowsNotRevealable(t *testing.T) {
 
 func TestRevealCollectorAPIKeyDecryptFailureShowsError(t *testing.T) {
 	ctx := t.Context()
-	handler, _, db, token := newAuthedHandler(t, true, false)
+	handler, authService, db, token := newAuthedHandler(t, true, false)
 
 	// Insert a key with garbage ciphertext so decryption fails.
 	if err := db.Write(ctx, func(tx paneldb.DBTX) error {
 		_, err := paneldb.New(tx).CreateCollectorAPIKey(ctx, paneldb.CreateCollectorAPIKeyParams{
 			Name:         "broken",
 			KeyHash:      "deadbeef",
-			KeySuffix:    "beef00",
 			KeyEncrypted: "not-valid-base64!!",
 			CreatedAt:    1,
 		})
@@ -263,25 +280,387 @@ func TestRevealCollectorAPIKeyDecryptFailureShowsError(t *testing.T) {
 	}
 
 	rr := httptest.NewRecorder()
-	handler.ServeHTTP(rr, revealRequest("broken", token, true))
+	handler.ServeHTTP(rr, revealRequest(collectorKeyID(t, authService, "broken"), token, true))
 
 	if rr.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d (body: %s)", rr.Code, rr.Body.String())
 	}
 	body := rr.Body.String()
-	if !strings.Contains(body, "****beef00") {
-		t.Fatalf("expected masked suffix in decrypt-failure fragment, got %q", body)
+	if !strings.Contains(body, "\u2022") {
+		t.Fatalf("expected masked placeholder in decrypt-failure fragment, got %q", body)
 	}
 	if !strings.Contains(body, "Could not decrypt the key") {
 		t.Fatalf("expected decrypt error message, got %q", body)
 	}
 }
 
-// noopRecorder satisfies forgejo.IssueRecorder without side effects.
-type noopRecorder struct{}
+// userAPIKeyID returns the ID of the first user API key owned by the session
+// user, creating it with the given name if none exists. It resolves the user
+// ID from the session token so tests exercise the public service API.
+func userAPIKeyID(t *testing.T, authService *authsvc.Service, token, name string) int64 {
+	t.Helper()
+	userID, _, err := authService.ValidateSession(t.Context(), token)
+	if err != nil {
+		t.Fatalf("resolve session user: %v", err)
+	}
+	keys, err := authService.ListUserAPIKeys(t.Context(), domain.User{ID: userID}, userID)
+	if err != nil {
+		t.Fatalf("list user api keys: %v", err)
+	}
+	for _, k := range keys {
+		if k.Name == name {
+			return k.ID
+		}
+	}
+	if _, err := authService.GenerateUserAPIKey(t.Context(), domain.User{ID: userID}, authsvc.GenerateUserAPIKeyRequest{UserID: userID, Name: name}); err != nil {
+		t.Fatalf("generate user api key: %v", err)
+	}
+	// The plaintext key is returned; resolve the row through the list API.
+	keys, err = authService.ListUserAPIKeys(t.Context(), domain.User{ID: userID}, userID)
+	if err != nil {
+		t.Fatalf("list user api keys after generate: %v", err)
+	}
+	for _, k := range keys {
+		if k.Name == name {
+			return k.ID
+		}
+	}
+	t.Fatalf("generated user api key %q not found", name)
+	return 0
+}
 
-func (noopRecorder) RecordGroupIssue(context.Context, string, string, int64, int64, string) error {
-	return nil
+func userAPIKeyRevealRequest(id int64, token string, revealed bool) *http.Request {
+	body := "revealed=0"
+	if revealed {
+		body = "revealed=1"
+	}
+	req := httptest.NewRequest(http.MethodPost, "/settings/api-keys/"+strconv.FormatInt(id, 10)+"/reveal", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: "tracer_session", Value: token})
+	return req
+}
+
+// revealAsAdmin reveals a user API key plaintext via the service as an admin
+// actor, for comparing against HTTP responses.
+func revealAsAdmin(t *testing.T, authService *authsvc.Service, token string, id int64) string {
+	t.Helper()
+	userID, _, err := authService.ValidateSession(t.Context(), token)
+	if err != nil {
+		t.Fatalf("resolve session user: %v", err)
+	}
+	key, err := authService.GetUserAPIKeyByID(t.Context(), domain.User{ID: userID, Role: domain.RoleAdmin}, id)
+	if err != nil {
+		t.Fatalf("get user api key: %v", err)
+	}
+	plaintext, err := authService.RevealUserAPIKey(t.Context(), domain.User{ID: userID, Role: domain.RoleAdmin}, key.ID)
+	if err != nil {
+		t.Fatalf("reveal via service: %v", err)
+	}
+	return plaintext
+}
+
+func TestRevealUserAPIKeyReturnsPlaintextForOwner(t *testing.T) {
+	handler, authService, _, token := newAuthedHandler(t, true, false)
+
+	id := userAPIKeyID(t, authService, token, "my-key")
+	plaintext := revealAsAdmin(t, authService, token, id)
+
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, userAPIKeyRevealRequest(id, token, true))
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d (body: %s)", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), plaintext) {
+		t.Fatalf("expected plaintext key in response, got %q", rr.Body.String())
+	}
+	if rr.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("expected Cache-Control no-store, got %q", rr.Header().Get("Cache-Control"))
+	}
+}
+
+func TestRevealUserAPIKeyHidesPlaintextForOwner(t *testing.T) {
+	handler, authService, _, token := newAuthedHandler(t, true, false)
+
+	id := userAPIKeyID(t, authService, token, "my-key")
+	plaintext := revealAsAdmin(t, authService, token, id)
+
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, userAPIKeyRevealRequest(id, token, false))
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d (body: %s)", rr.Code, rr.Body.String())
+	}
+	if strings.Contains(rr.Body.String(), plaintext) {
+		t.Fatal("expected plaintext NOT to be in the hidden fragment")
+	}
+	if !strings.Contains(rr.Body.String(), "\u2022") {
+		t.Fatalf("expected masked placeholder in hidden fragment, got %q", rr.Body.String())
+	}
+}
+
+func TestRevealUserAPIKeyForbiddenForNonOwner(t *testing.T) {
+	handler, authService, _, token := newAuthedHandler(t, false, false)
+
+	id := userAPIKeyID(t, authService, token, "alice-key")
+
+	// bob is a different user; he must not reveal alice's key.
+	bob, err := authService.Register(t.Context(), authsvc.RegisterRequest{Username: "bob", Password: "secret", IsAdmin: false})
+	if err != nil {
+		t.Fatalf("register bob: %v", err)
+	}
+	bobToken, err := authService.CreateSession(t.Context(), bob.ID)
+	if err != nil {
+		t.Fatalf("create bob session: %v", err)
+	}
+
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, userAPIKeyRevealRequest(id, bobToken, true))
+
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for non-owner reveal, got %d", rr.Code)
+	}
+}
+
+func TestRevealUserAPIKeyNotFound(t *testing.T) {
+	handler, _, _, token := newAuthedHandler(t, true, false)
+
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, userAPIKeyRevealRequest(999999, token, true))
+
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for unknown key, got %d", rr.Code)
+	}
+}
+
+func TestUserAPIKeyDetailPageDoesNotLeakPlaintext(t *testing.T) {
+	handler, authService, _, token := newAuthedHandler(t, true, false)
+
+	id := userAPIKeyID(t, authService, token, "my-key")
+	plaintext := revealAsAdmin(t, authService, token, id)
+
+	req := httptest.NewRequest(http.MethodGet, "/settings/api-keys/"+strconv.FormatInt(id, 10), nil)
+	req.AddCookie(&http.Cookie{Name: "tracer_session", Value: token})
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+	if strings.Contains(rr.Body.String(), plaintext) {
+		t.Fatal("expected detail page GET to never contain the plaintext key")
+	}
+	if !strings.Contains(rr.Body.String(), "\u2022") {
+		t.Fatalf("expected masked placeholder on detail page, got %q", rr.Body.String())
+	}
+	// Deletion lives on the detail page, not the settings table.
+	if !strings.Contains(rr.Body.String(), "/settings/api-keys/"+strconv.FormatInt(id, 10)) {
+		t.Fatalf("expected delete button on detail page, got %q", rr.Body.String())
+	}
+}
+
+func TestUserAPIKeyDetailPageReadOnlyHidesRevealButton(t *testing.T) {
+	handler, authService, _, token := newAuthedHandler(t, true, true)
+
+	id := userAPIKeyID(t, authService, token, "my-key")
+
+	req := httptest.NewRequest(http.MethodGet, "/settings/api-keys/"+strconv.FormatInt(id, 10), nil)
+	req.AddCookie(&http.Cookie{Name: "tracer_session", Value: token})
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+	body := rr.Body.String()
+	if strings.Contains(body, "/reveal") {
+		t.Fatal("expected no reveal button in read-only detail page")
+	}
+	if !strings.Contains(body, "Read-only") {
+		t.Fatalf("expected read-only indicator, got %q", body)
+	}
+}
+
+func TestAPIKeyEndpointsRedirectUnauthenticated(t *testing.T) {
+	handler, authService, _, token := newAuthedHandler(t, true, false)
+
+	id := userAPIKeyID(t, authService, token, "my-key")
+
+	// A request with no session cookie must be redirected to the login page,
+	// never answered with a 500.
+	req := httptest.NewRequest(http.MethodGet, "/settings/api-keys/"+strconv.FormatInt(id, 10), nil)
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusSeeOther {
+		t.Fatalf("expected 303 redirect to login for unauthenticated GET, got %d", rr.Code)
+	}
+	if loc := rr.Header().Get("Location"); !strings.Contains(loc, "/login") {
+		t.Fatalf("expected redirect to login page, got %q", loc)
+	}
+
+	// htmx requests get 401 + HX-Redirect instead of a full redirect.
+	req = httptest.NewRequest(http.MethodGet, "/settings/api-keys/"+strconv.FormatInt(id, 10), nil)
+	req.Header.Set("HX-Request", "true")
+	rr = httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 for unauthenticated htmx GET, got %d", rr.Code)
+	}
+	if loc := rr.Header().Get("HX-Redirect"); !strings.Contains(loc, "/login") {
+		t.Fatalf("expected HX-Redirect to login page, got %q", loc)
+	}
+}
+
+func TestCollectorAPIKeyCreateDeleteForbiddenForNonAdmin(t *testing.T) {
+	handler, _, _, token := newAuthedHandler(t, false, false)
+
+	create := httptest.NewRequest(http.MethodPost, "/settings/admin/collector-api-keys", strings.NewReader("name=prod-a"))
+	create.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	create.AddCookie(&http.Cookie{Name: "tracer_session", Value: token})
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, create)
+
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for non-admin collector key create, got %d (body: %s)", rr.Code, rr.Body.String())
+	}
+
+	del := httptest.NewRequest(http.MethodDelete, "/settings/admin/collector-api-keys/1", nil)
+	del.AddCookie(&http.Cookie{Name: "tracer_session", Value: token})
+	rr = httptest.NewRecorder()
+	handler.ServeHTTP(rr, del)
+
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for non-admin collector key delete, got %d (body: %s)", rr.Code, rr.Body.String())
+	}
+}
+
+func TestUserAPIKeyDetailPageNotFoundForNonOwner(t *testing.T) {
+	handler, authService, _, token := newAuthedHandler(t, false, false)
+
+	// alice owns a key; bob must get 404 (not 403) on her detail page so key
+	// existence is not revealed.
+	id := userAPIKeyID(t, authService, token, "alice-key")
+
+	bob, err := authService.Register(t.Context(), authsvc.RegisterRequest{Username: "bob", Password: "secret", IsAdmin: false})
+	if err != nil {
+		t.Fatalf("register bob: %v", err)
+	}
+	bobToken, err := authService.CreateSession(t.Context(), bob.ID)
+	if err != nil {
+		t.Fatalf("create bob session: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/settings/api-keys/"+strconv.FormatInt(id, 10), nil)
+	req.AddCookie(&http.Cookie{Name: "tracer_session", Value: bobToken})
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for non-owner detail GET (no existence leak), got %d (body: %s)", rr.Code, rr.Body.String())
+	}
+}
+
+func TestRevealUserAPIKeyLegacyShowsNotRevealable(t *testing.T) {
+	ctx := t.Context()
+	handler, authService, db, token := newAuthedHandler(t, true, false)
+
+	userID, _, err := authService.ValidateSession(t.Context(), token)
+	if err != nil {
+		t.Fatalf("resolve session user: %v", err)
+	}
+
+	// Simulate a key created before reveal support: empty ciphertext.
+	if err := db.Write(ctx, func(tx paneldb.DBTX) error {
+		_, err := paneldb.New(tx).CreateUserAPIKey(ctx, paneldb.CreateUserAPIKeyParams{
+			UserID:    userID,
+			KeyHash:   "deadbeef",
+			Name:      "legacy",
+			CreatedAt: 1,
+		})
+		return err
+	}); err != nil {
+		t.Fatalf("insert legacy key: %v", err)
+	}
+
+	legacyID := userAPIKeyID(t, authService, token, "legacy")
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, userAPIKeyRevealRequest(legacyID, token, true))
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d (body: %s)", rr.Code, rr.Body.String())
+	}
+	body := rr.Body.String()
+	if !strings.Contains(body, "\u2022") {
+		t.Fatalf("expected masked placeholder in legacy fragment, got %q", body)
+	}
+	if !strings.Contains(body, "created before reveal support") {
+		t.Fatalf("expected not-revealable message, got %q", body)
+	}
+}
+
+func TestRevealUserAPIKeyDecryptFailureShowsError(t *testing.T) {
+	ctx := t.Context()
+	handler, authService, db, token := newAuthedHandler(t, true, false)
+
+	userID, _, err := authService.ValidateSession(t.Context(), token)
+	if err != nil {
+		t.Fatalf("resolve session user: %v", err)
+	}
+
+	// Insert a key with garbage ciphertext so decryption fails.
+	if err := db.Write(ctx, func(tx paneldb.DBTX) error {
+		_, err := paneldb.New(tx).CreateUserAPIKey(ctx, paneldb.CreateUserAPIKeyParams{
+			UserID:       userID,
+			KeyHash:      "deadbeef",
+			Name:         "broken",
+			KeyEncrypted: "not-valid-base64!!",
+			CreatedAt:    1,
+		})
+		return err
+	}); err != nil {
+		t.Fatalf("insert broken key: %v", err)
+	}
+
+	brokenID := userAPIKeyID(t, authService, token, "broken")
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, userAPIKeyRevealRequest(brokenID, token, true))
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d (body: %s)", rr.Code, rr.Body.String())
+	}
+	body := rr.Body.String()
+	if !strings.Contains(body, "\u2022") {
+		t.Fatalf("expected masked placeholder in decrypt-failure fragment, got %q", body)
+	}
+	if !strings.Contains(body, "Could not decrypt the key") {
+		t.Fatalf("expected decrypt error message, got %q", body)
+	}
+}
+
+func TestUserAPIKeyTableLinksToDetailPage(t *testing.T) {
+	handler, authService, _, token := newAuthedHandler(t, true, false)
+
+	id := userAPIKeyID(t, authService, token, "my-key")
+
+	req := httptest.NewRequest(http.MethodGet, "/settings/", nil)
+	req.AddCookie(&http.Cookie{Name: "tracer_session", Value: token})
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+	body := rr.Body.String()
+	link := "/settings/api-keys/" + strconv.FormatInt(id, 10)
+	if !strings.Contains(body, link) {
+		t.Fatalf("expected API key table rows to link to the detail page (%s), got %q", link, body)
+	}
+	// The delete button must no longer live in the table row.
+	if strings.Contains(body, "hx-delete=\"/settings/api-keys/") {
+		t.Fatalf("expected no delete button in the API key table, got %q", body)
+	}
 }
 
 func TestCreateForgejoNotifier(t *testing.T) {
@@ -316,7 +695,7 @@ func TestCreateForgejoNotifier(t *testing.T) {
 
 	handler, _, _, token, notifyService := newAuthedHandlerWithFactories(t, true, false, map[string]notifysvc.FromRawJSON{
 		"forgejo": func(name, config string) (notifysvc.Notifier, error) {
-			return forgejo.New(name, config, noopRecorder{})
+			return forgejo.New(name, config, forgejo.NewCache(time.Minute))
 		},
 	})
 
@@ -335,7 +714,7 @@ func TestCreateForgejoNotifier(t *testing.T) {
 	}
 
 	// Verify the persisted config through the public service API.
-	owner := usersvc.User{ID: 1, IsAdmin: true}
+	owner := domain.User{ID: 1, Role: domain.RoleAdmin}
 	setup, err := notifyService.GetSetup(t.Context(), owner, 1)
 	if err != nil {
 		t.Fatalf("get notifier setup: %v", err)
@@ -351,7 +730,7 @@ func TestNotifierDetailPageMasksForgejoToken(t *testing.T) {
 	srv := forgejoTestServer(t)
 	handler, _, _, token, _ := newAuthedHandlerWithFactories(t, true, false, map[string]notifysvc.FromRawJSON{
 		"forgejo": func(name, config string) (notifysvc.Notifier, error) {
-			return forgejo.New(name, config, noopRecorder{})
+			return forgejo.New(name, config, forgejo.NewCache(time.Minute))
 		},
 	})
 
@@ -389,7 +768,7 @@ func TestCreateForgejoNotifierWithoutLabelsOrMilestone(t *testing.T) {
 	srv := forgejoTestServer(t)
 	handler, _, _, token, notifyService := newAuthedHandlerWithFactories(t, true, false, map[string]notifysvc.FromRawJSON{
 		"forgejo": func(name, config string) (notifysvc.Notifier, error) {
-			return forgejo.New(name, config, noopRecorder{})
+			return forgejo.New(name, config, forgejo.NewCache(time.Minute))
 		},
 	})
 
@@ -404,7 +783,7 @@ func TestCreateForgejoNotifierWithoutLabelsOrMilestone(t *testing.T) {
 		t.Fatalf("expected redirect after create, got %d (body: %s)", rr.Code, rr.Body.String())
 	}
 
-	setup, err := notifyService.GetSetup(t.Context(), usersvc.User{ID: 1, IsAdmin: true}, 1)
+	setup, err := notifyService.GetSetup(t.Context(), domain.User{ID: 1, Role: domain.RoleAdmin}, 1)
 	if err != nil {
 		t.Fatalf("get notifier setup: %v", err)
 	}
@@ -883,7 +1262,7 @@ func TestCreateForgejoNotifierRejectedByWelcomeValidation(t *testing.T) {
 
 	handler, _, _, token, _ := newAuthedHandlerWithFactories(t, true, false, map[string]notifysvc.FromRawJSON{
 		"forgejo": func(name, config string) (notifysvc.Notifier, error) {
-			return forgejo.New(name, config, noopRecorder{})
+			return forgejo.New(name, config, forgejo.NewCache(time.Minute))
 		},
 	})
 

@@ -11,16 +11,14 @@ import (
 type NotificationType string
 
 const (
-	TypeAlert         NotificationType = "alert"           // Error alerts requiring attention
-	TypeLifecycle     NotificationType = "lifecycle"       // App lifecycle notifications (start/restart/exit)
-	TypeWelcome       NotificationType = "welcome"         // Welcome message for new notifiers
-	TypeSubscription  NotificationType = "subscription"    // Subscription confirmation
-	TypeNewErrorGroup NotificationType = "new_error_group" // First error entry of a new log group
+	TypeAlert        NotificationType = "alert"        // Error alerts requiring attention
+	TypeLifecycle    NotificationType = "lifecycle"    // App lifecycle notifications (start/restart/exit)
+	TypeWelcome      NotificationType = "welcome"      // Welcome message for new notifiers
+	TypeSubscription NotificationType = "subscription" // Subscription confirmation
 )
 
 // LogEntry carries the structured log data behind a log-derived notification
-// (TypeAlert, TypeNewErrorGroup). Notifiers render their own presentation
-// from these fields.
+// (TypeAlert). Notifiers render their own presentation from these fields.
 type LogEntry struct {
 	Level     types.LogLevel
 	Message   string
@@ -31,8 +29,7 @@ type LogEntry struct {
 }
 
 // Notification represents a notification to be sent. Payload's concrete type
-// is tied to Type: LogEntry for TypeAlert and TypeNewErrorGroup, string for
-// the remaining types.
+// is tied to Type: LogEntry for TypeAlert, string for the remaining types.
 type Notification struct {
 	Type          NotificationType
 	CollectorName string

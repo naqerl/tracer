@@ -31,7 +31,7 @@ type Querier interface {
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
 	// User API key queries (LLM compatibility)
 	CreateUserAPIKey(ctx context.Context, arg CreateUserAPIKeyParams) (UserApiKey, error)
-	DeleteCollectorAPIKey(ctx context.Context, name string) error
+	DeleteCollectorAPIKey(ctx context.Context, id int64) (int64, error)
 	DeleteExpiredSessions(ctx context.Context, expiresAt int64) error
 	// Delete a log group by ID
 	DeleteLogGroup(ctx context.Context, id int64) (int64, error)
@@ -44,15 +44,15 @@ type Querier interface {
 	DeleteSession(ctx context.Context, id string) error
 	DeleteSessionsByUser(ctx context.Context, userID int64) error
 	DeleteUser(ctx context.Context, id int64) error
-	DeleteUserAPIKey(ctx context.Context, id int64) error
+	DeleteUserAPIKey(ctx context.Context, id int64) (int64, error)
 	DisableNotifier(ctx context.Context, id int64) error
 	EnableNotifier(ctx context.Context, id int64) error
 	// User access policy queries
 	FindUserAccessPolicy(ctx context.Context, userID int64) ([]FindUserAccessPolicyRow, error)
 	FindUserCredsByUsername(ctx context.Context, username string) (FindUserCredsByUsernameRow, error)
 	GetCPUHistory(ctx context.Context, endedAt sql.NullInt64) ([]CpuPeriod, error)
-	GetCollectorAPIKeyByName(ctx context.Context, name string) (CollectorApiKey, error)
-	GetCollectorAPIKeys(ctx context.Context) ([]GetCollectorAPIKeysRow, error)
+	GetCollectorAPIKeyByID(ctx context.Context, id int64) (CollectorApiKey, error)
+	GetCollectorAPIKeys(ctx context.Context) ([]CollectorApiKey, error)
 	GetDiskHistory(ctx context.Context, endedAt sql.NullInt64) ([]DiskPeriod, error)
 	GetLatestHealthPeriod(ctx context.Context) (AppHealthPeriod, error)
 	GetLogByID(ctx context.Context, id int64) (Log, error)
@@ -81,10 +81,11 @@ type Querier interface {
 	// Memory Period
 	GetOpenMemPeriod(ctx context.Context) (MemPeriod, error)
 	// Get existing log group by message and level, or create if doesn't exist
-	GetOrCreateLogGroup(ctx context.Context, arg GetOrCreateLogGroupParams) (GetOrCreateLogGroupRow, error)
+	GetOrCreateLogGroup(ctx context.Context, arg GetOrCreateLogGroupParams) (LogGroup, error)
 	GetPercentiles(ctx context.Context, createdAt int64) (GetPercentilesRow, error)
 	GetSession(ctx context.Context, id string) (Session, error)
-	GetUserAPIKeysByUser(ctx context.Context, userID int64) ([]GetUserAPIKeysByUserRow, error)
+	GetUserAPIKeyByID(ctx context.Context, id int64) (UserApiKey, error)
+	GetUserAPIKeysByUser(ctx context.Context, userID int64) ([]UserApiKey, error)
 	GetUserByID(ctx context.Context, id int64) (User, error)
 	GrantAppAccess(ctx context.Context, arg GrantAppAccessParams) error
 	// Update last_log_at for a group
@@ -99,16 +100,12 @@ type Querier interface {
 	ListLogGroups(ctx context.Context, arg ListLogGroupsParams) ([]ListLogGroupsRow, error)
 	ListNotifiersByUser(ctx context.Context, userID int64) ([]Notifier, error)
 	ListUsers(ctx context.Context) ([]User, error)
-	// Reports whether a log group row already exists for the message/level pair.
-	LogGroupExists(ctx context.Context, arg LogGroupExistsParams) (bool, error)
 	// Recalculate last_log_at for all groups after log deletion
 	RecalculateLogGroupCounters(ctx context.Context) error
 	RefreshSession(ctx context.Context, arg RefreshSessionParams) error
 	RemoveAllNotifierSubscriptions(ctx context.Context, notifierID int64) error
 	RevokeAppAccess(ctx context.Context, arg RevokeAppAccessParams) error
 	SaveHealthPeriod(ctx context.Context, arg SaveHealthPeriodParams) error
-	// Record the created issue on a log group.
-	SetLogGroupIssue(ctx context.Context, arg SetLogGroupIssueParams) error
 	SetUserAdmin(ctx context.Context, id int64) error
 	UpdateUserPassword(ctx context.Context, arg UpdateUserPasswordParams) (int64, error)
 	ValidateAndUpdateCollectorAPIKey(ctx context.Context, arg ValidateAndUpdateCollectorAPIKeyParams) (int64, error)

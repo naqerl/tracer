@@ -28,8 +28,7 @@ func (c *testIngestConfig) GetSampleRate() float64      { return c.sampleRate }
 
 // notifyCounts tracks which notification types one StoreLog produced.
 type notifyCounts struct {
-	newGroups int
-	alerts    int
+	alerts int
 }
 
 // storeLogAndCount stores one log entry and drains the channel, counting the
@@ -55,8 +54,6 @@ func storeLogAndCount(t *testing.T, svc *Service, ch chan notify.Notification, c
 		select {
 		case n := <-ch:
 			switch n.Type {
-			case notify.TypeNewErrorGroup:
-				counts.newGroups++
 			case notify.TypeAlert:
 				counts.alerts++
 			}
@@ -66,7 +63,7 @@ func storeLogAndCount(t *testing.T, svc *Service, ch chan notify.Notification, c
 	}
 }
 
-func TestStoreLogNewErrorGroupNotification(t *testing.T) {
+func TestStoreLogErrorAlerts(t *testing.T) {
 	mgr := testutil.NewTestDBManager(t)
 	ch := make(chan notify.Notification, 32)
 	cfg := &testIngestConfig{sampleRate: 1.0}
@@ -79,33 +76,24 @@ func TestStoreLogNewErrorGroupNotification(t *testing.T) {
 		t.Fatalf("register collector: %v", err)
 	}
 
-	// The entry that creates a new error group announces the group instead
-	// of the usual per-entry alert.
+	// Every error entry alerts, including repeats of the same message.
 	counts := storeLogAndCount(t, svc, ch, "test-collector", "test-app", types.LevelError, "boom: connection refused")
-	if counts.newGroups != 1 || counts.alerts != 0 {
-		t.Fatalf("first error of new group: expected 1 new-group and 0 alerts, got %+v", counts)
+	if counts.alerts != 1 {
+		t.Fatalf("first error: expected 1 alert, got %+v", counts)
 	}
-
-	// Later entries for the same group alert normally.
 	counts = storeLogAndCount(t, svc, ch, "test-collector", "test-app", types.LevelError, "boom: connection refused")
-	if counts.newGroups != 0 || counts.alerts != 1 {
-		t.Fatalf("second error of same group: expected 0 new-group and 1 alert, got %+v", counts)
+	if counts.alerts != 1 {
+		t.Fatalf("second error of same group: expected 1 alert, got %+v", counts)
 	}
 
-	// A different error group announces once more.
-	counts = storeLogAndCount(t, svc, ch, "test-collector", "test-app", types.LevelError, "boom: timeout")
-	if counts.newGroups != 1 || counts.alerts != 0 {
-		t.Fatalf("first error of different group: expected 1 new-group and 0 alerts, got %+v", counts)
-	}
-
-	// Non-error levels never announce or alert.
+	// Non-error levels never alert.
 	counts = storeLogAndCount(t, svc, ch, "test-collector", "test-app", types.LevelWarn, "boom: timeout")
-	if counts.newGroups != 0 || counts.alerts != 0 {
-		t.Fatalf("warn new group: expected no notifications, got %+v", counts)
+	if counts.alerts != 0 {
+		t.Fatalf("warn: expected no notifications, got %+v", counts)
 	}
 	counts = storeLogAndCount(t, svc, ch, "test-collector", "test-app", types.LevelInfo, "boom: connection refused")
-	if counts.newGroups != 0 || counts.alerts != 0 {
-		t.Fatalf("info new group: expected no notifications, got %+v", counts)
+	if counts.alerts != 0 {
+		t.Fatalf("info: expected no notifications, got %+v", counts)
 	}
 }
 
@@ -123,8 +111,8 @@ func TestStoreLogAfterRetentionPruneDoesNotReannounceGroup(t *testing.T) {
 	}
 
 	counts := storeLogAndCount(t, svc, ch, "test-collector", "test-app", types.LevelError, "boom: connection refused")
-	if counts.newGroups != 1 || counts.alerts != 0 {
-		t.Fatalf("first error of new group: expected 1 new-group and 0 alerts, got %+v", counts)
+	if counts.alerts != 1 {
+		t.Fatalf("first error: expected 1 alert, got %+v", counts)
 	}
 
 	// Simulate retention pruning: the log rows are deleted and last_log_at is
@@ -144,12 +132,11 @@ func TestStoreLogAfterRetentionPruneDoesNotReannounceGroup(t *testing.T) {
 		t.Fatalf("simulate retention prune: %v", err)
 	}
 
-	// The re-emerging error belongs to an existing group: it must alert
-	// normally instead of announcing a new group (which would create a
-	// duplicate issue and overwrite the recorded link).
+	// The re-emerging error after a retention prune still alerts; dedup is
+	// the notifier's job, not the ingest service's.
 	counts = storeLogAndCount(t, svc, ch, "test-collector", "test-app", types.LevelError, "boom: connection refused")
-	if counts.newGroups != 0 || counts.alerts != 1 {
-		t.Fatalf("after retention prune: expected 0 new-group and 1 alert, got %+v", counts)
+	if counts.alerts != 1 {
+		t.Fatalf("after retention prune: expected 1 alert, got %+v", counts)
 	}
 }
 
@@ -182,7 +169,7 @@ func TestStoreLogNotificationPayloadMapping(t *testing.T) {
 		t.Fatalf("register collector: %v", err)
 	}
 
-	// New error group → TypeNewErrorGroup with a LogEntry payload.
+	// First error → TypeAlert with a LogEntry payload.
 	if _, err := svc.StoreLog(t.Context(), StoreLogRequest{
 		CollectorName: "test-collector",
 		AppName:       "test-app",
@@ -195,15 +182,15 @@ func TestStoreLogNotificationPayloadMapping(t *testing.T) {
 		t.Fatalf("store log: %v", err)
 	}
 	ns := drainNotifications(ch)
-	if len(ns) != 1 || ns[0].Type != notify.TypeNewErrorGroup {
-		t.Fatalf("expected a single TypeNewErrorGroup notification, got %+v", ns)
+	if len(ns) != 1 || ns[0].Type != notify.TypeAlert {
+		t.Fatalf("expected a single TypeAlert notification, got %+v", ns)
 	}
 	entry, ok := ns[0].Payload.(notify.LogEntry)
 	if !ok {
-		t.Fatalf("TypeNewErrorGroup: expected LogEntry payload, got %T", ns[0].Payload)
+		t.Fatalf("TypeAlert: expected LogEntry payload, got %T", ns[0].Payload)
 	}
 	if entry.Level != types.LevelError || entry.Message != "boom: connection refused" || entry.GroupID != 1 || entry.LogID == 0 || entry.CreatedAt.IsZero() {
-		t.Errorf("TypeNewErrorGroup: unexpected LogEntry: %+v", entry)
+		t.Errorf("TypeAlert: unexpected LogEntry: %+v", entry)
 	}
 
 	// Later error of the same group → TypeAlert with a LogEntry payload.

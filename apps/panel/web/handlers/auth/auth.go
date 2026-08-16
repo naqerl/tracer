@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"tracer/apps/panel/internal/domain"
 	"tracer/apps/panel/internal/services/auth"
 	"tracer/apps/panel/internal/services/user"
 	authmw "tracer/apps/panel/web/middleware/auth"
@@ -57,7 +58,7 @@ func (h *handler) renderSetupPage(w http.ResponseWriter, r *http.Request, errorM
 // Login handlers
 
 func (h *handler) loginPage(w http.ResponseWriter, r *http.Request) {
-	if _, err := authmw.GetUserID(r); err == nil {
+	if _, ok := authmw.GetActor(r).(domain.User); ok {
 		http.Redirect(w, r, "/panel/", http.StatusSeeOther)
 		return
 	}
@@ -171,7 +172,7 @@ func (h *handler) setup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	collectorAPIKey, _, err := h.authService.GenerateCollectorAPIKey(r.Context(), apiKeyReq)
+	collectorAPIKey, err := h.authService.GenerateCollectorAPIKey(r.Context(), domain.System{}, apiKeyReq)
 	if err != nil {
 		slog.Error("Failed to create collector API key", "error", err)
 		h.renderSetupPage(w, r, "User created but failed to create collector API key: "+err.Error())

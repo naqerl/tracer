@@ -17,7 +17,6 @@ import (
 	"tracer/apps/panel/db"
 	"tracer/apps/panel/internal/dbmanager"
 	"tracer/apps/panel/internal/domain"
-	userpkg "tracer/apps/panel/internal/services/user"
 )
 
 const (
@@ -37,6 +36,7 @@ var (
 	ErrInvalidCredentials = errors.New("invalid credentials")
 	ErrSessionExpired     = errors.New("session expired")
 	ErrUserNotFound       = errors.New("user not found")
+	ErrAccessDenied       = errors.New("access denied")
 )
 
 type Service struct {
@@ -94,6 +94,29 @@ func (r GenerateUserAPIKeyRequest) Validate() error {
 	return domain.ValidateAPIKeyName(r.Name)
 }
 
+// APIKey is the service-layer view of a stored API key, shared by collector
+// and user keys. CanReveal reports whether the stored ciphertext can be
+// decrypted.
+type APIKey struct {
+	ID          int64
+	Name        string
+	CreatedAt   int64
+	LastUsedAt  int64 // 0 when never used
+	LastUsedSet bool
+	CanReveal   bool
+}
+
+// CollectorAPIKey is the service-layer view of a stored collector API key.
+type CollectorAPIKey struct {
+	APIKey
+}
+
+// UserAPIKey is the service-layer view of a stored user API key.
+type UserAPIKey struct {
+	APIKey
+	UserID int64
+}
+
 // New creates a Service with the given panel database handle, master key, and
 // bcrypt work factor.
 //
@@ -147,10 +170,10 @@ func GenerateAPIKey() (string, error) {
 }
 
 // Register creates a new user with hashed password.
-func (s *Service) Register(ctx context.Context, req RegisterRequest) (*db.User, error) {
+func (s *Service) Register(ctx context.Context, req RegisterRequest) (domain.User, error) {
 	hash, err := s.hashPassword(req.Password)
 	if err != nil {
-		return nil, fmt.Errorf("hash password: %w", err)
+		return domain.User{}, fmt.Errorf("hash password: %w", err)
 	}
 
 	var adminInt int64
@@ -158,7 +181,7 @@ func (s *Service) Register(ctx context.Context, req RegisterRequest) (*db.User, 
 		adminInt = 1
 	}
 
-	var user *db.User
+	var created db.User
 	err = s.handle.Write(ctx, func(tx db.DBTX) error {
 		result, err := db.New(tx).CreateUser(ctx, db.CreateUserParams{
 			Username:     req.Username,
@@ -169,15 +192,19 @@ func (s *Service) Register(ctx context.Context, req RegisterRequest) (*db.User, 
 		if err != nil {
 			return err
 		}
-		user = &result
+		created = result
 		return nil
 	})
 	if err != nil {
-		return nil, fmt.Errorf("create user: %w", err)
+		return domain.User{}, fmt.Errorf("create user: %w", err)
 	}
 
 	slog.Info("User created", "username", req.Username, "is_admin", req.IsAdmin)
-	return user, nil
+	role := domain.RoleUser
+	if created.IsAdmin == 1 {
+		role = domain.RoleAdmin
+	}
+	return domain.User{ID: created.ID, Role: role}, nil
 }
 
 func (s *Service) HasAnyUsers(ctx context.Context) (bool, error) {
@@ -376,66 +403,100 @@ func hashAPIKey(key string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-func maskedAPIKeySuffix(key string) string {
-	suffix := key
-	if len(suffix) > 6 {
-		suffix = suffix[len(suffix)-6:]
+// GenerateCollectorAPIKey creates a new collector API key.
+func (s *Service) GenerateCollectorAPIKey(ctx context.Context, actor domain.Actor, req GenerateCollectorAPIKeyRequest) (string, error) {
+	if err := authorizeAdminOrSystem(actor); err != nil {
+		return "", err
 	}
-	return "****" + suffix
-}
-
-func (s *Service) GenerateCollectorAPIKey(ctx context.Context, req GenerateCollectorAPIKeyRequest) (string, *db.CollectorApiKey, error) {
 	key, err := generateToken(apiKeySize)
 	if err != nil {
-		return "", nil, fmt.Errorf("generate collector api key: %w", err)
+		return "", fmt.Errorf("generate collector api key: %w", err)
 	}
 
-	var row db.CollectorApiKey
+	encrypted, err := encryptKey(s.keySecret, key)
+	if err != nil {
+		return "", fmt.Errorf("encrypt collector api key: %w", err)
+	}
+
 	err = s.handle.Write(ctx, func(tx db.DBTX) error {
-		encrypted, err := encryptKey(s.keySecret, key)
-		if err != nil {
-			return fmt.Errorf("encrypt collector api key: %w", err)
-		}
-		result, err := db.New(tx).CreateCollectorAPIKey(ctx, db.CreateCollectorAPIKeyParams{
+		_, err := db.New(tx).CreateCollectorAPIKey(ctx, db.CreateCollectorAPIKeyParams{
 			Name:         req.Name,
 			KeyHash:      hashAPIKey(key),
-			KeySuffix:    key[max(0, len(key)-6):],
 			KeyEncrypted: encrypted,
 			CreatedAt:    time.Now().UTC().Unix(),
 		})
-		if err != nil {
-			return err
-		}
-		row = result
-		return nil
+		return err
 	})
 	if err != nil {
-		return "", nil, fmt.Errorf("create collector api key: %w", err)
+		return "", fmt.Errorf("create collector api key: %w", err)
 	}
 
 	slog.Info("Collector API key created", "name", req.Name)
-	return key, &row, nil
+	return key, nil
 }
 
-func (s *Service) ListCollectorAPIKeys(ctx context.Context) ([]db.GetCollectorAPIKeysRow, error) {
-	return db.New(s.handle.Read()).GetCollectorAPIKeys(ctx)
+// ListCollectorAPIKeys returns all collector API keys.
+func (s *Service) ListCollectorAPIKeys(ctx context.Context, actor domain.Actor) ([]CollectorAPIKey, error) {
+	if err := authorizeAdminOrSystem(actor); err != nil {
+		return nil, err
+	}
+	rows, err := db.New(s.handle.Read()).GetCollectorAPIKeys(ctx)
+	if err != nil {
+		return nil, err
+	}
+	keys := make([]CollectorAPIKey, 0, len(rows))
+	for _, row := range rows {
+		keys = append(keys, collectorAPIKeyFromRow(row))
+	}
+	return keys, nil
 }
 
-func (s *Service) GetCollectorAPIKeyByName(ctx context.Context, name string) (db.CollectorApiKey, error) {
-	return db.New(s.handle.Read()).GetCollectorAPIKeyByName(ctx, name)
+// GetCollectorAPIKeyByID returns a collector API key by id.
+func (s *Service) GetCollectorAPIKeyByID(ctx context.Context, actor domain.Actor, id int64) (CollectorAPIKey, error) {
+	if err := authorizeAdminOrSystem(actor); err != nil {
+		return CollectorAPIKey{}, err
+	}
+	row, err := db.New(s.handle.Read()).GetCollectorAPIKeyByID(ctx, id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return CollectorAPIKey{}, err
+	}
+	if err != nil {
+		return CollectorAPIKey{}, fmt.Errorf("could not get collector API key: %w", err)
+	}
+	return collectorAPIKeyFromRow(row), nil
 }
 
-// RevealCollectorAPIKey decrypts and returns the plaintext of the given
-// collector API key row. Returns ErrKeyNotRevealable for keys created before
-// reveal support (no stored ciphertext) and ErrKeyDecryptFailed when
-// decryption fails.
-func (s *Service) RevealCollectorAPIKey(key db.CollectorApiKey) (string, error) {
-	return decryptKey(s.keySecret, key.KeyEncrypted)
+// RevealCollectorAPIKey decrypts and returns the plaintext of the collector
+// API key with the given id. Returns ErrKeyNotRevealable when the key has no
+// stored ciphertext and ErrKeyDecryptFailed when decryption fails.
+func (s *Service) RevealCollectorAPIKey(ctx context.Context, actor domain.Actor, id int64) (string, error) {
+	if err := authorizeAdminOrSystem(actor); err != nil {
+		return "", err
+	}
+	row, err := db.New(s.handle.Read()).GetCollectorAPIKeyByID(ctx, id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", err
+	}
+	if err != nil {
+		return "", fmt.Errorf("could not get collector API key: %w", err)
+	}
+	return decryptKey(s.keySecret, row.KeyEncrypted)
 }
 
-func (s *Service) DeleteCollectorAPIKey(ctx context.Context, name string) error {
+// DeleteCollectorAPIKey deletes a collector API key by id.
+func (s *Service) DeleteCollectorAPIKey(ctx context.Context, actor domain.Actor, id int64) error {
+	if err := authorizeAdminOrSystem(actor); err != nil {
+		return err
+	}
 	return s.handle.Write(ctx, func(tx db.DBTX) error {
-		return db.New(tx).DeleteCollectorAPIKey(ctx, name)
+		rows, err := db.New(tx).DeleteCollectorAPIKey(ctx, id)
+		if err != nil {
+			return err
+		}
+		if rows == 0 {
+			return sql.ErrNoRows
+		}
+		return nil
 	})
 }
 
@@ -465,49 +526,9 @@ func (s *Service) ValidateCollectorAPIKey(ctx context.Context, key string) (bool
 	return true, nil
 }
 
-func (s *Service) GetCollectorAPIKeyDisplay(ctx context.Context) (string, error) {
-	keys, err := s.ListCollectorAPIKeys(ctx)
-	if err != nil {
-		return "", err
-	}
-	if len(keys) == 0 {
-		return "", nil
-	}
-	return maskedAPIKeySuffix(keys[0].KeySuffix), nil
-}
-
 // User API Key management (LLM compatibility)
 
-func (s *Service) GenerateUserAPIKey(ctx context.Context, req GenerateUserAPIKeyRequest) (string, *db.UserApiKey, error) {
-	key, err := generateToken(apiKeySize)
-	if err != nil {
-		return "", nil, fmt.Errorf("generate user API key: %w", err)
-	}
-
-	var userKey db.UserApiKey
-	err = s.handle.Write(ctx, func(tx db.DBTX) error {
-		result, err := db.New(tx).CreateUserAPIKey(ctx, db.CreateUserAPIKeyParams{
-			UserID:    req.UserID,
-			KeyHash:   hashAPIKey(key),
-			KeySuffix: key[max(0, len(key)-6):],
-			Name:      req.Name,
-			CreatedAt: time.Now().UTC().Unix(),
-		})
-		if err != nil {
-			return err
-		}
-		userKey = result
-		return nil
-	})
-	if err != nil {
-		return "", nil, fmt.Errorf("create user API key: %w", err)
-	}
-
-	slog.Info("User API key created", "user_id", req.UserID, "name", req.Name)
-	return key, &userKey, nil
-}
-
-func (s *Service) ValidateUserAPIKey(ctx context.Context, key string, userService *userpkg.Service) (int64, error) {
+func (s *Service) ValidateUserAPIKey(ctx context.Context, key string) (int64, error) {
 	var userID int64
 	err := s.handle.Write(ctx, func(tx db.DBTX) error {
 		result, err := db.New(tx).ValidateAndUpdateUserAPIKey(ctx, db.ValidateAndUpdateUserAPIKeyParams{
@@ -528,12 +549,175 @@ func (s *Service) ValidateUserAPIKey(ctx context.Context, key string, userServic
 	return userID, err
 }
 
-func (s *Service) ListUserAPIKeys(ctx context.Context, userID int64) ([]db.GetUserAPIKeysByUserRow, error) {
-	return db.New(s.handle.Read()).GetUserAPIKeysByUser(ctx, userID)
+// ListUserAPIKeys returns the API keys owned by the given user.
+func (s *Service) ListUserAPIKeys(ctx context.Context, actor domain.Actor, userID int64) ([]UserAPIKey, error) {
+	if err := authorizeOwnerOrAdmin(actor, userID); err != nil {
+		return nil, err
+	}
+	rows, err := db.New(s.handle.Read()).GetUserAPIKeysByUser(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	keys := make([]UserAPIKey, 0, len(rows))
+	for _, row := range rows {
+		keys = append(keys, userAPIKeyFromRow(row))
+	}
+	return keys, nil
 }
 
-func (s *Service) DeleteUserAPIKey(ctx context.Context, id int64) error {
+// GetUserAPIKeyByID returns a user API key by id. The lookup happens first
+// because ownership is only known from the row; handlers map ErrAccessDenied
+// on the read path to 404 so key existence is not revealed to non-owners.
+func (s *Service) GetUserAPIKeyByID(ctx context.Context, actor domain.Actor, id int64) (UserAPIKey, error) {
+	row, err := db.New(s.handle.Read()).GetUserAPIKeyByID(ctx, id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return UserAPIKey{}, err
+	}
+	if err != nil {
+		return UserAPIKey{}, fmt.Errorf("could not get user API key: %w", err)
+	}
+	if err := authorizeOwnerOrAdmin(actor, row.UserID); err != nil {
+		return UserAPIKey{}, err
+	}
+	return userAPIKeyFromRow(row), nil
+}
+
+// RevealUserAPIKey decrypts and returns the plaintext of the user API key
+// with the given id. Returns ErrKeyNotRevealable when the key has no stored
+// ciphertext and ErrKeyDecryptFailed when decryption fails.
+func (s *Service) RevealUserAPIKey(ctx context.Context, actor domain.Actor, id int64) (string, error) {
+	row, err := db.New(s.handle.Read()).GetUserAPIKeyByID(ctx, id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", err
+	}
+	if err != nil {
+		return "", fmt.Errorf("could not get user API key: %w", err)
+	}
+	if err := authorizeOwnerOrAdmin(actor, row.UserID); err != nil {
+		return "", err
+	}
+	return decryptKey(s.keySecret, row.KeyEncrypted)
+}
+
+// authorizeAdminOrSystem permits the system actor and admin users only.
+func authorizeAdminOrSystem(actor domain.Actor) error {
+	switch a := actor.(type) {
+	case domain.System:
+		return nil
+	case domain.User:
+		if a.Role == domain.RoleAdmin {
+			return nil
+		}
+		return ErrAccessDenied
+	case domain.Unauthenticated:
+		return ErrAccessDenied
+	default:
+		return domain.ErrUnexpectedActor
+	}
+}
+
+// authorizeOwnerOrAdmin permits the system actor, admin users, and the user
+// that owns the resource (ownerID).
+func authorizeOwnerOrAdmin(actor domain.Actor, ownerID int64) error {
+	switch a := actor.(type) {
+	case domain.System:
+		return nil
+	case domain.User:
+		if a.Role == domain.RoleAdmin || a.ID == ownerID {
+			return nil
+		}
+		return ErrAccessDenied
+	case domain.Unauthenticated:
+		return ErrAccessDenied
+	default:
+		return domain.ErrUnexpectedActor
+	}
+}
+
+// DeleteUserAPIKey deletes a user API key by id.
+func (s *Service) DeleteUserAPIKey(ctx context.Context, actor domain.Actor, id int64) error {
+	key, err := db.New(s.handle.Read()).GetUserAPIKeyByID(ctx, id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	if err != nil {
+		return fmt.Errorf("could not get user API key: %w", err)
+	}
+	if err := authorizeOwnerOrAdmin(actor, key.UserID); err != nil {
+		return err
+	}
 	return s.handle.Write(ctx, func(tx db.DBTX) error {
-		return db.New(tx).DeleteUserAPIKey(ctx, id)
+		rows, err := db.New(tx).DeleteUserAPIKey(ctx, id)
+		if err != nil {
+			return err
+		}
+		if rows == 0 {
+			return sql.ErrNoRows
+		}
+		return nil
 	})
+}
+
+// GenerateUserAPIKey creates a new API key for the given user.
+func (s *Service) GenerateUserAPIKey(ctx context.Context, actor domain.Actor, req GenerateUserAPIKeyRequest) (string, error) {
+	if err := authorizeOwnerOrAdmin(actor, req.UserID); err != nil {
+		return "", err
+	}
+
+	key, err := generateToken(apiKeySize)
+	if err != nil {
+		return "", fmt.Errorf("generate user API key: %w", err)
+	}
+
+	encrypted, err := encryptKey(s.keySecret, key)
+	if err != nil {
+		return "", fmt.Errorf("encrypt user API key: %w", err)
+	}
+
+	err = s.handle.Write(ctx, func(tx db.DBTX) error {
+		_, err := db.New(tx).CreateUserAPIKey(ctx, db.CreateUserAPIKeyParams{
+			UserID:       req.UserID,
+			KeyHash:      hashAPIKey(key),
+			Name:         req.Name,
+			CreatedAt:    time.Now().UTC().Unix(),
+			KeyEncrypted: encrypted,
+		})
+		return err
+	})
+	if err != nil {
+		return "", fmt.Errorf("create user API key: %w", err)
+	}
+
+	slog.Info("User API key created", "user_id", req.UserID, "name", req.Name)
+	return key, nil
+}
+
+// collectorAPIKeyFromRow converts a stored collector API key row into the
+// service-layer view.
+func collectorAPIKeyFromRow(row db.CollectorApiKey) CollectorAPIKey {
+	return CollectorAPIKey{
+		APIKey: apiKeyFromRow(row.ID, row.Name, row.CreatedAt, row.LastUsedAt, row.KeyEncrypted),
+	}
+}
+
+// userAPIKeyFromRow converts a stored user API key row into the service-layer
+// view.
+func userAPIKeyFromRow(row db.UserApiKey) UserAPIKey {
+	return UserAPIKey{
+		APIKey: apiKeyFromRow(row.ID, row.Name, row.CreatedAt, row.LastUsedAt, row.KeyEncrypted),
+		UserID: row.UserID,
+	}
+}
+
+// apiKeyFromRow converts the shared API key fields of a stored row into the
+// service-layer view.
+func apiKeyFromRow(id int64, name string, createdAt int64, lastUsedAt sql.NullInt64, keyEncrypted string) APIKey {
+	return APIKey{
+		ID:          id,
+		Name:        name,
+		CreatedAt:   createdAt,
+		LastUsedAt:  lastUsedAt.Int64,
+		LastUsedSet: lastUsedAt.Valid,
+		CanReveal:   keyEncrypted != "",
+	}
 }

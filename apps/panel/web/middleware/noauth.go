@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"sync"
 
+	"tracer/apps/panel/internal/domain"
 	usersvc "tracer/apps/panel/internal/services/user"
 )
 
@@ -25,7 +26,7 @@ func BuildNoAuthMiddleware(userService *usersvc.Service) func(http.Handler) http
 			mu.Unlock()
 
 			if userID != 0 {
-				r = SetUserID(r, userID)
+				r = setNoAuthActor(r, userService, userID)
 			}
 
 			next.ServeHTTP(w, r)
@@ -33,14 +34,24 @@ func BuildNoAuthMiddleware(userService *usersvc.Service) func(http.Handler) http
 	}
 }
 
+// setNoAuthActor stores the resolved no-auth user as a full admin actor.
+func setNoAuthActor(r *http.Request, userService *usersvc.Service, userID int64) *http.Request {
+	user, err := userService.FindByID(r.Context(), domain.System{}, userID)
+	if err != nil {
+		slog.Error("could not resolve no-auth actor", "user_id", userID, "error", err)
+		return r
+	}
+	return SetActor(r, user)
+}
+
 func resolveAdminUserID(userService *usersvc.Service) int64 {
-	users, err := userService.List(context.Background())
+	users, err := userService.List(context.Background(), domain.System{})
 	if err != nil {
 		slog.Error("no-auth middleware: failed to list users", "error", err)
 		return 0
 	}
 	for _, u := range users {
-		if u.IsAdmin == 1 {
+		if u.Role == domain.RoleAdmin {
 			slog.Info("no-auth middleware: using admin user", "user_id", u.ID)
 			return u.ID
 		}

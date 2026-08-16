@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -412,5 +413,144 @@ func TestReadBodyRejectsOversizedBody(t *testing.T) {
 	}
 	if _, err := readBody(resp); err == nil {
 		t.Fatal("expected error for oversized response body")
+	}
+}
+
+func TestSearchIssueFindsMatchingOpenIssue(t *testing.T) {
+	var gotQuery string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/repos/issues/search" {
+			t.Errorf("unexpected path %q", r.URL.Path)
+		}
+		gotQuery = r.URL.Query().Get("q")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`[{"number":42,"html_url":"https://git.naqerl.com/x/barse/issues/42","title":"[tracer] deadbeef0 api@prod: boom","state":"open","repository":{"full_name":"x/barse"}}]`))
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL, "sekret")
+	issue, found, err := c.SearchIssue(t.Context(), "x", "barse", "deadbeef0")
+	if err != nil {
+		t.Fatalf("SearchIssue: %v", err)
+	}
+	if !found {
+		t.Fatal("expected a match")
+	}
+	if issue.Number != 42 || issue.HTMLURL != "https://git.naqerl.com/x/barse/issues/42" {
+		t.Errorf("unexpected issue: %+v", issue)
+	}
+	if !strings.Contains(gotQuery, "repo:x/barse") || !strings.Contains(gotQuery, "deadbeef0") {
+		t.Errorf("unexpected search query %q", gotQuery)
+	}
+}
+
+func TestSearchIssueFiltersOtherRepoAndTitleMismatch(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`[
+			{"number":1,"html_url":"https://git.naqerl.com/y/other/issues/1","title":"[tracer] deadbeef0 boom","state":"open","repository":{"full_name":"y/other"}},
+			{"number":2,"html_url":"https://git.naqerl.com/x/barse/issues/2","title":"unrelated title","state":"open","repository":{"full_name":"x/barse"}}
+		]`))
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL, "sekret")
+	if _, found, err := c.SearchIssue(t.Context(), "x", "barse", "deadbeef0"); err != nil {
+		t.Fatalf("SearchIssue: %v", err)
+	} else if found {
+		t.Fatal("expected no match when the repo or title does not match")
+	}
+}
+
+func TestSearchIssueEmptyResults(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`[]`))
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL, "sekret")
+	if _, found, err := c.SearchIssue(t.Context(), "x", "barse", "deadbeef0"); err != nil {
+		t.Fatalf("SearchIssue: %v", err)
+	} else if found {
+		t.Fatal("expected no match for empty results")
+	}
+}
+
+func TestSearchIssueSearchesAllStates(t *testing.T) {
+	var gotState string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotState = r.URL.Query().Get("state")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`[]`))
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL, "sekret")
+	if _, _, err := c.SearchIssue(t.Context(), "x", "barse", "deadbeef0"); err != nil {
+		t.Fatalf("SearchIssue: %v", err)
+	}
+	if gotState != "" {
+		t.Errorf("expected no state filter so closed issues are found too, got %q", gotState)
+	}
+}
+
+func TestSearchIssueReturnsClosedState(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`[{"number":7,"html_url":"https://git.naqerl.com/x/barse/issues/7","title":"[tracer] deadbeef0 boom","state":"closed","repository":{"full_name":"x/barse"}}]`))
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL, "sekret")
+	issue, found, err := c.SearchIssue(t.Context(), "x", "barse", "deadbeef0")
+	if err != nil {
+		t.Fatalf("SearchIssue: %v", err)
+	}
+	if !found {
+		t.Fatal("expected a match for a closed issue")
+	}
+	if issue.State != "closed" {
+		t.Errorf("expected closed state on the issue, got %q", issue.State)
+	}
+}
+
+func TestReopenIssue(t *testing.T) {
+	var gotPath, gotAuth, gotBody string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotAuth = r.Header.Get("Authorization")
+		buf, _ := io.ReadAll(io.LimitReader(r.Body, 1<<20))
+		gotBody = string(buf)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"number":7,"state":"open"}`))
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL, "sekret")
+	if err := c.ReopenIssue(t.Context(), "x", "barse", 7); err != nil {
+		t.Fatalf("ReopenIssue: %v", err)
+	}
+	if gotPath != "/api/v1/repos/x/barse/issues/7" {
+		t.Errorf("unexpected path %q", gotPath)
+	}
+	if gotAuth != "token sekret" {
+		t.Errorf("unexpected auth %q", gotAuth)
+	}
+	if !strings.Contains(gotBody, `"state":"open"`) {
+		t.Errorf("expected state=open in reopen body, got %q", gotBody)
+	}
+}
+
+func TestReopenIssueNon2xx(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "boom", http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL, "sekret")
+	if err := c.ReopenIssue(t.Context(), "x", "barse", 7); err == nil {
+		t.Fatal("expected error for non-2xx reopen")
 	}
 }

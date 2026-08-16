@@ -15,7 +15,6 @@ import (
 	"github.com/pressly/goose/v3"
 	_ "modernc.org/sqlite"
 
-	"tracer/apps/panel/db"
 	"tracer/apps/panel/internal/domain"
 	appmigrations "tracer/apps/panel/sql/app"
 	collectormigrations "tracer/apps/panel/sql/collector"
@@ -103,24 +102,6 @@ func (m *Manager) ListApps(collector string) ([]string, error) {
 	}
 	sort.Strings(apps)
 	return apps, nil
-}
-
-// RecordGroupIssue stores the created issue link on the log group row.
-func (m *Manager) RecordGroupIssue(ctx context.Context, collectorName, appName string, groupID, issueNumber int64, issueURL string) error {
-	handle, err := m.GetAppDB(collectorName, appName)
-	if err != nil {
-		return fmt.Errorf("could not open app db for %s/%s: %w", collectorName, appName, err)
-	}
-	if err := handle.Write(ctx, func(tx db.DBTX) error {
-		return db.New(tx).SetLogGroupIssue(ctx, db.SetLogGroupIssueParams{
-			IssueNumber: sql.NullInt64{Int64: issueNumber, Valid: true},
-			IssueUrl:    sql.NullString{String: issueURL, Valid: true},
-			ID:          groupID,
-		})
-	}); err != nil {
-		return fmt.Errorf("could not record forgejo issue on log group %d: %w", groupID, err)
-	}
-	return nil
 }
 
 // GetAppDB returns the DBHandle for the given collector/app.

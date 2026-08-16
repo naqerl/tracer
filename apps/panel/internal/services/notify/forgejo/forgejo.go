@@ -1,20 +1,38 @@
 package forgejo
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"embed"
 	"encoding/json"
 	"fmt"
+	"math/big"
 	"regexp"
 	"strings"
+	"text/template"
 	"time"
 	"unicode/utf8"
 
 	"tracer/apps/panel/internal/services/notify"
 )
 
+//go:embed issue.tmpl
+var issueTemplatesFS embed.FS
+
+// issueTemplates renders the title and body of created issues. Parsed once at
+// package init; a broken template fails the build.
+var issueTemplates = template.Must(template.New("issue").ParseFS(issueTemplatesFS, "issue.tmpl"))
+
 // ownerRepoPattern matches Forgejo user/org and repository names.
 // Requires at least one alphanumeric character to reject "." and "..".
 var ownerRepoPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]*$`)
+
+// IssueCacheTTL is how long a reported message hash is remembered before the
+// notifier consults Forgejo again. It covers Forgejo's search-index lag after
+// issue creation (~1-3s) with margin, while staying short enough that a
+// manually closed issue re-reports promptly on its next occurrence.
+const IssueCacheTTL = time.Minute
 
 // Config holds the Forgejo connection settings and issue defaults.
 //
@@ -33,15 +51,11 @@ type Config struct {
 	Milestone int64   `json:"milestone,omitempty"`
 }
 
-// IssueRecorder persists the created issue back onto the log group.
-type IssueRecorder interface {
-	RecordGroupIssue(ctx context.Context, collectorName, appName string, groupID, issueNumber int64, issueURL string) error
-}
-
 // Issue mirrors the subset of the Forgejo Issue API response used here.
 type Issue struct {
 	Number  int64  `json:"number"`
 	HTMLURL string `json:"html_url"`
+	State   string `json:"state"`
 }
 
 // createIssueOption mirrors Forgejo's CreateIssueOption. Only title is required.
@@ -52,17 +66,21 @@ type createIssueOption struct {
 	Milestone int64   `json:"milestone,omitempty"`
 }
 
-// Notifier creates issues in a Forgejo repository.
+// Notifier creates issues in a Forgejo repository. Forgejo is the source of
+// truth for whether an error was already reported: the issue title carries a
+// hash of the log message, and creation is skipped when an open issue with
+// that hash already exists.
 type Notifier struct {
-	name     string
-	cfg      Config
-	recorder IssueRecorder
-	client   *Client
+	name   string
+	cfg    Config
+	client *Client
+	cache  *Cache
 }
 
-// New creates a forgejo notifier. The recorder persists created issues onto
-// the log group rows.
-func New(name, config string, recorder IssueRecorder) (*Notifier, error) {
+// New creates a forgejo notifier. cache remembers recently reported hashes so
+// repeated errors skip the search while Forgejo's index catches up; it is a
+// required dependency (a nil cache would panic on first use).
+func New(name, config string, cache *Cache) (*Notifier, error) {
 	var cfg Config
 	if err := json.Unmarshal([]byte(config), &cfg); err != nil {
 		return nil, fmt.Errorf("could not parse forgejo config: %w", err)
@@ -85,12 +103,15 @@ func New(name, config string, recorder IssueRecorder) (*Notifier, error) {
 	if err := ValidateOwnerRepo(cfg.Owner, cfg.Repo); err != nil {
 		return nil, err
 	}
+	if cache == nil {
+		return nil, fmt.Errorf("cache is required")
+	}
 
 	return &Notifier{
-		name:     name,
-		cfg:      cfg,
-		recorder: recorder,
-		client:   NewClient(cfg.BaseURL, cfg.Token),
+		name:   name,
+		cfg:    cfg,
+		client: NewClient(cfg.BaseURL, cfg.Token),
+		cache:  cache,
 	}, nil
 }
 
@@ -104,11 +125,11 @@ func (n *Notifier) Name() string {
 	return n.name
 }
 
-// Notify handles new error group events and welcome validation. Other
-// notification types are ignored.
+// Notify handles error alerts and welcome validation. Other notification
+// types are ignored.
 func (n *Notifier) Notify(notification notify.Notification) error {
 	switch notification.Type {
-	case notify.TypeNewErrorGroup:
+	case notify.TypeAlert:
 		return n.createIssue(notification)
 	case notify.TypeWelcome:
 		return n.validateConnection()
@@ -117,37 +138,85 @@ func (n *Notifier) Notify(notification notify.Notification) error {
 	}
 }
 
+// issueData is the data rendered into the issue title and body templates.
+type issueData struct {
+	Hash      string
+	App       string
+	Collector string
+	GroupID   int64
+	First     string
+	Message   string
+	LogURL    string
+}
+
 func (n *Notifier) createIssue(notification notify.Notification) error {
 	log, ok := notification.Payload.(notify.LogEntry)
 	if !ok {
 		return fmt.Errorf("could not create forgejo issue: expected LogEntry payload, got %T", notification.Payload)
 	}
 
-	first := firstLine(log.Message)
-	if first == "" {
-		first = "(no message)"
-	}
-	title := truncateBytes(fmt.Sprintf("[tracer] %s@%s: %s",
-		notification.AppName, notification.CollectorName, first), 255)
-
-	body := fmt.Sprintf("**App:** %s\n**Collector:** %s\n**Group ID:** %d\n\n```\n%s\n```",
-		notification.AppName, notification.CollectorName, log.GroupID, log.Message)
-	if log.LogURL != "" {
-		body += fmt.Sprintf("\n\n[view log](%s)", log.LogURL)
+	hash := messageHash(log.Message)
+	data := issueData{
+		Hash:      hash,
+		App:       notification.AppName,
+		Collector: notification.CollectorName,
+		GroupID:   log.GroupID,
+		First:     firstLine(log.Message),
+		Message:   log.Message,
+		LogURL:    log.LogURL,
 	}
 
-	// Create and record share one deadline so a slow instance cannot hold the
+	var titleBuf bytes.Buffer
+	if err := issueTemplates.ExecuteTemplate(&titleBuf, "title", data); err != nil {
+		return fmt.Errorf("could not render forgejo issue title: %w", err)
+	}
+	title := truncateBytes(titleBuf.String(), 255)
+
+	// Create and search share one deadline so a slow instance cannot hold the
 	// notification pipeline twice as long.
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	issue, err := n.client.CreateIssue(ctx, n.cfg.Owner, n.cfg.Repo, title, body, n.cfg.Labels, n.cfg.Milestone)
+
+	// Recently reported hashes skip the search: Forgejo's index lags behind
+	// creation, so a fresh issue would not be found and would be duplicated.
+	// Forgejo stays the long-term source of truth; the cache only covers the
+	// lag window and doubles as an in-flight guard for concurrent alerts.
+	if n.cache.Check(n.cfg.BaseURL, n.cfg.Owner, n.cfg.Repo, hash) {
+		return nil
+	}
+
+	// Forgejo is the source of truth for the first report: when an issue with
+	// this message hash already exists, the error was already reported. A
+	// closed issue is reopened — the error recurring after it was resolved
+	// should bring the original report back, not fork a duplicate.
+	issue, found, err := n.client.SearchIssue(ctx, n.cfg.Owner, n.cfg.Repo, hash)
 	if err != nil {
 		return err
 	}
+	if found {
+		if issue.State == "closed" {
+			if err := n.client.ReopenIssue(ctx, n.cfg.Owner, n.cfg.Repo, issue.Number); err != nil {
+				return err
+			}
+		}
+		n.cache.Remember(n.cfg.BaseURL, n.cfg.Owner, n.cfg.Repo, hash)
+		return nil
+	}
 
-	if err := n.recorder.RecordGroupIssue(ctx,
-		notification.CollectorName, notification.AppName, log.GroupID, issue.Number, issue.HTMLURL); err != nil {
-		return fmt.Errorf("could not record forgejo issue on log group: %w", err)
+	// Reserve the hash before the network call so concurrent identical alerts
+	// during the create round-trip do not both create an issue.
+	n.cache.Remember(n.cfg.BaseURL, n.cfg.Owner, n.cfg.Repo, hash)
+
+	var bodyBuf bytes.Buffer
+	if err := issueTemplates.ExecuteTemplate(&bodyBuf, "body", data); err != nil {
+		return fmt.Errorf("could not render forgejo issue body: %w", err)
+	}
+	body := bodyBuf.String()
+
+	if _, err := n.client.CreateIssue(ctx, n.cfg.Owner, n.cfg.Repo, title, body, n.cfg.Labels, n.cfg.Milestone); err != nil {
+		// Nothing was created; drop the reservation so the next alert retries.
+		n.cache.Forget(n.cfg.BaseURL, n.cfg.Owner, n.cfg.Repo, hash)
+		return err
 	}
 
 	return nil
@@ -162,6 +231,34 @@ func (n *Notifier) validateConnection() error {
 		return fmt.Errorf("%w: %w", notify.ErrWelcomeValidation, err)
 	}
 	return nil
+}
+
+// base62Chars is the digit alphabet used by messageHash, ordered 0-9a-zA-Z
+// so the encoded value sorts like the reference Python implementation.
+const base62Chars = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+
+// messageHash returns a 10-character base62 digest of the log message, used
+// as the dedup key in the issue title. It matches the tracer reference
+// implementation byte-for-byte so existing issues keep their hash across
+// upgrades.
+func messageHash(message string) string {
+	sum := sha256.Sum256([]byte(message))
+	num := new(big.Int).SetBytes(sum[:])
+
+	// Collect the 10 least-significant base62 digits, least significant
+	// first, exactly like the reference implementation.
+	digits := make([]byte, 0, 10)
+	for i := 0; i < 10 && num.Sign() > 0; i++ {
+		var remainder big.Int
+		num.QuoRem(num, big.NewInt(62), &remainder)
+		digits = append(digits, base62Chars[remainder.Int64()])
+	}
+
+	// zfill(10): left-pad with '0' so the result is always 10 characters.
+	for len(digits) < 10 {
+		digits = append([]byte{'0'}, digits...)
+	}
+	return string(digits)
 }
 
 // firstLine returns the first non-empty line of s, or "" when every line is

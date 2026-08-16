@@ -1,34 +1,21 @@
 package view
 
 import (
+	"strconv"
+
 	"tracer/apps/panel/web/templates"
 )
 
 // CollectorAPIKeyDetailProps holds data for the collector API key detail page.
 type CollectorAPIKeyDetailProps struct {
 	Title         string
+	KeyID         int64
 	KeyName       string
-	KeySuffix     string
 	CreatedAt     int64
 	LastUsed      int64
 	LastUsedValid bool
 	CanReveal     bool
 	ReadOnly      bool
-}
-
-// CollectorAPIKeyKeyRowProps holds data for the key value fragment rendered by
-// the reveal endpoint. Revealed controls whether the plaintext is shown;
-// RevealError, when set, is displayed instead of a reveal button; ReadOnly
-// hides the reveal button entirely (the reveal POST is blocked by the
-// read-only middleware).
-type CollectorAPIKeyKeyRowProps struct {
-	KeyName      string
-	KeySuffix    string
-	CanReveal    bool
-	Revealed     bool
-	ReadOnly     bool
-	PlaintextKey string
-	RevealError  string
 }
 
 // CollectorAPIKeyDetail renders the collector API key detail page.
@@ -49,9 +36,9 @@ templ CollectorAPIKeyDetail(props CollectorAPIKeyDetailProps) {
 					<span>{ props.KeyName }</span>
 
 					<span class="text-fg-secondary">Key Suffix:</span>
-					@CollectorAPIKeyKeyRow(CollectorAPIKeyKeyRowProps{
-						KeyName:   props.KeyName,
-						KeySuffix: props.KeySuffix,
+					@APIKeyValue(APIKeyValueProps{
+						RevealURL: "/settings/admin/collector-api-keys/" + strconv.FormatInt(props.KeyID, 10) + "/reveal",
+						TargetID:  "collector-api-key-value",
 						CanReveal: props.CanReveal,
 						ReadOnly:  props.ReadOnly,
 					})
@@ -71,7 +58,7 @@ templ CollectorAPIKeyDetail(props CollectorAPIKeyDetailProps) {
 			</div>
 
 			<div>
-				<button hx-delete={ "/settings/admin/collector-api-keys/" + props.KeyName }
+				<button hx-delete={ "/settings/admin/collector-api-keys/" + strconv.FormatInt(props.KeyID, 10) }
 						hx-confirm={ "Delete collector API key " + props.KeyName + "?" }
 						hx-target="body"
 						hx-swap="outerHTML"
@@ -81,47 +68,4 @@ templ CollectorAPIKeyDetail(props CollectorAPIKeyDetailProps) {
 			</div>
 		</div>
 	}
-}
-
-// CollectorAPIKeyKeyRow renders the key value on the collector API key detail
-// page. The reveal endpoint returns this fragment standalone so htmx can swap
-// it in place; the reveal/hide buttons POST to the reveal endpoint, which is
-// rejected by the read-only middleware so keys can never be exposed in
-// read-only mode.
-templ CollectorAPIKeyKeyRow(props CollectorAPIKeyKeyRowProps) {
-		<span id="collector-api-key-value" class="flex items-center gap-3">
-			if props.Revealed && props.PlaintextKey != "" {
-				<code class="text-sm font-mono break-all">{ props.PlaintextKey }</code>
-				<button type="button"
-						hx-post={ "/settings/admin/collector-api-keys/" + props.KeyName + "/reveal" }
-						hx-vals='{"revealed":"0"}'
-						hx-target="#collector-api-key-value"
-						hx-swap="outerHTML"
-						class="icon-btn text-fg-secondary transition-colors"
-						title="Hide API key"
-						aria-label="Hide API key">
-					<img src="/static/img/eye-off.svg" alt="Hide API key" width="20" height="20"/>
-				</button>
-			} else {
-				<code class="text-sm font-mono">****{ props.KeySuffix }</code>
-				if props.RevealError != "" {
-					<span class="text-xs text-red-400">{ props.RevealError }</span>
-				} else if props.ReadOnly {
-					<span class="text-xs text-fg-secondary/60" title="Read-only mode hides API keys">Read-only</span>
-				} else if !props.CanReveal {
-					<span class="text-xs text-fg-secondary/60" title="Key was created before reveal support and cannot be shown again">Not revealable</span>
-				} else {
-					<button type="button"
-							hx-post={ "/settings/admin/collector-api-keys/" + props.KeyName + "/reveal" }
-							hx-vals='{"revealed":"1"}'
-							hx-target="#collector-api-key-value"
-							hx-swap="outerHTML"
-							class="icon-btn text-fg-secondary transition-colors"
-							title="Show API key"
-							aria-label="Show API key">
-						<img src="/static/img/eye.svg" alt="Show API key" width="20" height="20"/>
-					</button>
-				}
-			}
-		</span>
 }

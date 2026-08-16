@@ -9,10 +9,6 @@ UPDATE log_group
 SET last_log_at = ?
 WHERE id = ?;
 
--- name: LogGroupExists :one
--- Reports whether a log group row already exists for the message/level pair.
-SELECT EXISTS(SELECT 1 FROM log_group WHERE message = ? AND level = ?);
-
 -- name: GetOrCreateLogGroup :one
 -- Get existing log group by message and level, or create if doesn't exist
 INSERT INTO log_group (message, level, created_at, last_log_at)
@@ -26,9 +22,7 @@ SELECT
     level,
     created_at,
     CAST(COALESCE((SELECT MAX(created_at) FROM log WHERE log.group_id = ?1), 0) AS INTEGER) as last_log_at,
-    (SELECT COUNT(*) FROM log WHERE log.group_id = ?1) as log_count,
-    issue_number,
-    issue_url
+    (SELECT COUNT(*) FROM log WHERE log.group_id = ?1) as log_count
 FROM log_group
 WHERE id = ?1;
 
@@ -119,11 +113,6 @@ FROM log
 WHERE created_at >= sqlc.arg(since)
 GROUP BY time_bucket, LOWER(level)
 ORDER BY time_bucket ASC, level;
-
--- name: SetLogGroupIssue :exec
--- Record the created issue on a log group.
-UPDATE log_group SET issue_number = ?, issue_url = ?
-WHERE id = ?;
 
 -- name: DeleteLogGroup :execrows
 -- Delete a log group by ID

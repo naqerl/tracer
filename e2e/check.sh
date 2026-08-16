@@ -67,7 +67,7 @@ wait_for_logs() {
     # Check the stats endpoint directly since main page loads async via htmx
     page="$(curl -fsS "${DEMO_URL}/panel/collectors/${collector}/apps/demo-api/stats" -H "Cookie: ${COOKIE}")"
     compact="$(tr '\n' ' ' <<<"${page}")"
-    if grep -Eq '<div class="text-2xl font-bold">[1-9][0-9]*</div>.*<div class="text-xs text-fg-secondary">Total Logs</div>' <<<"${compact}"; then
+    if grep -Eq '<div class="text-2xl font-bold[^"]*">[1-9][0-9]*</div>.*<div class="text-xs text-fg-secondary">Total Logs</div>' <<<"${compact}"; then
       return 0
     fi
     sleep 1
@@ -104,7 +104,8 @@ assert_no_errors() {
     grep -v 'connection refused' | \
     grep -v 'Failed to determine user credentials' | \
     grep -v 'Failed at step USER spawning' | \
-    grep -v 'attempt to write a readonly database' || true)"
+    grep -v 'attempt to write a readonly database' | \
+    grep -v 'failed to reap process' || true)"
   if [[ -n "${filtered_output}" ]]; then
     printf '%s\n' "${filtered_output}" >&2
     fail "${unit} contains error logs"

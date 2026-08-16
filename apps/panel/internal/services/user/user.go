@@ -1,12 +1,5 @@
 package user
 
-type User struct {
-	ID           int64  `json:"id"`
-	Username     string `json:"username"`
-	PasswordHash string
-	IsAdmin      bool `json:"is_admin"`
-}
-
 type AccessPolicy struct {
 	Apps []AppAccess
 }

@@ -16,25 +16,27 @@ type AppStatsData struct {
 	Infos    int64
 }
 
-// AppStats renders the app stats overview fragment.
+// AppStats renders the app stats overview fragment. The counts carry the
+// value-breath class so they brighten on each 15s refresh while the labels
+// stay static.
 templ AppStats(props AppStatsProps) {
 	<div id="app-stats">
 		<h2 class="text-lg font-medium mb-4">Overview</h2>
 		<div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
 			<div class="bg-bg-secondary p-4 text-center">
-				<div class="text-2xl font-bold">{ strconv.FormatInt(props.Stats.Total, 10) }</div>
+				<div class="text-2xl font-bold value-breath">{ strconv.FormatInt(props.Stats.Total, 10) }</div>
 				<div class="text-xs text-fg-secondary">Total Logs</div>
 			</div>
 			<div class="bg-bg-secondary p-4 text-center">
-				<div class="text-2xl font-bold text-red-400">{ strconv.FormatInt(props.Stats.Errors, 10) }</div>
+				<div class="text-2xl font-bold text-red-400 value-breath">{ strconv.FormatInt(props.Stats.Errors, 10) }</div>
 				<div class="text-xs text-fg-secondary">Errors</div>
 			</div>
 			<div class="bg-bg-secondary p-4 text-center">
-				<div class="text-2xl font-bold text-yellow-400">{ strconv.FormatInt(props.Stats.Warnings, 10) }</div>
+				<div class="text-2xl font-bold text-yellow-400 value-breath">{ strconv.FormatInt(props.Stats.Warnings, 10) }</div>
 				<div class="text-xs text-fg-secondary">Warnings</div>
 			</div>
 			<div class="bg-bg-secondary p-4 text-center">
-				<div class="text-2xl font-bold text-blue-400">{ strconv.FormatInt(props.Stats.Infos, 10) }</div>
+				<div class="text-2xl font-bold text-blue-400 value-breath">{ strconv.FormatInt(props.Stats.Infos, 10) }</div>
 				<div class="text-xs text-fg-secondary">Info</div>
 			</div>
 		</div>

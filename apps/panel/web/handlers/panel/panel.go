@@ -82,13 +82,13 @@ func InitMux(svc *panelsvc.Service) *http.ServeMux {
 // Dashboard handlers
 
 func (h *handler) getDashboard(w http.ResponseWriter, r *http.Request) {
-	userID, err := auth.RequireOrRedirect(w, r)
+	user, err := auth.RequireUser(w, r)
 	if err != nil {
 		return
 	}
 
 	sinceLabel := ensureSinceCookie(w, r)
-	collectors, err := h.svc.ListCollectors(r.Context(), userID)
+	collectors, err := h.svc.ListCollectors(r.Context(), user.ID)
 	if err != nil {
 		templates.RenderError(w, r, "Error", "Failed to get collectors", http.StatusInternalServerError)
 		return
@@ -97,7 +97,7 @@ func (h *handler) getDashboard(w http.ResponseWriter, r *http.Request) {
 	collectorViews := make([]view.CollectorView, 0, len(collectors))
 	for _, collector := range collectors {
 		apps, err := h.svc.ListCollectorApps(r.Context(), panelsvc.ListCollectorAppsRequest{
-			UserID:        userID,
+			UserID:        user.ID,
 			CollectorName: collector.Name,
 		})
 		if err != nil {
@@ -124,13 +124,13 @@ func (h *handler) getDashboard(w http.ResponseWriter, r *http.Request) {
 // Collector handlers
 
 func (h *handler) getCollector(w http.ResponseWriter, r *http.Request) {
-	userID, err := auth.RequireOrRedirect(w, r)
+	user, err := auth.RequireUser(w, r)
 	if err != nil {
 		return
 	}
 
 	req := panelsvc.GetCollectorRequest{
-		UserID:        userID,
+		UserID:        user.ID,
 		CollectorName: r.PathValue("collector"),
 	}
 	if err := req.Validate(); err != nil {
@@ -152,7 +152,7 @@ func (h *handler) getCollector(w http.ResponseWriter, r *http.Request) {
 	}
 
 	apps, err := h.svc.ListCollectorApps(r.Context(), panelsvc.ListCollectorAppsRequest{
-		UserID:        userID,
+		UserID:        user.ID,
 		CollectorName: req.CollectorName,
 	})
 	if err != nil {
@@ -175,14 +175,14 @@ func (h *handler) getCollector(w http.ResponseWriter, r *http.Request) {
 // getCollectorApps returns the apps grid fragment with uptime and
 // error-count stats.
 func (h *handler) getCollectorApps(w http.ResponseWriter, r *http.Request) {
-	userID, err := auth.RequireOrRedirect(w, r)
+	user, err := auth.RequireUser(w, r)
 	if err != nil {
 		return
 	}
 	_, since := readSince(w, r)
 
 	req := panelsvc.ListCollectorAppsWithStatsRequest{
-		UserID:        userID,
+		UserID:        user.ID,
 		CollectorName: r.PathValue("collector"),
 		Since:         since,
 	}
@@ -223,7 +223,7 @@ func (h *handler) getCollectorApps(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) getCollectorResources(w http.ResponseWriter, r *http.Request) {
-	userID, err := auth.RequireOrRedirect(w, r)
+	user, err := auth.RequireUser(w, r)
 	if err != nil {
 		return
 	}
@@ -231,7 +231,7 @@ func (h *handler) getCollectorResources(w http.ResponseWriter, r *http.Request) 
 	sinceLabel, since := readSince(w, r)
 
 	req := panelsvc.GetStatsHistoryRequest{
-		UserID:        userID,
+		UserID:        user.ID,
 		CollectorName: r.PathValue("collector"),
 		Since:         since,
 	}
@@ -306,13 +306,13 @@ func (h *handler) getCollectorResources(w http.ResponseWriter, r *http.Request) 
 
 // getCollectorStats returns the collector stats row as an HTMX fragment.
 func (h *handler) getCollectorStats(w http.ResponseWriter, r *http.Request) {
-	userID, err := auth.RequireOrRedirect(w, r)
+	user, err := auth.RequireUser(w, r)
 	if err != nil {
 		return
 	}
 
 	req := panelsvc.GetCollectorRequest{
-		UserID:        userID,
+		UserID:        user.ID,
 		CollectorName: r.PathValue("collector"),
 	}
 	if err := req.Validate(); err != nil {
@@ -339,7 +339,7 @@ func (h *handler) getCollectorStats(w http.ResponseWriter, r *http.Request) {
 // App logs handlers
 
 func (h *handler) getApp(w http.ResponseWriter, r *http.Request) {
-	userID, err := auth.RequireOrRedirect(w, r)
+	user, err := auth.RequireUser(w, r)
 	if err != nil {
 		return
 	}
@@ -357,7 +357,7 @@ func (h *handler) getApp(w http.ResponseWriter, r *http.Request) {
 
 	sinceLabel, since := readSince(w, r)
 	healthReq := panelsvc.GetAppHealthRequest{
-		UserID:        userID,
+		UserID:        user.ID,
 		CollectorName: collectorName,
 		AppName:       appName,
 		Since:         since,
@@ -392,7 +392,7 @@ func (h *handler) getApp(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) getAppStats(w http.ResponseWriter, r *http.Request) {
-	userID, err := auth.RequireOrRedirect(w, r)
+	user, err := auth.RequireUser(w, r)
 	if err != nil {
 		return
 	}
@@ -400,7 +400,7 @@ func (h *handler) getAppStats(w http.ResponseWriter, r *http.Request) {
 	_, since := readSince(w, r)
 
 	req := panelsvc.GetAppStatsRequest{
-		UserID:        userID,
+		UserID:        user.ID,
 		CollectorName: r.PathValue("collector"),
 		AppName:       r.PathValue("app"),
 		Since:         since,
@@ -437,7 +437,7 @@ func (h *handler) getAppStats(w http.ResponseWriter, r *http.Request) {
 
 // getAppUptime returns the app uptime panel as an HTMX fragment.
 func (h *handler) getAppUptime(w http.ResponseWriter, r *http.Request) {
-	userID, err := auth.RequireOrRedirect(w, r)
+	user, err := auth.RequireUser(w, r)
 	if err != nil {
 		return
 	}
@@ -447,7 +447,7 @@ func (h *handler) getAppUptime(w http.ResponseWriter, r *http.Request) {
 	_, since := readSince(w, r)
 
 	req := panelsvc.GetAppHealthRequest{
-		UserID:        userID,
+		UserID:        user.ID,
 		CollectorName: collectorName,
 		AppName:       appName,
 		Since:         since,
@@ -632,7 +632,7 @@ func uptimeBucketTitle(start, end time.Time, upDuration, downDuration time.Durat
 }
 
 func (h *handler) getLogGroups(w http.ResponseWriter, r *http.Request) {
-	userID, err := auth.RequireOrRedirect(w, r)
+	user, err := auth.RequireUser(w, r)
 	if err != nil {
 		return
 	}
@@ -645,7 +645,7 @@ func (h *handler) getLogGroups(w http.ResponseWriter, r *http.Request) {
 	}
 
 	req := panelsvc.GetLogGroupsRequest{
-		UserID:        userID,
+		UserID:        user.ID,
 		CollectorName: r.PathValue("collector"),
 		AppName:       r.PathValue("app"),
 		Level:         level,
@@ -706,7 +706,7 @@ func (h *handler) getLogGroups(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) getLogGroupByID(w http.ResponseWriter, r *http.Request) {
-	userID, err := auth.RequireOrRedirect(w, r)
+	user, err := auth.RequireUser(w, r)
 	if err != nil {
 		return
 	}
@@ -720,7 +720,7 @@ func (h *handler) getLogGroupByID(w http.ResponseWriter, r *http.Request) {
 	}
 
 	req := panelsvc.GetLogGroupRequest{
-		UserID:        userID,
+		UserID:        user.ID,
 		CollectorName: r.PathValue("collector"),
 		AppName:       r.PathValue("app"),
 		GroupID:       groupID,
@@ -753,16 +753,14 @@ func (h *handler) getLogGroupByID(w http.ResponseWriter, r *http.Request) {
 		SinceStart:    since.Unix(),
 		SinceEnd:      now.Unix(),
 		LogGroup: view.LogGroupData{
-			ID:          group.ID,
-			Message:     group.Message,
-			Level:       group.Level,
-			Count:       group.Count,
-			CreatedAt:   group.CreatedAt.Unix(),
-			LastLogAt:   group.LastLogAt.Unix(),
-			Since:       now.Unix(),
-			NewLogs:     0,
-			IssueNumber: group.IssueNumber,
-			IssueURL:    group.IssueURL,
+			ID:        group.ID,
+			Message:   group.Message,
+			Level:     group.Level,
+			Count:     group.Count,
+			CreatedAt: group.CreatedAt.Unix(),
+			LastLogAt: group.LastLogAt.Unix(),
+			Since:     now.Unix(),
+			NewLogs:   0,
 		},
 	}).Render(r.Context(), w)
 }
@@ -770,7 +768,7 @@ func (h *handler) getLogGroupByID(w http.ResponseWriter, r *http.Request) {
 // getLogGroupSummary returns the log group metadata (count, first, latest)
 // as an HTMX fragment.
 func (h *handler) getLogGroupSummary(w http.ResponseWriter, r *http.Request) {
-	userID, err := auth.RequireOrRedirect(w, r)
+	user, err := auth.RequireUser(w, r)
 	if err != nil {
 		return
 	}
@@ -789,7 +787,7 @@ func (h *handler) getLogGroupSummary(w http.ResponseWriter, r *http.Request) {
 	}
 
 	req := panelsvc.GetLogGroupSummaryRequest{
-		UserID:        userID,
+		UserID:        user.ID,
 		CollectorName: r.PathValue("collector"),
 		AppName:       r.PathValue("app"),
 		GroupID:       groupID,
@@ -816,21 +814,19 @@ func (h *handler) getLogGroupSummary(w http.ResponseWriter, r *http.Request) {
 	}
 
 	view.LogGroupSummary(view.LogGroupData{
-		ID:          summary.ID,
-		Message:     summary.Message,
-		Level:       summary.Level,
-		Count:       summary.Count,
-		CreatedAt:   summary.CreatedAt.Unix(),
-		LastLogAt:   summary.LastLogAt.Unix(),
-		Since:       time.Now().Unix(),
-		NewLogs:     summary.NewLogs,
-		IssueNumber: summary.IssueNumber,
-		IssueURL:    summary.IssueURL,
+		ID:        summary.ID,
+		Message:   summary.Message,
+		Level:     summary.Level,
+		Count:     summary.Count,
+		CreatedAt: summary.CreatedAt.Unix(),
+		LastLogAt: summary.LastLogAt.Unix(),
+		Since:     time.Now().Unix(),
+		NewLogs:   summary.NewLogs,
 	}).Render(r.Context(), w)
 }
 
 func (h *handler) getLogGroupEntries(w http.ResponseWriter, r *http.Request) {
-	userID, err := auth.RequireOrRedirect(w, r)
+	user, err := auth.RequireUser(w, r)
 	if err != nil {
 		return
 	}
@@ -846,7 +842,7 @@ func (h *handler) getLogGroupEntries(w http.ResponseWriter, r *http.Request) {
 	limit := 50
 
 	req := panelsvc.ListGroupLogsRequest{
-		UserID:        userID,
+		UserID:        user.ID,
 		CollectorName: r.PathValue("collector"),
 		AppName:       r.PathValue("app"),
 		GroupID:       groupID,
@@ -908,7 +904,7 @@ func (h *handler) getLogGroupEntries(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) deleteLogGroup(w http.ResponseWriter, r *http.Request) {
-	userID, err := auth.RequireOrRedirect(w, r)
+	user, err := auth.RequireUser(w, r)
 	if err != nil {
 		return
 	}
@@ -920,7 +916,7 @@ func (h *handler) deleteLogGroup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	req := panelsvc.DeleteLogGroupRequest{
-		UserID:        userID,
+		UserID:        user.ID,
 		CollectorName: r.PathValue("collector"),
 		AppName:       r.PathValue("app"),
 		GroupID:       groupID,
@@ -955,7 +951,7 @@ func (h *handler) getLogGroupPlot(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) getLogByID(w http.ResponseWriter, r *http.Request) {
-	userID, err := auth.RequireOrRedirect(w, r)
+	user, err := auth.RequireUser(w, r)
 	if err != nil {
 		return
 	}
@@ -968,7 +964,7 @@ func (h *handler) getLogByID(w http.ResponseWriter, r *http.Request) {
 	}
 
 	req := panelsvc.GetLogByIDRequest{
-		UserID:        userID,
+		UserID:        user.ID,
 		CollectorName: r.PathValue("collector"),
 		AppName:       r.PathValue("app"),
 		ID:            id,

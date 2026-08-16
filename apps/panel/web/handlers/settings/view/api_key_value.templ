@@ -1,0 +1,60 @@
+package view
+
+// APIKeyValueProps holds data for the key value fragment rendered by the
+// reveal endpoint. RevealURL is the POST target that toggles the plaintext;
+// TargetID is the element id htmx swaps the fragment into. Revealed controls
+// whether the plaintext is shown; RevealError, when set, is displayed instead
+// of a reveal button; ReadOnly hides the reveal button entirely (the reveal
+// POST is blocked by the read-only middleware).
+type APIKeyValueProps struct {
+	RevealURL    string
+	TargetID     string
+	CanReveal    bool
+	Revealed     bool
+	ReadOnly     bool
+	PlaintextKey string
+	RevealError  string
+}
+
+// APIKeyValue renders the key value shared by the collector and user API key
+// detail pages. The reveal endpoint returns this fragment standalone so htmx
+// can swap it in place; the reveal/hide buttons POST to the reveal endpoint,
+// which is rejected by the read-only middleware so keys can never be exposed
+// in read-only mode.
+templ APIKeyValue(props APIKeyValueProps) {
+	<span id={ props.TargetID } class="flex items-center gap-2">
+		if props.Revealed && props.PlaintextKey != "" {
+			<code class="text-sm font-mono break-all">{ props.PlaintextKey }</code>
+			<button type="button"
+					hx-post={ props.RevealURL }
+					hx-vals='{"revealed":"0"}'
+					hx-target={ "#" + props.TargetID }
+					hx-swap="outerHTML"
+					class="icon-btn text-fg-secondary transition-colors inline-flex items-center"
+					title="Hide API key"
+					aria-label="Hide API key">
+				<img src="/static/img/eye-off.svg" alt="Hide API key" width="14" height="14" class="w-3.5 h-3.5"/>
+			</button>
+		} else {
+			<code class="text-sm font-mono">••••••••••••</code>
+			if props.RevealError != "" {
+				<span class="text-xs text-red-400">{ props.RevealError }</span>
+			} else if props.ReadOnly {
+				<span class="text-xs text-fg-secondary/60" title="Read-only mode hides API keys">Read-only</span>
+			} else if !props.CanReveal {
+				<span class="text-xs text-fg-secondary/60" title="Key was created before reveal support and cannot be shown again">Not revealable</span>
+			} else {
+				<button type="button"
+						hx-post={ props.RevealURL }
+						hx-vals='{"revealed":"1"}'
+						hx-target={ "#" + props.TargetID }
+						hx-swap="outerHTML"
+						class="icon-btn text-fg-secondary transition-colors inline-flex items-center"
+						title="Show API key"
+						aria-label="Show API key">
+					<img src="/static/img/eye.svg" alt="Show API key" width="14" height="14" class="w-3.5 h-3.5"/>
+				</button>
+			}
+		}
+	</span>
+}

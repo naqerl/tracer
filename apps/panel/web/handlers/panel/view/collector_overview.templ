@@ -34,7 +34,6 @@ templ CollectorOverviewData(props CollectorOverviewProps) {
 			<span class="text-fg-secondary text-xl mr-1">[</span>
 			<h2 class="text-xl font-semibold">{ props.CollectorName }</h2>
 			<span class="text-fg-secondary text-xl ml-1">]</span>
-			@templates.Indicator("apps-loading", "Refreshing…")
 			<hr class="flex-1 mx-4 border-bg-secondary" />
 			if props.Stats != nil {
 				<span class="text-fg-secondary text-xs mr-1">[</span>
@@ -54,7 +53,6 @@ templ CollectorOverviewData(props CollectorOverviewProps) {
 			hx-get={ "/panel/collectors/" + props.CollectorName + "/stats" }
 			hx-trigger="every 15s"
 			hx-swap="innerHTML"
-			hx-indicator="#apps-loading"
 		>
 			@StatsRow(props.Stats, props.CollectorName)
 		</div>
@@ -64,7 +62,6 @@ templ CollectorOverviewData(props CollectorOverviewProps) {
 			hx-get={ "/panel/collectors/" + props.CollectorName + "/apps" }
 			hx-trigger="load, every 15s"
 			hx-swap="innerHTML"
-			hx-indicator="#apps-loading"
 		>
 			@CollectorAppsSkeleton(props.AccessibleAppCount)
 		</div>

@@ -1,8 +1,8 @@
 package view
 
 import (
-	"encoding/hex"
 	"time"
+
 	"tracer/apps/panel/web/templates"
 )
 
@@ -33,13 +33,6 @@ type DashboardProps struct {
 	Title      string
 	Since      string
 	Collectors []CollectorView
-}
-
-// indicatorID returns a CSS-safe id suffix for a collector name. The name is
-// hex-encoded so distinct names always yield distinct ids; a dots-to-dashes
-// mapping would merge "web.prod" with "web-prod".
-func indicatorID(name string) string {
-	return hex.EncodeToString([]byte(name))
 }
 
 // cpuClass returns a CSS class based on CPU usage.
@@ -105,14 +98,12 @@ templ Dashboard(p DashboardProps) {
 							<a href={ "/panel/collectors/" + c.Name } class="text-xl font-semibold hover:opacity-80 transition-opacity">
 								{ c.Name }
 							</a>
-							@templates.Indicator("apps-loading-"+indicatorID(c.Name), "Refreshing…")
 						</div>
 						<!-- Stats Row -->
 						<div
 							hx-get={ "/panel/collectors/" + c.Name + "/stats" }
 							hx-trigger="every 15s"
 							hx-swap="innerHTML"
-							hx-indicator={ "#apps-loading-" + indicatorID(c.Name) }
 						>
 							@StatsRow(c.Stats, c.Name)
 						</div>
@@ -121,7 +112,6 @@ templ Dashboard(p DashboardProps) {
 							hx-get={ "/panel/collectors/" + c.Name + "/apps" }
 							hx-trigger="load, every 15s"
 							hx-swap="innerHTML"
-							hx-indicator={ "#apps-loading-" + indicatorID(c.Name) }
 						>
 							@CollectorAppsSkeleton(c.AccessibleAppCount)
 						</div>

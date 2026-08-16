@@ -3,8 +3,10 @@ package auth
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"net/http"
 
+	"tracer/apps/panel/internal/domain"
 	authsvc "tracer/apps/panel/internal/services/auth"
 	usersvc "tracer/apps/panel/internal/services/user"
 	"tracer/apps/panel/web/middleware"
@@ -20,36 +22,27 @@ const (
 
 var (
 	ErrUnauthorized = errors.New("unauthorized")
-	ErrForbidden    = errors.New("forbidden")
 )
 
-// GetUserID returns the authenticated user ID from the request context.
-func GetUserID(r *http.Request) (int64, error) {
-	userID, ok := middleware.GetUserID(r)
+// GetActor returns the caller actor from the request context, or
+// domain.Unauthenticated when no session or API key is present.
+func GetActor(r *http.Request) domain.Actor {
+	if actor, ok := middleware.GetActor(r); ok {
+		return actor
+	}
+	return domain.Unauthenticated{}
+}
+
+// RequireUser returns the authenticated caller, redirecting to login when
+// the request is not authenticated. Role checks are the caller's job.
+func RequireUser(w http.ResponseWriter, r *http.Request) (domain.User, error) {
+	actor := GetActor(r)
+	user, ok := actor.(domain.User)
 	if !ok {
-		return userID, ErrUnauthorized
-	}
-	return userID, nil
-}
-
-// Require returns user if authenticated, otherwise writes 401.
-func Require(w http.ResponseWriter, r *http.Request) (int64, error) {
-	userID, err := GetUserID(r)
-	if err != nil {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return userID, ErrUnauthorized
-	}
-	return userID, nil
-}
-
-// RequireOrRedirect returns user if authenticated, otherwise redirects to login.
-func RequireOrRedirect(w http.ResponseWriter, r *http.Request) (int64, error) {
-	userID, err := GetUserID(r)
-	if err != nil {
 		RedirectToLogin(w, r)
-		return userID, ErrUnauthorized
+		return domain.User{}, ErrUnauthorized
 	}
-	return userID, nil
+	return user, nil
 }
 
 func BuildLoginPathMiddleware(loginPath string) func(http.Handler) http.Handler {
@@ -93,7 +86,7 @@ func BuildAuthMiddleware(authService *authsvc.Service, userService *usersvc.Serv
 				attachMarkdownContext(w, r, next, authService, userService)
 				return
 			}
-			attachSessionContext(w, r, next, authService)
+			attachSessionContext(w, r, next, authService, userService)
 		})
 	}
 }
@@ -101,17 +94,17 @@ func BuildAuthMiddleware(authService *authsvc.Service, userService *usersvc.Serv
 func attachMarkdownContext(w http.ResponseWriter, r *http.Request, next http.Handler, authService *authsvc.Service, userService *usersvc.Service) {
 	apiKey := r.Header.Get("X-API-Key")
 	if apiKey != "" {
-		userID, err := authService.ValidateUserAPIKey(r.Context(), apiKey, userService)
+		userID, err := authService.ValidateUserAPIKey(r.Context(), apiKey)
 		if err == nil {
-			r = middleware.SetUserID(r, userID)
+			r = setActorForUser(r, userService, userID)
 			next.ServeHTTP(w, r)
 			return
 		}
 	}
-	attachSessionContext(w, r, next, authService)
+	attachSessionContext(w, r, next, authService, userService)
 }
 
-func attachSessionContext(w http.ResponseWriter, r *http.Request, next http.Handler, authService *authsvc.Service) {
+func attachSessionContext(w http.ResponseWriter, r *http.Request, next http.Handler, authService *authsvc.Service, userService *usersvc.Service) {
 	cookie, err := r.Cookie(sessionCookie)
 	if err != nil {
 		next.ServeHTTP(w, r)
@@ -136,8 +129,20 @@ func attachSessionContext(w http.ResponseWriter, r *http.Request, next http.Hand
 		SetSessionCookie(w, r, cookie.Value, int(authsvc.SessionDuration.Seconds()))
 	}
 
-	r = middleware.SetUserID(r, userID)
+	r = setActorForUser(r, userService, userID)
 	next.ServeHTTP(w, r)
+}
+
+// setActorForUser resolves the user and stores the full domain.Actor (with
+// role and display fields) in the request context. Unknown users fall back to
+// an unauthenticated actor rather than granting access.
+func setActorForUser(r *http.Request, userService *usersvc.Service, userID int64) *http.Request {
+	user, err := userService.FindByID(r.Context(), domain.System{}, userID)
+	if err != nil {
+		slog.Error("could not resolve actor from session user", "user_id", userID, "error", err)
+		return middleware.SetActor(r, domain.Unauthenticated{})
+	}
+	return middleware.SetActor(r, user)
 }
 
 func SetSessionCookie(w http.ResponseWriter, r *http.Request, token string, maxAge int) {

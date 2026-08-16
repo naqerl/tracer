@@ -56,7 +56,7 @@ vet: generate
 	go tool staticcheck ./...
 
 dev-setup:
-	go install github.com/sqlc-dev/sqlc/cmd/sqlc@v1.30.0
+	go install github.com/sqlc-dev/sqlc/cmd/sqlc@v1.31.1
 	go mod download
 	go mod tidy
 

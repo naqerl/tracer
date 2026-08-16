@@ -40,9 +40,11 @@ templ App(props AppProps) {
 	}
 }
 
-// UptimePanel renders the uptime heading and bars as a pollable fragment.
+// UptimePanel renders the uptime heading and bars as a pollable fragment. The
+// uptime value carries the value-breath class so it brightens on each 15s
+// refresh while the "Uptime" label stays static.
 templ UptimePanel(uptime AppHealthView) {
-	<h2 class="text-lg font-medium mb-4">Uptime { uptime.UptimeText }</h2>
+	<h2 class="text-lg font-medium mb-4">Uptime <span class="value-breath">{ uptime.UptimeText }</span></h2>
 	<div class="mb-6">
 		@UptimeBars(uptime.Bars, "lg")
 	</div>

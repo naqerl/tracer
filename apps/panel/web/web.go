@@ -56,6 +56,7 @@ func NewServer(deps Dependencies, port string, noAuth bool, readOnly bool) *http
 	handler = authMiddleware(handler)
 	handler = loginPathMiddleware(handler)
 	handler = markdownMiddleware(handler)
+	handler = middleware.BuildMarkdownAcceptMiddleware()(handler)
 
 	if noAuth {
 		handler = middleware.BuildNoAuthMiddleware(deps.User)(handler)

@@ -32,9 +32,9 @@ templ AppCard(collectorName string, app AppView, loading bool) {
 			<a href={ "/panel/collectors/" + collectorName + "/apps/" + app.Name } class="block hover:bg-bg-secondary/80 transition-all hover:-translate-y-0.5">
 				<div class="font-medium">{ app.Name }</div>
 				<div class="mt-2 text-xs text-fg-secondary">
-					<span>uptime: <span class={ "inline-block w-[3ch] tabular-nums text-right whitespace-nowrap " + app.UptimeClass }>{ app.UptimeText }</span></span>
+					<span>uptime: <span class={ "inline-block w-[3ch] tabular-nums text-right whitespace-nowrap value-breath " + app.UptimeClass }>{ app.UptimeText }</span></span>
 					<span class="text-fg-secondary"> | </span>
-					<span>errors: <span class={ "inline-block w-[3ch] tabular-nums text-left whitespace-nowrap " + app.ErrorClass }>{ strconv.FormatInt(app.ErrorCount, 10) }</span></span>
+					<span>errors: <span class={ "inline-block w-[3ch] tabular-nums text-left whitespace-nowrap value-breath " + app.ErrorClass }>{ strconv.FormatInt(app.ErrorCount, 10) }</span></span>
 				</div>
 			</a>
 		}

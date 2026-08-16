@@ -29,7 +29,7 @@ func TestFormatMessageWithLog(t *testing.T) {
 
 func TestFormatMessageLogWithoutURL(t *testing.T) {
 	n := Notification{
-		Type:          TypeNewErrorGroup,
+		Type:          TypeAlert,
 		CollectorName: "prod",
 		AppName:       "api",
 		Payload: LogEntry{
@@ -67,7 +67,7 @@ func TestFormatMessageStringPayloadWithHeader(t *testing.T) {
 // NotificationType is added but not added here.
 func expectedPayloadType(typ NotificationType) reflect.Type {
 	switch typ {
-	case TypeAlert, TypeNewErrorGroup:
+	case TypeAlert:
 		return reflect.TypeOf(LogEntry{})
 	case TypeLifecycle, TypeWelcome, TypeSubscription:
 		return reflect.TypeOf("")
@@ -80,11 +80,10 @@ func expectedPayloadType(typ NotificationType) reflect.Type {
 // every notification type and verifies FormatMessage renders a valid payload.
 func TestNotificationPayloadTypeMapping(t *testing.T) {
 	payloads := map[NotificationType]any{
-		TypeAlert:         LogEntry{Message: "boom"},
-		TypeNewErrorGroup: LogEntry{Message: "boom"},
-		TypeLifecycle:     "restart",
-		TypeWelcome:       "hello",
-		TypeSubscription:  "subscribed",
+		TypeAlert:        LogEntry{Message: "boom"},
+		TypeLifecycle:    "restart",
+		TypeWelcome:      "hello",
+		TypeSubscription: "subscribed",
 	}
 
 	for typ, payload := range payloads {
@@ -104,7 +103,7 @@ func TestNotificationPayloadTypeMapping(t *testing.T) {
 
 	// Every defined type must have a documented mapping; otherwise a new
 	// notification type silently breaks the contract.
-	for _, typ := range []NotificationType{TypeAlert, TypeLifecycle, TypeWelcome, TypeSubscription, TypeNewErrorGroup} {
+	for _, typ := range []NotificationType{TypeAlert, TypeLifecycle, TypeWelcome, TypeSubscription} {
 		if expectedPayloadType(typ) == nil {
 			t.Errorf("type %s: missing from the payload mapping table", typ)
 		}

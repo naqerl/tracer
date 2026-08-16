@@ -80,9 +80,14 @@ func New(handle *dbmanager.DBHandle, userSvc *user.Service, factories map[string
 	}
 }
 
-// Add creates a notifier, tests it by sending welcome notification, then saves to DB.
-// The notifier is only persisted if the welcome notification succeeds.
-func (s *Service) Add(ctx context.Context, req AddNotifierRequest) error {
+// Add creates a notifier for the given actor, tests it by sending welcome
+// notification, then saves to DB. The notifier is only persisted if the
+// welcome notification succeeds.
+func (s *Service) Add(ctx context.Context, actor domain.Actor, req AddNotifierRequest) error {
+	if err := s.authorizeAccess(actor, req.UserID); err != nil {
+		return err
+	}
+
 	// 1. Create notifier instance to test it works
 	factory, ok := s.factories[req.Type]
 	if !ok {
@@ -123,11 +128,9 @@ func (s *Service) Add(ctx context.Context, req AddNotifierRequest) error {
 	return nil
 }
 
-// SetSubscriptions sets app subscriptions for a notifier with access check.
-// Simply writes to the database without any registration/caching logic.
+// SetSubscriptions sets app subscriptions for a notifier.
 // Returns ErrNotifierNotFound if the notifier doesn't exist.
-// Returns ErrAccessDenied if the user doesn't have access to the notifier.
-func (s *Service) SetSubscriptions(ctx context.Context, user user.User, notifierID int64, subscriptions []Subscription) error {
+func (s *Service) SetSubscriptions(ctx context.Context, actor domain.Actor, notifierID int64, subscriptions []Subscription) error {
 	// 1. Verify notifier exists and user has access
 	notifier, err := db.New(s.handle.Read()).GetNotifier(ctx, notifierID)
 	if err != nil {
@@ -137,8 +140,8 @@ func (s *Service) SetSubscriptions(ctx context.Context, user user.User, notifier
 		return err
 	}
 
-	if !s.canAccess(user, notifier.UserID) {
-		return ErrAccessDenied
+	if err := s.authorizeAccess(actor, notifier.UserID); err != nil {
+		return err
 	}
 
 	// 2. Simply update database - no registration/caching logic
@@ -152,8 +155,7 @@ func (s *Service) SetSubscriptions(ctx context.Context, user user.User, notifier
 
 // GetSetup retrieves a notifier setup by ID (without subscriptions).
 // Returns ErrNotifierNotFound if the notifier doesn't exist.
-// Returns ErrAccessDenied if the user doesn't have access to the notifier.
-func (s *Service) GetSetup(ctx context.Context, user user.User, notifierID int64) (Setup, error) {
+func (s *Service) GetSetup(ctx context.Context, actor domain.Actor, notifierID int64) (Setup, error) {
 	var setup Setup
 	notifier, err := db.New(s.handle.Read()).GetNotifier(ctx, notifierID)
 	if err != nil {
@@ -163,8 +165,8 @@ func (s *Service) GetSetup(ctx context.Context, user user.User, notifierID int64
 		return setup, err
 	}
 
-	if !s.canAccess(user, notifier.UserID) {
-		return setup, ErrAccessDenied
+	if err := s.authorizeAccess(actor, notifier.UserID); err != nil {
+		return setup, err
 	}
 
 	return Setup{
@@ -179,8 +181,7 @@ func (s *Service) GetSetup(ctx context.Context, user user.User, notifierID int64
 
 // GetSubscriptions retrieves subscriptions for a notifier by ID.
 // Returns ErrNotifierNotFound if the notifier doesn't exist.
-// Returns ErrAccessDenied if the user doesn't have access to the notifier.
-func (s *Service) GetSubscriptions(ctx context.Context, user user.User, notifierID int64) ([]Subscription, error) {
+func (s *Service) GetSubscriptions(ctx context.Context, actor domain.Actor, notifierID int64) ([]Subscription, error) {
 	queries := db.New(s.handle.Read())
 	notifier, err := queries.GetNotifier(ctx, notifierID)
 	if err != nil {
@@ -190,8 +191,8 @@ func (s *Service) GetSubscriptions(ctx context.Context, user user.User, notifier
 		return nil, err
 	}
 
-	if !s.canAccess(user, notifier.UserID) {
-		return nil, ErrAccessDenied
+	if err := s.authorizeAccess(actor, notifier.UserID); err != nil {
+		return nil, err
 	}
 
 	rows, err := queries.GetNotifierSubscriptions(ctx, notifierID)
@@ -210,10 +211,9 @@ func (s *Service) GetSubscriptions(ctx context.Context, user user.User, notifier
 	return subscriptions, nil
 }
 
-// Delete removes a notifier with access check.
+// Delete removes a notifier.
 // Returns ErrNotifierNotFound if the notifier doesn't exist.
-// Returns ErrAccessDenied if the user doesn't have access to the notifier.
-func (s *Service) Delete(ctx context.Context, user user.User, notifierID int64) error {
+func (s *Service) Delete(ctx context.Context, actor domain.Actor, notifierID int64) error {
 	// Verify notifier exists and user has access
 	notifier, err := db.New(s.handle.Read()).GetNotifier(ctx, notifierID)
 	if err != nil {
@@ -223,8 +223,8 @@ func (s *Service) Delete(ctx context.Context, user user.User, notifierID int64) 
 		return err
 	}
 
-	if !s.canAccess(user, notifier.UserID) {
-		return ErrAccessDenied
+	if err := s.authorizeAccess(actor, notifier.UserID); err != nil {
+		return err
 	}
 
 	return s.handle.Write(ctx, func(tx db.DBTX) error {
@@ -232,10 +232,9 @@ func (s *Service) Delete(ctx context.Context, user user.User, notifierID int64) 
 	})
 }
 
-// Toggle enables or disables a notifier with access check.
+// Toggle enables or disables a notifier.
 // Returns ErrNotifierNotFound if the notifier doesn't exist.
-// Returns ErrAccessDenied if the user doesn't have access to the notifier.
-func (s *Service) Toggle(ctx context.Context, user user.User, notifierID int64, enable bool) error {
+func (s *Service) Toggle(ctx context.Context, actor domain.Actor, notifierID int64, enable bool) error {
 	// Verify notifier exists and user has access
 	notifier, err := db.New(s.handle.Read()).GetNotifier(ctx, notifierID)
 	if err != nil {
@@ -245,8 +244,8 @@ func (s *Service) Toggle(ctx context.Context, user user.User, notifierID int64, 
 		return err
 	}
 
-	if !s.canAccess(user, notifier.UserID) {
-		return ErrAccessDenied
+	if err := s.authorizeAccess(actor, notifier.UserID); err != nil {
+		return err
 	}
 
 	return s.handle.Write(ctx, func(tx db.DBTX) error {
@@ -257,17 +256,44 @@ func (s *Service) Toggle(ctx context.Context, user user.User, notifierID int64, 
 	})
 }
 
-// List returns notifiers for the given user.
+// List returns notifiers for the given actor.
 // Admins see all notifiers, non-admins see only their own.
-func (s *Service) List(ctx context.Context, user user.User) ([]db.Notifier, error) {
+func (s *Service) List(ctx context.Context, actor domain.Actor) ([]db.Notifier, error) {
 	queries := db.New(s.handle.Read())
-	if user.IsAdmin {
+	switch a := actor.(type) {
+	case domain.System:
 		return queries.ListAllNotifiers(ctx)
+	case domain.User:
+		if a.Role == domain.RoleAdmin {
+			return queries.ListAllNotifiers(ctx)
+		}
+		return queries.ListNotifiersByUser(ctx, a.ID)
+	case domain.Unauthenticated:
+		return nil, ErrAccessDenied
+	default:
+		return nil, domain.ErrUnexpectedActor
 	}
-	return queries.ListNotifiersByUser(ctx, user.ID)
 }
 
 // Private methods
+
+// authorizeAccess permits the system actor, admin users, and the user that
+// owns the notifier (ownerID).
+func (s *Service) authorizeAccess(actor domain.Actor, ownerID int64) error {
+	switch a := actor.(type) {
+	case domain.System:
+		return nil
+	case domain.User:
+		if a.Role == domain.RoleAdmin || a.ID == ownerID {
+			return nil
+		}
+		return ErrAccessDenied
+	case domain.Unauthenticated:
+		return ErrAccessDenied
+	default:
+		return domain.ErrUnexpectedActor
+	}
+}
 
 // setSubscriptions sets all subscriptions for a notifier (replaces existing).
 func (s *Service) setSubscriptions(ctx context.Context, notifierID int64, subscriptions []Subscription) error {
@@ -297,12 +323,4 @@ func (s *Service) setSubscriptions(ctx context.Context, notifierID int64, subscr
 
 		return nil
 	})
-}
-
-// canAccess checks if a user can access a notifier based on ownership and admin status.
-func (s *Service) canAccess(user user.User, notifierUserID int64) bool {
-	if user.IsAdmin {
-		return true
-	}
-	return user.ID == notifierUserID
 }

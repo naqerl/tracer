@@ -1,16 +1,21 @@
 -- User API key queries (LLM compatibility)
 
 -- name: CreateUserAPIKey :one
-INSERT INTO user_api_key (user_id, key_hash, key_suffix, name, created_at)
+INSERT INTO user_api_key (user_id, key_hash, name, created_at, key_encrypted)
 VALUES (?, ?, ?, ?, ?)
-RETURNING *;
+RETURNING id, user_id, key_hash, name, created_at, last_used_at, key_encrypted;
 
 -- name: GetUserAPIKeysByUser :many
-SELECT id, user_id, key_suffix, name, last_used_at FROM user_api_key
+SELECT id, user_id, key_hash, name, created_at, last_used_at, key_encrypted FROM user_api_key
 WHERE user_id = ?
 ORDER BY created_at DESC;
 
--- name: DeleteUserAPIKey :exec
+-- name: GetUserAPIKeyByID :one
+SELECT id, user_id, key_hash, name, created_at, last_used_at, key_encrypted
+FROM user_api_key
+WHERE id = ?;
+
+-- name: DeleteUserAPIKey :execrows
 DELETE FROM user_api_key
 WHERE id = ?;
 

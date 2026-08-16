@@ -21,8 +21,7 @@ const keySecretFile = "keys.key"
 const keySecretSize = 32
 
 var (
-	// ErrKeyNotRevealable is returned when a key has no stored ciphertext,
-	// i.e. it was created before reveal support existed.
+	// ErrKeyNotRevealable is returned when a key has no stored ciphertext.
 	ErrKeyNotRevealable = errors.New("api key was created before reveal support and cannot be shown again")
 	// ErrKeyDecryptFailed is returned when the stored ciphertext cannot be
 	// decrypted (tampering, wrong or missing key secret).
@@ -94,8 +93,8 @@ func encryptKey(key []byte, plaintext string) (string, error) {
 	return base64.StdEncoding.EncodeToString(append(nonce, sealed...)), nil
 }
 
-// decryptKey reverses encryptKey. An empty encoded value means the key was
-// created before reveal support and returns ErrKeyNotRevealable.
+// decryptKey reverses encryptKey. An empty encoded value (no stored
+// ciphertext) returns ErrKeyNotRevealable.
 func decryptKey(key []byte, encoded string) (string, error) {
 	if encoded == "" {
 		return "", ErrKeyNotRevealable

@@ -496,9 +496,7 @@ func (r StoreLogRequest) Validate() error {
 // StoreLog stores a log entry for a specific app.
 // It handles log group creation and insertion of the log entry.
 // Returns the log ID for potential notifications.
-// Includes sampling logic and notification sending for errors. The entry
-// that creates a new error group announces the group instead of the usual
-// per-entry alert; later entries alert normally.
+// Includes sampling logic and notification sending for errors.
 func (s *Service) StoreLog(ctx context.Context, req StoreLogRequest) (int64, error) {
 	// Check if this is an error level log
 	isError := req.Entry.Level == types.LevelError
@@ -523,22 +521,8 @@ func (s *Service) StoreLog(ctx context.Context, req StoreLogRequest) (int64, err
 
 	var logID int64
 	var logGroupID int64
-	newGroup := false
 	err = handle.Write(ctx, func(tx db.DBTX) error {
 		q := db.New(tx)
-
-		// A group is "new" only when no row exists yet; the upsert below
-		// reuses rows whose logs were pruned by retention, so last_log_at == 0
-		// cannot tell a fresh insert apart. Writes are serialized per app DB,
-		// so the existence check sees a stable state.
-		exists, err := q.LogGroupExists(ctx, db.LogGroupExistsParams{
-			Message: req.Entry.Message,
-			Level:   string(req.Entry.Level),
-		})
-		if err != nil {
-			return err
-		}
-		newGroup = isError && !exists
 
 		logGroup, err := q.GetOrCreateLogGroup(ctx, db.GetOrCreateLogGroupParams{
 			Message: req.Entry.Message,
@@ -575,11 +559,7 @@ func (s *Service) StoreLog(ctx context.Context, req StoreLogRequest) (int64, err
 	}
 
 	if isError {
-		typ := notify.TypeAlert
-		if newGroup {
-			typ = notify.TypeNewErrorGroup
-		}
-		s.sendLogNotification(req, typ, logID, logGroupID)
+		s.sendLogNotification(req, notify.TypeAlert, logID, logGroupID)
 	}
 
 	return logID, nil

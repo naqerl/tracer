@@ -2,21 +2,23 @@ package view
 
 import "strconv"
 
-// StatsRow renders CPU, RAM, and Disk stats in a compact row.
+// StatsRow renders CPU, RAM, and Disk stats in a compact row. The value spans
+// carry the value-breath class so they brighten on each 15s refresh while the
+// static labels stay put.
 templ StatsRow(stats *CollectorStatsView, collectorName string) {
 	if stats != nil {
 		<div class="flex flex-wrap items-center gap-4 mb-4 text-xs">
 			<div class="flex items-center gap-1">
 				<span class="text-fg-secondary">CPU:</span>
-				<span class={ cpuClass(stats.CPUUsagePercent) }>{ strconv.FormatFloat(stats.CPUUsagePercent, 'f', 0, 64) }%</span>
+				<span class={ cpuClass(stats.CPUUsagePercent) + " value-breath" }>{ strconv.FormatFloat(stats.CPUUsagePercent, 'f', 0, 64) }%</span>
 			</div>
 			<div class="flex items-center gap-1">
 				<span class="text-fg-secondary">RAM:</span>
-				<span class={ memClass(memPercent(stats.MemUsedMB, stats.MemTotalMB)) }>{ strconv.FormatFloat(memPercent(stats.MemUsedMB, stats.MemTotalMB), 'f', 0, 64) }%</span>
+				<span class={ memClass(memPercent(stats.MemUsedMB, stats.MemTotalMB)) + " value-breath" }>{ strconv.FormatFloat(memPercent(stats.MemUsedMB, stats.MemTotalMB), 'f', 0, 64) }%</span>
 			</div>
 			<div class="flex items-center gap-1">
 				<span class="text-fg-secondary">Disk:</span>
-				<span class={ diskClass(diskPercent(stats.DiskUsedGB, stats.DiskTotalGB)) }>{ strconv.FormatFloat(diskPercent(stats.DiskUsedGB, stats.DiskTotalGB), 'f', 0, 64) }%</span>
+				<span class={ diskClass(diskPercent(stats.DiskUsedGB, stats.DiskTotalGB)) + " value-breath" }>{ strconv.FormatFloat(diskPercent(stats.DiskUsedGB, stats.DiskTotalGB), 'f', 0, 64) }%</span>
 			</div>
 			<a hx-get={ "/panel/collectors/" + collectorName + "/resources" }
 			   hx-target="body"
