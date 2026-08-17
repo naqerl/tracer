@@ -290,7 +290,7 @@ func serve(ctx context.Context, cfg *config.Config, noAuth, readOnly bool) error
 
 	// Initialize notification components
 	notifyDispatcher := notify.NewDispatcher(panelHandle, notifierFactories, notifyChan, userService)
-	notifyService := notify.New(panelHandle, userService, notifierFactories)
+	notifyService := notify.New(panelHandle, userService, dbManager, notifierFactories)
 
 	// Initialize ingest service
 	alertFormatter := func(collectorName, appName string, logID int64) string {

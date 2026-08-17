@@ -117,6 +117,20 @@ type UserAPIKey struct {
 	UserID int64
 }
 
+// GeneratedCollectorAPIKey is the result of creating a collector API key: the
+// stored key record plus the plaintext, which is shown to the user only once.
+type GeneratedCollectorAPIKey struct {
+	Key       CollectorAPIKey
+	Plaintext string
+}
+
+// GeneratedUserAPIKey is the result of creating a user API key: the stored
+// key record plus the plaintext, which is shown to the user only once.
+type GeneratedUserAPIKey struct {
+	Key       UserAPIKey
+	Plaintext string
+}
+
 // New creates a Service with the given panel database handle, master key, and
 // bcrypt work factor.
 //
@@ -403,23 +417,25 @@ func hashAPIKey(key string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// GenerateCollectorAPIKey creates a new collector API key.
-func (s *Service) GenerateCollectorAPIKey(ctx context.Context, actor domain.Actor, req GenerateCollectorAPIKeyRequest) (string, error) {
+// GenerateCollectorAPIKey creates a new collector API key. It returns the
+// stored key record and the plaintext, which is shown only once.
+func (s *Service) GenerateCollectorAPIKey(ctx context.Context, actor domain.Actor, req GenerateCollectorAPIKeyRequest) (GeneratedCollectorAPIKey, error) {
 	if err := authorizeAdminOrSystem(actor); err != nil {
-		return "", err
+		return GeneratedCollectorAPIKey{}, err
 	}
 	key, err := generateToken(apiKeySize)
 	if err != nil {
-		return "", fmt.Errorf("generate collector api key: %w", err)
+		return GeneratedCollectorAPIKey{}, fmt.Errorf("generate collector api key: %w", err)
 	}
 
 	encrypted, err := encryptKey(s.keySecret, key)
 	if err != nil {
-		return "", fmt.Errorf("encrypt collector api key: %w", err)
+		return GeneratedCollectorAPIKey{}, fmt.Errorf("encrypt collector api key: %w", err)
 	}
 
+	var row db.CollectorApiKey
 	err = s.handle.Write(ctx, func(tx db.DBTX) error {
-		_, err := db.New(tx).CreateCollectorAPIKey(ctx, db.CreateCollectorAPIKeyParams{
+		row, err = db.New(tx).CreateCollectorAPIKey(ctx, db.CreateCollectorAPIKeyParams{
 			Name:         req.Name,
 			KeyHash:      hashAPIKey(key),
 			KeyEncrypted: encrypted,
@@ -428,11 +444,11 @@ func (s *Service) GenerateCollectorAPIKey(ctx context.Context, actor domain.Acto
 		return err
 	})
 	if err != nil {
-		return "", fmt.Errorf("create collector api key: %w", err)
+		return GeneratedCollectorAPIKey{}, fmt.Errorf("create collector api key: %w", err)
 	}
 
 	slog.Info("Collector API key created", "name", req.Name)
-	return key, nil
+	return GeneratedCollectorAPIKey{Key: collectorAPIKeyFromRow(row), Plaintext: key}, nil
 }
 
 // ListCollectorAPIKeys returns all collector API keys.
@@ -658,24 +674,26 @@ func (s *Service) DeleteUserAPIKey(ctx context.Context, actor domain.Actor, id i
 	})
 }
 
-// GenerateUserAPIKey creates a new API key for the given user.
-func (s *Service) GenerateUserAPIKey(ctx context.Context, actor domain.Actor, req GenerateUserAPIKeyRequest) (string, error) {
+// GenerateUserAPIKey creates a new API key for the given user. It returns the
+// stored key record and the plaintext, which is shown only once.
+func (s *Service) GenerateUserAPIKey(ctx context.Context, actor domain.Actor, req GenerateUserAPIKeyRequest) (GeneratedUserAPIKey, error) {
 	if err := authorizeOwnerOrAdmin(actor, req.UserID); err != nil {
-		return "", err
+		return GeneratedUserAPIKey{}, err
 	}
 
 	key, err := generateToken(apiKeySize)
 	if err != nil {
-		return "", fmt.Errorf("generate user API key: %w", err)
+		return GeneratedUserAPIKey{}, fmt.Errorf("generate user API key: %w", err)
 	}
 
 	encrypted, err := encryptKey(s.keySecret, key)
 	if err != nil {
-		return "", fmt.Errorf("encrypt user API key: %w", err)
+		return GeneratedUserAPIKey{}, fmt.Errorf("encrypt user API key: %w", err)
 	}
 
+	var row db.UserApiKey
 	err = s.handle.Write(ctx, func(tx db.DBTX) error {
-		_, err := db.New(tx).CreateUserAPIKey(ctx, db.CreateUserAPIKeyParams{
+		row, err = db.New(tx).CreateUserAPIKey(ctx, db.CreateUserAPIKeyParams{
 			UserID:       req.UserID,
 			KeyHash:      hashAPIKey(key),
 			Name:         req.Name,
@@ -685,11 +703,11 @@ func (s *Service) GenerateUserAPIKey(ctx context.Context, actor domain.Actor, re
 		return err
 	})
 	if err != nil {
-		return "", fmt.Errorf("create user API key: %w", err)
+		return GeneratedUserAPIKey{}, fmt.Errorf("create user API key: %w", err)
 	}
 
 	slog.Info("User API key created", "user_id", req.UserID, "name", req.Name)
-	return key, nil
+	return GeneratedUserAPIKey{Key: userAPIKeyFromRow(row), Plaintext: key}, nil
 }
 
 // collectorAPIKeyFromRow converts a stored collector API key row into the

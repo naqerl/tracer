@@ -172,7 +172,7 @@ func (h *handler) setup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	collectorAPIKey, err := h.authService.GenerateCollectorAPIKey(r.Context(), domain.System{}, apiKeyReq)
+	created, err := h.authService.GenerateCollectorAPIKey(r.Context(), domain.System{}, apiKeyReq)
 	if err != nil {
 		slog.Error("Failed to create collector API key", "error", err)
 		h.renderSetupPage(w, r, "User created but failed to create collector API key: "+err.Error())
@@ -192,5 +192,5 @@ func (h *handler) setup(w http.ResponseWriter, r *http.Request) {
 	// The page shows the collector API key plaintext (only once); never cache it.
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
-	SetupSuccessPage("Setup Complete - Tracer", username, collectorAPIKey).Render(r.Context(), w)
+	SetupSuccessPage("Setup Complete - Tracer", username, created.Plaintext).Render(r.Context(), w)
 }

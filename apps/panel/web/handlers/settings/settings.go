@@ -88,7 +88,6 @@ func InitMux(authService *auth.Service, userService *usersvc.Service, ingestServ
 	m.HandleFunc("POST /notifiers", h.createNotifier)
 	m.HandleFunc("DELETE /notifiers/{id}", h.deleteNotifier)
 	m.HandleFunc("PUT /notifiers/{id}/toggle", h.toggleNotifier)
-	m.HandleFunc("GET /notifiers/{id}/subscriptions", h.getNotifierSubscriptions)
 	m.HandleFunc("PUT /notifiers/{id}/subscriptions", h.updateNotifierSubscriptions)
 
 	// Config management
@@ -125,14 +124,7 @@ func (h *handler) settingsPage(w http.ResponseWriter, r *http.Request) {
 		templates.ErrorPage("Error", "Failed to list notifiers", http.StatusInternalServerError, templates.NavData{Since: "24h"}).Render(r.Context(), w)
 		return
 	}
-	for _, n := range notifiers {
-		props.Notifiers = append(props.Notifiers, view.NotifierView{
-			ID:      n.ID,
-			Name:    n.Name,
-			Type:    n.Type,
-			Enabled: n.Enabled,
-		})
-	}
+	props.Notifiers = notifiers
 
 	// Load user's API keys (all users can have API keys)
 	userAPIKeys, err := h.authService.ListUserAPIKeys(r.Context(), user, user.ID)
@@ -419,7 +411,7 @@ func (h *handler) createCollectorAPIKey(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	_, err = h.authService.GenerateCollectorAPIKey(r.Context(), user, req)
+	created, err := h.authService.GenerateCollectorAPIKey(r.Context(), user, req)
 	if err != nil {
 		switch {
 		case errors.Is(err, auth.ErrAccessDenied):
@@ -431,8 +423,8 @@ func (h *handler) createCollectorAPIKey(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// Redirect back to settings page
-	htmx.Redirect(w, r, "/settings/")
+	// Navigate to the new key's detail page, where the plaintext can be revealed.
+	htmx.Redirect(w, r, fmt.Sprintf("/settings/admin/collector-api-keys/%d", created.Key.ID))
 }
 
 func (h *handler) deleteCollectorAPIKey(w http.ResponseWriter, r *http.Request) {
@@ -579,7 +571,7 @@ func (h *handler) createAPIKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err = h.authService.GenerateUserAPIKey(r.Context(), user, req)
+	created, err := h.authService.GenerateUserAPIKey(r.Context(), user, req)
 	if err != nil {
 		switch {
 		case errors.Is(err, auth.ErrAccessDenied):
@@ -591,8 +583,8 @@ func (h *handler) createAPIKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Redirect back
-	htmx.Redirect(w, r, "/settings/")
+	// Navigate to the new key's detail page, where the plaintext can be revealed.
+	htmx.Redirect(w, r, fmt.Sprintf("/settings/api-keys/%d", created.Key.ID))
 }
 
 func (h *handler) deleteAPIKey(w http.ResponseWriter, r *http.Request) {
@@ -762,13 +754,16 @@ func (h *handler) buildNotifierDetailData(w http.ResponseWriter, r *http.Request
 		return view.NotifierDetailProps{}, false
 	}
 
+	options, err := h.notifyService.GetSubscriptionOptions(r.Context(), user, id)
+	if err != nil {
+		slog.Error("Failed to get notifier subscriptions", "error", err)
+		templates.ErrorPage("Error", "Failed to get notifier subscriptions", http.StatusInternalServerError, templates.NavData{Since: "24h"}).Render(r.Context(), w)
+		return view.NotifierDetailProps{}, false
+	}
+
 	return view.NotifierDetailProps{
-		Title:        "Notifier - Tracer",
-		NotifierID:   setup.ID,
-		NotifierName: setup.Name,
-		NotifierType: setup.Type,
-		Enabled:      setup.Enabled,
-		Config:       setup.Config,
+		Setup: setup,
+		Apps:  options,
 	}, true
 }
 
@@ -832,7 +827,11 @@ func (h *handler) createNotifier(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if err != nil || chatID == 0 {
+		if err != nil {
+			http.Error(w, "Telegram chat ID must be a valid integer", http.StatusBadRequest)
+			return
+		}
+		if chatID == 0 {
 			http.Error(w, "Telegram chat ID must be a valid integer", http.StatusBadRequest)
 			return
 		}
@@ -995,7 +994,8 @@ func (h *handler) createNotifier(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create notifier through service (handles DB, welcome notification, registration)
-	if err := h.notifyService.Add(r.Context(), user, req); err != nil {
+	id, err := h.notifyService.Add(r.Context(), user, req)
+	if err != nil {
 		slog.Error("Failed to add notifier", "error", err)
 		if errors.Is(err, notify.ErrWelcomeValidation) {
 			renderForgejoCreateFieldError(w, r, "forgejo-auth-status", welcomeValidationMessage(err))
@@ -1005,7 +1005,8 @@ func (h *handler) createNotifier(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	htmx.Redirect(w, r, "/settings/")
+	// Navigate to the new notifier's detail page, where subscriptions are managed.
+	htmx.Redirect(w, r, fmt.Sprintf("/settings/notifiers/%d", id))
 }
 
 // forgejoLookup validates the token against the Forgejo API and loads every
@@ -1196,122 +1197,6 @@ func (h *handler) toggleNotifier(w http.ResponseWriter, r *http.Request) {
 	}
 
 	htmx.Redirect(w, r, redirectPath)
-}
-
-func (h *handler) getNotifierSubscriptions(w http.ResponseWriter, r *http.Request) {
-	props, ok := h.buildNotifierSubscriptionsData(w, r)
-	if !ok {
-		return
-	}
-	view.NotifierSubscriptions(props).Render(r.Context(), w)
-}
-
-func (h *handler) buildNotifierSubscriptionsData(w http.ResponseWriter, r *http.Request) (view.NotifierSubscriptionsProps, bool) {
-	user, err := authmw.RequireUser(w, r)
-	if err != nil {
-		return view.NotifierSubscriptionsProps{}, false
-	}
-
-	idStr := r.PathValue("id")
-	id, err := strconv.ParseInt(idStr, 10, 64)
-	if err != nil {
-		http.Error(w, "Invalid notifier ID", http.StatusBadRequest)
-		return view.NotifierSubscriptionsProps{}, false
-	}
-
-	setup, err := h.notifyService.GetSetup(r.Context(), user, id)
-	if err != nil {
-		switch {
-		case errors.Is(err, notify.ErrNotifierNotFound), errors.Is(err, notify.ErrAccessDenied):
-			templates.ErrorPage("Error", "Notifier not found", http.StatusNotFound, templates.NavData{Since: "24h"}).Render(r.Context(), w)
-		default:
-			templates.ErrorPage("Error", "Failed to get notifier", http.StatusInternalServerError, templates.NavData{Since: "24h"}).Render(r.Context(), w)
-		}
-		return view.NotifierSubscriptionsProps{}, false
-	}
-
-	subscriptions, err := h.notifyService.GetSubscriptions(r.Context(), user, id)
-	if err != nil {
-		templates.ErrorPage("Error", "Failed to get notifier subscriptions", http.StatusInternalServerError, templates.NavData{Since: "24h"}).Render(r.Context(), w)
-		return view.NotifierSubscriptionsProps{}, false
-	}
-
-	// Build subscription map with "collector:app" keys
-	subscriptionMap := make(map[string]bool)
-	for _, sub := range subscriptions {
-		key := appKey(sub.CollectorName, sub.AppName)
-		subscriptionMap[key] = true
-	}
-
-	// Get app-collector mappings from filesystem
-	collectors, err := h.ingestService.ListCollectors()
-	if err != nil {
-		slog.Error("Failed to list collectors", "error", err)
-		templates.ErrorPage("Error", "Failed to list collectors", http.StatusInternalServerError, templates.NavData{Since: "24h"}).Render(r.Context(), w)
-		return view.NotifierSubscriptionsProps{}, false
-	}
-
-	// Build structured data: map[collector][]app
-	collectorApps := make(map[string][]string)
-	for _, collector := range collectors {
-		apps, err := h.ingestService.ListApps(collector)
-		if err != nil {
-			slog.Error("Failed to list apps for collector", "collector", collector, "error", err)
-			templates.ErrorPage("Error", "Failed to list apps", http.StatusInternalServerError, templates.NavData{Since: "24h"}).Render(r.Context(), w)
-			return view.NotifierSubscriptionsProps{}, false
-		}
-		collectorApps[collector] = apps
-	}
-
-	// Filter by user access for non-admins
-	if user.Role != domain.RoleAdmin {
-		userApps, err := h.userService.FindAccessPolicy(r.Context(), user.ID)
-		if err != nil {
-			templates.ErrorPage("Error", "Failed to get user apps", http.StatusInternalServerError, templates.NavData{Since: "24h"}).Render(r.Context(), w)
-			return view.NotifierSubscriptionsProps{}, false
-		}
-		userAppSet := make(map[string]bool)
-		for _, app := range userApps.Apps {
-			userAppSet[appKey(app.CollectorName, app.AppName)] = true
-		}
-
-		// Filter collector apps to only show apps user has access to
-		filtered := make(map[string][]string)
-		for collector, apps := range collectorApps {
-			var allowedApps []string
-			for _, app := range apps {
-				if userAppSet[appKey(collector, app)] {
-					allowedApps = append(allowedApps, app)
-				}
-			}
-			if len(allowedApps) > 0 {
-				filtered[collector] = allowedApps
-			}
-		}
-		collectorApps = filtered
-	}
-
-	// Build app list for view
-	var apps []view.NotifierAppView
-	for collector, appNames := range collectorApps {
-		for _, appName := range appNames {
-			apps = append(apps, view.NotifierAppView{
-				CollectorName: collector,
-				AppName:       appName,
-				Enabled:       subscriptionMap[appKey(collector, appName)],
-			})
-		}
-	}
-
-	props := view.NotifierSubscriptionsProps{
-		Title:        "Edit Notifier Apps - Tracer",
-		NotifierID:   id,
-		NotifierName: setup.Name,
-		NotifierType: setup.Type,
-		Apps:         apps,
-	}
-
-	return props, true
 }
 
 func (h *handler) updateNotifierSubscriptions(w http.ResponseWriter, r *http.Request) {

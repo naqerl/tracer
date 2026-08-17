@@ -2,18 +2,15 @@ package view
 
 import (
 	"strconv"
+
+	"tracer/apps/panel/internal/services/notify"
 	"tracer/apps/panel/web/templates"
 )
 
 // NotifierDetailProps holds data for the notifier detail page.
 type NotifierDetailProps struct {
-	Title        string
-	NotifierID   int64
-	NotifierName string
-	NotifierType string
-	Enabled      int64
-	Config       string
-	Apps         []NotifierAppView
+	Setup notify.Setup
+	Apps  []notify.SubscriptionOption
 }
 
 // NotifierDetail renders the notifier detail page.
@@ -26,8 +23,8 @@ templ NotifierDetail(props NotifierDetailProps) {
 
 			<div class="mb-6 flex items-center justify-between gap-4">
 				<h2 class="text-xl font-medium">Notifier</h2>
-				<button hx-delete={ "/settings/notifiers/" + strconv.FormatInt(props.NotifierID, 10) }
-						hx-confirm={ "Delete notifier " + props.NotifierName + "?" }
+				<button hx-delete={ "/settings/notifiers/" + strconv.FormatInt(props.Setup.ID, 10) }
+						hx-confirm={ "Delete notifier " + props.Setup.Name + "?" }
 						hx-target="body" hx-swap="outerHTML"
 						class="text-sm text-fg-secondary hover:text-red-500 underline transition-colors">Delete</button>
 			</div>
@@ -35,22 +32,22 @@ templ NotifierDetail(props NotifierDetailProps) {
 			<div class="mb-8">
 				<div class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
 					<span class="text-fg-secondary">Name:</span>
-					<span>{ props.NotifierName }</span>
+					<span>{ props.Setup.Name }</span>
 
 					<span class="text-fg-secondary">Type:</span>
-					<span>{ props.NotifierType }</span>
+					<span>{ props.Setup.Type }</span>
 
 					<span class="text-fg-secondary">Status:</span>
 					<span class="flex items-center gap-3">
-						if props.Enabled == 1 {
+						if props.Setup.Enabled == 1 {
 							Enabled
 						} else {
 							Disabled
 						}
-						<button hx-put={ "/settings/notifiers/" + strconv.FormatInt(props.NotifierID, 10) + "/toggle" }
+						<button hx-put={ "/settings/notifiers/" + strconv.FormatInt(props.Setup.ID, 10) + "/toggle" }
 								hx-target="body" hx-swap="outerHTML"
 								class="text-sm text-fg-secondary hover:text-fg transition-colors">
-							if props.Enabled == 1 {
+							if props.Setup.Enabled == 1 {
 								Disable
 							} else {
 								Enable
@@ -62,7 +59,7 @@ templ NotifierDetail(props NotifierDetailProps) {
 
 			<div class="mb-8">
 				<h3 class="text-sm text-fg-secondary mb-3">Config</h3>
-				@templates.JSONViewerFull(props.Config, true)
+				@templates.JSONViewerFull(props.Setup.Config, true)
 			</div>
 
 			<div class="mb-6">
@@ -76,7 +73,7 @@ templ NotifierDetail(props NotifierDetailProps) {
 
 // NotifierSubscriptionsForm renders the subscriptions form for a notifier.
 templ NotifierSubscriptionsForm(props NotifierDetailProps) {
-	<form hx-put={ "/settings/notifiers/" + strconv.FormatInt(props.NotifierID, 10) + "/subscriptions" }
+	<form hx-put={ "/settings/notifiers/" + strconv.FormatInt(props.Setup.ID, 10) + "/subscriptions" }
 		  hx-target="closest .max-w-5xl"
 		  hx-swap="innerHTML"
 		  class="space-y-2 max-w-md">

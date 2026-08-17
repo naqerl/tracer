@@ -64,38 +64,55 @@ func (r AddNotifierRequest) Validate() error {
 	return nil
 }
 
+// AppLister lists the collector and app databases known to the panel. The
+// dbmanager.Manager implements it.
+type AppLister interface {
+	ListCollectors() ([]string, error)
+	ListApps(collector string) ([]string, error)
+}
+
+// SubscriptionOption is a collector/app pair the actor may subscribe the
+// notifier to, with whether it is currently subscribed.
+type SubscriptionOption struct {
+	CollectorName string
+	AppName       string
+	Enabled       bool
+}
+
 // Service manages notifications and handles database operations.
 type Service struct {
 	handle    *dbmanager.DBHandle
 	userSvc   *user.Service
+	appLister AppLister
 	factories map[string]FromRawJSON
 }
 
 // New creates a new notification service.
-func New(handle *dbmanager.DBHandle, userSvc *user.Service, factories map[string]FromRawJSON) *Service {
+func New(handle *dbmanager.DBHandle, userSvc *user.Service, appLister AppLister, factories map[string]FromRawJSON) *Service {
 	return &Service{
 		handle:    handle,
 		userSvc:   userSvc,
+		appLister: appLister,
 		factories: factories,
 	}
 }
 
 // Add creates a notifier for the given actor, tests it by sending welcome
 // notification, then saves to DB. The notifier is only persisted if the
-// welcome notification succeeds.
-func (s *Service) Add(ctx context.Context, actor domain.Actor, req AddNotifierRequest) error {
+// welcome notification succeeds. It returns the ID of the created notifier.
+func (s *Service) Add(ctx context.Context, actor domain.Actor, req AddNotifierRequest) (int64, error) {
 	if err := s.authorizeAccess(actor, req.UserID); err != nil {
-		return err
+		return 0, err
 	}
 
 	// 1. Create notifier instance to test it works
 	factory, ok := s.factories[req.Type]
 	if !ok {
-		return fmt.Errorf("unknown notifier type: %s", req.Type)
+		return 0, fmt.Errorf("unknown notifier type: %s", req.Type)
 	}
 	instance, err := factory(req.Name, req.Config)
 	if err != nil {
-		return fmt.Errorf("could not create notifier instance: %w", err)
+		return 0, fmt.Errorf("could not create notifier instance: %w", err)
 	}
 
 	// 2. Send welcome notification - must succeed before saving to DB
@@ -104,13 +121,14 @@ func (s *Service) Add(ctx context.Context, actor domain.Actor, req AddNotifierRe
 		Payload: "Cheers, love! The cavalry's here!",
 	}
 	if err := instance.Notify(welcomeNotif); err != nil {
-		return fmt.Errorf("could not send welcome notification: %w", err)
+		return 0, fmt.Errorf("could not send welcome notification: %w", err)
 	}
 	slog.Info("Sent welcome notification", "notifier", req.Name)
 
 	// 3. Save to database only after welcome notification succeeded
+	var id int64
 	err = s.handle.Write(ctx, func(tx db.DBTX) error {
-		_, err := db.New(tx).CreateNotifier(ctx, db.CreateNotifierParams{
+		notifier, err := db.New(tx).CreateNotifier(ctx, db.CreateNotifierParams{
 			UserID:    req.UserID,
 			Name:      req.Name,
 			Type:      req.Type,
@@ -118,14 +136,18 @@ func (s *Service) Add(ctx context.Context, actor domain.Actor, req AddNotifierRe
 			Enabled:   int64(1),
 			CreatedAt: time.Now().UTC().Unix(),
 		})
-		return err
+		if err != nil {
+			return err
+		}
+		id = notifier.ID
+		return nil
 	})
 	if err != nil {
-		return fmt.Errorf("create notifier in DB: %w", err)
+		return 0, fmt.Errorf("create notifier in DB: %w", err)
 	}
 
-	slog.Info("Notifier added successfully", "name", req.Name)
-	return nil
+	slog.Info("Notifier added successfully", "id", id, "name", req.Name)
+	return id, nil
 }
 
 // SetSubscriptions sets app subscriptions for a notifier.
@@ -211,6 +233,59 @@ func (s *Service) GetSubscriptions(ctx context.Context, actor domain.Actor, noti
 	return subscriptions, nil
 }
 
+// GetSubscriptionOptions returns every collector/app pair the actor may
+// subscribe the notifier to, marking which ones are already subscribed.
+// Returns ErrNotifierNotFound if the notifier doesn't exist.
+func (s *Service) GetSubscriptionOptions(ctx context.Context, actor domain.Actor, notifierID int64) ([]SubscriptionOption, error) {
+	subscriptions, err := s.GetSubscriptions(ctx, actor, notifierID)
+	if err != nil {
+		return nil, fmt.Errorf("could not get notifier subscriptions: %w", err)
+	}
+
+	subscribed := make(map[string]bool)
+	for _, sub := range subscriptions {
+		subscribed[sub.CollectorName+":"+sub.AppName] = true
+	}
+
+	collectors, err := s.appLister.ListCollectors()
+	if err != nil {
+		return nil, fmt.Errorf("could not list collectors: %w", err)
+	}
+
+	// The actor is a logged-in user in every call path; a system actor sees
+	// every app (no policy rows means full access).
+	access := user.AccessPolicy{}
+	if u, ok := actor.(domain.User); ok {
+		access, err = s.userSvc.FindAccessPolicy(ctx, u.ID)
+		if err != nil {
+			return nil, fmt.Errorf("could not get user apps: %w", err)
+		}
+	}
+
+	var options []SubscriptionOption
+	for _, collector := range collectors {
+		if !access.AllowedTo(collector, "") {
+			continue
+		}
+		apps, err := s.appLister.ListApps(collector)
+		if err != nil {
+			return nil, fmt.Errorf("could not list apps for collector %s: %w", collector, err)
+		}
+		for _, app := range apps {
+			if !access.AllowedTo(collector, app) {
+				continue
+			}
+			options = append(options, SubscriptionOption{
+				CollectorName: collector,
+				AppName:       app,
+				Enabled:       subscribed[collector+":"+app],
+			})
+		}
+	}
+
+	return options, nil
+}
+
 // Delete removes a notifier.
 // Returns ErrNotifierNotFound if the notifier doesn't exist.
 func (s *Service) Delete(ctx context.Context, actor domain.Actor, notifierID int64) error {
@@ -256,23 +331,42 @@ func (s *Service) Toggle(ctx context.Context, actor domain.Actor, notifierID int
 	})
 }
 
-// List returns notifiers for the given actor.
+// List returns notifiers for the given actor as service types.
 // Admins see all notifiers, non-admins see only their own.
-func (s *Service) List(ctx context.Context, actor domain.Actor) ([]db.Notifier, error) {
+func (s *Service) List(ctx context.Context, actor domain.Actor) ([]Setup, error) {
 	queries := db.New(s.handle.Read())
+	var rows []db.Notifier
+	var err error
 	switch a := actor.(type) {
 	case domain.System:
-		return queries.ListAllNotifiers(ctx)
+		rows, err = queries.ListAllNotifiers(ctx)
 	case domain.User:
 		if a.Role == domain.RoleAdmin {
-			return queries.ListAllNotifiers(ctx)
+			rows, err = queries.ListAllNotifiers(ctx)
+		} else {
+			rows, err = queries.ListNotifiersByUser(ctx, a.ID)
 		}
-		return queries.ListNotifiersByUser(ctx, a.ID)
 	case domain.Unauthenticated:
 		return nil, ErrAccessDenied
 	default:
 		return nil, domain.ErrUnexpectedActor
 	}
+	if err != nil {
+		return nil, fmt.Errorf("could not list notifiers: %w", err)
+	}
+
+	setups := make([]Setup, 0, len(rows))
+	for _, row := range rows {
+		setups = append(setups, Setup{
+			ID:      row.ID,
+			UserID:  row.UserID,
+			Name:    row.Name,
+			Type:    row.Type,
+			Config:  row.Config,
+			Enabled: row.Enabled,
+		})
+	}
+	return setups, nil
 }
 
 // Private methods

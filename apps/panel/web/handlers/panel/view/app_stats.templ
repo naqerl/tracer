@@ -17,17 +17,17 @@ type AppStatsData struct {
 }
 
 // AppStatsSkeleton renders placeholder stat cards matching AppStats (same
-// grid, same p-4 cards, bars sized to text-2xl/text-xs line boxes) so the
-// fragment swap does not shift the page height.
+// grid, same p-4 cards, bars sized to text-2xl/text-xs line boxes and the
+// same mt-2 gap) so the fragment swap does not shift the page height.
 templ AppStatsSkeleton() {
 	<div id="app-stats" aria-hidden="true">
 		<h2 class="text-lg font-medium mb-4">Overview</h2>
 		<div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
 			for i := 0; i < 4; i++ {
 				<div class="bg-bg-secondary p-4 text-center">
-					<div class="animate-pulse">
+					<div class="animate-pulse" aria-hidden="true">
 						<div class="mx-auto h-8 w-14 rounded bg-fg/10"></div>
-						<div class="mx-auto h-4 w-16 rounded bg-fg/10"></div>
+						<div class="mx-auto mt-2 h-4 w-16 rounded bg-fg/10"></div>
 					</div>
 				</div>
 			}
@@ -44,19 +44,19 @@ templ AppStats(props AppStatsProps) {
 		<div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
 			<div class="bg-bg-secondary p-4 text-center">
 				<div class="text-2xl font-bold value-breath">{ strconv.FormatInt(props.Stats.Total, 10) }</div>
-				<div class="text-xs text-fg-secondary">Total Logs</div>
+				<div class="mt-2 text-xs text-fg-secondary">Total Logs</div>
 			</div>
 			<div class="bg-bg-secondary p-4 text-center">
 				<div class="text-2xl font-bold text-red-400 value-breath">{ strconv.FormatInt(props.Stats.Errors, 10) }</div>
-				<div class="text-xs text-fg-secondary">Errors</div>
+				<div class="mt-2 text-xs text-fg-secondary">Errors</div>
 			</div>
 			<div class="bg-bg-secondary p-4 text-center">
 				<div class="text-2xl font-bold text-yellow-400 value-breath">{ strconv.FormatInt(props.Stats.Warnings, 10) }</div>
-				<div class="text-xs text-fg-secondary">Warnings</div>
+				<div class="mt-2 text-xs text-fg-secondary">Warnings</div>
 			</div>
 			<div class="bg-bg-secondary p-4 text-center">
 				<div class="text-2xl font-bold text-blue-400 value-breath">{ strconv.FormatInt(props.Stats.Infos, 10) }</div>
-				<div class="text-xs text-fg-secondary">Info</div>
+				<div class="mt-2 text-xs text-fg-secondary">Info</div>
 			</div>
 		</div>
 	</div>

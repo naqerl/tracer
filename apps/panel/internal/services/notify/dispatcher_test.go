@@ -59,16 +59,17 @@ func startDispatcher(t *testing.T) (*Dispatcher, chan Notification, *fakeNotifie
 		"test": func(_, _ string) (Notifier, error) { return collected, nil },
 	}
 
-	service := New(db, userSvc, factories)
-	if err := service.Add(t.Context(), domain.User{ID: user.ID, Role: domain.RoleAdmin}, AddNotifierRequest{
+	service := New(db, userSvc, testutil.NewTestDBManager(t), factories)
+	id, err := service.Add(t.Context(), domain.User{ID: user.ID, Role: domain.RoleAdmin}, AddNotifierRequest{
 		UserID: user.ID,
 		Name:   "fake",
 		Type:   "test",
 		Config: "{}",
-	}); err != nil {
+	})
+	if err != nil {
 		t.Fatalf("add notifier: %v", err)
 	}
-	if err := service.SetSubscriptions(t.Context(), domain.User{ID: user.ID, Role: domain.RoleAdmin}, 1, []Subscription{
+	if err := service.SetSubscriptions(t.Context(), domain.User{ID: user.ID, Role: domain.RoleAdmin}, id, []Subscription{
 		{CollectorName: "prod", AppName: "api"},
 	}); err != nil {
 		t.Fatalf("set subscriptions: %v", err)
@@ -174,15 +175,16 @@ func TestNotifyServiceAccessDenial(t *testing.T) {
 	}
 
 	collected := &fakeNotifier{}
-	service := New(db, userSvc, map[string]FromRawJSON{
+	service := New(db, userSvc, testutil.NewTestDBManager(t), map[string]FromRawJSON{
 		"test": func(_, _ string) (Notifier, error) { return collected, nil },
 	})
-	if err := service.Add(t.Context(), domain.User{ID: alice.ID}, AddNotifierRequest{
+	id, err := service.Add(t.Context(), domain.User{ID: alice.ID}, AddNotifierRequest{
 		UserID: alice.ID,
 		Name:   "alice-notifier",
 		Type:   "test",
 		Config: "{}",
-	}); err != nil {
+	})
+	if err != nil {
 		t.Fatalf("add notifier: %v", err)
 	}
 
@@ -227,7 +229,7 @@ func TestNotifyServiceAccessDenial(t *testing.T) {
 	}
 
 	// Add for another user's id is denied for a non-admin.
-	err = service.Add(t.Context(), nonOwner, AddNotifierRequest{
+	_, err = service.Add(t.Context(), nonOwner, AddNotifierRequest{
 		UserID: alice.ID,
 		Name:   "steal",
 		Type:   "test",
@@ -238,7 +240,7 @@ func TestNotifyServiceAccessDenial(t *testing.T) {
 	}
 
 	// The owner still has access after all the denials.
-	if _, err := service.GetSetup(t.Context(), domain.User{ID: alice.ID}, 1); err != nil {
+	if _, err := service.GetSetup(t.Context(), domain.User{ID: alice.ID}, id); err != nil {
 		t.Errorf("GetSetup owner: expected success, got %v", err)
 	}
 }

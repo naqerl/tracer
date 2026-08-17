@@ -26,20 +26,22 @@ func TestGenerateAndValidateCollectorAPIKey(t *testing.T) {
 		t.Fatalf("validate request: %v", err)
 	}
 
-	key, err := svc.GenerateCollectorAPIKey(ctx, domain.System{}, req)
+	created, err := svc.GenerateCollectorAPIKey(ctx, domain.System{}, req)
 	if err != nil {
 		t.Fatalf("generate collector api key: %v", err)
 	}
-	if key == "" {
+	if created.Plaintext == "" {
 		t.Fatal("expected plaintext key")
 	}
+	if created.Key.ID == 0 || created.Key.Name != req.Name {
+		t.Fatalf("expected created key with ID and name, got %+v", created.Key)
+	}
 
-	row := collectorAPIKeyRow(t, svc, req.Name)
-	if !row.CanReveal {
+	if !created.Key.CanReveal {
 		t.Fatal("expected generated collector key to be revealable")
 	}
 
-	valid, err := svc.ValidateCollectorAPIKey(ctx, key)
+	valid, err := svc.ValidateCollectorAPIKey(ctx, created.Plaintext)
 	if err != nil {
 		t.Fatalf("validate collector api key: %v", err)
 	}
@@ -89,12 +91,12 @@ func TestValidateCollectorAPIKeyUpdatesLastUsedAt(t *testing.T) {
 		t.Fatalf("validate request: %v", err)
 	}
 
-	key, err := svc.GenerateCollectorAPIKey(ctx, domain.System{}, req)
+	created, err := svc.GenerateCollectorAPIKey(ctx, domain.System{}, req)
 	if err != nil {
 		t.Fatalf("generate collector api key: %v", err)
 	}
 
-	valid, err := svc.ValidateCollectorAPIKey(ctx, key)
+	valid, err := svc.ValidateCollectorAPIKey(ctx, created.Plaintext)
 	if err != nil {
 		t.Fatalf("validate collector api key: %v", err)
 	}
@@ -483,7 +485,7 @@ func TestRevealCollectorAPIKeyReturnsPlaintext(t *testing.T) {
 
 	svc := New(db, testutil.TestKeySecret(), bcrypt.MinCost)
 
-	key, err := svc.GenerateCollectorAPIKey(ctx, domain.System{}, GenerateCollectorAPIKeyRequest{Name: "prod-a"})
+	created, err := svc.GenerateCollectorAPIKey(ctx, domain.System{}, GenerateCollectorAPIKeyRequest{Name: "prod-a"})
 	if err != nil {
 		t.Fatalf("generate collector api key: %v", err)
 	}
@@ -496,8 +498,8 @@ func TestRevealCollectorAPIKeyReturnsPlaintext(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reveal collector api key: %v", err)
 	}
-	if revealed != key {
-		t.Fatalf("expected revealed key to match plaintext, got %q want %q", revealed, key)
+	if revealed != created.Plaintext {
+		t.Fatalf("expected revealed key to match plaintext, got %q want %q", revealed, created.Plaintext)
 	}
 }
 
@@ -584,7 +586,7 @@ func TestRevealCollectorAPIKeyAllowedForSystem(t *testing.T) {
 	db := testutil.NewTestDB(t)
 
 	svc := New(db, testutil.TestKeySecret(), bcrypt.MinCost)
-	key, err := svc.GenerateCollectorAPIKey(ctx, domain.System{}, GenerateCollectorAPIKeyRequest{Name: "prod-a"})
+	created, err := svc.GenerateCollectorAPIKey(ctx, domain.System{}, GenerateCollectorAPIKeyRequest{Name: "prod-a"})
 	if err != nil {
 		t.Fatalf("generate collector api key: %v", err)
 	}
@@ -594,8 +596,8 @@ func TestRevealCollectorAPIKeyAllowedForSystem(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reveal as system: %v", err)
 	}
-	if revealed != key {
-		t.Fatalf("expected revealed key to match plaintext, got %q want %q", revealed, key)
+	if revealed != created.Plaintext {
+		t.Fatalf("expected revealed key to match plaintext, got %q want %q", revealed, created.Plaintext)
 	}
 }
 
@@ -604,7 +606,7 @@ func TestRevealUserAPIKeyReturnsPlaintextForOwner(t *testing.T) {
 	db := testutil.NewTestDB(t)
 
 	svc := New(db, testutil.TestKeySecret(), bcrypt.MinCost)
-	key, err := svc.GenerateUserAPIKey(ctx, domain.User{ID: 7, Role: domain.RoleUser}, GenerateUserAPIKeyRequest{UserID: 7, Name: "my-key"})
+	created, err := svc.GenerateUserAPIKey(ctx, domain.User{ID: 7, Role: domain.RoleUser}, GenerateUserAPIKeyRequest{UserID: 7, Name: "my-key"})
 	if err != nil {
 		t.Fatalf("generate user api key: %v", err)
 	}
@@ -614,8 +616,8 @@ func TestRevealUserAPIKeyReturnsPlaintextForOwner(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reveal user api key: %v", err)
 	}
-	if revealed != key {
-		t.Fatalf("expected revealed key to match plaintext, got %q want %q", revealed, key)
+	if revealed != created.Plaintext {
+		t.Fatalf("expected revealed key to match plaintext, got %q want %q", revealed, created.Plaintext)
 	}
 }
 
@@ -624,7 +626,7 @@ func TestRevealUserAPIKeyAllowedForAdmin(t *testing.T) {
 	db := testutil.NewTestDB(t)
 
 	svc := New(db, testutil.TestKeySecret(), bcrypt.MinCost)
-	key, err := svc.GenerateUserAPIKey(ctx, domain.User{ID: 7, Role: domain.RoleUser}, GenerateUserAPIKeyRequest{UserID: 7, Name: "my-key"})
+	created, err := svc.GenerateUserAPIKey(ctx, domain.User{ID: 7, Role: domain.RoleUser}, GenerateUserAPIKeyRequest{UserID: 7, Name: "my-key"})
 	if err != nil {
 		t.Fatalf("generate user api key: %v", err)
 	}
@@ -634,8 +636,8 @@ func TestRevealUserAPIKeyAllowedForAdmin(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reveal as admin: %v", err)
 	}
-	if revealed != key {
-		t.Fatalf("expected revealed key to match plaintext, got %q want %q", revealed, key)
+	if revealed != created.Plaintext {
+		t.Fatalf("expected revealed key to match plaintext, got %q want %q", revealed, created.Plaintext)
 	}
 }
 

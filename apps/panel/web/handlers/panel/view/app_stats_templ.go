@@ -25,8 +25,8 @@ type AppStatsData struct {
 }
 
 // AppStatsSkeleton renders placeholder stat cards matching AppStats (same
-// grid, same p-4 cards, bars sized to text-2xl/text-xs line boxes) so the
-// fragment swap does not shift the page height.
+// grid, same p-4 cards, bars sized to text-2xl/text-xs line boxes and the
+// same mt-2 gap) so the fragment swap does not shift the page height.
 func AppStatsSkeleton() templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -53,7 +53,7 @@ func AppStatsSkeleton() templ.Component {
 			return templ_7745c5c3_Err
 		}
 		for i := 0; i < 4; i++ {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "<div class=\"bg-bg-secondary p-4 text-center\"><div class=\"animate-pulse\"><div class=\"mx-auto h-8 w-14 rounded bg-fg/10\"></div><div class=\"mx-auto h-4 w-16 rounded bg-fg/10\"></div></div></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "<div class=\"bg-bg-secondary p-4 text-center\"><div class=\"animate-pulse\" aria-hidden=\"true\"><div class=\"mx-auto h-8 w-14 rounded bg-fg/10\"></div><div class=\"mx-auto mt-2 h-4 w-16 rounded bg-fg/10\"></div></div></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -103,7 +103,7 @@ func AppStats(props AppStatsProps) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "</div><div class=\"text-xs text-fg-secondary\">Total Logs</div></div><div class=\"bg-bg-secondary p-4 text-center\"><div class=\"text-2xl font-bold text-red-400 value-breath\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "</div><div class=\"mt-2 text-xs text-fg-secondary\">Total Logs</div></div><div class=\"bg-bg-secondary p-4 text-center\"><div class=\"text-2xl font-bold text-red-400 value-breath\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -116,7 +116,7 @@ func AppStats(props AppStatsProps) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "</div><div class=\"text-xs text-fg-secondary\">Errors</div></div><div class=\"bg-bg-secondary p-4 text-center\"><div class=\"text-2xl font-bold text-yellow-400 value-breath\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "</div><div class=\"mt-2 text-xs text-fg-secondary\">Errors</div></div><div class=\"bg-bg-secondary p-4 text-center\"><div class=\"text-2xl font-bold text-yellow-400 value-breath\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -129,7 +129,7 @@ func AppStats(props AppStatsProps) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "</div><div class=\"text-xs text-fg-secondary\">Warnings</div></div><div class=\"bg-bg-secondary p-4 text-center\"><div class=\"text-2xl font-bold text-blue-400 value-breath\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "</div><div class=\"mt-2 text-xs text-fg-secondary\">Warnings</div></div><div class=\"bg-bg-secondary p-4 text-center\"><div class=\"text-2xl font-bold text-blue-400 value-breath\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -142,7 +142,7 @@ func AppStats(props AppStatsProps) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "</div><div class=\"text-xs text-fg-secondary\">Info</div></div></div></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "</div><div class=\"mt-2 text-xs text-fg-secondary\">Info</div></div></div></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+
 	"tracer/apps/panel/internal/domain"
+	"tracer/apps/panel/internal/services/notify"
 	"tracer/apps/panel/web/templates"
 )
 
@@ -21,7 +23,7 @@ type SettingsPageProps struct {
 	NewCollectorAPIKey      string
 	NewCollectorAPIKeyName  string
 	UserAPIKeys             []UserAPIKeyView
-	Notifiers               []NotifierView
+	Notifiers               []notify.Setup
 	NotifierForm            NotifierFormView
 	CPUDeltaPercent         float64
 	MemDeltaKB              int
@@ -41,13 +43,6 @@ type UserAPIKeyView struct {
 	Name          string
 	LastUsed      int64
 	LastUsedValid bool
-}
-
-type NotifierView struct {
-	ID      int64
-	Name    string
-	Type    string
-	Enabled int64
 }
 
 type NotifierFormView struct {
@@ -543,36 +538,6 @@ templ ForgejoSelects(props ForgejoSelectsProps) {
 			</div>
 		}
 	</div>
-}
-
-// NotifierListView renders the notifier list.
-templ NotifierListView(notifiers []NotifierView) {
-	if len(notifiers) == 0 {
-		<div class="text-sm text-fg-secondary/60 py-4">No notifiers configured.</div>
-	} else {
-		<div class="grid gap-3">
-			for _, n := range notifiers {
-				<div class="bg-bg-secondary p-4 flex items-center justify-between">
-					<div>
-						<div class="font-medium">{ n.Name }</div>
-						<div class="text-xs text-fg-secondary">{ n.Type }</div>
-					</div>
-					<div class="flex items-center gap-3">
-						<label class="relative inline-flex items-center cursor-pointer">
-							<input type="checkbox" class="sr-only peer" checked={ n.Enabled == 1 }
-								   hx-put={ "/settings/notifiers/" + strconv.FormatInt(n.ID, 10) + "/toggle" }
-								   hx-swap="outerHTML"
-								   hx-target="closest .bg-bg-secondary"/>
-							<div class="w-9 h-5 bg-fg-secondary/30 peer-checked:bg-accent rounded-full after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-bg after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:after:translate-x-full"></div>
-						</label>
-						<a href={ "/settings/notifiers/" + strconv.FormatInt(n.ID, 10) + "/subscriptions" } class="text-xs text-accent hover:underline">Subscriptions</a>
-						<button hx-delete={ "/settings/notifiers/" + strconv.FormatInt(n.ID, 10) }
-								hx-confirm="Delete notifier?" class="text-xs text-fg-secondary hover:text-red-500 transition-colors">Delete</button>
-					</div>
-				</div>
-			}
-		</div>
-	}
 }
 
 // CollectorAPIKeyTable renders the collector API key table.

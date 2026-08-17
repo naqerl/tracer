@@ -37,6 +37,13 @@ func newAuthedHandler(t *testing.T, isAdmin, readOnly bool) (http.Handler, *auth
 }
 
 func newAuthedHandlerWithFactories(t *testing.T, isAdmin, readOnly bool, factories map[string]notifysvc.FromRawJSON) (http.Handler, *authsvc.Service, *dbmanager.DBHandle, string, *notifysvc.Service) {
+	h, a, d, tok, n, _ := newAuthedHandlerWithFactoriesAndManager(t, isAdmin, readOnly, factories)
+	return h, a, d, tok, n
+}
+
+// newAuthedHandlerWithFactoriesAndManager additionally returns the dbmanager
+// so tests can seed collector/app databases for subscription pages.
+func newAuthedHandlerWithFactoriesAndManager(t *testing.T, isAdmin, readOnly bool, factories map[string]notifysvc.FromRawJSON) (http.Handler, *authsvc.Service, *dbmanager.DBHandle, string, *notifysvc.Service, *dbmanager.Manager) {
 	t.Helper()
 
 	db := testutil.NewTestDB(t)
@@ -77,13 +84,13 @@ func newAuthedHandlerWithFactories(t *testing.T, isAdmin, readOnly bool, factori
 	}, t.TempDir()+"/config.yaml")
 
 	ingestService := ingestsvc.New(dbMgr, make(chan notifysvc.Notification, 10), func(_, _ string, _ int64) string { return "" }, cfg)
-	notifyService := notifysvc.New(db, userService, factories)
+	notifyService := notifysvc.New(db, userService, dbMgr, factories)
 
 	mux := http.NewServeMux()
 	mux.Handle("/settings/", http.StripPrefix("/settings", InitMux(authService, userService, ingestService, dbMgr, notifyService, cfg, readOnly)))
 	handler := authmw.BuildAuthMiddleware(authService, userService)(mux)
 
-	return handler, authService, db, token, notifyService
+	return handler, authService, db, token, notifyService, dbMgr
 }
 
 func revealRequest(id int64, token string, revealed bool) *http.Request {
@@ -117,7 +124,7 @@ func collectorKeyID(t *testing.T, authService *authsvc.Service, name string) int
 func TestRevealCollectorAPIKeyReturnsPlaintextForAdmin(t *testing.T) {
 	handler, authService, _, token := newAuthedHandler(t, true, false)
 
-	key, err := authService.GenerateCollectorAPIKey(t.Context(), domain.System{}, authsvc.GenerateCollectorAPIKeyRequest{Name: "prod-a"})
+	created, err := authService.GenerateCollectorAPIKey(t.Context(), domain.System{}, authsvc.GenerateCollectorAPIKeyRequest{Name: "prod-a"})
 	if err != nil {
 		t.Fatalf("generate collector api key: %v", err)
 	}
@@ -128,7 +135,7 @@ func TestRevealCollectorAPIKeyReturnsPlaintextForAdmin(t *testing.T) {
 	if rr.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d (body: %s)", rr.Code, rr.Body.String())
 	}
-	if !strings.Contains(rr.Body.String(), key) {
+	if !strings.Contains(rr.Body.String(), created.Plaintext) {
 		t.Fatalf("expected plaintext key in response, got %q", rr.Body.String())
 	}
 	if rr.Header().Get("Cache-Control") != "no-store" {
@@ -139,7 +146,7 @@ func TestRevealCollectorAPIKeyReturnsPlaintextForAdmin(t *testing.T) {
 func TestRevealCollectorAPIKeyHidesPlaintextForAdmin(t *testing.T) {
 	handler, authService, _, token := newAuthedHandler(t, true, false)
 
-	key, err := authService.GenerateCollectorAPIKey(t.Context(), domain.System{}, authsvc.GenerateCollectorAPIKeyRequest{Name: "prod-a"})
+	created, err := authService.GenerateCollectorAPIKey(t.Context(), domain.System{}, authsvc.GenerateCollectorAPIKeyRequest{Name: "prod-a"})
 	if err != nil {
 		t.Fatalf("generate collector api key: %v", err)
 	}
@@ -150,7 +157,7 @@ func TestRevealCollectorAPIKeyHidesPlaintextForAdmin(t *testing.T) {
 	if rr.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d (body: %s)", rr.Code, rr.Body.String())
 	}
-	if strings.Contains(rr.Body.String(), key) {
+	if strings.Contains(rr.Body.String(), created.Plaintext) {
 		t.Fatal("expected plaintext NOT to be in the hidden fragment")
 	}
 	if !strings.Contains(rr.Body.String(), "\u2022") {
@@ -187,7 +194,7 @@ func TestRevealCollectorAPIKeyNotFound(t *testing.T) {
 func TestCollectorAPIKeyDetailPageDoesNotLeakPlaintext(t *testing.T) {
 	handler, authService, _, token := newAuthedHandler(t, true, false)
 
-	key, err := authService.GenerateCollectorAPIKey(t.Context(), domain.System{}, authsvc.GenerateCollectorAPIKeyRequest{Name: "prod-a"})
+	created, err := authService.GenerateCollectorAPIKey(t.Context(), domain.System{}, authsvc.GenerateCollectorAPIKeyRequest{Name: "prod-a"})
 	if err != nil {
 		t.Fatalf("generate collector api key: %v", err)
 	}
@@ -200,7 +207,7 @@ func TestCollectorAPIKeyDetailPageDoesNotLeakPlaintext(t *testing.T) {
 	if rr.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", rr.Code)
 	}
-	if strings.Contains(rr.Body.String(), key) {
+	if strings.Contains(rr.Body.String(), created.Plaintext) {
 		t.Fatal("expected detail page GET to never contain the plaintext key")
 	}
 	if !strings.Contains(rr.Body.String(), "\u2022") {
@@ -514,6 +521,74 @@ func TestAPIKeyEndpointsRedirectUnauthenticated(t *testing.T) {
 	}
 }
 
+func TestCreateCollectorAPIKeyRedirectsToDetailPage(t *testing.T) {
+	handler, _, _, token := newAuthedHandler(t, true, false)
+
+	// The settings forms use hx-post, so the real browser flow is the
+	// HX-Redirect path: 200 + HX-Redirect header, not a 303.
+	req := httptest.NewRequest(http.MethodPost, "/settings/admin/collector-api-keys", strings.NewReader("name=prod-a"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("HX-Request", "true")
+	req.AddCookie(&http.Cookie{Name: "tracer_session", Value: token})
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200 for htmx create, got %d (body: %s)", rr.Code, rr.Body.String())
+	}
+	if loc := rr.Header().Get("HX-Redirect"); loc != "/settings/admin/collector-api-keys/1" {
+		t.Fatalf("expected HX-Redirect to the new key's detail page, got %q", loc)
+	}
+
+	// Plain POST (no HX-Request) still redirects for non-htmx clients.
+	req = httptest.NewRequest(http.MethodPost, "/settings/admin/collector-api-keys", strings.NewReader("name=prod-b"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: "tracer_session", Value: token})
+	rr = httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusSeeOther {
+		t.Fatalf("expected redirect after create, got %d (body: %s)", rr.Code, rr.Body.String())
+	}
+	if loc := rr.Header().Get("Location"); loc != "/settings/admin/collector-api-keys/2" {
+		t.Fatalf("expected redirect to the new key's detail page, got %q", loc)
+	}
+}
+
+func TestCreateUserAPIKeyRedirectsToDetailPage(t *testing.T) {
+	handler, _, _, token := newAuthedHandler(t, false, false)
+
+	// The settings forms use hx-post, so the real browser flow is the
+	// HX-Redirect path: 200 + HX-Redirect header, not a 303.
+	req := httptest.NewRequest(http.MethodPost, "/settings/api-keys", strings.NewReader("name=my-key"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("HX-Request", "true")
+	req.AddCookie(&http.Cookie{Name: "tracer_session", Value: token})
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200 for htmx create, got %d (body: %s)", rr.Code, rr.Body.String())
+	}
+	if loc := rr.Header().Get("HX-Redirect"); loc != "/settings/api-keys/1" {
+		t.Fatalf("expected HX-Redirect to the new key's detail page, got %q", loc)
+	}
+
+	// Plain POST (no HX-Request) still redirects for non-htmx clients.
+	req = httptest.NewRequest(http.MethodPost, "/settings/api-keys", strings.NewReader("name=my-key-2"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: "tracer_session", Value: token})
+	rr = httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusSeeOther {
+		t.Fatalf("expected redirect after create, got %d (body: %s)", rr.Code, rr.Body.String())
+	}
+	if loc := rr.Header().Get("Location"); loc != "/settings/api-keys/2" {
+		t.Fatalf("expected redirect to the new key's detail page, got %q", loc)
+	}
+}
+
 func TestCollectorAPIKeyCreateDeleteForbiddenForNonAdmin(t *testing.T) {
 	handler, _, _, token := newAuthedHandler(t, false, false)
 
@@ -731,6 +806,9 @@ func TestCreateForgejoNotifier(t *testing.T) {
 	if rr.Code != http.StatusSeeOther {
 		t.Fatalf("expected redirect after create, got %d (body: %s)", rr.Code, rr.Body.String())
 	}
+	if loc := rr.Header().Get("Location"); loc != "/settings/notifiers/1" {
+		t.Fatalf("expected redirect to the new notifier's detail page, got %q", loc)
+	}
 	if !repoValidated {
 		t.Fatal("expected the welcome flow to validate the repo connection")
 	}
@@ -783,6 +861,78 @@ func TestNotifierDetailPageMasksForgejoToken(t *testing.T) {
 	}
 	if got := detailRR.Header().Get("Cache-Control"); got != "no-store" {
 		t.Errorf("expected Cache-Control: no-store on notifier detail, got %q", got)
+	}
+}
+
+func TestNotifierDetailPageShowsAppSubscriptions(t *testing.T) {
+	srv := forgejoTestServer(t)
+	handler, _, _, token, notifyService, dbMgr := newAuthedHandlerWithFactoriesAndManager(t, true, false, map[string]notifysvc.FromRawJSON{
+		"forgejo": func(name, config string) (notifysvc.Notifier, error) {
+			return forgejo.New(name, config, forgejo.NewCache(time.Minute))
+		},
+	})
+
+	// Seed a collector with two apps so the subscriptions form has options.
+	if _, err := dbMgr.CreateAppDB("prod", "api"); err != nil {
+		t.Fatalf("create prod/api app db: %v", err)
+	}
+	if _, err := dbMgr.CreateAppDB("prod", "worker"); err != nil {
+		t.Fatalf("create prod/worker app db: %v", err)
+	}
+
+	body := fmt.Sprintf("type=forgejo&name=issues&base_url=%s&token=sekret&owner_repo=x/barse", srv.URL)
+	req := httptest.NewRequest(http.MethodPost, "/settings/notifiers", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: "tracer_session", Value: token})
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+	if rr.Code != http.StatusSeeOther {
+		t.Fatalf("expected redirect after create, got %d (body: %s)", rr.Code, rr.Body.String())
+	}
+
+	// Subscribe the notifier to one of the apps first.
+	subReq := httptest.NewRequest(http.MethodPut, "/settings/notifiers/1/subscriptions", strings.NewReader("apps=prod%3Aapi"))
+	subReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	subReq.AddCookie(&http.Cookie{Name: "tracer_session", Value: token})
+	subRR := httptest.NewRecorder()
+	handler.ServeHTTP(subRR, subReq)
+	if subRR.Code != http.StatusSeeOther {
+		t.Fatalf("expected redirect after subscriptions update, got %d (body: %s)", subRR.Code, subRR.Body.String())
+	}
+
+	detailReq := httptest.NewRequest(http.MethodGet, "/settings/notifiers/1", nil)
+	detailReq.AddCookie(&http.Cookie{Name: "tracer_session", Value: token})
+	detailRR := httptest.NewRecorder()
+	handler.ServeHTTP(detailRR, detailReq)
+	if detailRR.Code != http.StatusOK {
+		t.Fatalf("expected 200 for notifier detail, got %d (body: %s)", detailRR.Code, detailRR.Body.String())
+	}
+
+	out := detailRR.Body.String()
+	// The template renders the app label as {CollectorName}/<span>{AppName}</span>.
+	for _, want := range []string{"prod/", ">api<", ">worker<"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("expected %s in subscriptions list, got: %s", want, out)
+		}
+	}
+	if !strings.Contains(out, `name="apps"`) {
+		t.Errorf("expected app checkboxes in subscriptions list, got: %s", out)
+	}
+	// prod/api is subscribed (checked) after the PUT, prod/worker is not.
+	if !strings.Contains(out, `value="prod:api" checked`) {
+		t.Errorf("expected prod:api checkbox to be checked, got: %s", out)
+	}
+	if !strings.Contains(out, ">Save</button>") {
+		t.Errorf("expected Save button in subscriptions form, got: %s", out)
+	}
+
+	// Service-level check: only prod/api is subscribed.
+	setup, err := notifyService.GetSetup(t.Context(), domain.User{ID: 1, Role: domain.RoleAdmin}, 1)
+	if err != nil {
+		t.Fatalf("get notifier setup: %v", err)
+	}
+	if setup.Name != "issues" {
+		t.Errorf("expected notifier name issues, got %s", setup.Name)
 	}
 }
 

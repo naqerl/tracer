@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"html"
+	"maps"
+	"slices"
 	"strings"
 )
 
@@ -40,14 +42,15 @@ func parseJSON(data string) []jsonKV {
 }
 
 func flattenJSONMap(obj map[string]any, prefix string) []jsonKV {
+	keys := slices.Sorted(maps.Keys(obj))
 	var result []jsonKV
-	for k, v := range obj {
+	for _, k := range keys {
 		fullKey := k
 		if prefix != "" {
 			fullKey = prefix + "." + k
 		}
 
-		switch val := v.(type) {
+		switch val := obj[k].(type) {
 		case map[string]any:
 			result = append(result, flattenJSONMap(val, fullKey)...)
 		default:
@@ -55,15 +58,6 @@ func flattenJSONMap(obj map[string]any, prefix string) []jsonKV {
 		}
 	}
 	return result
-}
-
-func flattenJSON(data []jsonKV) []jsonKV {
-	return data
-}
-
-// parsedJSONItems parses a JSON string and returns flattened key-value pairs
-func parsedJSONItems(data string) []jsonKV {
-	return flattenJSON(parseJSON(data))
 }
 
 // secretKeySet are JSON keys whose values must never be rendered verbatim
@@ -106,7 +100,7 @@ func jsonViewerHTML(data string, valid bool) string {
 	if !valid {
 		return `<span class="text-sm text-fg-secondary/60">-</span>`
 	}
-	items := parsedJSONItems(data)
+	items := parseJSON(data)
 	if len(items) == 0 {
 		return `<span class="text-fg-secondary italic">empty object</span>`
 	}
@@ -128,7 +122,7 @@ func jsonViewerFullHTML(data string, valid bool) string {
 	if !valid {
 		return `<span class="text-sm text-fg-secondary/60">No context data available</span>`
 	}
-	items := parsedJSONItems(data)
+	items := parseJSON(data)
 	if len(items) == 0 {
 		return `<span class="text-fg-secondary italic">empty object</span>`
 	}

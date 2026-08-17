@@ -78,7 +78,7 @@ func initWithHandle(ctx context.Context, authSvc *auth.Service, username, passwo
 			return InitResult{}, fmt.Errorf("validate collector api key request: %w", err)
 		}
 
-		apiKey, err := authSvc.GenerateCollectorAPIKey(ctx, domain.System{}, apiKeyReq)
+		created, err := authSvc.GenerateCollectorAPIKey(ctx, domain.System{}, apiKeyReq)
 		if err != nil {
 			return InitResult{}, fmt.Errorf("generate collector api key: %w", err)
 		}
@@ -86,7 +86,7 @@ func initWithHandle(ctx context.Context, authSvc *auth.Service, username, passwo
 		return InitResult{
 			AdminUsername:   username,
 			AdminPassword:   password,
-			CollectorAPIKey: apiKey,
+			CollectorAPIKey: created.Plaintext,
 			IsNewPassword:   isNewPassword,
 		}, nil
 	}

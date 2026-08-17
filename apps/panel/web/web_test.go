@@ -82,7 +82,7 @@ func newServer(t *testing.T, readOnly bool) (http.Handler, string, int64, *inges
 	}, filepath.Join(dataDir, "config.yaml"))
 
 	notifyChan := make(chan notifysvc.Notification, 100)
-	notifyService := notifysvc.New(panelHandle, userService, map[string]notifysvc.FromRawJSON{})
+	notifyService := notifysvc.New(panelHandle, userService, dbMgr, map[string]notifysvc.FromRawJSON{})
 	ingestService := ingestsvc.New(dbMgr, notifyChan, func(_, _ string, _ int64) string { return "" }, cfg)
 	tracker := ingestsvc.NewTracker()
 	panelService := panelsvc.New(dbMgr, ingestService, tracker, userService)
