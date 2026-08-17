@@ -997,7 +997,7 @@ func TestForgejoFormInitialStateAndFetchingIndicator(t *testing.T) {
 	}
 
 	// The token placeholder documents the scopes the API token needs.
-	if !strings.Contains(out, `placeholder="API token — scopes: read:user, read:organization, read:repository, write:issue"`) {
+	if !strings.Contains(out, `placeholder="r:user, r:org, r:repo, w:issue"`) {
 		t.Errorf("expected token placeholder to document required scopes, got: %s", out)
 	}
 }

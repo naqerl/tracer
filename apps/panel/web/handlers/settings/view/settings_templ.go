@@ -894,7 +894,7 @@ func NotifierForm(form NotifierFormView) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 82, "</label> <input type=\"password\" id=\"forgejo_token\" name=\"token\" placeholder=\"API token — scopes: read:user, read:organization, read:repository, write:issue\" required=\"required\" autocomplete=\"new-password\" hx-post=\"/settings/notifiers/forgejo/lookup\" hx-trigger=\"change, input changed delay:1s\" hx-target=\"#forgejo-lookup\" hx-swap=\"outerHTML\" hx-indicator=\"#forgejo-fetching\" class=\"w-full max-w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg placeholder:text-fg-secondary/50 md:w-[64ch]\"></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 82, "</label> <input type=\"password\" id=\"forgejo_token\" name=\"token\" placeholder=\"r:user, r:org, r:repo, w:issue\" required=\"required\" autocomplete=\"new-password\" hx-post=\"/settings/notifiers/forgejo/lookup\" hx-trigger=\"change, input changed delay:1s\" hx-target=\"#forgejo-lookup\" hx-swap=\"outerHTML\" hx-indicator=\"#forgejo-fetching\" class=\"w-full max-w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg placeholder:text-fg-secondary/50 md:w-[40ch]\"></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
