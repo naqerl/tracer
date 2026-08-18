@@ -65,7 +65,6 @@ func InitMux(authService *auth.Service, userService *usersvc.Service, ingestServ
 	m.HandleFunc("POST /users", h.createUser)
 	m.HandleFunc("DELETE /users/{id}", h.deleteUser)
 	m.HandleFunc("GET /users/{id}", h.getUser)
-	m.HandleFunc("GET /users/{id}/apps", h.getUserApps)
 	m.HandleFunc("PUT /users/{id}/apps", h.updateUserApps)
 
 	// Collector API keys
@@ -202,14 +201,15 @@ func (h *handler) createUser(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	_, err = h.authService.Register(r.Context(), req)
+	created, err := h.authService.Register(r.Context(), req)
 	if err != nil {
 		slog.Error("Failed to create user", "error", err)
 		http.Error(w, "Failed to create user", http.StatusInternalServerError)
 		return
 	}
 
-	htmx.Redirect(w, r, "/settings/")
+	// Navigate to the new user's detail page, where app permissions are managed.
+	htmx.Redirect(w, r, fmt.Sprintf("/settings/users/%d", created.ID))
 }
 
 func (h *handler) deleteUser(w http.ResponseWriter, r *http.Request) {
@@ -243,10 +243,6 @@ func (h *handler) deleteUser(w http.ResponseWriter, r *http.Request) {
 	htmx.Redirect(w, r, "/settings/")
 }
 
-func (h *handler) getUserApps(w http.ResponseWriter, r *http.Request) {
-	h.getUser(w, r)
-}
-
 func (h *handler) getUser(w http.ResponseWriter, r *http.Request) {
 	user, err := authmw.RequireUser(w, r)
 	if err != nil {
@@ -265,8 +261,13 @@ func (h *handler) getUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	target, err := h.userService.FindByID(r.Context(), user, id)
-	if err != nil {
+	switch {
+	case errors.Is(err, usersvc.ErrNotFound):
 		templates.ErrorPage("Error", "User not found", http.StatusNotFound, templates.NavData{Since: "24h"}).Render(r.Context(), w)
+		return
+	case err != nil:
+		slog.Error("Failed to get user", "id", id, "error", err)
+		templates.ErrorPage("Error", "Failed to get user", http.StatusInternalServerError, templates.NavData{Since: "24h"}).Render(r.Context(), w)
 		return
 	}
 
@@ -290,10 +291,10 @@ func (h *handler) getUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Build view props
-	var apps []view.UserAppView
+	apps := make([]domain.ScopeEntry, 0)
 	for collector, appNames := range collectorApps {
 		for _, appName := range appNames {
-			apps = append(apps, view.UserAppView{
+			apps = append(apps, domain.ScopeEntry{
 				Collector: collector,
 				App:       appName,
 				Granted:   userAppMap[appKey(collector, appName)],
@@ -301,10 +302,12 @@ func (h *handler) getUser(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	view.UserApps(view.UserAppsProps{
+	view.UserDetail(view.UserAppsProps{
 		UserID:   target.ID,
 		UserName: target.Username,
+		Role:     target.Role,
 		Apps:     apps,
+		ReadOnly: h.readOnly,
 	}).Render(r.Context(), w)
 }
 
@@ -380,6 +383,8 @@ func (h *handler) updateUserApps(w http.ResponseWriter, r *http.Request) {
 		}
 		if err := h.userService.GrantAccess(r.Context(), id, usersvc.AppAccess{CollectorName: parts[0], AppName: parts[1]}); err != nil {
 			slog.Error("Failed to add user app", "user_id", id, "collector", parts[0], "app", parts[1], "error", err)
+			http.Error(w, "Failed to update user apps", http.StatusInternalServerError)
+			return
 		}
 	}
 
@@ -388,6 +393,8 @@ func (h *handler) updateUserApps(w http.ResponseWriter, r *http.Request) {
 		if !selectedMap[pair] {
 			if err := h.userService.RevokeAccess(r.Context(), id, usersvc.AppAccess{CollectorName: app.CollectorName, AppName: app.AppName}); err != nil {
 				slog.Error("Failed to remove user app", "user_id", id, "collector", app.CollectorName, "app", app.AppName, "error", err)
+				http.Error(w, "Failed to update user apps", http.StatusInternalServerError)
+				return
 			}
 		}
 	}
@@ -762,8 +769,9 @@ func (h *handler) buildNotifierDetailData(w http.ResponseWriter, r *http.Request
 	}
 
 	return view.NotifierDetailProps{
-		Setup: setup,
-		Apps:  options,
+		Setup:    setup,
+		Apps:     options,
+		ReadOnly: h.readOnly,
 	}, true
 }
 

@@ -1,0 +1,105 @@
+package view
+
+import (
+	"fmt"
+
+	"tracer/apps/panel/internal/domain"
+	"tracer/apps/panel/web/templates"
+)
+
+// ScopeTree renders a full permission form: a hierarchical markdown-style
+// tree grouped by collector, an empty state when there are no entries, and
+// Save Changes / Cancel actions. The form submits to action with the given
+// htmx method (e.g. "put").
+templ ScopeTree(method string, action string, entries []domain.ScopeEntry) {
+	<form { scopeTreeFormAttrs(method, action)... }
+		  hx-target="closest .max-w-5xl"
+		  hx-swap="innerHTML"
+		  class="space-y-2">
+		if len(entries) == 0 {
+			<div class="text-center text-fg-secondary py-8">
+				<p>No applications available yet.</p>
+				<p class="text-sm mt-2">Start a collector to begin receiving logs and create applications.</p>
+			</div>
+		} else {
+			{{ order, grouped := groupScopeEntries(entries) }}
+			for ci, collector := range order {
+				{{ apps := grouped[collector] }}
+				<div class="py-2" data-scope-collector={ collector }>
+					<button
+						type="button"
+						id={ scopeTreeCollectorID(collector, ci) + "_toggle" }
+						class={ "text-base transition-colors font-mono " + tern(allGranted(apps), "text-fg", "text-fg-secondary hover:text-fg") }
+						data-action="toggle-scope-collector"
+						data-label={ collector }>
+						{ tern(allGranted(apps), "[x] ", "[ ] ") + collector }
+					</button>
+					<div class="space-y-1 mt-2">
+						for ai, app := range apps {
+							@templates.MarkdownCheckbox(
+								scopeTreeAppID(app.Collector, ci, app.App, ai),
+								"apps",
+								app.App,
+								app.Collector + ":" + app.App,
+								app.Granted,
+								1,
+							)
+						}
+					</div>
+				</div>
+			}
+			<div class="flex gap-3 mt-6">
+				<button type="submit" class="text-sm text-fg border border-fg px-4 py-2 hover:bg-fg hover:text-bg transition-colors">Save Changes</button>
+				<a href="/settings" class="text-sm text-fg-secondary border border-fg-secondary px-4 py-2 hover:bg-fg-secondary hover:text-bg transition-colors">Cancel</a>
+			</div>
+		}
+	</form>
+	@templates.MarkdownCheckboxScript()
+	<script src="/static/scope-tree.js"></script>
+}
+
+// scopeTreeFormAttrs returns the hx-{method} attribute for the form so the
+// submit method can be selected per call site.
+func scopeTreeFormAttrs(method, action string) templ.Attributes {
+	return templ.Attributes{
+		"hx-" + method: action,
+	}
+}
+
+// groupScopeEntries groups a flat list of collector/app entries by collector,
+// preserving the order in which collectors first appear and the app order
+// within each collector.
+func groupScopeEntries(entries []domain.ScopeEntry) ([]string, map[string][]domain.ScopeEntry) {
+	byCollector := make(map[string][]domain.ScopeEntry)
+	var order []string
+	for _, e := range entries {
+		if _, ok := byCollector[e.Collector]; !ok {
+			order = append(order, e.Collector)
+		}
+		byCollector[e.Collector] = append(byCollector[e.Collector], e)
+	}
+	return order, byCollector
+}
+
+// allGranted reports whether every app in the group is granted.
+func allGranted(apps []domain.ScopeEntry) bool {
+	for _, a := range apps {
+		if !a.Granted {
+			return false
+		}
+	}
+	return len(apps) > 0
+}
+
+// scopeTreeCollectorID returns the button id for a collector row; the index
+// keeps rows distinct even when collector names sanitize to the same id.
+func scopeTreeCollectorID(collector string, idx int) string {
+	return fmt.Sprintf("scope_%s_%d", templates.SanitizeID(collector), idx)
+}
+
+// scopeTreeAppID returns the id prefix for an app row (used with _value/_toggle);
+// the collector and app indices keep rows distinct even when names sanitize to
+// the same id.
+func scopeTreeAppID(collector string, collectorIdx int, app string, appIdx int) string {
+	return fmt.Sprintf("scope_%s_%d_%s_%d", templates.SanitizeID(collector), collectorIdx, templates.SanitizeID(app), appIdx)
+}

@@ -75,7 +75,7 @@ func Navbar(nav NavData) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "</span></span> <svg width=\"12\" height=\"12\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><polyline points=\"6 9 12 15 18 9\"></polyline></svg></div><div id=\"since-options\" class=\"hidden group-hover:block absolute left-0 right-0 top-full mt-0 bg-bg border-x border-b border-bg-secondary shadow-lg z-50\"><button type=\"button\" class=\"block w-full text-left px-2 py-1.5 text-sm hover:bg-bg-secondary transition-colors\" onclick=\"navbarSelectSince('1h')\">1h</button> <button type=\"button\" class=\"block w-full text-left px-2 py-1.5 text-sm hover:bg-bg-secondary transition-colors\" onclick=\"navbarSelectSince('6h')\">6h</button> <button type=\"button\" class=\"block w-full text-left px-2 py-1.5 text-sm hover:bg-bg-secondary transition-colors\" onclick=\"navbarSelectSince('24h')\">24h</button> <button type=\"button\" class=\"block w-full text-left px-2 py-1.5 text-sm hover:bg-bg-secondary transition-colors\" onclick=\"navbarSelectSince('7d')\">7d</button> <button type=\"button\" class=\"block w-full text-left px-2 py-1.5 text-sm hover:bg-bg-secondary transition-colors\" onclick=\"navbarSelectSince('30d')\">30d</button></div></div></form><script type=\"text/javascript\">\n\t\t\t(function() {\n\t\t\t\tconst cookieName = 'tracer_panel_since';\n\t\t\t\tconst defaultSince = '24h';\n\t\t\t\tconst allowedSince = new Set(['1h', '6h', '24h', '7d', '30d']);\n\n\t\t\t\tfunction readCookie(name) {\n\t\t\t\t\tconst prefix = name + '=';\n\t\t\t\t\tconst parts = document.cookie.split(';');\n\t\t\t\t\tfor (let i = 0; i < parts.length; i++) {\n\t\t\t\t\t\tconst cookie = parts[i].trim();\n\t\t\t\t\t\tif (cookie.startsWith(prefix)) {\n\t\t\t\t\t\t\treturn decodeURIComponent(cookie.slice(prefix.length));\n\t\t\t\t\t\t}\n\t\t\t\t\t}\n\t\t\t\t\treturn '';\n\t\t\t\t}\n\n\t\t\t\tfunction writeCookie(name, value) {\n\t\t\t\t\tlet cookie = name + '=' + encodeURIComponent(value) + '; path=/; max-age=31536000; SameSite=Lax';\n\t\t\t\t\tif (window.location.protocol === 'https:') {\n\t\t\t\t\t\tcookie += '; Secure';\n\t\t\t\t\t}\n\t\t\t\t\tdocument.cookie = cookie;\n\t\t\t\t}\n\n\t\t\t\tconst currentSince = readCookie(cookieName);\n\t\t\t\tconst since = allowedSince.has(currentSince) ? currentSince : defaultSince;\n\t\t\t\tif (currentSince !== since) {\n\t\t\t\t\twriteCookie(cookieName, since);\n\t\t\t\t}\n\t\t\t\tconst sinceLabel = document.getElementById('since-label');\n\t\t\t\tsinceLabel.textContent = since;\n\t\t\t\tdocument.documentElement.dataset.since = since;\n\n\t\t\t\tconst path = window.location.pathname;\n\t\t\t\tdocument.querySelectorAll('#nav-links a').forEach(function(link) {\n\t\t\t\t\tconst nav = link.getAttribute('data-nav');\n\t\t\t\t\tconst isActive =\n\t\t\t\t\t\t(nav === 'panel' && path === '/panel/') ||\n\t\t\t\t\t\t(nav === 'topology' && path === '/topology/') ||\n\t\t\t\t\t\t(nav === 'settings' && path === '/settings/');\n\t\t\t\t\tif (isActive) {\n\t\t\t\t\t\tlink.classList.remove('text-fg-secondary');\n\t\t\t\t\t} else {\n\t\t\t\t\t\tlink.classList.add('text-fg-secondary');\n\t\t\t\t\t}\n\t\t\t\t});\n\n\t\t\t\twindow.navbarSelectSince = function(val) {\n\t\t\t\t\tif (!allowedSince.has(val)) {\n\t\t\t\t\t\treturn;\n\t\t\t\t\t}\n\t\t\t\t\twriteCookie(cookieName, val);\n\t\t\t\t\tsinceLabel.textContent = val;\n\t\t\t\t\tdocument.documentElement.dataset.since = val;\n\t\t\t\t\twindow.location.reload();\n\t\t\t\t};\n\n\t\t\t\tfunction reloadIfSinceChanged() {\n\t\t\t\t\tconst activeSince = allowedSince.has(readCookie(cookieName)) ? readCookie(cookieName) : defaultSince;\n\t\t\t\t\tconst pageSince = document.documentElement.dataset.since || sinceLabel.textContent || defaultSince;\n\t\t\t\t\tif (activeSince !== pageSince) {\n\t\t\t\t\t\twindow.location.reload();\n\t\t\t\t\t}\n\t\t\t\t}\n\n\t\t\t\twindow.addEventListener('pageshow', function(event) {\n\t\t\t\t\tif (event.persisted) {\n\t\t\t\t\t\treloadIfSinceChanged();\n\t\t\t\t\t}\n\t\t\t\t});\n\n\t\t\t\twindow.addEventListener('popstate', function() {\n\t\t\t\t\treloadIfSinceChanged();\n\t\t\t\t});\n\n\t\t\t\tdocument.body.addEventListener('htmx:historyRestore', function() {\n\t\t\t\t\treloadIfSinceChanged();\n\t\t\t\t});\n\t\t\t})();\n\t\t</script></nav>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "</span></span> <svg width=\"12\" height=\"12\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><polyline points=\"6 9 12 15 18 9\"></polyline></svg></div><div id=\"since-options\" class=\"hidden group-hover:block absolute left-0 right-0 top-full mt-0 bg-bg border-x border-b border-bg-secondary shadow-lg z-50\"><button type=\"button\" class=\"block w-full text-left px-2 py-1.5 text-sm hover:bg-bg-secondary transition-colors\" onclick=\"navbarSelectSince('1h')\">1h</button> <button type=\"button\" class=\"block w-full text-left px-2 py-1.5 text-sm hover:bg-bg-secondary transition-colors\" onclick=\"navbarSelectSince('6h')\">6h</button> <button type=\"button\" class=\"block w-full text-left px-2 py-1.5 text-sm hover:bg-bg-secondary transition-colors\" onclick=\"navbarSelectSince('24h')\">24h</button> <button type=\"button\" class=\"block w-full text-left px-2 py-1.5 text-sm hover:bg-bg-secondary transition-colors\" onclick=\"navbarSelectSince('7d')\">7d</button> <button type=\"button\" class=\"block w-full text-left px-2 py-1.5 text-sm hover:bg-bg-secondary transition-colors\" onclick=\"navbarSelectSince('30d')\">30d</button></div></div></form><script src=\"/static/navbar.js\"></script></nav>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -121,7 +121,7 @@ func Layout(title string, nav NavData) templ.Component {
 		var templ_7745c5c3_Var5 string
 		templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinStringErrs(title)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/templates/shared.templ`, Line: 165, Col: 17}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/templates/shared.templ`, Line: 84, Col: 17}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var5))
 		if templ_7745c5c3_Err != nil {
@@ -192,7 +192,7 @@ func ErrorPage(title string, message string, status int, nav NavData) templ.Comp
 			var templ_7745c5c3_Var8 string
 			templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(title)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/templates/shared.templ`, Line: 181, Col: 56}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/templates/shared.templ`, Line: 100, Col: 56}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
 			if templ_7745c5c3_Err != nil {
@@ -205,7 +205,7 @@ func ErrorPage(title string, message string, status int, nav NavData) templ.Comp
 			var templ_7745c5c3_Var9 string
 			templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(message)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/templates/shared.templ`, Line: 183, Col: 41}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/templates/shared.templ`, Line: 102, Col: 41}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
 			if templ_7745c5c3_Err != nil {
@@ -255,7 +255,7 @@ func Indicator(id, text string) templ.Component {
 		var templ_7745c5c3_Var11 string
 		templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.ResolveAttributeValue(id)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/templates/shared.templ`, Line: 191, Col: 14}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/templates/shared.templ`, Line: 110, Col: 14}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var11)
 		if templ_7745c5c3_Err != nil {
@@ -268,7 +268,7 @@ func Indicator(id, text string) templ.Component {
 		var templ_7745c5c3_Var12 string
 		templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.JoinStringErrs(text)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/templates/shared.templ`, Line: 193, Col: 8}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/templates/shared.templ`, Line: 112, Col: 8}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var12))
 		if templ_7745c5c3_Err != nil {
@@ -348,7 +348,7 @@ func FieldStatus(id, text string, ok, oob bool) templ.Component {
 		var templ_7745c5c3_Var16 string
 		templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.ResolveAttributeValue(id)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/templates/shared.templ`, Line: 206, Col: 14}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/templates/shared.templ`, Line: 125, Col: 14}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var16)
 		if templ_7745c5c3_Err != nil {
@@ -407,7 +407,7 @@ func FieldStatus(id, text string, ok, oob bool) templ.Component {
 			var templ_7745c5c3_Var20 string
 			templ_7745c5c3_Var20, templ_7745c5c3_Err = templ.JoinStringErrs(text)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/templates/shared.templ`, Line: 208, Col: 81}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/templates/shared.templ`, Line: 127, Col: 81}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var20))
 			if templ_7745c5c3_Err != nil {
@@ -426,7 +426,8 @@ func FieldStatus(id, text string, ok, oob bool) templ.Component {
 	})
 }
 
-// MarkdownCheckbox renders an interactive markdown-style checkbox
+// MarkdownCheckbox renders an interactive markdown-style checkbox. The hidden
+// input carries its value only when checked, so unchecked rows submit nothing.
 func MarkdownCheckbox(id string, name string, label string, value string, checked bool, indent int) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -455,7 +456,7 @@ func MarkdownCheckbox(id string, name string, label string, value string, checke
 		var templ_7745c5c3_Var22 string
 		templ_7745c5c3_Var22, templ_7745c5c3_Err = templruntime.SanitizeStyleAttributeValues("padding-left: " + strconv.Itoa(indent*24) + "px")
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/templates/shared.templ`, Line: 215, Col: 63}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/templates/shared.templ`, Line: 135, Col: 63}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var22))
 		if templ_7745c5c3_Err != nil {
@@ -468,7 +469,7 @@ func MarkdownCheckbox(id string, name string, label string, value string, checke
 		var templ_7745c5c3_Var23 string
 		templ_7745c5c3_Var23, templ_7745c5c3_Err = templ.ResolveAttributeValue(name)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/templates/shared.templ`, Line: 216, Col: 34}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/templates/shared.templ`, Line: 136, Col: 34}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var23)
 		if templ_7745c5c3_Err != nil {
@@ -481,7 +482,7 @@ func MarkdownCheckbox(id string, name string, label string, value string, checke
 		var templ_7745c5c3_Var24 string
 		templ_7745c5c3_Var24, templ_7745c5c3_Err = templ.ResolveAttributeValue(id + "_value")
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/templates/shared.templ`, Line: 216, Col: 55}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/templates/shared.templ`, Line: 136, Col: 55}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var24)
 		if templ_7745c5c3_Err != nil {
@@ -492,9 +493,9 @@ func MarkdownCheckbox(id string, name string, label string, value string, checke
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var25 string
-		templ_7745c5c3_Var25, templ_7745c5c3_Err = templ.ResolveAttributeValue(value)
+		templ_7745c5c3_Var25, templ_7745c5c3_Err = templ.ResolveAttributeValue(tern(checked, value, ""))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/templates/shared.templ`, Line: 216, Col: 71}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/templates/shared.templ`, Line: 136, Col: 90}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var25)
 		if templ_7745c5c3_Err != nil {
@@ -507,7 +508,7 @@ func MarkdownCheckbox(id string, name string, label string, value string, checke
 		var templ_7745c5c3_Var26 string
 		templ_7745c5c3_Var26, templ_7745c5c3_Err = templ.ResolveAttributeValue(value)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/templates/shared.templ`, Line: 216, Col: 100}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/templates/shared.templ`, Line: 136, Col: 119}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var26)
 		if templ_7745c5c3_Err != nil {
@@ -529,7 +530,7 @@ func MarkdownCheckbox(id string, name string, label string, value string, checke
 		var templ_7745c5c3_Var28 string
 		templ_7745c5c3_Var28, templ_7745c5c3_Err = templ.ResolveAttributeValue(id + "_toggle")
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/templates/shared.templ`, Line: 217, Col: 43}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/templates/shared.templ`, Line: 137, Col: 43}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var28)
 		if templ_7745c5c3_Err != nil {
@@ -555,7 +556,7 @@ func MarkdownCheckbox(id string, name string, label string, value string, checke
 		var templ_7745c5c3_Var30 string
 		templ_7745c5c3_Var30, templ_7745c5c3_Err = templ.ResolveAttributeValue(id)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/templates/shared.templ`, Line: 217, Col: 171}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/templates/shared.templ`, Line: 137, Col: 171}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var30)
 		if templ_7745c5c3_Err != nil {
@@ -568,7 +569,7 @@ func MarkdownCheckbox(id string, name string, label string, value string, checke
 		var templ_7745c5c3_Var31 string
 		templ_7745c5c3_Var31, templ_7745c5c3_Err = templ.ResolveAttributeValue(label)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/templates/shared.templ`, Line: 217, Col: 222}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/templates/shared.templ`, Line: 137, Col: 222}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var31)
 		if templ_7745c5c3_Err != nil {
@@ -581,7 +582,7 @@ func MarkdownCheckbox(id string, name string, label string, value string, checke
 		var templ_7745c5c3_Var32 string
 		templ_7745c5c3_Var32, templ_7745c5c3_Err = templ.JoinStringErrs(tern(checked, "[x] ", "[ ] ") + label)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/templates/shared.templ`, Line: 218, Col: 42}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/templates/shared.templ`, Line: 138, Col: 42}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var32))
 		if templ_7745c5c3_Err != nil {
@@ -595,7 +596,9 @@ func MarkdownCheckbox(id string, name string, label string, value string, checke
 	})
 }
 
-// MarkdownCheckboxScript renders the JavaScript for markdown checkboxes
+// MarkdownCheckboxScript renders the JavaScript for markdown checkboxes. A
+// window flag makes it idempotent so re-rendering a fragment (htmx swap) or
+// including it from multiple components never double-wires the listener.
 func MarkdownCheckboxScript() templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -617,7 +620,7 @@ func MarkdownCheckboxScript() templ.Component {
 			templ_7745c5c3_Var33 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 37, "<script type=\"text/javascript\">\n\t\tdocument.addEventListener('click', function(e) {\n\t\t\tconst btn = e.target.closest('[data-action=\"toggle-checkbox\"]');\n\t\t\tif (!btn) return;\n\t\t\tconst id = btn.dataset.id;\n\t\t\tconst valueInput = document.getElementById(id + '_value');\n\t\t\tconst toggleBtn = document.getElementById(id + '_toggle');\n\t\t\tconst checkedValue = valueInput.dataset.checkedValue || 'on';\n\t\t\tconst isChecked = valueInput.value === checkedValue;\n\t\t\tconst labelText = toggleBtn.dataset.label;\n\t\t\tif (isChecked) {\n\t\t\t\tvalueInput.value = '';\n\t\t\t\ttoggleBtn.textContent = '[ ] ' + labelText;\n\t\t\t\ttoggleBtn.classList.remove('text-fg');\n\t\t\t\ttoggleBtn.classList.add('text-fg-secondary');\n\t\t\t} else {\n\t\t\t\tvalueInput.value = checkedValue;\n\t\t\t\ttoggleBtn.textContent = '[x] ' + labelText;\n\t\t\t\ttoggleBtn.classList.remove('text-fg-secondary');\n\t\t\t\ttoggleBtn.classList.add('text-fg');\n\t\t\t}\n\t\t});\n\t</script>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 37, "<script src=\"/static/markdown-checkbox.js\"></script>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

@@ -71,14 +71,6 @@ type AppLister interface {
 	ListApps(collector string) ([]string, error)
 }
 
-// SubscriptionOption is a collector/app pair the actor may subscribe the
-// notifier to, with whether it is currently subscribed.
-type SubscriptionOption struct {
-	CollectorName string
-	AppName       string
-	Enabled       bool
-}
-
 // Service manages notifications and handles database operations.
 type Service struct {
 	handle    *dbmanager.DBHandle
@@ -236,7 +228,7 @@ func (s *Service) GetSubscriptions(ctx context.Context, actor domain.Actor, noti
 // GetSubscriptionOptions returns every collector/app pair the actor may
 // subscribe the notifier to, marking which ones are already subscribed.
 // Returns ErrNotifierNotFound if the notifier doesn't exist.
-func (s *Service) GetSubscriptionOptions(ctx context.Context, actor domain.Actor, notifierID int64) ([]SubscriptionOption, error) {
+func (s *Service) GetSubscriptionOptions(ctx context.Context, actor domain.Actor, notifierID int64) ([]domain.ScopeEntry, error) {
 	subscriptions, err := s.GetSubscriptions(ctx, actor, notifierID)
 	if err != nil {
 		return nil, fmt.Errorf("could not get notifier subscriptions: %w", err)
@@ -262,7 +254,7 @@ func (s *Service) GetSubscriptionOptions(ctx context.Context, actor domain.Actor
 		}
 	}
 
-	var options []SubscriptionOption
+	var options []domain.ScopeEntry
 	for _, collector := range collectors {
 		if !access.AllowedTo(collector, "") {
 			continue
@@ -275,10 +267,10 @@ func (s *Service) GetSubscriptionOptions(ctx context.Context, actor domain.Actor
 			if !access.AllowedTo(collector, app) {
 				continue
 			}
-			options = append(options, SubscriptionOption{
-				CollectorName: collector,
-				AppName:       app,
-				Enabled:       subscribed[collector+":"+app],
+			options = append(options, domain.ScopeEntry{
+				Collector: collector,
+				App:       app,
+				Granted:   subscribed[collector+":"+app],
 			})
 		}
 	}

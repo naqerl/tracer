@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"regexp"
 	"sync"
 	"time"
 
@@ -13,25 +12,16 @@ import (
 	"tracer/libs/types"
 )
 
-var idSanitizer = regexp.MustCompile(`[^a-zA-Z0-9_-]+`)
-
 type Snapshot struct {
-	Panel      PanelNode   `json:"panel"`
 	Collectors []Collector `json:"collectors"`
 }
 
-type PanelNode struct {
-	ID string `json:"id"`
-}
-
 type Collector struct {
-	ID   string `json:"id"`
 	Name string `json:"name"`
 	Apps []App  `json:"apps"`
 }
 
 type App struct {
-	ID        string `json:"id"`
 	Name      string `json:"name"`
 	HasHealth bool   `json:"has_health"`
 }
@@ -121,16 +111,12 @@ func (s *Service) GetSnapshot(ctx context.Context, actor domain.Actor) (Snapshot
 	}
 
 	snapshot := Snapshot{
-		Panel: PanelNode{
-			ID: "panel-root",
-		},
 		Collectors: make([]Collector, 0, len(collectors)),
 	}
 
 	healthSince := time.Now().Add(-24 * time.Hour)
 	for _, collector := range collectors {
 		view := Collector{
-			ID:   collectorID(collector.Name),
 			Name: collector.Name,
 		}
 
@@ -148,7 +134,6 @@ func (s *Service) GetSnapshot(ctx context.Context, actor domain.Actor) (Snapshot
 		view.Apps = make([]App, 0, len(apps))
 		for _, appName := range apps {
 			appView := App{
-				ID:   appID(collector.Name, appName),
 				Name: appName,
 			}
 
@@ -171,20 +156,4 @@ func (s *Service) GetSnapshot(ctx context.Context, actor domain.Actor) (Snapshot
 	}
 
 	return snapshot, nil
-}
-
-func collectorID(name string) string {
-	return "collector-" + sanitizeID(name)
-}
-
-func appID(collectorName, appName string) string {
-	return "app-" + sanitizeID(collectorName) + "-" + sanitizeID(appName)
-}
-
-func sanitizeID(raw string) string {
-	safe := idSanitizer.ReplaceAllString(raw, "-")
-	if safe == "" {
-		return "node"
-	}
-	return safe
 }

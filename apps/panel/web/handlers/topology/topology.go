@@ -22,6 +22,58 @@ type handler struct {
 	userSvc *usersvc.Service
 }
 
+// graphSnapshot is the web-layer view of the topology: it carries the element
+// ids the frontend graph script keys its SVG nodes and edges on.
+type graphSnapshot struct {
+	Panel      graphPanel       `json:"panel"`
+	Collectors []graphCollector `json:"collectors"`
+}
+
+type graphPanel struct {
+	ID string `json:"id"`
+}
+
+type graphCollector struct {
+	ID   string     `json:"id"`
+	Name string     `json:"name"`
+	Apps []graphApp `json:"apps"`
+}
+
+type graphApp struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	HasHealth bool   `json:"has_health"`
+}
+
+// toGraphSnapshot maps a topology snapshot to the graph DTO, deriving the
+// element ids from collector/app names so the service never shapes for the UI.
+// The collector and app indices keep ids distinct when names sanitize to the
+// same id.
+func toGraphSnapshot(snapshot topologysvc.Snapshot) graphSnapshot {
+	out := graphSnapshot{
+		Panel:      graphPanel{ID: "panel-root"},
+		Collectors: make([]graphCollector, 0, len(snapshot.Collectors)),
+	}
+	appSeq := 0
+	for ci, c := range snapshot.Collectors {
+		apps := make([]graphApp, 0, len(c.Apps))
+		for _, a := range c.Apps {
+			apps = append(apps, graphApp{
+				ID:        fmt.Sprintf("app-%s-%s-%d", templates.SanitizeID(c.Name), templates.SanitizeID(a.Name), appSeq),
+				Name:      a.Name,
+				HasHealth: a.HasHealth,
+			})
+			appSeq++
+		}
+		out.Collectors = append(out.Collectors, graphCollector{
+			ID:   fmt.Sprintf("collector-%s-%d", templates.SanitizeID(c.Name), ci),
+			Name: c.Name,
+			Apps: apps,
+		})
+	}
+	return out
+}
+
 func InitMux(svc *topologysvc.Service, userSvc *usersvc.Service) *http.ServeMux {
 	m := http.NewServeMux()
 	h := handler{
@@ -67,7 +119,7 @@ func (h *handler) getTopologyGraph(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	snapshotJSON, err := json.Marshal(snapshot)
+	snapshotJSON, err := json.Marshal(toGraphSnapshot(snapshot))
 	if err != nil {
 		templates.ErrorPage("Error", "Failed to serialize topology", http.StatusInternalServerError, templates.NavData{Since: "24h"}).Render(r.Context(), w)
 		return

@@ -760,6 +760,67 @@ func TestSettingsPageShowsVersionFooter(t *testing.T) {
 	}
 }
 
+// TestCreateUserRedirectsToDetailPage verifies the simple creation flow:
+// submit the user form, then navigate to the user's detail page where the
+// info grid and the disabled-by-default app scope tree are shown.
+func TestCreateUserRedirectsToDetailPage(t *testing.T) {
+	handler, _, _, token := newAuthedHandler(t, true, false)
+
+	// htmx POST (forms use hx-post) → HX-Redirect to the new user's detail page.
+	req := httptest.NewRequest(http.MethodPost, "/settings/users", strings.NewReader("username=bob&password=secret123"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("HX-Request", "true")
+	req.AddCookie(&http.Cookie{Name: "tracer_session", Value: token})
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200 for htmx create, got %d (body: %s)", rr.Code, rr.Body.String())
+	}
+	firstID := userIDFromRedirect(t, rr.Header().Get("HX-Redirect"))
+
+	// Plain POST (no HX-Request) still redirects for non-htmx clients.
+	req = httptest.NewRequest(http.MethodPost, "/settings/users", strings.NewReader("username=carol&password=secret123"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: "tracer_session", Value: token})
+	rr = httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+	if rr.Code != http.StatusSeeOther {
+		t.Fatalf("expected 303 after create, got %d (body: %s)", rr.Code, rr.Body.String())
+	}
+	secondID := userIDFromRedirect(t, rr.Header().Get("Location"))
+	if secondID <= firstID {
+		t.Fatalf("expected the second created user to have a higher id, got %d then %d", firstID, secondID)
+	}
+
+	// The created user's detail page shows the info grid and the scope tree
+	// with nothing enabled by default (no apps exist yet → empty state).
+	detailReq := httptest.NewRequest(http.MethodGet, "/settings/users/"+strconv.FormatInt(firstID, 10), nil)
+	detailReq.AddCookie(&http.Cookie{Name: "tracer_session", Value: token})
+	detailRR := httptest.NewRecorder()
+	handler.ServeHTTP(detailRR, detailReq)
+	if detailRR.Code != http.StatusOK {
+		t.Fatalf("expected 200 for user detail, got %d (body: %s)", detailRR.Code, detailRR.Body.String())
+	}
+	body := detailRR.Body.String()
+	for _, want := range []string{`<a href="/settings"`, "Username:", "Role:", "No applications available yet."} {
+		if !strings.Contains(body, want) {
+			t.Errorf("expected %s on new user detail page, got: %s", want, body)
+		}
+	}
+}
+
+// userIDFromRedirect parses "/settings/users/<id>" from a redirect target.
+func userIDFromRedirect(t *testing.T, redirect string) int64 {
+	t.Helper()
+	parts := strings.Split(redirect, "/")
+	id, err := strconv.ParseInt(parts[len(parts)-1], 10, 64)
+	if err != nil {
+		t.Fatalf("expected redirect to /settings/users/<id>, got %q", redirect)
+	}
+	return id
+}
+
 func TestCreateForgejoNotifier(t *testing.T) {
 	repoValidated := false
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -909,21 +970,37 @@ func TestNotifierDetailPageShowsAppSubscriptions(t *testing.T) {
 	}
 
 	out := detailRR.Body.String()
-	// The template renders the app label as {CollectorName}/<span>{AppName}</span>.
-	for _, want := range []string{"prod/", ">api<", ">worker<"} {
-		if !strings.Contains(out, want) {
-			t.Errorf("expected %s in subscriptions list, got: %s", want, out)
-		}
+	// The subscriptions form renders the shared hierarchical scope tree:
+	// a collector row with [x]/[ ] toggle, then indented app toggles.
+	if !strings.Contains(out, `data-action="toggle-scope-collector"`) {
+		t.Errorf("expected collector scope row in subscriptions, got: %s", out)
 	}
-	if !strings.Contains(out, `name="apps"`) {
-		t.Errorf("expected app checkboxes in subscriptions list, got: %s", out)
+	if !strings.Contains(out, `data-action="toggle-checkbox"`) {
+		t.Errorf("expected app scope rows in subscriptions, got: %s", out)
 	}
-	// prod/api is subscribed (checked) after the PUT, prod/worker is not.
-	if !strings.Contains(out, `value="prod:api" checked`) {
-		t.Errorf("expected prod:api checkbox to be checked, got: %s", out)
+	if !strings.Contains(out, ">Save Changes</button>") {
+		t.Errorf("expected Save Changes button in subscriptions form, got: %s", out)
 	}
-	if !strings.Contains(out, ">Save</button>") {
-		t.Errorf("expected Save button in subscriptions form, got: %s", out)
+	// The form carries the helper text and a Cancel link like the original.
+	if !strings.Contains(out, "Select which applications") || !strings.Contains(out, ">Cancel</a>") {
+		t.Errorf("expected helper text and Cancel link in subscriptions form, got: %s", out)
+	}
+	// Only the subscribed app (prod/api) carries its value; an unchecked app
+	// (prod/worker) must submit nothing, so subscriptions default to disabled
+	// rather than enabled. The value and data-checked-value are adjacent.
+	if !strings.Contains(out, `value="prod:api" data-checked-value="prod:api"`) {
+		t.Errorf("expected prod:api subscription value present, got: %s", out)
+	}
+	if !strings.Contains(out, `value="" data-checked-value="prod:worker"`) {
+		t.Errorf("expected prod:worker subscription to be unchecked (empty value), got: %s", out)
+	}
+	// The app toggles render as [x]/[ ] rows with the app name as label
+	// (data-label) plus the square-bracket prefix.
+	if !strings.Contains(out, `data-label="api">[x] api`) {
+		t.Errorf("expected prod/api subscription row to be marked checked, got: %s", out)
+	}
+	if !strings.Contains(out, `data-label="worker">[ ] worker`) {
+		t.Errorf("expected prod/worker subscription row to be unchecked, got: %s", out)
 	}
 
 	// Service-level check: only prod/api is subscribed.
@@ -933,6 +1010,141 @@ func TestNotifierDetailPageShowsAppSubscriptions(t *testing.T) {
 	}
 	if setup.Name != "issues" {
 		t.Errorf("expected notifier name issues, got %s", setup.Name)
+	}
+}
+
+// TestNotifierDetailPageReadOnlyHidesMutationControls verifies the notifier
+// detail page hides the delete, toggle, and subscription form controls when the
+// panel runs in read-only mode.
+func TestNotifierDetailPageReadOnlyHidesMutationControls(t *testing.T) {
+	srv := forgejoTestServer(t)
+	handler, _, _, token, _ := newAuthedHandlerWithFactories(t, true, true, map[string]notifysvc.FromRawJSON{
+		"forgejo": func(name, config string) (notifysvc.Notifier, error) {
+			return forgejo.New(name, config, forgejo.NewCache(time.Minute))
+		},
+	})
+
+	body := fmt.Sprintf("type=forgejo&name=issues&base_url=%s&token=sekret&owner_repo=x/barse", srv.URL)
+	req := httptest.NewRequest(http.MethodPost, "/settings/notifiers", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: "tracer_session", Value: token})
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+	if rr.Code != http.StatusSeeOther {
+		t.Fatalf("expected redirect after create, got %d (body: %s)", rr.Code, rr.Body.String())
+	}
+
+	detailReq := httptest.NewRequest(http.MethodGet, "/settings/notifiers/1", nil)
+	detailReq.AddCookie(&http.Cookie{Name: "tracer_session", Value: token})
+	detailRR := httptest.NewRecorder()
+	handler.ServeHTTP(detailRR, detailReq)
+	if detailRR.Code != http.StatusOK {
+		t.Fatalf("expected 200 for notifier detail, got %d (body: %s)", detailRR.Code, detailRR.Body.String())
+	}
+
+	out := detailRR.Body.String()
+	for _, forbidden := range []string{"hx-delete", "hx-put", `data-action="toggle-scope-collector"`, ">Save Changes</button>"} {
+		if strings.Contains(out, forbidden) {
+			t.Errorf("expected no %s in read-only notifier detail page, got: %s", forbidden, out)
+		}
+	}
+}
+
+// TestUserAppsUsesSharedScopeTree verifies the user detail page renders the
+// same hierarchical scope tree as notifier subscriptions (full page with back
+// link and info grid, shared ScopeTree component), with unchecked apps
+// submitting nothing (so by default no access is granted).
+func TestUserAppsUsesSharedScopeTree(t *testing.T) {
+	handler, authService, _, token, _, dbMgr := newAuthedHandlerWithFactoriesAndManager(t, true, false, map[string]notifysvc.FromRawJSON{})
+
+	if _, err := dbMgr.CreateAppDB("prod", "api"); err != nil {
+		t.Fatalf("create prod/api app db: %v", err)
+	}
+	if _, err := dbMgr.CreateAppDB("prod", "worker"); err != nil {
+		t.Fatalf("create prod/worker app db: %v", err)
+	}
+	target, err := authService.Register(t.Context(), authsvc.RegisterRequest{Username: "bob", Password: "secret", IsAdmin: false})
+	if err != nil {
+		t.Fatalf("register bob: %v", err)
+	}
+
+	// GET the user detail page.
+	req := httptest.NewRequest(http.MethodGet, "/settings/users/"+strconv.FormatInt(target.ID, 10), nil)
+	req.AddCookie(&http.Cookie{Name: "tracer_session", Value: token})
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200 for user detail, got %d (body: %s)", rr.Code, rr.Body.String())
+	}
+	out := rr.Body.String()
+	// Page mirrors the notifier detail: back link, header, info grid.
+	for _, want := range []string{`<a href="/settings"`, ">User<", "Username:", ">bob<", "Role:", ">user<"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("expected %s in user detail page, got: %s", want, out)
+		}
+	}
+	if !strings.Contains(out, `data-action="toggle-scope-collector"`) {
+		t.Errorf("expected collector scope row in user apps, got: %s", out)
+	}
+	if !strings.Contains(out, `data-action="toggle-checkbox"`) {
+		t.Errorf("expected app scope rows in user apps, got: %s", out)
+	}
+	// Nothing granted yet: both app rows must carry empty values.
+	if !strings.Contains(out, `value="" data-checked-value="prod:api"`) || !strings.Contains(out, `value="" data-checked-value="prod:worker"`) {
+		t.Errorf("expected no granted apps (all unchecked), got: %s", out)
+	}
+	if !strings.Contains(out, `data-label="api">[ ] api`) || !strings.Contains(out, `data-label="worker">[ ] worker`) {
+		t.Errorf("expected both app rows unchecked, got: %s", out)
+	}
+
+	// PUT grants prod/api; the tree renders it checked.
+	put := httptest.NewRequest(http.MethodPut, "/settings/users/"+strconv.FormatInt(target.ID, 10)+"/apps", strings.NewReader("apps=prod%3Aapi"))
+	put.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	put.AddCookie(&http.Cookie{Name: "tracer_session", Value: token})
+	prr := httptest.NewRecorder()
+	handler.ServeHTTP(prr, put)
+	if prr.Code != http.StatusSeeOther {
+		t.Fatalf("expected redirect after grant, got %d (body: %s)", prr.Code, prr.Body.String())
+	}
+
+	// Re-fetch: prod/api checked, prod/worker still unchecked.
+	req2 := httptest.NewRequest(http.MethodGet, "/settings/users/"+strconv.FormatInt(target.ID, 10), nil)
+	req2.AddCookie(&http.Cookie{Name: "tracer_session", Value: token})
+	rr2 := httptest.NewRecorder()
+	handler.ServeHTTP(rr2, req2)
+	out2 := rr2.Body.String()
+	if !strings.Contains(out2, `value="prod:api" data-checked-value="prod:api"`) {
+		t.Errorf("expected prod/api granted after PUT, got: %s", out2)
+	}
+	if !strings.Contains(out2, `value="" data-checked-value="prod:worker"`) {
+		t.Errorf("expected prod/worker still not granted (empty value), got: %s", out2)
+	}
+}
+
+// TestUserDetailPageReadOnlyHidesMutationControls verifies the user detail page
+// hides the delete button and the permission form when the panel runs in
+// read-only mode.
+func TestUserDetailPageReadOnlyHidesMutationControls(t *testing.T) {
+	handler, authService, _, token := newAuthedHandler(t, true, true)
+
+	target, err := authService.Register(t.Context(), authsvc.RegisterRequest{Username: "bob", Password: "secret", IsAdmin: false})
+	if err != nil {
+		t.Fatalf("register bob: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/settings/users/"+strconv.FormatInt(target.ID, 10), nil)
+	req.AddCookie(&http.Cookie{Name: "tracer_session", Value: token})
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200 for user detail, got %d (body: %s)", rr.Code, rr.Body.String())
+	}
+
+	out := rr.Body.String()
+	for _, forbidden := range []string{"hx-delete", `data-action="toggle-scope-collector"`, ">Save Changes</button>"} {
+		if strings.Contains(out, forbidden) {
+			t.Errorf("expected no %s in read-only user detail page, got: %s", forbidden, out)
+		}
 	}
 }
 

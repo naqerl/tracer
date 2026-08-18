@@ -5,9 +5,22 @@ import (
 	"fmt"
 	"html"
 	"maps"
+	"regexp"
 	"slices"
 	"strings"
 )
+
+// idSanitizer replaces any character that is unsafe in an HTML element id.
+var idSanitizer = regexp.MustCompile(`[^a-zA-Z0-9_-]+`)
+
+// SanitizeID makes a collector or app name safe to embed in an element id.
+func SanitizeID(raw string) string {
+	safe := idSanitizer.ReplaceAllString(raw, "-")
+	if safe == "" {
+		return "node"
+	}
+	return safe
+}
 
 // jsonKV represents a key-value pair for JSON rendering
 type jsonKV struct {

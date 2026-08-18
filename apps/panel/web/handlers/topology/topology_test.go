@@ -112,6 +112,71 @@ func TestTopologyEventsStreamsOnlyAuthorizedEvents(t *testing.T) {
 	}
 }
 
+func TestToGraphSnapshotAddsElementIDs(t *testing.T) {
+	snapshot := topologysvc.Snapshot{
+		Collectors: []topologysvc.Collector{
+			{
+				Name: "prod",
+				Apps: []topologysvc.App{
+					{Name: "api", HasHealth: true},
+					{Name: "web/app", HasHealth: false},
+				},
+			},
+		},
+	}
+
+	got := toGraphSnapshot(snapshot)
+
+	if got.Panel.ID != "panel-root" {
+		t.Errorf("panel id = %q, want %q", got.Panel.ID, "panel-root")
+	}
+	if len(got.Collectors) != 1 {
+		t.Fatalf("collectors = %d, want 1", len(got.Collectors))
+	}
+	c := got.Collectors[0]
+	if c.ID != "collector-prod-0" {
+		t.Errorf("collector id = %q, want %q", c.ID, "collector-prod-0")
+	}
+	if c.Name != "prod" {
+		t.Errorf("collector name = %q, want %q", c.Name, "prod")
+	}
+	if len(c.Apps) != 2 {
+		t.Fatalf("apps = %d, want 2", len(c.Apps))
+	}
+	wantApps := []graphApp{
+		{ID: "app-prod-api-0", Name: "api", HasHealth: true},
+		{ID: "app-prod-web-app-1", Name: "web/app", HasHealth: false},
+	}
+	for i, want := range wantApps {
+		if c.Apps[i] != want {
+			t.Errorf("app %d = %+v, want %+v", i, c.Apps[i], want)
+		}
+	}
+}
+
+func TestToGraphSnapshotCollisionFreesIds(t *testing.T) {
+	// "a/b" and "a-b" sanitize to the same id; the per-row index must keep
+	// every collector and app id distinct.
+	snapshot := topologysvc.Snapshot{
+		Collectors: []topologysvc.Collector{
+			{Name: "a/b", Apps: []topologysvc.App{{Name: "x"}}},
+			{Name: "a-b", Apps: []topologysvc.App{{Name: "x"}}},
+		},
+	}
+
+	got := toGraphSnapshot(snapshot)
+
+	if len(got.Collectors) != 2 {
+		t.Fatalf("collectors = %d, want 2", len(got.Collectors))
+	}
+	if got.Collectors[0].ID == got.Collectors[1].ID {
+		t.Fatalf("collector ids collide: %q", got.Collectors[0].ID)
+	}
+	if got.Collectors[0].Apps[0].ID == got.Collectors[1].Apps[0].ID {
+		t.Fatalf("app ids collide: %q", got.Collectors[0].Apps[0].ID)
+	}
+}
+
 func TestDecodeData(t *testing.T) {
 	env := types.Envelope{
 		Type: types.EventTypeHealth,

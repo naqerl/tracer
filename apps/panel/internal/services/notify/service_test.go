@@ -67,14 +67,14 @@ func TestGetSubscriptionOptions(t *testing.T) {
 		t.Fatalf("expected %d options, got %d: %+v", len(want), len(options), options)
 	}
 	for _, opt := range options {
-		key := opt.CollectorName + ":" + opt.AppName
+		key := opt.Collector + ":" + opt.App
 		enabled, ok := want[key]
 		if !ok {
 			t.Errorf("unexpected option %q", key)
 			continue
 		}
-		if opt.Enabled != enabled {
-			t.Errorf("option %q enabled = %v, want %v", key, opt.Enabled, enabled)
+		if opt.Granted != enabled {
+			t.Errorf("option %q granted = %v, want %v", key, opt.Granted, enabled)
 		}
 	}
 }
@@ -120,7 +120,7 @@ func TestGetSubscriptionOptionsFiltersByAccess(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get subscription options: %v", err)
 	}
-	if len(options) != 1 || options[0].CollectorName != "prod" || options[0].AppName != "api" {
+	if len(options) != 1 || options[0].Collector != "prod" || options[0].App != "api" {
 		t.Fatalf("expected only prod/api, got %+v", options)
 	}
 

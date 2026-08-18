@@ -3,30 +3,35 @@ package view
 import (
 	"strconv"
 
+	"tracer/apps/panel/internal/domain"
 	"tracer/apps/panel/internal/services/notify"
 	"tracer/apps/panel/web/templates"
 )
 
 // NotifierDetailProps holds data for the notifier detail page.
 type NotifierDetailProps struct {
-	Setup notify.Setup
-	Apps  []notify.SubscriptionOption
+	Setup    notify.Setup
+	Apps     []domain.ScopeEntry
+	ReadOnly bool
 }
 
-// NotifierDetail renders the notifier detail page.
+// NotifierDetail renders the notifier detail page. In read-only mode the
+// delete, toggle, and subscription form controls are hidden.
 templ NotifierDetail(props NotifierDetailProps) {
 	@templates.Layout("Notifier", templates.NavData{Since: "24h"}) {
 		<div class="max-w-5xl mx-auto p-6">
 			<div class="mb-6">
-				<a href="/settings" class="text-sm text-fg-secondary hover:text-fg transition-colors">&larr; Back to Settings</a>
+				<a href="/settings" class="text-sm text-accent hover:underline transition-colors">&larr; Back to Settings</a>
 			</div>
 
 			<div class="mb-6 flex items-center justify-between gap-4">
 				<h2 class="text-xl font-medium">Notifier</h2>
-				<button hx-delete={ "/settings/notifiers/" + strconv.FormatInt(props.Setup.ID, 10) }
-						hx-confirm={ "Delete notifier " + props.Setup.Name + "?" }
-						hx-target="body" hx-swap="outerHTML"
-						class="text-sm text-fg-secondary hover:text-red-500 underline transition-colors">Delete</button>
+				if !props.ReadOnly {
+					<button hx-delete={ "/settings/notifiers/" + strconv.FormatInt(props.Setup.ID, 10) }
+							hx-confirm={ "Delete notifier " + props.Setup.Name + "?" }
+							hx-target="body" hx-swap="outerHTML"
+							class="text-sm text-fg-secondary hover:text-red-500 underline transition-colors">Delete</button>
+				}
 			</div>
 
 			<div class="mb-8">
@@ -44,15 +49,17 @@ templ NotifierDetail(props NotifierDetailProps) {
 						} else {
 							Disabled
 						}
-						<button hx-put={ "/settings/notifiers/" + strconv.FormatInt(props.Setup.ID, 10) + "/toggle" }
-								hx-target="body" hx-swap="outerHTML"
-								class="text-sm text-fg-secondary hover:text-fg transition-colors">
-							if props.Setup.Enabled == 1 {
-								Disable
-							} else {
-								Enable
-							}
-						</button>
+						if !props.ReadOnly {
+							<button hx-put={ "/settings/notifiers/" + strconv.FormatInt(props.Setup.ID, 10) + "/toggle" }
+									hx-target="body" hx-swap="outerHTML"
+									class="text-sm text-fg-secondary hover:text-fg transition-colors">
+								if props.Setup.Enabled == 1 {
+									Disable
+								} else {
+									Enable
+								}
+							</button>
+						}
 					</span>
 				</div>
 			</div>
@@ -62,33 +69,17 @@ templ NotifierDetail(props NotifierDetailProps) {
 				@templates.JSONViewerFull(props.Setup.Config, true)
 			</div>
 
-			<div class="mb-6">
-				<h3 class="text-xl font-medium mb-4">Subscriptions</h3>
-				@NotifierSubscriptionsForm(props)
-			</div>
-		</div>
-		@templates.MarkdownCheckboxScript()
-	}
-}
-
-// NotifierSubscriptionsForm renders the subscriptions form for a notifier.
-templ NotifierSubscriptionsForm(props NotifierDetailProps) {
-	<form hx-put={ "/settings/notifiers/" + strconv.FormatInt(props.Setup.ID, 10) + "/subscriptions" }
-		  hx-target="closest .max-w-5xl"
-		  hx-swap="innerHTML"
-		  class="space-y-2 max-w-md">
-		if len(props.Apps) == 0 {
-			<p class="text-sm text-fg-secondary/60">No apps available.</p>
-		} else {
-			for _, app := range props.Apps {
-				<label class="flex items-center gap-2 cursor-pointer hover:bg-bg-secondary/50 p-2 transition-colors">
-					<input type="checkbox" name="apps" value={ app.CollectorName + ":" + app.AppName }
-						   checked={ app.Enabled }
-						   class="accent-accent"/>
-					<span class="text-sm">{ app.CollectorName }/<span class="font-medium">{ app.AppName }</span></span>
-				</label>
+			if !props.ReadOnly {
+				<div class="mb-6">
+					<h3 class="text-xl font-medium mb-4">Subscriptions</h3>
+					<p class="text-base text-fg-secondary mb-6">Select which applications this notifier receives alerts for:</p>
+					@ScopeTree(
+						"put",
+						"/settings/notifiers/" + strconv.FormatInt(props.Setup.ID, 10) + "/subscriptions",
+						props.Apps,
+					)
+				</div>
 			}
-			<button type="submit" class="block text-sm text-accent hover:underline mt-4">Save</button>
-		}
-	</form>
+		</div>
+	}
 }

@@ -17,6 +17,8 @@ If any `make` target returns some issues from the code that you have not touched
 
 Comments must be short, concise, and describe the result the function, struct, or field provides — not how it got there. Never reference previous behaviour, removed code, or historical context: git history already records that. If a comment explains a decision the code makes (e.g. "no load trigger so the first poll has no fetch+blink"), cut it unless the reader genuinely cannot see the decision from the code alone. When in doubt, delete the comment.
 
+Doc comments must purely explain the intent of the abstraction and must never leak information about what consumers exist or what they do. Trivial DTOs and structs may need no comment at all — if the type name and fields already convey their meaning, leave it bare.
+
 ## Raw DB Calls in Tests
 
 All raw database calls are forbidden in tests when a public method exists that reaches the same goal. Use the public service API (e.g. `ingestSvc.StoreLog` or `panelSvc.GetLogGroups`) instead of sqlc queries / `db.New(...)` / `handle.Write(...)` directly. This keeps tests exercising the same paths production uses and prevents the DB layer from being a testing shortcut.

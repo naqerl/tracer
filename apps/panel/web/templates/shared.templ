@@ -70,88 +70,7 @@ templ Navbar(nav NavData) {
 				</div>
 			</div>
 		</form>
-		<script type="text/javascript">
-			(function() {
-				const cookieName = 'tracer_panel_since';
-				const defaultSince = '24h';
-				const allowedSince = new Set(['1h', '6h', '24h', '7d', '30d']);
-
-				function readCookie(name) {
-					const prefix = name + '=';
-					const parts = document.cookie.split(';');
-					for (let i = 0; i < parts.length; i++) {
-						const cookie = parts[i].trim();
-						if (cookie.startsWith(prefix)) {
-							return decodeURIComponent(cookie.slice(prefix.length));
-						}
-					}
-					return '';
-				}
-
-				function writeCookie(name, value) {
-					let cookie = name + '=' + encodeURIComponent(value) + '; path=/; max-age=31536000; SameSite=Lax';
-					if (window.location.protocol === 'https:') {
-						cookie += '; Secure';
-					}
-					document.cookie = cookie;
-				}
-
-				const currentSince = readCookie(cookieName);
-				const since = allowedSince.has(currentSince) ? currentSince : defaultSince;
-				if (currentSince !== since) {
-					writeCookie(cookieName, since);
-				}
-				const sinceLabel = document.getElementById('since-label');
-				sinceLabel.textContent = since;
-				document.documentElement.dataset.since = since;
-
-				const path = window.location.pathname;
-				document.querySelectorAll('#nav-links a').forEach(function(link) {
-					const nav = link.getAttribute('data-nav');
-					const isActive =
-						(nav === 'panel' && path === '/panel/') ||
-						(nav === 'topology' && path === '/topology/') ||
-						(nav === 'settings' && path === '/settings/');
-					if (isActive) {
-						link.classList.remove('text-fg-secondary');
-					} else {
-						link.classList.add('text-fg-secondary');
-					}
-				});
-
-				window.navbarSelectSince = function(val) {
-					if (!allowedSince.has(val)) {
-						return;
-					}
-					writeCookie(cookieName, val);
-					sinceLabel.textContent = val;
-					document.documentElement.dataset.since = val;
-					window.location.reload();
-				};
-
-				function reloadIfSinceChanged() {
-					const activeSince = allowedSince.has(readCookie(cookieName)) ? readCookie(cookieName) : defaultSince;
-					const pageSince = document.documentElement.dataset.since || sinceLabel.textContent || defaultSince;
-					if (activeSince !== pageSince) {
-						window.location.reload();
-					}
-				}
-
-				window.addEventListener('pageshow', function(event) {
-					if (event.persisted) {
-						reloadIfSinceChanged();
-					}
-				});
-
-				window.addEventListener('popstate', function() {
-					reloadIfSinceChanged();
-				});
-
-				document.body.addEventListener('htmx:historyRestore', function() {
-					reloadIfSinceChanged();
-				});
-			})();
-		</script>
+		<script src="/static/navbar.js"></script>
 	</nav>
 }
 
@@ -210,41 +129,22 @@ templ FieldStatus(id, text string, ok, oob bool) {
 	</span>
 }
 
-// MarkdownCheckbox renders an interactive markdown-style checkbox
+// MarkdownCheckbox renders an interactive markdown-style checkbox. The hidden
+// input carries its value only when checked, so unchecked rows submit nothing.
 templ MarkdownCheckbox(id string, name string, label string, value string, checked bool, indent int) {
 	<div style={ "padding-left: " + strconv.Itoa(indent*24) + "px" }>
-		<input type="hidden" name={ name } id={ id + "_value" } value={ value } data-checked-value={ value }/>
+		<input type="hidden" name={ name } id={ id + "_value" } value={ tern(checked, value, "") } data-checked-value={ value }/>
 		<button type="button" id={ id + "_toggle" } class={ "text-base transition-colors font-mono " + tern(checked, "text-fg", "text-fg-secondary hover:text-fg") } data-id={ id } data-action="toggle-checkbox" data-label={ label }>
 			{ tern(checked, "[x] ", "[ ] ") + label }
 		</button>
 	</div>
 }
 
-// MarkdownCheckboxScript renders the JavaScript for markdown checkboxes
+// MarkdownCheckboxScript renders the JavaScript for markdown checkboxes. A
+// window flag makes it idempotent so re-rendering a fragment (htmx swap) or
+// including it from multiple components never double-wires the listener.
 templ MarkdownCheckboxScript() {
-	<script type="text/javascript">
-		document.addEventListener('click', function(e) {
-			const btn = e.target.closest('[data-action="toggle-checkbox"]');
-			if (!btn) return;
-			const id = btn.dataset.id;
-			const valueInput = document.getElementById(id + '_value');
-			const toggleBtn = document.getElementById(id + '_toggle');
-			const checkedValue = valueInput.dataset.checkedValue || 'on';
-			const isChecked = valueInput.value === checkedValue;
-			const labelText = toggleBtn.dataset.label;
-			if (isChecked) {
-				valueInput.value = '';
-				toggleBtn.textContent = '[ ] ' + labelText;
-				toggleBtn.classList.remove('text-fg');
-				toggleBtn.classList.add('text-fg-secondary');
-			} else {
-				valueInput.value = checkedValue;
-				toggleBtn.textContent = '[x] ' + labelText;
-				toggleBtn.classList.remove('text-fg-secondary');
-				toggleBtn.classList.add('text-fg');
-			}
-		});
-	</script>
+	<script src="/static/markdown-checkbox.js"></script>
 }
 
 // JSONViewer renders a JSON object as a key-value grid
