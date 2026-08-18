@@ -589,6 +589,11 @@ func TestMarkdownAcceptDashboard(t *testing.T) {
 	if !strings.Contains(rr.Body.String(), "demo") {
 		t.Fatalf("expected dashboard HTML to contain demo collector, got %q", rr.Body.String())
 	}
+	// The Metrics link is a real anchor (middle-click/right-click/copy
+	// address all work) pointing at the collector resources route.
+	if !strings.Contains(rr.Body.String(), `<a href="/panel/collectors/demo/resources"`) {
+		t.Fatalf("expected dashboard Metrics link to be a real anchor, got %q", rr.Body.String())
+	}
 
 	// Accept: text/markdown — dashboard converts.
 	req = httptest.NewRequest(http.MethodGet, "/panel/", nil)
@@ -613,6 +618,12 @@ func TestMarkdownAcceptDashboard(t *testing.T) {
 	// placeholder into a link so the route appears in the markdown.
 	if !strings.Contains(body, "[collectors/demo/apps](/panel/collectors/demo/apps)") {
 		t.Fatalf("expected apps-grid anchor in converted markdown, got:\n%s", body)
+	}
+	// The Metrics link carries its href natively, so the markdown keeps it
+	// as a link without relying on the hx-get->href rewrite (the converter
+	// carries the title attribute onto the markdown link).
+	if !strings.Contains(body, `[Metrics →](/panel/collectors/demo/resources "View metrics history")`) {
+		t.Fatalf("expected Metrics link in converted markdown, got:\n%s", body)
 	}
 	if rr.Header().Get("Content-Length") != "" {
 		t.Fatal("expected Content-Length removed after conversion")

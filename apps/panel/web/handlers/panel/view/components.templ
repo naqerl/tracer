@@ -20,9 +20,7 @@ templ StatsRow(stats *CollectorStatsView, collectorName string) {
 				<span class="text-fg-secondary">Disk:</span>
 				<span class={ diskClass(diskPercent(stats.DiskUsedGB, stats.DiskTotalGB)) + " value-breath" }>{ strconv.FormatFloat(diskPercent(stats.DiskUsedGB, stats.DiskTotalGB), 'f', 0, 64) }%</span>
 			</div>
-			<a hx-get={ "/panel/collectors/" + collectorName + "/resources" }
-			   hx-target="body"
-			   hx-push-url="true"
+			<a href={ "/panel/collectors/" + collectorName + "/resources" }
 			   class="text-fg-secondary hover:text-fg cursor-pointer ml-auto"
 			   title="View metrics history">
 				Metrics <span class="text-fg-secondary">&rarr;</span>
@@ -31,9 +29,7 @@ templ StatsRow(stats *CollectorStatsView, collectorName string) {
 	} else {
 		<div class="flex items-center justify-between mb-4">
 			<span class="text-fg-secondary text-xs">No stats available</span>
-			<a hx-get={ "/panel/collectors/" + collectorName + "/resources" }
-			   hx-target="body"
-			   hx-push-url="true"
+			<a href={ "/panel/collectors/" + collectorName + "/resources" }
 			   class="text-xs text-fg-secondary hover:text-fg cursor-pointer"
 			   title="View metrics history">
 				Metrics <span class="text-fg-secondary">&rarr;</span>

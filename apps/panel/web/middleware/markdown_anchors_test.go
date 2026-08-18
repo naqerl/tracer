@@ -27,7 +27,7 @@ func TestAnchorsFromHXGet(t *testing.T) {
 	htmlBody := `<html><body>
 		<div hx-get="/panel/collectors/demo/apps" hx-trigger="load, every 15s"></div>
 		<div hx-get="/panel/collectors/demo/stats" hx-trigger="every 15s"><p>CPU 12%</p></div>
-		<a hx-get="/panel/collectors/demo/resources" hx-target="body">Metrics &rarr;</a>
+		<a href="/panel/collectors/demo/resources">Metrics &rarr;</a>
 		<a href="/panel/collectors/demo" class="x">real link</a>
 	</body></html>`
 
@@ -45,11 +45,13 @@ func TestAnchorsFromHXGet(t *testing.T) {
 	if !strings.Contains(s, `<a href="/panel/collectors/demo/stats">`) || !strings.Contains(s, "CPU 12%") {
 		t.Fatalf("expected hx-get div with content wrapped in a link, got:\n%s", s)
 	}
-	// Anchor without href gets one from hx-get (attribute order varies).
-	if !strings.Contains(s, `href="/panel/collectors/demo/resources"`) || !strings.Contains(s, "Metrics") {
-		t.Fatalf("expected hx-get anchor to gain an href, got:\n%s", s)
+	// Anchor with a real href stays untouched (the Metrics link now
+	// carries href directly; the hx-get anchors are the placeholder ones).
+	if !strings.Contains(s, `<a href="/panel/collectors/demo/resources">Metrics →</a>`) {
+		t.Fatalf("expected the real Metrics anchor to stay untouched, got:\n%s", s)
 	}
-	// Anchor with a real href stays untouched.
+	// An anchor with a real href stays untouched (real link, or the
+	// Metrics link that now carries href directly instead of hx-get).
 	if !strings.Contains(s, `<a href="/panel/collectors/demo" class="x">real link</a>`) {
 		t.Fatalf("expected real href anchor untouched, got:\n%s", s)
 	}
