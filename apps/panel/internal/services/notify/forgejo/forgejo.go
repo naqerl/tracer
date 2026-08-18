@@ -144,7 +144,7 @@ type issueData struct {
 	App       string
 	Collector string
 	GroupID   int64
-	First     string
+	FirstLine string
 	Message   string
 	LogURL    string
 }
@@ -156,12 +156,16 @@ func (n *Notifier) createIssue(notification notify.Notification) error {
 	}
 
 	hash := messageHash(log.Message)
+	first := firstLine(log.Message)
+	if first == "" {
+		return fmt.Errorf("could not create forgejo issue: empty log message")
+	}
 	data := issueData{
 		Hash:      hash,
 		App:       notification.AppName,
 		Collector: notification.CollectorName,
 		GroupID:   log.GroupID,
-		First:     firstLine(log.Message),
+		FirstLine: first,
 		Message:   log.Message,
 		LogURL:    log.LogURL,
 	}

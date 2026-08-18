@@ -1,5 +1,5 @@
 {{- define "title" -}}
-[tracer] {{ .Hash }} {{ .App }}@{{ .Collector }}: {{ if .First }}{{ .First }}{{ else }}(no message){{ end }}
+{{ .FirstLine }} [{{ .Hash }}]
 {{- end -}}
 
 {{- define "body" -}}

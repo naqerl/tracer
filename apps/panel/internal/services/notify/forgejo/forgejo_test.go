@@ -93,7 +93,7 @@ func TestNotifySearchesThenCreatesIssue(t *testing.T) {
 	if err := json.Unmarshal([]byte(createBody), &body); err != nil {
 		t.Fatalf("unmarshal request body: %v", err)
 	}
-	if !strings.HasPrefix(body.Title, "[tracer] "+hash+" api@prod: connection refused") {
+	if body.Title != "connection refused ["+hash+"]" {
 		t.Errorf("unexpected title: %q", body.Title)
 	}
 	if !strings.Contains(body.Body, "https://panel.example.com/panel/collectors/prod/apps/api/logs/groups/7") {
@@ -108,7 +108,7 @@ func TestNotifySkipsExistingIssue(t *testing.T) {
 		switch r.URL.Path {
 		case "/api/v1/repos/issues/search":
 			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`[{"number":5,"html_url":"https://git.naqerl.com/x/barse/issues/5","title":"[tracer] ` + hash + ` api@prod: boom","state":"open","repository":{"full_name":"x/barse"}}]`))
+			_, _ = w.Write([]byte(`[{"number":5,"html_url":"https://git.naqerl.com/x/barse/issues/5","title":"boom [` + hash + `]","state":"open","repository":{"full_name":"x/barse"}}]`))
 		case "/api/v1/repos/x/barse/issues":
 			createCalls++
 			w.WriteHeader(http.StatusCreated)
@@ -133,7 +133,7 @@ func TestNotifyReopensClosedIssue(t *testing.T) {
 		switch r.URL.Path {
 		case "/api/v1/repos/issues/search":
 			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`[{"number":5,"html_url":"https://git.naqerl.com/x/barse/issues/5","title":"[tracer] ` + hash + ` api@prod: boom","state":"closed","repository":{"full_name":"x/barse"}}]`))
+			_, _ = w.Write([]byte(`[{"number":5,"html_url":"https://git.naqerl.com/x/barse/issues/5","title":"boom [` + hash + `]","state":"closed","repository":{"full_name":"x/barse"}}]`))
 		case "/api/v1/repos/x/barse/issues/5":
 			reopenCalls++
 			reopenPath = r.URL.Path
@@ -175,7 +175,7 @@ func TestNotifyIgnoresIssueFromOtherRepo(t *testing.T) {
 		switch r.URL.Path {
 		case "/api/v1/repos/issues/search":
 			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`[{"number":9,"html_url":"https://git.naqerl.com/y/other/issues/9","title":"[tracer] deadbeef0 api@prod: boom","state":"open","repository":{"full_name":"y/other"}}]`))
+			_, _ = w.Write([]byte(`[{"number":9,"html_url":"https://git.naqerl.com/y/other/issues/9","title":"boom [deadbeef0]","state":"open","repository":{"full_name":"y/other"}}]`))
 		case "/api/v1/repos/x/barse/issues":
 			createCalls++
 			w.Header().Set("Content-Type", "application/json")
@@ -420,6 +420,27 @@ func TestNotifyMissingLogEntry(t *testing.T) {
 	}
 }
 
+func TestNotifyRejectsEmptyMessage(t *testing.T) {
+	n := newTestNotifier(t, func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("no network call expected for an empty message, got %s", r.URL.Path)
+	})
+
+	for _, msg := range []string{"", "  \n\t "} {
+		err := n.Notify(notify.Notification{
+			Type:          notify.TypeAlert,
+			CollectorName: "c",
+			AppName:       "a",
+			Payload: notify.LogEntry{
+				Message: msg,
+				GroupID: 1,
+			},
+		})
+		if err == nil {
+			t.Errorf("expected error for message %q", msg)
+		}
+	}
+}
+
 func TestNewValidation(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -462,7 +483,7 @@ func TestIssueTemplatesFormat(t *testing.T) {
 		App:       "api",
 		Collector: "prod",
 		GroupID:   7,
-		First:     "connection refused",
+		FirstLine: "connection refused",
 		Message:   "connection refused\nsecond line",
 		LogURL:    "https://panel.example.com/logs/7",
 	}
@@ -471,7 +492,7 @@ func TestIssueTemplatesFormat(t *testing.T) {
 	if err := issueTemplates.ExecuteTemplate(&titleBuf, "title", data); err != nil {
 		t.Fatalf("title: %v", err)
 	}
-	wantTitle := "[tracer] hash123456 api@prod: connection refused"
+	wantTitle := "connection refused [hash123456]"
 	if titleBuf.String() != wantTitle {
 		t.Errorf("title:\n got %q\nwant %q", titleBuf.String(), wantTitle)
 	}
@@ -494,16 +515,5 @@ func TestIssueTemplatesFormat(t *testing.T) {
 	wantNoURL := "**App:** api\n**Collector:** prod\n**Group ID:** 7\n**Message hash:** `hash123456`\n\n```\nconnection refused\nsecond line\n```"
 	if bodyBuf.String() != wantNoURL {
 		t.Errorf("body without url:\n got %q\nwant %q", bodyBuf.String(), wantNoURL)
-	}
-
-	// Empty first line falls back to "(no message)".
-	data.First = ""
-	titleBuf.Reset()
-	if err := issueTemplates.ExecuteTemplate(&titleBuf, "title", data); err != nil {
-		t.Fatalf("title with empty first line: %v", err)
-	}
-	wantFallback := "[tracer] hash123456 api@prod: (no message)"
-	if titleBuf.String() != wantFallback {
-		t.Errorf("title fallback:\n got %q\nwant %q", titleBuf.String(), wantFallback)
 	}
 }

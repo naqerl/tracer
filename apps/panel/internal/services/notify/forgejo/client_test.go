@@ -424,7 +424,7 @@ func TestSearchIssueFindsMatchingOpenIssue(t *testing.T) {
 		}
 		gotQuery = r.URL.Query().Get("q")
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`[{"number":42,"html_url":"https://git.naqerl.com/x/barse/issues/42","title":"[tracer] deadbeef0 api@prod: boom","state":"open","repository":{"full_name":"x/barse"}}]`))
+		_, _ = w.Write([]byte(`[{"number":42,"html_url":"https://git.naqerl.com/x/barse/issues/42","title":"boom [deadbeef0]","state":"open","repository":{"full_name":"x/barse"}}]`))
 	}))
 	defer srv.Close()
 
@@ -448,7 +448,7 @@ func TestSearchIssueFiltersOtherRepoAndTitleMismatch(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`[
-			{"number":1,"html_url":"https://git.naqerl.com/y/other/issues/1","title":"[tracer] deadbeef0 boom","state":"open","repository":{"full_name":"y/other"}},
+			{"number":1,"html_url":"https://git.naqerl.com/y/other/issues/1","title":"boom [deadbeef0]","state":"open","repository":{"full_name":"y/other"}},
 			{"number":2,"html_url":"https://git.naqerl.com/x/barse/issues/2","title":"unrelated title","state":"open","repository":{"full_name":"x/barse"}}
 		]`))
 	}))
@@ -498,7 +498,7 @@ func TestSearchIssueSearchesAllStates(t *testing.T) {
 func TestSearchIssueReturnsClosedState(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`[{"number":7,"html_url":"https://git.naqerl.com/x/barse/issues/7","title":"[tracer] deadbeef0 boom","state":"closed","repository":{"full_name":"x/barse"}}]`))
+		_, _ = w.Write([]byte(`[{"number":7,"html_url":"https://git.naqerl.com/x/barse/issues/7","title":"boom [deadbeef0]","state":"closed","repository":{"full_name":"x/barse"}}]`))
 	}))
 	defer srv.Close()
 
