@@ -10,6 +10,7 @@ import templruntime "github.com/a-h/templ/runtime"
 
 import (
 	"fmt"
+	"sort"
 
 	"tracer/apps/panel/internal/domain"
 	"tracer/apps/panel/web/templates"
@@ -68,7 +69,7 @@ func ScopeTree(method string, action string, entries []domain.ScopeEntry) templ.
 				var templ_7745c5c3_Var2 string
 				templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.ResolveAttributeValue(collector)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/scope_tree.templ`, Line: 28, Col: 54}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/scope_tree.templ`, Line: 29, Col: 54}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var2)
 				if templ_7745c5c3_Err != nil {
@@ -90,7 +91,7 @@ func ScopeTree(method string, action string, entries []domain.ScopeEntry) templ.
 				var templ_7745c5c3_Var4 string
 				templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.ResolveAttributeValue(scopeTreeCollectorID(collector, ci) + "_toggle")
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/scope_tree.templ`, Line: 31, Col: 58}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/scope_tree.templ`, Line: 32, Col: 58}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var4)
 				if templ_7745c5c3_Err != nil {
@@ -116,7 +117,7 @@ func ScopeTree(method string, action string, entries []domain.ScopeEntry) templ.
 				var templ_7745c5c3_Var6 string
 				templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.ResolveAttributeValue(collector)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/scope_tree.templ`, Line: 34, Col: 28}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/scope_tree.templ`, Line: 35, Col: 28}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var6)
 				if templ_7745c5c3_Err != nil {
@@ -129,7 +130,7 @@ func ScopeTree(method string, action string, entries []domain.ScopeEntry) templ.
 				var templ_7745c5c3_Var7 string
 				templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(tern(allGranted(apps), "[x] ", "[ ] ") + collector)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/scope_tree.templ`, Line: 35, Col: 58}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/scope_tree.templ`, Line: 36, Col: 58}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
 				if templ_7745c5c3_Err != nil {
@@ -187,16 +188,21 @@ func scopeTreeFormAttrs(method, action string) templ.Attributes {
 }
 
 // groupScopeEntries groups a flat list of collector/app entries by collector,
-// preserving the order in which collectors first appear and the app order
-// within each collector.
+// sorting collectors and the apps within each collector alphabetically.
 func groupScopeEntries(entries []domain.ScopeEntry) ([]string, map[string][]domain.ScopeEntry) {
 	byCollector := make(map[string][]domain.ScopeEntry)
-	var order []string
 	for _, e := range entries {
-		if _, ok := byCollector[e.Collector]; !ok {
-			order = append(order, e.Collector)
-		}
 		byCollector[e.Collector] = append(byCollector[e.Collector], e)
+	}
+	order := make([]string, 0, len(byCollector))
+	for collector := range byCollector {
+		order = append(order, collector)
+	}
+	sort.Strings(order)
+	for collector := range byCollector {
+		sort.Slice(byCollector[collector], func(i, j int) bool {
+			return byCollector[collector][i].App < byCollector[collector][j].App
+		})
 	}
 	return order, byCollector
 }

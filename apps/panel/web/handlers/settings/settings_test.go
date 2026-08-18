@@ -1097,7 +1097,7 @@ func TestUserAppsUsesSharedScopeTree(t *testing.T) {
 		t.Errorf("expected both app rows unchecked, got: %s", out)
 	}
 
-	// PUT grants prod/api; the tree renders it checked.
+	// PUT grants prod/api; the handler redirects (no in-place swap).
 	put := httptest.NewRequest(http.MethodPut, "/settings/users/"+strconv.FormatInt(target.ID, 10)+"/apps", strings.NewReader("apps=prod%3Aapi"))
 	put.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	put.AddCookie(&http.Cookie{Name: "tracer_session", Value: token})

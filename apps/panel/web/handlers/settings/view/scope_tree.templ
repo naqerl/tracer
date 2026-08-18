@@ -2,6 +2,7 @@ package view
 
 import (
 	"fmt"
+	"sort"
 
 	"tracer/apps/panel/internal/domain"
 	"tracer/apps/panel/web/templates"
@@ -67,16 +68,21 @@ func scopeTreeFormAttrs(method, action string) templ.Attributes {
 }
 
 // groupScopeEntries groups a flat list of collector/app entries by collector,
-// preserving the order in which collectors first appear and the app order
-// within each collector.
+// sorting collectors and the apps within each collector alphabetically.
 func groupScopeEntries(entries []domain.ScopeEntry) ([]string, map[string][]domain.ScopeEntry) {
 	byCollector := make(map[string][]domain.ScopeEntry)
-	var order []string
 	for _, e := range entries {
-		if _, ok := byCollector[e.Collector]; !ok {
-			order = append(order, e.Collector)
-		}
 		byCollector[e.Collector] = append(byCollector[e.Collector], e)
+	}
+	order := make([]string, 0, len(byCollector))
+	for collector := range byCollector {
+		order = append(order, collector)
+	}
+	sort.Strings(order)
+	for collector := range byCollector {
+		sort.Slice(byCollector[collector], func(i, j int) bool {
+			return byCollector[collector][i].App < byCollector[collector][j].App
+		})
 	}
 	return order, byCollector
 }

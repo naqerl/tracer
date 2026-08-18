@@ -260,21 +260,33 @@ func (h *handler) getUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	props, ok := h.buildUserDetailProps(user, id, w, r)
+	if !ok {
+		return
+	}
+
+	view.UserDetail(props).Render(r.Context(), w)
+}
+
+// buildUserDetailProps loads the user and their per-app grants, and renders an
+// error page if anything fails. It returns ok=false when an error page has
+// been written.
+func (h *handler) buildUserDetailProps(user domain.User, id int64, w http.ResponseWriter, r *http.Request) (view.UserAppsProps, bool) {
 	target, err := h.userService.FindByID(r.Context(), user, id)
 	switch {
 	case errors.Is(err, usersvc.ErrNotFound):
 		templates.ErrorPage("Error", "User not found", http.StatusNotFound, templates.NavData{Since: "24h"}).Render(r.Context(), w)
-		return
+		return view.UserAppsProps{}, false
 	case err != nil:
 		slog.Error("Failed to get user", "id", id, "error", err)
 		templates.ErrorPage("Error", "Failed to get user", http.StatusInternalServerError, templates.NavData{Since: "24h"}).Render(r.Context(), w)
-		return
+		return view.UserAppsProps{}, false
 	}
 
 	userApps, err := h.userService.FindAccessPolicy(r.Context(), id)
 	if err != nil {
 		templates.ErrorPage("Error", "Failed to get user apps", http.StatusInternalServerError, templates.NavData{Since: "24h"}).Render(r.Context(), w)
-		return
+		return view.UserAppsProps{}, false
 	}
 
 	// Build user apps map keyed by "collector:app".
@@ -287,10 +299,10 @@ func (h *handler) getUser(w http.ResponseWriter, r *http.Request) {
 	collectorApps, err := h.listAppsByCollector(r.Context())
 	if err != nil {
 		templates.ErrorPage("Error", "Failed to list apps", http.StatusInternalServerError, templates.NavData{Since: "24h"}).Render(r.Context(), w)
-		return
+		return view.UserAppsProps{}, false
 	}
 
-	// Build view props
+	// Build view props.
 	apps := make([]domain.ScopeEntry, 0)
 	for collector, appNames := range collectorApps {
 		for _, appName := range appNames {
@@ -302,13 +314,13 @@ func (h *handler) getUser(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	view.UserDetail(view.UserAppsProps{
+	return view.UserAppsProps{
 		UserID:   target.ID,
 		UserName: target.Username,
 		Role:     target.Role,
 		Apps:     apps,
 		ReadOnly: h.readOnly,
-	}).Render(r.Context(), w)
+	}, true
 }
 
 // listAppsByCollector returns all apps grouped by collector name

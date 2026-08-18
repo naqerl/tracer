@@ -9,8 +9,8 @@ import (
 )
 
 // TestGroupScopeEntries verifies that a flat list of collector/app entries is
-// grouped by collector, preserving first-seen collector order and app order
-// within each collector.
+// grouped by collector, sorting collectors and the apps within each collector
+// alphabetically.
 func TestGroupScopeEntries(t *testing.T) {
 	entries := []domain.ScopeEntry{
 		{Collector: "prod", App: "api", Granted: true},
@@ -30,12 +30,12 @@ func TestGroupScopeEntries(t *testing.T) {
 	want := map[string][]domain.ScopeEntry{
 		"prod": {
 			{Collector: "prod", App: "api", Granted: true},
-			{Collector: "prod", App: "worker", Granted: false},
 			{Collector: "prod", App: "api", Granted: true},
+			{Collector: "prod", App: "worker", Granted: false},
 		},
 		"staging": {
-			{Collector: "staging", App: "web", Granted: false},
 			{Collector: "staging", App: "db", Granted: true},
+			{Collector: "staging", App: "web", Granted: false},
 		},
 	}
 
