@@ -154,7 +154,6 @@ templ SettingsPage(props SettingsPageProps) {
 						<thead class="border-b border-bg-secondary">
 							<tr class="text-left text-sm text-fg-secondary">
 								<th class="pb-2 font-medium">Name</th>
-								<th class="pb-2 font-medium">Key</th>
 								<th class="pb-2 font-medium">Last Used</th>
 							</tr>
 						</thead>
@@ -162,7 +161,6 @@ templ SettingsPage(props SettingsPageProps) {
 							for _, k := range props.UserAPIKeys {
 								<tr class="group opacity-60 hover:opacity-100 transition-opacity duration-700 hover:duration-150 border-b border-bg-secondary/50">
 									<td class="py-0"><a href={ "/settings/api-keys/" + strconv.FormatInt(k.ID, 10) } class="block py-3">{ k.Name }</a></td>
-									<td class="py-0"><a href={ "/settings/api-keys/" + strconv.FormatInt(k.ID, 10) } class="block py-3">View</a></td>
 									<td class="py-0 text-sm text-fg-secondary">
 										<a href={ "/settings/api-keys/" + strconv.FormatInt(k.ID, 10) } class="block py-3">
 											if k.LastUsedValid {
@@ -546,23 +544,19 @@ templ CollectorAPIKeyTable(keys []CollectorAPIKeyView) {
 		<thead class="border-b border-bg-secondary">
 			<tr class="text-left text-fg-secondary">
 				<th class="pb-2 font-medium">Name</th>
-				<th class="pb-2 font-medium">Key</th>
 				<th class="pb-2 font-medium">Last Used</th>
 			</tr>
 		</thead>
 		<tbody>
 			if len(keys) == 0 {
 				<tr>
-					<td colspan="3" class="text-sm text-fg-secondary/60 py-4">No API keys configured.</td>
+					<td colspan="2" class="text-sm text-fg-secondary/60 py-4">No API keys configured.</td>
 				</tr>
 			}
 			for _, k := range keys {
-				<tr class="border-b border-bg-secondary/50">
+				<tr class="group opacity-60 hover:opacity-100 transition-opacity duration-700 hover:duration-150 border-b border-bg-secondary/50">
 					<td class="py-0">
 						<a href={ "/settings/admin/collector-api-keys/" + strconv.FormatInt(k.ID, 10) } class="block py-3">{ k.Name }</a>
-					</td>
-					<td class="py-0">
-						<a href={ "/settings/admin/collector-api-keys/" + strconv.FormatInt(k.ID, 10) } class="block py-3">View</a>
 					</td>
 					<td class="py-0 text-sm text-fg-secondary">
 						<a href={ "/settings/admin/collector-api-keys/" + strconv.FormatInt(k.ID, 10) } class="block py-3">
