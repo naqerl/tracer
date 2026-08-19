@@ -235,14 +235,16 @@ func (b *bufferedResponseWriter) commit() {
 	b.body.Reset()
 }
 
-// shouldConvert reports whether the captured response is a successful HTML
-// response worth converting. Non-2xx, streaming, and non-HTML responses are
-// excluded.
+// shouldConvert reports whether the captured response is an HTML response
+// worth converting: 2xx and 3xx with an HTML body (errors, streaming, and
+// non-HTML responses are excluded). 3xx bodies are converted too — the root
+// serves the login redirect with the llm docs as the body, and agents want
+// that prompt as markdown rather than raw HTML.
 func (b *bufferedResponseWriter) shouldConvert() bool {
 	if b.committed {
 		return false
 	}
-	if b.status != 0 && (b.status < 200 || b.status >= 300) {
+	if b.status != 0 && (b.status < 200 || b.status >= 400) {
 		return false
 	}
 	ct := b.header.Get("Content-Type")

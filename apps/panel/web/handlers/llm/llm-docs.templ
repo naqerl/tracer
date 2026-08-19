@@ -2,7 +2,7 @@ package llm
 
 import "tracer/apps/panel/web/templates"
 
-// llmDocsHTML renders the LLM documentation as HTML
+// llmDocsHTML renders the LLM documentation as HTML.
 templ llmDocsHTML(baseURL string) {
 	@templates.Layout("LLM API Documentation", templates.NavData{Since: "24h"}) {
 		<div class="max-w-5xl mx-auto p-6">
@@ -25,31 +25,57 @@ templ llmDocsHTML(baseURL string) {
 					<h3 class="text-lg font-medium text-fg mb-3">Using Your API Key</h3>
 					<div class="bg-bg p-4 mb-6">
 						<p class="text-xs text-fg-secondary mb-2">Use request header:</p>
-						<code class="text-green-400 text-sm">curl -H "X-API-Key: YOUR_KEY" "https://{ baseURL }/panel.md"</code>
+						<pre class="overflow-x-auto text-sm"><code>curl -H "X-API-Key: YOUR_KEY" -H "Accept: text/markdown" "https://{ baseURL }/panel"</code></pre>
 					</div>
 
-					<h2 class="text-xl font-semibold text-fg mt-8 mb-4">Available Endpoints</h2>
+					<h2 class="text-xl font-semibold text-fg mt-8 mb-4">Permissions</h2>
+					<p class="text-fg-secondary mb-4">API keys inherit your user's app access permissions:</p>
+					<ul class="list-disc list-inside mb-6">
+						<li><span class="text-fg-secondary">Admins: access all apps and collectors</span></li>
+						<li><span class="text-fg-secondary">Regular users: access only assigned apps</span></li>
+					</ul>
 
+					<h2 class="text-xl font-semibold text-fg mt-8 mb-4">Requesting Markdown</h2>
+					<p class="text-fg-secondary mb-6">
+						Set the <code class="text-accent">Accept: text/markdown</code> header to receive a markdown representation of any page. Without it, the pages render as HTML for the browser.
+					</p>
+
+					<h2 class="text-xl font-semibold text-fg mt-8 mb-4">Available Endpoints</h2>
 					<h3 class="text-lg font-medium text-fg mb-3">Analytics</h3>
 					<ul class="space-y-3 mb-6">
 						<li class="bg-bg p-3">
-							<code class="text-accent">GET /panel.md</code>
-							<p class="text-sm text-fg-secondary mt-1">Dashboard - Lists all collectors</p>
+							<div class="bg-bg p-2 rounded overflow-x-auto"><code class="text-accent">GET /panel</code></div>
+							<p class="text-sm text-fg-secondary mt-1">Dashboard - Lists all collectors with their status, system stats, and app counts.</p>
 						</li>
 						<li class="bg-bg p-3">
-							<code class="text-accent">GET /panel/collectors/{"{"}collector{"}"}.md</code>
-							<p class="text-sm text-fg-secondary mt-1">Collector overview with system stats</p>
+							<div class="bg-bg p-2 rounded overflow-x-auto"><code class="text-accent">GET /panel/collectors/{"{"}collector{"}"}</code></div>
+							<p class="text-sm text-fg-secondary mt-1">Collector overview with system stats.</p>
 						</li>
 						<li class="bg-bg p-3">
-							<code class="text-accent">GET /panel/collectors/{"{"}collector{"}"}/apps/{"{"}app{"}"}.md</code>
-							<p class="text-sm text-fg-secondary mt-1">App analytics with statistics and grouped logs</p>
+							<div class="bg-bg p-2 rounded overflow-x-auto"><code class="text-accent">GET /panel/collectors/{"{"}collector{"}"}/apps/{"{"}app{"}"}</code></div>
+							<p class="text-sm text-fg-secondary mt-1">App analytics with statistics and grouped logs (last 24 hours).</p>
+						</li>
+					</ul>
+
+					<h3 class="text-lg font-medium text-fg mb-3">Common Use Cases</h3>
+					<ul class="space-y-3 mb-6">
+						<li class="bg-bg p-3">
+							<div class="bg-bg p-2 rounded overflow-x-auto"><code class="text-green-400 text-sm">curl -H "X-API-Key: YOUR_KEY" -H "Accept: text/markdown" "https://{ baseURL }/panel"</code></div>
+							<p class="text-sm text-fg-secondary mt-1">Check system health.</p>
+						</li>
+						<li class="bg-bg p-3">
+							<div class="bg-bg p-2 rounded overflow-x-auto"><code class="text-green-400 text-sm">curl -H "X-API-Key: YOUR_KEY" -H "Accept: text/markdown" "https://{ baseURL }/panel/collectors/my-server/apps/web-api"</code></div>
+							<p class="text-sm text-fg-secondary mt-1">View app statistics and logs.</p>
+						</li>
+						<li class="bg-bg p-3">
+							<div class="bg-bg p-2 rounded overflow-x-auto"><code class="text-green-400 text-sm">curl -H "X-API-Key: YOUR_KEY" -H "Accept: text/markdown" "https://{ baseURL }/panel/collectors/my-server"</code></div>
+							<p class="text-sm text-fg-secondary mt-1">Monitor a specific collector.</p>
 						</li>
 					</ul>
 
 					<div class="bg-bg-secondary border border-accent p-4 mt-8">
 						<p class="text-fg text-sm">
-							<strong>💡 Tip:</strong> View the raw markdown version at
-							<a href="/llm.md" class="text-accent hover:underline">/llm.md</a>
+							<strong>💡 Tip:</strong> Point your agent at this root URL ({ baseURL }) with your API key and it will follow the markdown links to start investigating.
 						</p>
 					</div>
 				</div>

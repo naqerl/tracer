@@ -10,7 +10,7 @@ import templruntime "github.com/a-h/templ/runtime"
 
 import "tracer/apps/panel/web/templates"
 
-// llmDocsHTML renders the LLM documentation as HTML
+// llmDocsHTML renders the LLM documentation as HTML.
 func llmDocsHTML(baseURL string) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -44,27 +44,27 @@ func llmDocsHTML(baseURL string) templ.Component {
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"max-w-5xl mx-auto p-6\"><div class=\"bg-bg-secondary p-8\"><h1 class=\"text-2xl font-bold text-fg mb-6\">LLM API Documentation</h1><div class=\"prose prose-invert max-w-none\"><p class=\"text-fg-secondary mb-6\">Access tracer-panel logs and analytics programmatically using markdown-formatted endpoints.</p><h2 class=\"text-xl font-semibold text-fg mt-8 mb-4\">Authentication</h2><div class=\"bg-bg p-4 border-l-4 border-accent mb-6\"><p class=\"text-fg-secondary mb-2\">All endpoints require authentication via API key.</p><p class=\"text-sm text-fg-secondary\">Generate your API key in <a href=\"/settings/\" class=\"text-accent hover:underline\">Settings</a> &rarr; API Keys section.</p></div><h3 class=\"text-lg font-medium text-fg mb-3\">Using Your API Key</h3><div class=\"bg-bg p-4 mb-6\"><p class=\"text-xs text-fg-secondary mb-2\">Use request header:</p><code class=\"text-green-400 text-sm\">curl -H \"X-API-Key: YOUR_KEY\" \"https://")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"max-w-5xl mx-auto p-6\"><div class=\"bg-bg-secondary p-8\"><h1 class=\"text-2xl font-bold text-fg mb-6\">LLM API Documentation</h1><div class=\"prose prose-invert max-w-none\"><p class=\"text-fg-secondary mb-6\">Access tracer-panel logs and analytics programmatically using markdown-formatted endpoints.</p><h2 class=\"text-xl font-semibold text-fg mt-8 mb-4\">Authentication</h2><div class=\"bg-bg p-4 border-l-4 border-accent mb-6\"><p class=\"text-fg-secondary mb-2\">All endpoints require authentication via API key.</p><p class=\"text-sm text-fg-secondary\">Generate your API key in <a href=\"/settings/\" class=\"text-accent hover:underline\">Settings</a> &rarr; API Keys section.</p></div><h3 class=\"text-lg font-medium text-fg mb-3\">Using Your API Key</h3><div class=\"bg-bg p-4 mb-6\"><p class=\"text-xs text-fg-secondary mb-2\">Use request header:</p><pre class=\"overflow-x-auto text-sm\"><code>curl -H \"X-API-Key: YOUR_KEY\" -H \"Accept: text/markdown\" \"https://")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var3 string
 			templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(baseURL)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/llm/llm-docs.templ`, Line: 28, Col: 91}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/llm/llm-docs.templ`, Line: 28, Col: 124}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "/panel.md\"</code></div><h2 class=\"text-xl font-semibold text-fg mt-8 mb-4\">Available Endpoints</h2><h3 class=\"text-lg font-medium text-fg mb-3\">Analytics</h3><ul class=\"space-y-3 mb-6\"><li class=\"bg-bg p-3\"><code class=\"text-accent\">GET /panel.md</code><p class=\"text-sm text-fg-secondary mt-1\">Dashboard - Lists all collectors</p></li><li class=\"bg-bg p-3\"><code class=\"text-accent\">GET /panel/collectors/")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "/panel\"</code></pre></div><h2 class=\"text-xl font-semibold text-fg mt-8 mb-4\">Permissions</h2><p class=\"text-fg-secondary mb-4\">API keys inherit your user's app access permissions:</p><ul class=\"list-disc list-inside mb-6\"><li><span class=\"text-fg-secondary\">Admins: access all apps and collectors</span></li><li><span class=\"text-fg-secondary\">Regular users: access only assigned apps</span></li></ul><h2 class=\"text-xl font-semibold text-fg mt-8 mb-4\">Requesting Markdown</h2><p class=\"text-fg-secondary mb-6\">Set the <code class=\"text-accent\">Accept: text/markdown</code> header to receive a markdown representation of any page. Without it, the pages render as HTML for the browser.</p><h2 class=\"text-xl font-semibold text-fg mt-8 mb-4\">Available Endpoints</h2><h3 class=\"text-lg font-medium text-fg mb-3\">Analytics</h3><ul class=\"space-y-3 mb-6\"><li class=\"bg-bg p-3\"><div class=\"bg-bg p-2 rounded overflow-x-auto\"><code class=\"text-accent\">GET /panel</code></div><p class=\"text-sm text-fg-secondary mt-1\">Dashboard - Lists all collectors with their status, system stats, and app counts.</p></li><li class=\"bg-bg p-3\"><div class=\"bg-bg p-2 rounded overflow-x-auto\"><code class=\"text-accent\">GET /panel/collectors/")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var4 string
 			templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinStringErrs("{")
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/llm/llm-docs.templ`, Line: 40, Col: 59}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/llm/llm-docs.templ`, Line: 51, Col: 106}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
 			if templ_7745c5c3_Err != nil {
@@ -77,20 +77,20 @@ func llmDocsHTML(baseURL string) templ.Component {
 			var templ_7745c5c3_Var5 string
 			templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinStringErrs("}")
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/llm/llm-docs.templ`, Line: 40, Col: 73}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/llm/llm-docs.templ`, Line: 51, Col: 120}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var5))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, ".md</code><p class=\"text-sm text-fg-secondary mt-1\">Collector overview with system stats</p></li><li class=\"bg-bg p-3\"><code class=\"text-accent\">GET /panel/collectors/")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "</code></div><p class=\"text-sm text-fg-secondary mt-1\">Collector overview with system stats.</p></li><li class=\"bg-bg p-3\"><div class=\"bg-bg p-2 rounded overflow-x-auto\"><code class=\"text-accent\">GET /panel/collectors/")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var6 string
 			templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.JoinStringErrs("{")
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/llm/llm-docs.templ`, Line: 44, Col: 59}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/llm/llm-docs.templ`, Line: 55, Col: 106}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var6))
 			if templ_7745c5c3_Err != nil {
@@ -103,7 +103,7 @@ func llmDocsHTML(baseURL string) templ.Component {
 			var templ_7745c5c3_Var7 string
 			templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs("}")
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/llm/llm-docs.templ`, Line: 44, Col: 73}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/llm/llm-docs.templ`, Line: 55, Col: 120}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
 			if templ_7745c5c3_Err != nil {
@@ -116,7 +116,7 @@ func llmDocsHTML(baseURL string) templ.Component {
 			var templ_7745c5c3_Var8 string
 			templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs("{")
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/llm/llm-docs.templ`, Line: 44, Col: 84}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/llm/llm-docs.templ`, Line: 55, Col: 131}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
 			if templ_7745c5c3_Err != nil {
@@ -129,13 +129,65 @@ func llmDocsHTML(baseURL string) templ.Component {
 			var templ_7745c5c3_Var9 string
 			templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs("}")
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/llm/llm-docs.templ`, Line: 44, Col: 92}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/llm/llm-docs.templ`, Line: 55, Col: 139}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, ".md</code><p class=\"text-sm text-fg-secondary mt-1\">App analytics with statistics and grouped logs</p></li></ul><div class=\"bg-bg-secondary border border-accent p-4 mt-8\"><p class=\"text-fg text-sm\"><strong>💡 Tip:</strong> View the raw markdown version at <a href=\"/llm.md\" class=\"text-accent hover:underline\">/llm.md</a></p></div></div></div></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "</code></div><p class=\"text-sm text-fg-secondary mt-1\">App analytics with statistics and grouped logs (last 24 hours).</p></li></ul><h3 class=\"text-lg font-medium text-fg mb-3\">Common Use Cases</h3><ul class=\"space-y-3 mb-6\"><li class=\"bg-bg p-3\"><div class=\"bg-bg p-2 rounded overflow-x-auto\"><code class=\"text-green-400 text-sm\">curl -H \"X-API-Key: YOUR_KEY\" -H \"Accept: text/markdown\" \"https://")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var10 string
+			templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinStringErrs(baseURL)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/llm/llm-docs.templ`, Line: 63, Col: 166}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "/panel\"</code></div><p class=\"text-sm text-fg-secondary mt-1\">Check system health.</p></li><li class=\"bg-bg p-3\"><div class=\"bg-bg p-2 rounded overflow-x-auto\"><code class=\"text-green-400 text-sm\">curl -H \"X-API-Key: YOUR_KEY\" -H \"Accept: text/markdown\" \"https://")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var11 string
+			templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinStringErrs(baseURL)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/llm/llm-docs.templ`, Line: 67, Col: 166}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var11))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "/panel/collectors/my-server/apps/web-api\"</code></div><p class=\"text-sm text-fg-secondary mt-1\">View app statistics and logs.</p></li><li class=\"bg-bg p-3\"><div class=\"bg-bg p-2 rounded overflow-x-auto\"><code class=\"text-green-400 text-sm\">curl -H \"X-API-Key: YOUR_KEY\" -H \"Accept: text/markdown\" \"https://")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var12 string
+			templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.JoinStringErrs(baseURL)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/llm/llm-docs.templ`, Line: 71, Col: 166}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var12))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "/panel/collectors/my-server\"</code></div><p class=\"text-sm text-fg-secondary mt-1\">Monitor a specific collector.</p></li></ul><div class=\"bg-bg-secondary border border-accent p-4 mt-8\"><p class=\"text-fg text-sm\"><strong>💡 Tip:</strong> Point your agent at this root URL (")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var13 string
+			templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.JoinStringErrs(baseURL)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/llm/llm-docs.templ`, Line: 78, Col: 78}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var13))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, ") with your API key and it will follow the markdown links to start investigating.</p></div></div></div></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

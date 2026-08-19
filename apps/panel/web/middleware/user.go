@@ -7,7 +7,9 @@ import (
 	"tracer/apps/panel/internal/domain"
 )
 
-const userContextKey markdownContextKey = "user"
+type actorKey string
+
+const userContextKey actorKey = "user"
 
 // GetUserID returns the authenticated user id from the request context.
 func GetUserID(r *http.Request) (int64, bool) {

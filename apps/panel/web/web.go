@@ -1,6 +1,8 @@
 package web
 
 import (
+	"fmt"
+	"html"
 	"log/slog"
 	"net/http"
 	"time"
@@ -30,9 +32,19 @@ func NewServer(deps Dependencies, port string, noAuth bool, readOnly bool) *http
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if middleware.HasUserID(r) {
 			http.Redirect(w, r, "/panel/", http.StatusSeeOther)
-		} else {
-			authmw.RedirectToLogin(w, r)
+			return
 		}
+		// Unauthenticated callers keep the login redirect, and the body
+		// carries the redirect anchor (as http.Redirect writes it) plus the
+		// llm prompt, so an agent pointed at the root gets a starting prompt
+		// even when it does not follow the redirect. The markdown middleware
+		// converts the page when the caller asks for markdown.
+		loginPath := authmw.LoginPath(r)
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Header().Set("Location", loginPath)
+		w.WriteHeader(http.StatusSeeOther)
+		fmt.Fprintf(w, "<a href=%q>See Other</a>.\n", html.EscapeString(loginPath))
+		llm.RenderDocs(w, r)
 	})
 	mux.Handle("/static/", http.StripPrefix("/static", static.InitMux()))
 	mux.Handle("/ingest/", http.StripPrefix("/ingest", ingest.InitMux(deps.Auth, deps.Ingest, deps.Tracker, deps.Topology)))
@@ -42,7 +54,6 @@ func NewServer(deps Dependencies, port string, noAuth bool, readOnly bool) *http
 	mux.Handle("/llm", llm.InitMux())
 	mux.Handle("/settings/", http.StripPrefix("/settings", settings.InitMux(deps.Auth, deps.User, deps.Ingest, deps.DBManagerx, deps.Notify, deps.Config, readOnly)))
 
-	markdownMiddleware := middleware.BuildMarkdownMiddleware()
 	loginPathMiddleware := authmw.BuildLoginPathMiddleware("/auth/login")
 	authMiddleware := authmw.BuildAuthMiddleware(deps.Auth, deps.User)
 
@@ -55,7 +66,6 @@ func NewServer(deps Dependencies, port string, noAuth bool, readOnly bool) *http
 
 	handler = authMiddleware(handler)
 	handler = loginPathMiddleware(handler)
-	handler = markdownMiddleware(handler)
 	handler = middleware.BuildMarkdownAcceptMiddleware()(handler)
 
 	if noAuth {

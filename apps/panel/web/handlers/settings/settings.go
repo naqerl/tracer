@@ -672,6 +672,7 @@ func (h *handler) getAPIKey(w http.ResponseWriter, r *http.Request) {
 		LastUsedValid: key.LastUsedSet,
 		CanReveal:     key.CanReveal,
 		ReadOnly:      h.readOnly,
+		Host:          h.cfg.GetHost(),
 	}).Render(r.Context(), w)
 }
 

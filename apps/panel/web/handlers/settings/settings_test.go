@@ -715,9 +715,35 @@ func TestRevealUserAPIKeyDecryptFailureShowsError(t *testing.T) {
 	}
 }
 
-func TestUserAPIKeyTableLinksToDetailPage(t *testing.T) {
+// TestUserAPIKeyDetailShowsUsage verifies the user API key detail page carries
+// the agent usage instruction with the configured host and a copy-paste curl
+// pointing at the /panel route.
+func TestUserAPIKeyDetailShowsUsage(t *testing.T) {
 	handler, authService, _, token := newAuthedHandler(t, true, false)
 
+	id := userAPIKeyID(t, authService, token, "my-key")
+
+	req := httptest.NewRequest(http.MethodGet, "/settings/api-keys/"+strconv.FormatInt(id, 10), nil)
+	req.AddCookie(&http.Cookie{Name: "tracer_session", Value: token})
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+	body := rr.Body.String()
+	if !strings.Contains(body, "Using this key") {
+		t.Fatalf("expected usage instruction on detail page, got %q", body)
+	}
+	// The configured host (set in the test config) is shown and the curl
+	// example targets /panel with the markdown Accept header.
+	if !strings.Contains(body, "tracer.example.com") || !strings.Contains(body, "Accept: text/markdown") || !strings.Contains(body, "/panel\"") {
+		t.Fatalf("expected host + curl usage example, got %q", body)
+	}
+}
+
+func TestUserAPIKeyTableLinksToDetailPage(t *testing.T) {
+	handler, authService, _, token := newAuthedHandler(t, true, false)
 	id := userAPIKeyID(t, authService, token, "my-key")
 
 	req := httptest.NewRequest(http.MethodGet, "/settings/", nil)

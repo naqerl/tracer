@@ -572,6 +572,101 @@ func TestAutoRefreshLogGroupSummaryNewLogs(t *testing.T) {
 	}
 }
 
+// TestRootServesDocs verifies the root handler: authenticated callers get the
+// /panel/ redirect; unauthenticated callers keep the login redirect while the
+// body carries the redirect anchor plus the llm docs — HTML for browsers and
+// markdown (via the Accept middleware) for agents.
+func TestRootServesDocs(t *testing.T) {
+	handler, token, _, _, _ := newServer(t, false)
+
+	// Authenticated browser: redirected to /panel/.
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.AddCookie(&http.Cookie{Name: "tracer_session", Value: token})
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+	if rr.Code != http.StatusSeeOther {
+		t.Fatalf("expected 303 for authenticated root, got %d", rr.Code)
+	}
+	if loc := rr.Header().Get("Location"); loc != "/panel/" {
+		t.Fatalf("expected Location /panel/, got %q", loc)
+	}
+
+	// No session, no Accept header: the root keeps the login redirect (like
+	// http.Redirect) and its body carries the redirect anchor plus the docs.
+	req = httptest.NewRequest(http.MethodGet, "/", nil)
+	rr = httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+	if rr.Code != http.StatusSeeOther {
+		t.Fatalf("expected 303 for unauthenticated root, got %d", rr.Code)
+	}
+	if loc := rr.Header().Get("Location"); loc != "/auth/login" {
+		t.Fatalf("expected Location /auth/login, got %q", loc)
+	}
+	if ct := rr.Header().Get("Content-Type"); !strings.HasPrefix(ct, "text/html") {
+		t.Fatalf("expected text/html content type for browser request, got %q", ct)
+	}
+	body := rr.Body.String()
+	if !strings.Contains(body, `<a href="/auth/login">See Other</a>`) {
+		t.Fatalf("expected redirect anchor body, got:\n%s", body)
+	}
+	if !strings.Contains(body, "LLM API Documentation") || !strings.Contains(body, "Authentication") {
+		t.Fatalf("expected docs in root body, got:\n%s", body)
+	}
+
+	// With an explicit markdown Accept header the same body is converted to
+	// markdown by the Accept middleware.
+	req = httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set("Accept", "text/markdown")
+	rr = httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+	if rr.Code != http.StatusSeeOther {
+		t.Fatalf("expected 303 for root markdown, got %d", rr.Code)
+	}
+	if loc := rr.Header().Get("Location"); loc != "/auth/login" {
+		t.Fatalf("expected Location /auth/login, got %q", loc)
+	}
+	if ct := rr.Header().Get("Content-Type"); !strings.HasPrefix(ct, "text/markdown") {
+		t.Fatalf("expected text/markdown content type, got %q", ct)
+	}
+	body = rr.Body.String()
+	if !strings.Contains(body, "LLM API Documentation") {
+		t.Fatalf("expected markdown docs in root body, got:\n%s", body)
+	}
+	if strings.Contains(body, "</html>") {
+		t.Fatalf("expected no raw HTML in markdown body, got:\n%s", body)
+	}
+}
+
+// TestUserAPIKeyAuthenticatesPlainRoute verifies that a user API key
+// authenticates a plain /panel route directly.
+func TestUserAPIKeyAuthenticatesPlainRoute(t *testing.T) {
+	handler, _, _, _, authService := newServer(t, false)
+
+	registered, err := authService.Register(t.Context(), authsvc.RegisterRequest{
+		Username: "keyuser",
+		Password: "secret",
+		IsAdmin:  true,
+	})
+	if err != nil {
+		t.Fatalf("register user: %v", err)
+	}
+	apiKey, err := authService.GenerateUserAPIKey(t.Context(), domain.User{ID: registered.ID}, authsvc.GenerateUserAPIKeyRequest{UserID: registered.ID, Name: "agent"})
+	if err != nil {
+		t.Fatalf("generate user api key: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/panel/", nil)
+	req.Header.Set("X-API-Key", apiKey.Plaintext)
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200 for API-key dashboard, got %d", rr.Code)
+	}
+	if !strings.Contains(rr.Body.String(), "demo") {
+		t.Fatalf("expected API-key dashboard to contain demo collector, got %q", rr.Body.String())
+	}
+}
+
 func TestMarkdownAcceptDashboard(t *testing.T) {
 	handler, token, _, _, _ := newServer(t, false)
 

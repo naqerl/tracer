@@ -16,6 +16,7 @@ type UserAPIKeyDetailProps struct {
 	LastUsedValid bool
 	CanReveal     bool
 	ReadOnly      bool
+	Host          string
 }
 
 // UserAPIKeyDetail renders the user API key detail page.
@@ -55,6 +56,15 @@ templ UserAPIKeyDetail(props UserAPIKeyDetailProps) {
 						}
 					</span>
 				</div>
+			</div>
+
+			<div class="mb-8">
+				<h3 class="text-lg font-medium mb-3">Using this key</h3>
+				<p class="text-sm text-fg-secondary mb-3">
+					Point your agent at { props.Host } with this key to start investigating logs. Set the <code class="text-green-400">Accept</code> header to <code class="text-green-400">text/markdown</code> and the request will reach the <code class="text-accent">/panel</code> route:
+				</p>
+				<pre class="bg-bg p-4 overflow-x-auto text-sm"><code>curl -H "X-API-Key: YOUR_KEY" -H "Accept: text/markdown" \
+  "{ props.Host }/panel"</code></pre>
 			</div>
 
 			<div>

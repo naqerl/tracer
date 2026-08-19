@@ -134,6 +134,7 @@ func TestShouldConvert(t *testing.T) {
 		{name: "json", status: 200, ct: "application/json", body: `{"a":1}`, want: false},
 		{name: "sse", status: 200, ct: "text/event-stream", body: "data: x\n", want: false},
 		{name: "error status", status: 404, ct: "text/html", body: "<p>nope</p>", want: false},
+		{name: "redirect status", status: 303, ct: "text/html", body: "<a href=\"/auth/login\">See Other</a>.", want: true},
 		{name: "plain text", status: 200, ct: "text/plain", body: "hello", want: false},
 		{name: "css", status: 200, ct: "text/css", body: "body{}", want: false},
 	}

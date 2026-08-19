@@ -82,26 +82,17 @@ func BuildAuthMiddleware(authService *authsvc.Service, userService *usersvc.Serv
 				next.ServeHTTP(w, r)
 				return
 			}
-			if middleware.IsMarkdownFormat(r) {
-				attachMarkdownContext(w, r, next, authService, userService)
-				return
+			if apiKey := r.Header.Get("X-API-Key"); apiKey != "" {
+				userID, err := authService.ValidateUserAPIKey(r.Context(), apiKey)
+				if err == nil {
+					r = setActorForUser(r, userService, userID)
+					next.ServeHTTP(w, r)
+					return
+				}
 			}
 			attachSessionContext(w, r, next, authService, userService)
 		})
 	}
-}
-
-func attachMarkdownContext(w http.ResponseWriter, r *http.Request, next http.Handler, authService *authsvc.Service, userService *usersvc.Service) {
-	apiKey := r.Header.Get("X-API-Key")
-	if apiKey != "" {
-		userID, err := authService.ValidateUserAPIKey(r.Context(), apiKey)
-		if err == nil {
-			r = setActorForUser(r, userService, userID)
-			next.ServeHTTP(w, r)
-			return
-		}
-	}
-	attachSessionContext(w, r, next, authService, userService)
 }
 
 func attachSessionContext(w http.ResponseWriter, r *http.Request, next http.Handler, authService *authsvc.Service, userService *usersvc.Service) {
