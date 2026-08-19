@@ -458,13 +458,14 @@ func TestAutoRefreshAppPageRendersPollingTriggers(t *testing.T) {
 	if !strings.Contains(body, "/panel/collectors/demo/apps/myapp/logs/groups?level=error") {
 		t.Fatal("expected app page log groups fragment URL")
 	}
-	// The stats and log-groups fragments must render skeletons so the page
-	// does not jump when they load.
+	// The stats fragment must render a skeleton so the page does not jump when
+	// it loads; the log-groups placeholder keeps only the static heading — no
+	// skeleton — because the section sits at the end of the page.
 	if !strings.Contains(body, "id=\"app-stats\"") || !strings.Contains(body, "h-8 w-14") {
 		t.Fatal("expected app page stats skeleton")
 	}
-	if !strings.Contains(body, "Log Groups") || !strings.Contains(body, "h-6 w-3/4") {
-		t.Fatal("expected app page log groups skeleton")
+	if !strings.Contains(body, "Log Groups") || strings.Contains(body, "h-6 w-3/4") {
+		t.Fatal("expected app page log groups heading without skeleton")
 	}
 }
 
@@ -845,9 +846,9 @@ func TestMarkdownAcceptAppPage(t *testing.T) {
 	if !strings.Contains(body, "Uptime") {
 		t.Fatalf("expected uptime heading in converted markdown, got:\n%s", body)
 	}
-	// The stats and log-groups divs render skeletons before their hx-get
-	// loads; the anchor conversion wraps the skeleton content (with its
-	// heading) in a link to the fragment route.
+	// The stats div renders a skeleton before its hx-get loads; the log-groups
+	// div renders only its static heading. The anchor conversion wraps that
+	// content (with its heading) in a link to the fragment route.
 	if !strings.Contains(body, "[**Overview**](/panel/collectors/demo/apps/myapp/stats)") {
 		t.Fatalf("expected stats anchor in converted markdown, got:\n%s", body)
 	}
