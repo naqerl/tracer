@@ -716,8 +716,8 @@ func TestRevealUserAPIKeyDecryptFailureShowsError(t *testing.T) {
 }
 
 // TestUserAPIKeyDetailShowsUsage verifies the user API key detail page carries
-// the agent usage instruction with the configured host and a copy-paste curl
-// pointing at the /panel route.
+// the agent prompt block with the configured host, a copy-paste curl pointing
+// at the /panel route, and a copy button.
 func TestUserAPIKeyDetailShowsUsage(t *testing.T) {
 	handler, authService, _, token := newAuthedHandler(t, true, false)
 
@@ -732,12 +732,15 @@ func TestUserAPIKeyDetailShowsUsage(t *testing.T) {
 		t.Fatalf("expected 200, got %d", rr.Code)
 	}
 	body := rr.Body.String()
-	if !strings.Contains(body, "Using this key") {
-		t.Fatalf("expected usage instruction on detail page, got %q", body)
+	if !strings.Contains(body, "Prompt for your agent") {
+		t.Fatalf("expected agent prompt heading on detail page, got %q", body)
+	}
+	if !strings.Contains(body, "copyAgentPrompt") {
+		t.Fatalf("expected copy button on the prompt block, got %q", body)
 	}
 	// The configured host (set in the test config) is shown and the curl
 	// example targets /panel with the markdown Accept header.
-	if !strings.Contains(body, "tracer.example.com") || !strings.Contains(body, "Accept: text/markdown") || !strings.Contains(body, "/panel\"") {
+	if !strings.Contains(body, "https://tracer.example.com/panel") || !strings.Contains(body, "Accept: text/markdown") {
 		t.Fatalf("expected host + curl usage example, got %q", body)
 	}
 }

@@ -664,7 +664,7 @@ func (h *handler) getAPIKey(w http.ResponseWriter, r *http.Request) {
 	}
 
 	view.UserAPIKeyDetail(view.UserAPIKeyDetailProps{
-		Title:         "API Key - Tracer",
+		Title:         "API Key",
 		KeyID:         key.ID,
 		KeyName:       key.Name,
 		CreatedAt:     key.CreatedAt,

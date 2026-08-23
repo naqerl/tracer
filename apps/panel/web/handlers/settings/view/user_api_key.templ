@@ -1,10 +1,21 @@
 package view
 
 import (
+	"fmt"
 	"strconv"
 
 	"tracer/apps/panel/web/templates"
 )
+
+// agentPrompt returns the copyable instruction block that tells an agent how
+// to start working with Tracer using this API key.
+func agentPrompt(host string) string {
+	return fmt.Sprintf(`Use your configured secret storage to get the Tracer API key, or ask me to provide it.
+Use simple HTTP requests to navigate Tracer.
+Set the header "X-API-Key: YOUR_KEY" with every request.
+Start from this request to get further details and insights:
+curl -H "X-API-Key: YOUR_KEY" -H "Accept: text/markdown" %s/panel`, host)
+}
 
 // UserAPIKeyDetailProps holds data for the user API key detail page.
 type UserAPIKeyDetailProps struct {
@@ -61,13 +72,24 @@ templ UserAPIKeyDetail(props UserAPIKeyDetailProps) {
 			</div>
 
 			<div class="mb-8">
-				<h3 class="text-lg font-medium mb-3">Using this key</h3>
-				<p class="text-sm text-fg-secondary mb-3">
-					Point your agent at { props.Host } with this key to start investigating logs. Set the <code class="text-green-400">Accept</code> header to <code class="text-green-400">text/markdown</code> and the request will reach the <code class="text-accent">/panel</code> route:
-				</p>
-				<pre class="bg-bg p-4 overflow-x-auto text-sm"><code>curl -H "X-API-Key: YOUR_KEY" -H "Accept: text/markdown" \
-  "{ props.Host }/panel"</code></pre>
+				<h3 class="text-lg font-medium mb-3">Prompt for your agent</h3>
+				<div class="relative">
+					<pre id="agent-prompt" class="bg-bg-secondary p-4 pr-20 overflow-x-auto text-sm"><code>{ agentPrompt(props.Host) }</code></pre>
+					<button type="button"
+							onclick="copyAgentPrompt(this)"
+							class="absolute top-2 right-2 text-xs px-2 py-1 rounded bg-bg text-fg-secondary hover:text-fg transition-colors"
+							title="Copy prompt">Copy</button>
+				</div>
 			</div>
+			<script>
+				function copyAgentPrompt(btn) {
+					var text = document.getElementById('agent-prompt').textContent;
+					navigator.clipboard.writeText(text).then(function() {
+						btn.textContent = 'Copied!';
+						setTimeout(function() { btn.textContent = 'Copy'; }, 1500);
+					});
+				}
+			</script>
 
 			<div>
 				<button hx-delete={ "/settings/api-keys/" + strconv.FormatInt(props.KeyID, 10) }
