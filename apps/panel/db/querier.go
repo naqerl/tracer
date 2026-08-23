@@ -20,6 +20,8 @@ type Querier interface {
 	// Count logs in a group created after a timestamp (for the "+N new records"
 	// indicator on the log group summary).
 	CountLogsByGroupIDSince(ctx context.Context, arg CountLogsByGroupIDSinceParams) (int64, error)
+	// Total log count since a given timestamp
+	CountLogsSince(ctx context.Context, since int64) (int64, error)
 	CountUsers(ctx context.Context) (int64, error)
 	// Collector API keys
 	CreateCollectorAPIKey(ctx context.Context, arg CreateCollectorAPIKeyParams) (CollectorApiKey, error)

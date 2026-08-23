@@ -2045,3 +2045,98 @@ func TestGetStatsHistory_PanelService_Integration(t *testing.T) {
 		t.Fatalf("expected 1 Disk period, got %d", len(result.DiskPeriods))
 	}
 }
+
+func TestGetPanelStats_Success(t *testing.T) {
+	svc, _, userID, collectorName, appName := setupTestService(t)
+	ctx := t.Context()
+
+	// Ingest a log so the app is not stray
+	if _, err := svc.ingestSvc.StoreLog(ctx, ingestsvc.StoreLogRequest{
+		CollectorName: collectorName,
+		AppName:       appName,
+		Entry: types.LogEntry{
+			Timestamp: time.Now().Add(-30 * time.Minute),
+			Level:     types.LevelInfo,
+			Message:   "test log",
+		},
+	}); err != nil {
+		t.Fatalf("StoreLog: %v", err)
+	}
+
+	result, err := svc.GetPanelStats(ctx, PanelStatsRequest{
+		UserID: userID,
+		Since:  time.Now().Add(-1 * time.Hour),
+	})
+	if err != nil {
+		t.Fatalf("GetPanelStats: %v", err)
+	}
+	if len(result.Collectors) != 1 {
+		t.Fatalf("expected 1 collector, got %d", len(result.Collectors))
+	}
+	cs := result.Collectors[0]
+	if cs.Name != collectorName {
+		t.Fatalf("expected collector %q, got %q", collectorName, cs.Name)
+	}
+	if len(cs.Apps) != 1 {
+		t.Fatalf("expected 1 app, got %d", len(cs.Apps))
+	}
+	pa := cs.Apps[0]
+	if pa.Name != appName {
+		t.Fatalf("expected app %q, got %q", appName, pa.Name)
+	}
+	if pa.LogCount != 1 {
+		t.Fatalf("expected log count 1, got %d", pa.LogCount)
+	}
+	if pa.IsStray {
+		t.Fatalf("expected app not to be stray")
+	}
+}
+
+func TestGetPanelStats_NoAccess(t *testing.T) {
+	svc, noAccessUserID := setupTestServiceNoAccess(t)
+	ctx := t.Context()
+
+	result, err := svc.GetPanelStats(ctx, PanelStatsRequest{
+		UserID: noAccessUserID,
+		Since:  time.Now().Add(-1 * time.Hour),
+	})
+	if err != nil {
+		t.Fatalf("GetPanelStats: %v", err)
+	}
+	if len(result.Collectors) != 0 {
+		t.Fatalf("expected 0 collectors for no-access user, got %d", len(result.Collectors))
+	}
+}
+
+func TestGetPanelStats_StrayApp(t *testing.T) {
+	svc, _, userID, collectorName, _ := setupTestService(t)
+	ctx := t.Context()
+
+	result, err := svc.GetPanelStats(ctx, PanelStatsRequest{
+		UserID: userID,
+		Since:  time.Now().Add(-1 * time.Hour),
+	})
+	if err != nil {
+		t.Fatalf("GetPanelStats: %v", err)
+	}
+	if len(result.Collectors) != 1 {
+		t.Fatalf("expected 1 collector, got %d", len(result.Collectors))
+	}
+	cs := result.Collectors[0]
+	if cs.Name != collectorName {
+		t.Fatalf("expected collector %q, got %q", collectorName, cs.Name)
+	}
+	if len(cs.Apps) != 1 {
+		t.Fatalf("expected 1 app, got %d", len(cs.Apps))
+	}
+	if !cs.Apps[0].IsStray {
+		t.Fatalf("expected app to be stray")
+	}
+}
+
+func TestComputePercentiles_Empty(t *testing.T) {
+	result := PanelPercentiles{}
+	if result.P50 != 0 {
+		t.Fatalf("expected zero percentiles, got %+v", result)
+	}
+}

@@ -1,0 +1,124 @@
+package view
+
+import (
+	"fmt"
+	"strconv"
+	"tracer/apps/panel/web/templates"
+)
+
+// PanelStatsProps holds data for the panel stats page.
+type PanelStatsProps struct {
+	Title      string
+	Since      string
+	Collectors []PanelStatsCollector
+}
+
+// PanelStatsCollector holds per-collector stats for the stats page.
+type PanelStatsCollector struct {
+	Name        string
+	DiskUsedGB  int64
+	DiskTotalGB int64
+	DiskPercent float64
+	Apps        []PanelStatsApp
+}
+
+// PanelStatsApp holds per-app stats for the stats page.
+type PanelStatsApp struct {
+	Name        string
+	LogCount    int64
+	IsStray     bool
+	P50         int64
+	P75         int64
+	P95         int64
+	P99         int64
+	Max         int64
+	Min         int64
+}
+
+// PanelStats renders the panel stats page.
+templ PanelStats(props PanelStatsProps) {
+	@templates.Layout(props.Title, templates.NavData{Since: props.Since}) {
+		<div class="max-w-5xl mx-auto p-2 md:p-6">
+			<div class="mb-6">
+				<h1 class="text-xl font-semibold">Stats</h1>
+			</div>
+			if len(props.Collectors) == 0 {
+				<div class="text-center text-fg-secondary py-12">
+					<p>No collectors connected.</p>
+				</div>
+			}
+			for _, c := range props.Collectors {
+				<div class="mb-10">
+					<div class="flex items-center mb-4">
+						<a href={ "/panel/collectors/" + c.Name } class="text-lg font-medium hover:opacity-80 transition-opacity">
+							{ c.Name }
+						</a>
+					</div>
+					<!-- Resources -->
+					<div class="mb-6">
+						<h2 class="text-sm font-medium text-fg-secondary mb-2">Resources</h2>
+						<div class="bg-bg-secondary p-4">
+							<div class="flex items-center gap-2 text-sm">
+								<span class="text-fg-secondary">Disk:</span>
+								if c.DiskTotalGB > 0 {
+									<span class={ diskClass(c.DiskPercent) }>
+										{ strconv.FormatInt(c.DiskUsedGB, 10) } / { strconv.FormatInt(c.DiskTotalGB, 10) } GB
+									</span>
+									<span class="text-fg-secondary ml-1">
+										({ fmt.Sprintf("%.0f", c.DiskPercent) }%)
+									</span>
+								} else {
+									<span class="text-fg-secondary">No data</span>
+								}
+							</div>
+						</div>
+					</div>
+					<!-- Diagnostics -->
+					<div>
+						<h2 class="text-sm font-medium text-fg-secondary mb-2">Diagnostics</h2>
+						if len(c.Apps) == 0 {
+							<div class="bg-bg-secondary p-4 text-sm text-fg-secondary">No apps</div>
+						} else {
+							<div class="overflow-x-auto">
+								<table class="w-full text-sm">
+									<thead>
+										<tr class="text-left text-fg-secondary border-b border-bg-secondary">
+											<th class="py-2 pr-4">App</th>
+											<th class="py-2 pr-4 text-right">Logs</th>
+											<th class="py-2 pr-4 text-right">p50</th>
+											<th class="py-2 pr-4 text-right">p75</th>
+											<th class="py-2 pr-4 text-right">p95</th>
+											<th class="py-2 pr-4 text-right">p99</th>
+											<th class="py-2 pr-4 text-right">max</th>
+											<th class="py-2 text-right">min</th>
+										</tr>
+									</thead>
+									<tbody>
+										for _, app := range c.Apps {
+											<tr class="border-b border-bg-secondary/50">
+												<td class="py-2 pr-4">
+													if app.IsStray {
+														<span class="text-red-400" title="No logs in the selected period">{ app.Name }</span>
+													} else {
+														<span>{ app.Name }</span>
+													}
+												</td>
+												<td class="py-2 pr-4 text-right tabular-nums">{ strconv.FormatInt(app.LogCount, 10) }</td>
+												<td class="py-2 pr-4 text-right tabular-nums text-fg-secondary">{ strconv.FormatInt(app.P50, 10) }</td>
+												<td class="py-2 pr-4 text-right tabular-nums text-fg-secondary">{ strconv.FormatInt(app.P75, 10) }</td>
+												<td class="py-2 pr-4 text-right tabular-nums text-fg-secondary">{ strconv.FormatInt(app.P95, 10) }</td>
+												<td class="py-2 pr-4 text-right tabular-nums text-fg-secondary">{ strconv.FormatInt(app.P99, 10) }</td>
+												<td class="py-2 pr-4 text-right tabular-nums text-fg-secondary">{ strconv.FormatInt(app.Max, 10) }</td>
+												<td class="py-2 text-right tabular-nums text-fg-secondary">{ strconv.FormatInt(app.Min, 10) }</td>
+											</tr>
+										}
+									</tbody>
+								</table>
+							</div>
+						}
+					</div>
+				</div>
+			}
+		</div>
+	}
+}

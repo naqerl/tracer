@@ -114,6 +114,12 @@ WHERE created_at >= sqlc.arg(since)
 GROUP BY time_bucket, LOWER(level)
 ORDER BY time_bucket ASC, level;
 
+-- name: CountLogsSince :one
+-- Total log count since a given timestamp
+SELECT COUNT(*) as total
+FROM log
+WHERE created_at >= sqlc.arg(since);
+
 -- name: DeleteLogGroup :execrows
 -- Delete a log group by ID
 DELETE FROM log_group WHERE id = ?;

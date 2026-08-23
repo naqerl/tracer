@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"sort"
 	"sync"
 	"time"
 
@@ -1105,4 +1106,176 @@ func maxTime(a, b time.Time) time.Time {
 		return a
 	}
 	return b
+}
+
+// PanelStatsRequest requests the panel-wide stats page data.
+type PanelStatsRequest struct {
+	UserID int64
+	Since  time.Time
+}
+
+func (r PanelStatsRequest) Validate() error {
+	if err := domain.ValidateUserID(r.UserID); err != nil {
+		return err
+	}
+	if !sinceWithinRange(r.Since) {
+		return fmt.Errorf("since should be within last 30 days")
+	}
+	return nil
+}
+
+// PanelAppStats holds per-app stats for the panel stats page.
+type PanelAppStats struct {
+	Name       string
+	LogCount   int64
+	IsStray    bool
+	Percentile PanelPercentiles
+}
+
+// PanelPercentiles holds log volume percentile data for an app.
+type PanelPercentiles struct {
+	P50 int64
+	P75 int64
+	P95 int64
+	P99 int64
+	Max int64
+	Min int64
+}
+
+// PanelCollectorStats holds stats for one collector on the panel stats page.
+type PanelCollectorStats struct {
+	Name        string
+	DiskUsedGB  int64
+	DiskTotalGB int64
+	Apps        []PanelAppStats
+}
+
+// PanelStatsResult holds the full panel stats page data.
+type PanelStatsResult struct {
+	Collectors []PanelCollectorStats
+}
+
+// GetPanelStats returns panel-wide stats for the stats page.
+func (s *Service) GetPanelStats(ctx context.Context, req PanelStatsRequest) (PanelStatsResult, error) {
+	access, err := s.userSvc.FindAccessPolicy(ctx, req.UserID)
+	if err != nil {
+		return PanelStatsResult{}, fmt.Errorf("could not load access for user %d: %w", req.UserID, err)
+	}
+
+	collectorNames, err := s.dbManager.ListCollectors()
+	if err != nil {
+		return PanelStatsResult{}, fmt.Errorf("could not list collectors: %w", err)
+	}
+
+	var result PanelStatsResult
+
+	for _, collectorName := range collectorNames {
+		if !access.AllowedTo(collectorName, "") {
+			continue
+		}
+
+		cs := PanelCollectorStats{Name: collectorName}
+
+		// Disk stats from collector open period
+		// ponytail: O(apps) DB open + query in loop; fine for small deployments, batch if it matters
+		handle, err := s.dbManager.GetCollectorDB(collectorName)
+		if err == nil {
+			disk, err := db.New(handle.Read()).GetOpenDiskPeriod(ctx)
+			if err == nil {
+				cs.DiskUsedGB = disk.UsedGb
+				cs.DiskTotalGB = disk.TotalGb
+			}
+		}
+
+		apps, err := s.ingestSvc.ListApps(collectorName)
+		if err != nil {
+			slog.Error("could not list apps for stats", "collector", collectorName, "error", err)
+			continue
+		}
+
+		cs.Apps = make([]PanelAppStats, 0, len(apps))
+		for _, appName := range apps {
+			if !access.AllowedTo(collectorName, appName) {
+				continue
+			}
+
+			pa := PanelAppStats{Name: appName}
+
+			appHandle, err := s.dbManager.GetAppDB(collectorName, appName)
+			if err != nil {
+				slog.Error("could not open app db for stats", "collector", collectorName, "app", appName, "error", err)
+				pa.IsStray = true
+				cs.Apps = append(cs.Apps, pa)
+				continue
+			}
+
+			appQueries := db.New(appHandle.Read())
+
+			count, err := appQueries.CountLogsSince(ctx, req.Since.Unix())
+			if err != nil {
+				slog.Error("could not count logs for stats", "collector", collectorName, "app", appName, "error", err)
+				pa.IsStray = true
+				cs.Apps = append(cs.Apps, pa)
+				continue
+			}
+
+			pa.LogCount = count
+			pa.IsStray = count == 0
+
+			// Compute percentiles from log volume time series (1h buckets)
+			if count > 0 {
+				pa.Percentile = computePercentiles(ctx, appQueries, req.Since)
+			}
+
+			cs.Apps = append(cs.Apps, pa)
+		}
+
+		result.Collectors = append(result.Collectors, cs)
+	}
+
+	return result, nil
+}
+
+// computePercentiles calculates p50/p75/p95/p99/max/min from hourly log volume buckets.
+func computePercentiles(ctx context.Context, queries *db.Queries, since time.Time) PanelPercentiles {
+	rows, err := queries.GetLogVolumeTimeSeries(ctx, db.GetLogVolumeTimeSeriesParams{
+		Granularity: "1hour",
+		Since:       since.Unix(),
+	})
+	if err != nil {
+		slog.Error("could not get log volume time series for percentiles", "error", err)
+		return PanelPercentiles{}
+	}
+	if len(rows) == 0 {
+		return PanelPercentiles{}
+	}
+
+	// Aggregate counts per bucket (merge levels)
+	bucketCounts := make(map[string]int64)
+	for _, row := range rows {
+		bucketCounts[fmt.Sprintf("%v", row.TimeBucket)] += row.Count
+	}
+
+	counts := make([]int64, 0, len(bucketCounts))
+	for _, c := range bucketCounts {
+		counts = append(counts, c)
+	}
+	sort.Slice(counts, func(i, j int) bool { return counts[i] < counts[j] })
+
+	return PanelPercentiles{
+		P50: percentile(counts, 0.50),
+		P75: percentile(counts, 0.75),
+		P95: percentile(counts, 0.95),
+		P99: percentile(counts, 0.99),
+		Max: counts[len(counts)-1],
+		Min: counts[0],
+	}
+}
+
+func percentile(sorted []int64, p float64) int64 {
+	if len(sorted) == 0 {
+		return 0
+	}
+	idx := int(math.Round(p * float64(len(sorted)-1)))
+	return sorted[idx]
 }

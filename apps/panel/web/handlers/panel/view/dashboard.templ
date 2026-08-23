@@ -91,6 +91,9 @@ templ Dashboard(p DashboardProps) {
 						<p>No collectors connected. Start a collector to begin receiving logs.</p>
 					</div>
 				}
+				<div class="flex justify-end mb-4">
+					<a href="/panel/stats" class="text-sm text-fg-secondary hover:text-fg transition-colors">Stats</a>
+				</div>
 				for _, c := range p.Collectors {
 					<div class="mb-10">
 						<!-- Collector Header -->

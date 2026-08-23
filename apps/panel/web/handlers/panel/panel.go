@@ -56,6 +56,9 @@ func InitMux(svc *panelsvc.Service) *http.ServeMux {
 	m.HandleFunc("GET /", h.getDashboard)
 	m.HandleFunc("GET /collectors", h.getDashboard)
 
+	// Stats
+	m.HandleFunc("GET /stats", h.getStats)
+
 	// Collector
 	m.HandleFunc("GET /collectors/{collector}", h.getCollector)
 	m.HandleFunc("GET /collectors/{collector}/apps", h.getCollectorApps)
@@ -116,6 +119,66 @@ func (h *handler) getDashboard(w http.ResponseWriter, r *http.Request) {
 
 	view.Dashboard(view.DashboardProps{
 		Title:      "Panel",
+		Since:      sinceLabel,
+		Collectors: collectorViews,
+	}).Render(r.Context(), w)
+}
+
+func (h *handler) getStats(w http.ResponseWriter, r *http.Request) {
+	user, err := auth.RequireUser(w, r)
+	if err != nil {
+		return
+	}
+
+	sinceLabel, since := readSince(w, r)
+
+	req := panelsvc.PanelStatsRequest{
+		UserID: user.ID,
+		Since:  since,
+	}
+	if err := req.Validate(); err != nil {
+		templates.RenderError(w, r, "Error", err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	result, err := h.svc.GetPanelStats(r.Context(), req)
+	if err != nil {
+		templates.RenderError(w, r, "Error", "Failed to get stats", http.StatusInternalServerError)
+		return
+	}
+
+	collectorViews := make([]view.PanelStatsCollector, 0, len(result.Collectors))
+	for _, c := range result.Collectors {
+		apps := make([]view.PanelStatsApp, 0, len(c.Apps))
+		for _, a := range c.Apps {
+			apps = append(apps, view.PanelStatsApp{
+				Name:     a.Name,
+				LogCount: a.LogCount,
+				IsStray:  a.IsStray,
+				P50:      a.Percentile.P50,
+				P75:      a.Percentile.P75,
+				P95:      a.Percentile.P95,
+				P99:      a.Percentile.P99,
+				Max:      a.Percentile.Max,
+				Min:      a.Percentile.Min,
+			})
+		}
+		collectorViews = append(collectorViews, view.PanelStatsCollector{
+			Name:        c.Name,
+			DiskUsedGB:  c.DiskUsedGB,
+			DiskTotalGB: c.DiskTotalGB,
+			DiskPercent: func() float64 {
+				if c.DiskTotalGB <= 0 {
+					return 0
+				}
+				return float64(c.DiskUsedGB) / float64(c.DiskTotalGB) * 100.0
+			}(),
+			Apps: apps,
+		})
+	}
+
+	view.PanelStats(view.PanelStatsProps{
+		Title:      "Stats",
 		Since:      sinceLabel,
 		Collectors: collectorViews,
 	}).Render(r.Context(), w)

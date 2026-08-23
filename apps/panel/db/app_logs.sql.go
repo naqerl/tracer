@@ -45,6 +45,20 @@ func (q *Queries) CountLogsByGroupIDSince(ctx context.Context, arg CountLogsByGr
 	return total, err
 }
 
+const countLogsSince = `-- name: CountLogsSince :one
+SELECT COUNT(*) as total
+FROM log
+WHERE created_at >= ?1
+`
+
+// Total log count since a given timestamp
+func (q *Queries) CountLogsSince(ctx context.Context, since int64) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countLogsSince, since)
+	var total int64
+	err := row.Scan(&total)
+	return total, err
+}
+
 const deleteLogGroup = `-- name: DeleteLogGroup :execrows
 DELETE FROM log_group WHERE id = ?
 `
