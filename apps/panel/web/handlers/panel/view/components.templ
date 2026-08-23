@@ -1,6 +1,9 @@
 package view
 
-import "strconv"
+import (
+	"strconv"
+	"tracer/apps/panel/web/templates"
+)
 
 // StatsRow renders CPU, RAM, and Disk stats in a compact row. The value spans
 // carry the value-breath class so they brighten on each 15s refresh while the
@@ -20,20 +23,20 @@ templ StatsRow(stats *CollectorStatsView, collectorName string) {
 				<span class="text-fg-secondary">Disk:</span>
 				<span class={ diskClass(diskPercent(stats.DiskUsedGB, stats.DiskTotalGB)) + " value-breath" }>{ strconv.FormatFloat(diskPercent(stats.DiskUsedGB, stats.DiskTotalGB), 'f', 0, 64) }%</span>
 			</div>
-			<a href={ "/panel/collectors/" + collectorName + "/resources" }
-			   class="text-fg-secondary hover:text-fg cursor-pointer ml-auto"
-			   title="View metrics history">
-				Metrics <span class="text-fg-secondary">&rarr;</span>
-			</a>
+			@templates.ForwardAnchor("/panel/collectors/"+collectorName+"/resources",
+				"text-fg-secondary hover:text-fg cursor-pointer ml-auto",
+				"View metrics history") {
+				Metrics
+			}
 		</div>
 	} else {
 		<div class="flex items-center justify-between mb-4">
 			<span class="text-fg-secondary text-xs">No stats available</span>
-			<a href={ "/panel/collectors/" + collectorName + "/resources" }
-			   class="text-xs text-fg-secondary hover:text-fg cursor-pointer"
-			   title="View metrics history">
-				Metrics <span class="text-fg-secondary">&rarr;</span>
-			</a>
+			@templates.ForwardAnchor("/panel/collectors/"+collectorName+"/resources",
+				"text-xs text-fg-secondary hover:text-fg cursor-pointer",
+				"View metrics history") {
+				Metrics
+			}
 		</div>
 	}
 }

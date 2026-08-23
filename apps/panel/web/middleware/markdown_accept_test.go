@@ -187,6 +187,35 @@ func TestConvertHTMLToMarkdown(t *testing.T) {
 	}
 }
 
+func TestMarkdownPipelineStripsMarkdownExclude(t *testing.T) {
+	prepared, err := anchorsFromHXGet([]byte(`<html>
+		<head><title markdown-exclude="true">Log #1 - Tracer</title></head>
+		<body>
+			<nav markdown-exclude="true"><a href="/panel/">/panel</a> since24h</nav>
+			<main>
+				<a href="/panel/groups/1"><span markdown-exclude="true">&lt;</span>Back to group</a>
+				<h1>Hello</h1>
+			</main>
+		</body></html>`))
+	if err != nil {
+		t.Fatalf("anchorsFromHXGet: %v", err)
+	}
+	out, err := convertHTMLToMarkdown(prepared)
+	if err != nil {
+		t.Fatalf("convert: %v", err)
+	}
+	s := string(out)
+	if !strings.Contains(s, "# Hello") || !strings.Contains(s, "[Back to group](/panel/groups/1)") {
+		t.Fatalf("expected content converted, got:\n%s", s)
+	}
+	if strings.Contains(s, "Tracer") || strings.Contains(s, "/panel</") || strings.Contains(s, "since24h") {
+		t.Fatalf("expected markdown-exclude chrome dropped, got:\n%s", s)
+	}
+	if strings.Contains(s, "[<Back to group]") {
+		t.Fatalf("expected arrow excluded from link label, got:\n%s", s)
+	}
+}
+
 func TestMarkdownAcceptMiddlewareConverts(t *testing.T) {
 	mw := BuildMarkdownAcceptMiddleware()
 	handler := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

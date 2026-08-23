@@ -41,7 +41,10 @@ templ LogGroup(props LogGroupProps) {
 templ LogGroupContent(props LogGroupProps) {
 	<!-- Breadcrumb with Delete -->
 	<div class="mb-6 flex items-center justify-between gap-4">
-		<a href={ "/panel/collectors/" + props.CollectorName + "/apps/" + props.AppName } class="text-sm text-fg-secondary hover:text-fg transition-colors">&larr; Back to app</a>
+		@templates.BackwardAnchor("/panel/collectors/"+props.CollectorName+"/apps/"+props.AppName,
+			"text-sm text-fg-secondary hover:text-fg transition-colors") {
+			Back to app
+		}
 		<button hx-delete={ "/panel/collectors/" + props.CollectorName + "/apps/" + props.AppName + "/logs/groups/" + strconv.FormatInt(props.LogGroup.ID, 10) }
 				hx-confirm={ "Delete log group '" + props.LogGroup.Message + "'?" }
 				class="text-sm text-fg-secondary hover:text-red-500 underline transition-colors">Delete</button>
@@ -85,11 +88,11 @@ func levelDotClass(level string) string {
 	}
 }
 
-// LogMessage renders a log message with level indicator.
+// LogMessage renders a log message as the page heading with a level dot.
 templ LogMessage(message string, level string) {
-	<div class="mb-2">
-		<span class={ "inline-block w-2 h-2 rounded-full mr-3 mt-2 " + levelDotClass(level) }></span>
-		<span class="text-xl font-medium">{ message }</span>
+	<div class="mb-2 flex">
+		<span class={ "inline-block w-2 h-2 rounded-full mr-3 mt-2 shrink-0 " + levelDotClass(level) }></span>
+		<h1 class="text-xl font-medium">{ message }</h1>
 	</div>
 }
 

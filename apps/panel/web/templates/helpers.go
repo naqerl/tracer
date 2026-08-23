@@ -121,7 +121,7 @@ func jsonViewerHTML(data string, valid bool) string {
 	b.WriteString(`<div class="json-viewer text-sm"><div class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 min-w-max">`)
 	for _, kv := range items {
 		b.WriteString(`<span class="text-fg-secondary whitespace-nowrap">`)
-		b.WriteString(kv.Key)
+		b.WriteString(html.EscapeString(kv.Key))
 		b.WriteString(`</span><span>`)
 		b.WriteString(renderJSONKV(kv))
 		b.WriteString(`</span>`)
@@ -130,7 +130,9 @@ func jsonViewerHTML(data string, valid bool) string {
 	return b.String()
 }
 
-// jsonViewerFullHTML generates HTML for a full JSON viewer
+// jsonViewerFullHTML generates a JSON viewer with one "key: value" line per
+// entry. Lines are real text (whitespace-pre-line styling) so the markdown
+// export keeps them as separate lines instead of running them together.
 func jsonViewerFullHTML(data string, valid bool) string {
 	if !valid {
 		return `<span class="text-sm text-fg-secondary/60">No context data available</span>`
@@ -140,15 +142,14 @@ func jsonViewerFullHTML(data string, valid bool) string {
 		return `<span class="text-fg-secondary italic">empty object</span>`
 	}
 	var b strings.Builder
-	b.WriteString(`<div class="json-viewer text-sm"><div class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2">`)
+	b.WriteString(`<div class="json-viewer whitespace-pre-line text-sm pl-2">`)
 	for _, kv := range items {
-		b.WriteString(`<span class="text-fg-secondary whitespace-nowrap">`)
-		b.WriteString(kv.Key)
-		b.WriteString(`:</span><span>`)
+		b.WriteString(html.EscapeString(kv.Key))
+		b.WriteString(`: `)
 		b.WriteString(renderJSONKV(kv))
-		b.WriteString(`</span>`)
+		b.WriteString("\n")
 	}
-	b.WriteString(`</div></div>`)
+	b.WriteString(`</div>`)
 	return b.String()
 }
 
@@ -161,6 +162,9 @@ func renderJSONValue(v any) string {
 	case float64:
 		return fmt.Sprintf(`<span class="text-secondary">%v</span>`, val)
 	case string:
+		if val == "" {
+			return `<span class="text-fg-secondary">-</span>`
+		}
 		if strings.HasPrefix(val, "http://") || strings.HasPrefix(val, "https://") {
 			return fmt.Sprintf(`<a href="%s" class="text-accent hover:underline break-all" target="_blank">%s</a>`, val, html.EscapeString(val))
 		}

@@ -121,7 +121,7 @@ func LogGroupEntries(props LogGroupEntriesProps) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "</span> <span class=\"text-xs text-fg-secondary/60 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity\">View details &rarr;</span></div><!-- Card Body with Context --><div class=\"p-3 overflow-x-auto\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "</span> <span class=\"text-xs text-fg-secondary/60 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity\">View details <span markdown-exclude=\"true\">&gt;</span></span></div><!-- Card Body with Context --><div class=\"p-3 overflow-x-auto\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}

@@ -18,7 +18,7 @@ templ llmDocsHTML(baseURL string) {
 					<div class="bg-bg p-4 border-l-4 border-accent mb-6">
 						<p class="text-fg-secondary mb-2">All endpoints require authentication via API key.</p>
 						<p class="text-sm text-fg-secondary">
-							Generate your API key in <a href="/settings/" class="text-accent hover:underline">Settings</a> &rarr; API Keys section.
+							Generate your API key in <a href="/settings/" class="text-accent hover:underline">Settings</a> <span markdown-exclude="true">&gt;</span> API Keys section.
 						</p>
 					</div>
 
@@ -36,8 +36,11 @@ templ llmDocsHTML(baseURL string) {
 					</ul>
 
 					<h2 class="text-xl font-semibold text-fg mt-8 mb-4">Requesting Markdown</h2>
-					<p class="text-fg-secondary mb-6">
+					<p class="text-fg-secondary mb-2">
 						Set the <code class="text-accent">Accept: text/markdown</code> header to receive a markdown representation of any page. Without it, the pages render as HTML for the browser.
+					</p>
+					<p class="text-fg-secondary mb-6">
+						Elements marked with a <code class="text-accent">markdown-exclude</code> attribute (site navigation and other browser-only chrome) are left out of the markdown representation.
 					</p>
 
 					<h2 class="text-xl font-semibold text-fg mt-8 mb-4">Available Endpoints</h2>

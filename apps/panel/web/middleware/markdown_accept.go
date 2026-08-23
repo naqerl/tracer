@@ -45,9 +45,9 @@ func BuildMarkdownAcceptMiddleware() func(http.Handler) http.Handler {
 				return
 			}
 
-			// Turn hx-get placeholders (apps grid, stats, log groups, entries)
-			// into anchors so the markdown keeps links to the dynamic
-			// fragments instead of dropping the empty placeholders.
+			// Rewrite hx-get placeholders into anchors and drop
+			// markdown-exclude chrome in one DOM pass, so the markdown keeps
+			// links to dynamic fragments and no browser-only content.
 			html, err := anchorsFromHXGet(bw.body.Bytes())
 			if err != nil {
 				slog.Warn("could not convert hx-get blocks to anchors", "path", r.URL.Path, "error", err)
@@ -272,7 +272,9 @@ func (b *bufferedResponseWriter) replay(w http.ResponseWriter) {
 	}
 }
 
-// convertHTMLToMarkdown converts an HTML document/body to markdown.
+// convertHTMLToMarkdown converts an HTML document/body to markdown. Run it on
+// output of anchorsFromHXGet so excluded chrome and hx-get placeholders are
+// already handled.
 func convertHTMLToMarkdown(html []byte) ([]byte, error) {
 	out, err := mdConverter.ConvertString(string(html))
 	if err != nil {

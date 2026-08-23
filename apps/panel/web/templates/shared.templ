@@ -47,8 +47,9 @@ templ Head() {
 }
 
 // Navbar renders the top navigation bar
+// markdown-exclude keeps it out of the Accept: text/markdown export.
 templ Navbar(nav NavData) {
-	<nav class="flex items-center justify-between px-4 py-3 border-b border-bg-secondary" aria-label="Main navigation">
+	<nav class="flex items-center justify-between px-4 py-3 border-b border-bg-secondary" aria-label="Main navigation" markdown-exclude="true">
 		<div class="flex gap-3 sm:gap-6" id="nav-links">
 			<a href="/panel/" class="text-sm font-medium hover:text-fg transition-colors" data-nav="panel">/panel</a>
 			<a href="/topology/" class="text-sm font-medium hover:text-fg transition-colors" data-nav="topology">/topology</a>
@@ -83,7 +84,7 @@ templ Layout(title string, nav NavData) {
 	<html lang="en">
 		<head>
 			@Head()
-			<title>{ title } - Tracer</title>
+			<title markdown-exclude="true">{ title } - Tracer</title>
 		</head>
 		<body>
 			@Navbar(nav)
@@ -92,6 +93,23 @@ templ Layout(title string, nav NavData) {
 			</main>
 		</body>
 	</html>
+}
+
+// BackwardAnchor renders a link prefixed by a "<" arrow that is excluded
+// from the markdown export, so agents get a clean "[children](href)" link.
+templ BackwardAnchor(href string, class string) {
+	<a href={ href } class={ class }>
+		<span class="mr-1" markdown-exclude="true">&lt;</span>{ children... }
+	</a>
+}
+
+// ForwardAnchor renders a link suffixed by a ">" arrow that is excluded
+// from the markdown export, so agents get a clean "[children](href)" link.
+templ ForwardAnchor(href string, class string, title string) {
+	<a href={ href } class={ class } title={ title }>
+		{ children... }
+		<span class="ml-1" markdown-exclude="true">&gt;</span>
+	</a>
 }
 
 // ErrorPage renders an error page

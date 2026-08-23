@@ -1014,8 +1014,8 @@ func (h *handler) getLogByID(w http.ResponseWriter, r *http.Request) {
 }
 
 func logTraceIDDisplay(traceID sql.NullString) string {
-	if !traceID.Valid {
-		return "Not present"
+	if !traceID.Valid || traceID.String == "" {
+		return "-"
 	}
 	return traceID.String
 }

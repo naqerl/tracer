@@ -9,16 +9,21 @@ import (
 	"github.com/PuerkitoBio/goquery"
 )
 
-// anchorsFromHXGet rewrites hx-get elements into anchors so the markdown
-// conversion emits them as links instead of dropping the placeholder content.
-// A div with content gets its content wrapped in a link to the hx-get URL; an
-// empty div becomes a link labelled with the path; an anchor without an href
-// (nav/filter links) gets one.
+// anchorsFromHXGet prepares an HTML document for markdown conversion in one
+// DOM pass: hx-get placeholders are rewritten into anchors, markdown-exclude
+// elements are dropped, and link titles (hover hints) are stripped. A div with
+// content gets its content wrapped in a link to the hx-get URL; an empty div
+// becomes a link labelled with the path; an anchor without an href (nav/filter
+// links) gets one.
 func anchorsFromHXGet(htmlBody []byte) ([]byte, error) {
 	doc, err := goquery.NewDocumentFromReader(bytes.NewReader(htmlBody))
 	if err != nil {
 		return nil, err
 	}
+	doc.Find("[markdown-exclude]").Remove()
+	// Link titles are browser-only hover hints; they would leak into the
+	// exported markdown as quoted link titles.
+	doc.Find("a[title]").RemoveAttr("title")
 
 	doc.Find("[hx-get]").Each(func(_ int, el *goquery.Selection) {
 		// A nested hx-get inside an anchor (e.g. log-group filter links

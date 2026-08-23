@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -716,9 +717,8 @@ func TestMarkdownAcceptDashboard(t *testing.T) {
 		t.Fatalf("expected apps-grid anchor in converted markdown, got:\n%s", body)
 	}
 	// The Metrics link carries its href natively, so the markdown keeps it
-	// as a link without relying on the hx-get->href rewrite (the converter
-	// carries the title attribute onto the markdown link).
-	if !strings.Contains(body, `[Metrics →](/panel/collectors/demo/resources "View metrics history")`) {
+	// as a link. Its arrow is markdown-exclude, so the label stays clean.
+	if !strings.Contains(body, `[Metrics](/panel/collectors/demo/resources)`) {
 		t.Fatalf("expected Metrics link in converted markdown, got:\n%s", body)
 	}
 	if rr.Header().Get("Content-Length") != "" {
@@ -954,5 +954,78 @@ func TestMarkdownAcceptRealServer(t *testing.T) {
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("expected 404 over the wire, got %d", resp.StatusCode)
+	}
+}
+
+// TestMarkdownAcceptLogDetail seeds a log matching issue #51's example and
+// verifies the log detail page converts to exactly that markdown shape: a
+// clean back link, the message as heading, one Metadata line per field, and
+// one Context line per key, with absent values rendered as "-".
+func TestMarkdownAcceptLogDetail(t *testing.T) {
+	handler, token, _, ingestService, _ := newServer(t, false)
+
+	ts := time.Unix(1785000000, 0)
+	logID, err := ingestService.StoreLog(t.Context(), ingestsvc.StoreLogRequest{
+		CollectorName: "demo",
+		AppName:       "myapp",
+		Entry: types.LogEntry{
+			Timestamp: ts,
+			Level:     types.LevelError,
+			Message:   "Retrying after failure",
+			Extra: map[string]string{
+				"attempt_number": "1",
+				"exception":      "",
+				"exception_type": "ConnectTimeout",
+				"function":       "PassteamWalletProvider._update_value",
+				"sleep_seconds":  "1",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("seed log: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/panel/collectors/demo/apps/myapp/logs/%d", logID), nil)
+	req.Header.Set("Accept", "text/markdown")
+	req.AddCookie(&http.Cookie{Name: "tracer_session", Value: token})
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200 for log detail markdown, got %d", rr.Code)
+	}
+	if ct := rr.Header().Get("Content-Type"); !strings.HasPrefix(ct, "text/markdown") {
+		t.Fatalf("expected text/markdown content type, got %q", ct)
+	}
+	body := rr.Body.String()
+
+	// The group ID in the back link is dynamic; pull it out of the response
+	// so the rest of the expected markdown can be compared verbatim.
+	m := regexp.MustCompile(`\[Back to group\]\(/panel/collectors/demo/apps/myapp/logs/groups/(\d+)\)`)
+	groupMatch := m.FindStringSubmatch(body)
+	if groupMatch == nil {
+		t.Fatalf("expected back link to the log group in markdown, got:\n%s", body)
+	}
+
+	want := fmt.Sprintf(`[Back to group](/panel/collectors/demo/apps/myapp/logs/groups/%s)
+
+# Retrying after failure
+
+## Metadata
+
+Time: %s
+Level: error
+Trace ID: -
+
+## Context
+
+attempt\_number: 1
+exception: -
+exception\_type: ConnectTimeout
+function: PassteamWalletProvider.\_update\_value
+sleep\_seconds: 1`, groupMatch[1], ts.Format("2006-01-02 15:04:05"))
+
+	if got := strings.TrimSpace(body); got != want {
+		t.Fatalf("markdown mismatch\ngot:\n%s\n\nwant:\n%s", got, want)
 	}
 }

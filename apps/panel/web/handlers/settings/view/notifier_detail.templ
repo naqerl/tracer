@@ -21,7 +21,9 @@ templ NotifierDetail(props NotifierDetailProps) {
 	@templates.Layout("Notifier", templates.NavData{Since: "24h"}) {
 		<div class="max-w-5xl mx-auto p-6">
 			<div class="mb-6">
-				<a href="/settings" class="text-sm text-accent hover:underline transition-colors">&larr; Back to Settings</a>
+				@templates.BackwardAnchor("/settings", "text-sm text-accent hover:underline transition-colors") {
+					Back to Settings
+				}
 			</div>
 
 			<div class="mb-6 flex items-center justify-between gap-4">

@@ -44,7 +44,7 @@ templ LogGroupEntries(props LogGroupEntriesProps) {
 					<!-- Card Header with Timestamp -->
 					<div class="px-3 py-2 border-b border-bg-secondary/50 bg-bg-secondary/30 flex items-center justify-between">
 						<span class="text-xs font-mono text-fg-secondary">{ entry.CreatedAt.Format("2006-01-02 15:04:05") }</span>
-						<span class="text-xs text-fg-secondary/60 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">View details &rarr;</span>
+						<span class="text-xs text-fg-secondary/60 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">View details <span markdown-exclude="true">&gt;</span></span>
 					</div>
 					<!-- Card Body with Context -->
 					<div class="p-3 overflow-x-auto">

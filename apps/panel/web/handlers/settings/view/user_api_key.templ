@@ -24,7 +24,9 @@ templ UserAPIKeyDetail(props UserAPIKeyDetailProps) {
 	@templates.Layout(props.Title, templates.NavData{Since: "24h"}) {
 		<div class="max-w-5xl mx-auto p-6">
 			<div class="mb-6">
-				<a href="/settings" class="text-sm text-fg-secondary hover:text-fg transition-colors">&larr; Back to Settings</a>
+				@templates.BackwardAnchor("/settings", "text-sm text-fg-secondary hover:text-fg transition-colors") {
+					Back to Settings
+				}
 			</div>
 
 			<div class="mb-6">
