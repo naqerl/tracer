@@ -1,5 +1,5 @@
 {{- define "title" -}}
-{{ .FirstLine }} [{{ .Hash }}]
+{{ .FirstLine }}
 {{- end -}}
 
 {{- define "body" -}}
@@ -14,4 +14,8 @@
 {{- if .LogURL }}
 
 [view log]({{ .LogURL }}){{- end }}
+{{- end -}}
+
+{{- define "comment" -}}
+This error re-occurred{{- if .LogURL }} — [view log]({{ .LogURL }}){{- end }}.
 {{- end -}}

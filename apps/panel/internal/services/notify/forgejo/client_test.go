@@ -515,7 +515,7 @@ func TestSearchIssueReturnsClosedState(t *testing.T) {
 	}
 }
 
-func TestReopenIssue(t *testing.T) {
+func TestCreateComment(t *testing.T) {
 	var gotPath, gotAuth, gotBody string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath = r.URL.Path
@@ -523,34 +523,34 @@ func TestReopenIssue(t *testing.T) {
 		buf, _ := io.ReadAll(io.LimitReader(r.Body, 1<<20))
 		gotBody = string(buf)
 		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"number":7,"state":"open"}`))
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"id":1}`))
 	}))
 	defer srv.Close()
 
 	c := NewClient(srv.URL, "sekret")
-	if err := c.ReopenIssue(t.Context(), "x", "barse", 7); err != nil {
-		t.Fatalf("ReopenIssue: %v", err)
+	if err := c.CreateComment(t.Context(), "x", "barse", 7, "re-occurred"); err != nil {
+		t.Fatalf("CreateComment: %v", err)
 	}
-	if gotPath != "/api/v1/repos/x/barse/issues/7" {
+	if gotPath != "/api/v1/repos/x/barse/issues/7/comments" {
 		t.Errorf("unexpected path %q", gotPath)
 	}
 	if gotAuth != "token sekret" {
 		t.Errorf("unexpected auth %q", gotAuth)
 	}
-	if !strings.Contains(gotBody, `"state":"open"`) {
-		t.Errorf("expected state=open in reopen body, got %q", gotBody)
+	if !strings.Contains(gotBody, `"body":"re-occurred"`) {
+		t.Errorf("expected comment body, got %q", gotBody)
 	}
 }
 
-func TestReopenIssueNon2xx(t *testing.T) {
+func TestCreateCommentNon2xx(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "boom", http.StatusInternalServerError)
 	}))
 	defer srv.Close()
 
 	c := NewClient(srv.URL, "sekret")
-	if err := c.ReopenIssue(t.Context(), "x", "barse", 7); err == nil {
-		t.Fatal("expected error for non-2xx reopen")
+	if err := c.CreateComment(t.Context(), "x", "barse", 7, "hello"); err == nil {
+		t.Fatal("expected error for non-2xx comment")
 	}
 }

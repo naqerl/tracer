@@ -67,9 +67,10 @@ type createIssueOption struct {
 }
 
 // Notifier creates issues in a Forgejo repository. Forgejo is the source of
-// truth for whether an error was already reported: the issue title carries a
-// hash of the log message, and creation is skipped when an open issue with
-// that hash already exists.
+// truth for whether an error was already reported: the issue title carries the
+// first line of the log message, and creation is skipped when an issue with
+// that first line already exists (a closed issue gets a re-occurrence comment
+// instead of a duplicate).
 type Notifier struct {
 	name   string
 	cfg    Config
@@ -156,7 +157,9 @@ func (n *Notifier) createIssue(notification notify.Notification) error {
 	}
 
 	hash := messageHash(log.Message)
-	first := firstLine(log.Message)
+	// Dedup keys and the issue title on the same truncated first line so a
+	// title cut at 255 bytes is still found by the search and cache.
+	first := truncateBytes(firstLine(log.Message), 255)
 	if first == "" {
 		return fmt.Errorf("could not create forgejo issue: empty log message")
 	}
@@ -170,6 +173,12 @@ func (n *Notifier) createIssue(notification notify.Notification) error {
 		LogURL:    log.LogURL,
 	}
 
+	var bodyBuf bytes.Buffer
+	if err := issueTemplates.ExecuteTemplate(&bodyBuf, "body", data); err != nil {
+		return fmt.Errorf("could not render forgejo issue body: %w", err)
+	}
+	body := bodyBuf.String()
+
 	var titleBuf bytes.Buffer
 	if err := issueTemplates.ExecuteTemplate(&titleBuf, "title", data); err != nil {
 		return fmt.Errorf("could not render forgejo issue title: %w", err)
@@ -181,45 +190,43 @@ func (n *Notifier) createIssue(notification notify.Notification) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	// Recently reported hashes skip the search: Forgejo's index lags behind
+	// Recently reported first lines skip the search: Forgejo's index lags behind
 	// creation, so a fresh issue would not be found and would be duplicated.
 	// Forgejo stays the long-term source of truth; the cache only covers the
 	// lag window and doubles as an in-flight guard for concurrent alerts.
-	if n.cache.Check(n.cfg.BaseURL, n.cfg.Owner, n.cfg.Repo, hash) {
+	if n.cache.Check(n.cfg.BaseURL, n.cfg.Owner, n.cfg.Repo, first) {
 		return nil
 	}
 
 	// Forgejo is the source of truth for the first report: when an issue with
-	// this message hash already exists, the error was already reported. A
-	// closed issue is reopened — the error recurring after it was resolved
-	// should bring the original report back, not fork a duplicate.
-	issue, found, err := n.client.SearchIssue(ctx, n.cfg.Owner, n.cfg.Repo, hash)
+	// this first line already exists, the error was already reported. A closed
+	// issue gets a re-occurrence comment on the original report instead of a
+	// duplicate issue.
+	issue, found, err := n.client.SearchIssue(ctx, n.cfg.Owner, n.cfg.Repo, first)
 	if err != nil {
 		return err
 	}
 	if found {
 		if issue.State == "closed" {
-			if err := n.client.ReopenIssue(ctx, n.cfg.Owner, n.cfg.Repo, issue.Number); err != nil {
+			var commentBuf bytes.Buffer
+			if err := issueTemplates.ExecuteTemplate(&commentBuf, "comment", data); err != nil {
+				return fmt.Errorf("could not render forgejo re-occurrence comment: %w", err)
+			}
+			if err := n.client.CreateComment(ctx, n.cfg.Owner, n.cfg.Repo, issue.Number, commentBuf.String()); err != nil {
 				return err
 			}
 		}
-		n.cache.Remember(n.cfg.BaseURL, n.cfg.Owner, n.cfg.Repo, hash)
+		n.cache.Remember(n.cfg.BaseURL, n.cfg.Owner, n.cfg.Repo, first)
 		return nil
 	}
 
-	// Reserve the hash before the network call so concurrent identical alerts
-	// during the create round-trip do not both create an issue.
-	n.cache.Remember(n.cfg.BaseURL, n.cfg.Owner, n.cfg.Repo, hash)
-
-	var bodyBuf bytes.Buffer
-	if err := issueTemplates.ExecuteTemplate(&bodyBuf, "body", data); err != nil {
-		return fmt.Errorf("could not render forgejo issue body: %w", err)
-	}
-	body := bodyBuf.String()
+	// Reserve the first line before the network call so concurrent identical
+	// alerts during the create round-trip do not both create an issue.
+	n.cache.Remember(n.cfg.BaseURL, n.cfg.Owner, n.cfg.Repo, first)
 
 	if _, err := n.client.CreateIssue(ctx, n.cfg.Owner, n.cfg.Repo, title, body, n.cfg.Labels, n.cfg.Milestone); err != nil {
 		// Nothing was created; drop the reservation so the next alert retries.
-		n.cache.Forget(n.cfg.BaseURL, n.cfg.Owner, n.cfg.Repo, hash)
+		n.cache.Forget(n.cfg.BaseURL, n.cfg.Owner, n.cfg.Repo, first)
 		return err
 	}
 

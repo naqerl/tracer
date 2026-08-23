@@ -324,9 +324,12 @@ func (c *Client) ListMilestones(ctx context.Context, owner, repo string) ([]Mile
 // client-side to the configured repo and to issues whose title actually
 // contains the query.
 func (c *Client) SearchIssue(ctx context.Context, owner, repo, query string) (Issue, bool, error) {
+	// The first-line query is quoted so multi-word titles match as a single
+	// term instead of an implicit AND of words; the limit is generous so the
+	// client-side repo/title filter sees the full result set.
 	u := c.baseURL + "/api/v1/repos/issues/search?" + url.Values{
-		"q":     {fmt.Sprintf("repo:%s/%s %s", owner, repo, query)},
-		"limit": {"50"},
+		"q":     {fmt.Sprintf("repo:%s/%s \"%s\"", owner, repo, query)},
+		"limit": {"100"},
 	}.Encode()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
@@ -372,32 +375,33 @@ func (c *Client) SearchIssue(ctx context.Context, owner, repo, query string) (Is
 	return Issue{}, false, nil
 }
 
-// ReopenIssue transitions an issue back to open.
-func (c *Client) ReopenIssue(ctx context.Context, owner, repo string, number int64) error {
-	payload, err := json.Marshal(map[string]string{"state": "open"})
+// CreateComment adds a comment to an issue, used to note that a reported error
+// re-occurred on an existing (possibly closed) issue.
+func (c *Client) CreateComment(ctx context.Context, owner, repo string, number int64, body string) error {
+	payload, err := json.Marshal(map[string]string{"body": body})
 	if err != nil {
-		return fmt.Errorf("could not marshal reopen payload: %w", err)
+		return fmt.Errorf("could not marshal comment body: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPatch, c.baseURL+fmt.Sprintf("/api/v1/repos/%s/%s/issues/%d", owner, repo, number), bytes.NewReader(payload))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+fmt.Sprintf("/api/v1/repos/%s/%s/issues/%d/comments", owner, repo, number), bytes.NewReader(payload))
 	if err != nil {
-		return fmt.Errorf("could not build forgejo reopen request: %w", err)
+		return fmt.Errorf("could not build forgejo comment request: %w", err)
 	}
 	c.authorize(req)
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return fmt.Errorf("could not reopen forgejo issue: %w", err)
+		return fmt.Errorf("could not create forgejo comment: %w", err)
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		body, err := readBody(resp)
+	if resp.StatusCode != http.StatusCreated {
+		b, err := readBody(resp)
 		if err != nil {
-			return fmt.Errorf("forgejo issue reopen returned %s", resp.Status)
+			return fmt.Errorf("forgejo comment creation returned %s", resp.Status)
 		}
-		return responseError("forgejo issue reopen", resp, body)
+		return responseError("forgejo comment creation", resp, b)
 	}
 	return nil
 }

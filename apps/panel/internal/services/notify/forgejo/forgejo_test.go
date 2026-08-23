@@ -81,9 +81,14 @@ func TestNotifySearchesThenCreatesIssue(t *testing.T) {
 		t.Errorf("expected repo-scoped search query, got %q", searchQuery)
 	}
 
-	hash := messageHash("connection refused\nsecond line")
-	if !strings.Contains(searchQuery, hash) {
-		t.Errorf("expected message hash %q in search query, got %q", hash, searchQuery)
+	first := firstLine("connection refused\nsecond line")
+	if !strings.Contains(searchQuery, "connection+refused") {
+		t.Errorf("expected first line %q in search query, got %q", first, searchQuery)
+	}
+	// The first line is quoted so multi-word titles match as one term.
+	if !strings.Contains(searchQuery, "%22connection+refused%22") &&
+		!strings.Contains(searchQuery, `"connection+refused"`) {
+		t.Errorf("expected quoted first line in search query, got %q", searchQuery)
 	}
 
 	var body struct {
@@ -93,7 +98,7 @@ func TestNotifySearchesThenCreatesIssue(t *testing.T) {
 	if err := json.Unmarshal([]byte(createBody), &body); err != nil {
 		t.Fatalf("unmarshal request body: %v", err)
 	}
-	if body.Title != "connection refused ["+hash+"]" {
+	if body.Title != "connection refused" {
 		t.Errorf("unexpected title: %q", body.Title)
 	}
 	if !strings.Contains(body.Body, "https://panel.example.com/panel/collectors/prod/apps/api/logs/groups/7") {
@@ -103,12 +108,11 @@ func TestNotifySearchesThenCreatesIssue(t *testing.T) {
 
 func TestNotifySkipsExistingIssue(t *testing.T) {
 	var createCalls int
-	hash := messageHash("connection refused\nsecond line")
 	n := newTestNotifier(t, func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/v1/repos/issues/search":
 			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`[{"number":5,"html_url":"https://git.naqerl.com/x/barse/issues/5","title":"boom [` + hash + `]","state":"open","repository":{"full_name":"x/barse"}}]`))
+			_, _ = w.Write([]byte(`[{"number":5,"html_url":"https://git.naqerl.com/x/barse/issues/5","title":"connection refused","state":"open","repository":{"full_name":"x/barse"}}]`))
 		case "/api/v1/repos/x/barse/issues":
 			createCalls++
 			w.WriteHeader(http.StatusCreated)
@@ -125,21 +129,26 @@ func TestNotifySkipsExistingIssue(t *testing.T) {
 	}
 }
 
-func TestNotifyReopensClosedIssue(t *testing.T) {
-	var createCalls, reopenCalls int
-	var reopenPath string
-	hash := messageHash("connection refused\nsecond line")
+func TestNotifyCommentsOnClosedIssue(t *testing.T) {
+	var createCalls, commentCalls int
+	var commentPath, commentBody string
 	n := newTestNotifier(t, func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/v1/repos/issues/search":
 			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`[{"number":5,"html_url":"https://git.naqerl.com/x/barse/issues/5","title":"boom [` + hash + `]","state":"closed","repository":{"full_name":"x/barse"}}]`))
-		case "/api/v1/repos/x/barse/issues/5":
-			reopenCalls++
-			reopenPath = r.URL.Path
+			_, _ = w.Write([]byte(`[{"number":5,"html_url":"https://git.naqerl.com/x/barse/issues/5","title":"connection refused","state":"closed","repository":{"full_name":"x/barse"}}]`))
+		case "/api/v1/repos/x/barse/issues/5/comments":
+			commentCalls++
+			commentPath = r.URL.Path
+			var req struct {
+				Body string `json:"body"`
+			}
+			buf, _ := io.ReadAll(io.LimitReader(r.Body, 1<<20))
+			_ = json.Unmarshal(buf, &req)
+			commentBody = req.Body
 			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte(`{"number":5,"state":"open"}`))
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{"id":1}`))
 		case "/api/v1/repos/x/barse/issues":
 			createCalls++
 			w.WriteHeader(http.StatusCreated)
@@ -154,16 +163,21 @@ func TestNotifyReopensClosedIssue(t *testing.T) {
 	if createCalls != 0 {
 		t.Fatalf("expected no issue creation when a closed match exists, got %d creates", createCalls)
 	}
-	if reopenCalls != 1 || reopenPath != "/api/v1/repos/x/barse/issues/5" {
-		t.Fatalf("expected the closed issue to be reopened, got %d reopens at %q", reopenCalls, reopenPath)
+	if commentCalls != 1 || commentPath != "/api/v1/repos/x/barse/issues/5/comments" {
+		t.Fatalf("expected a comment on the closed issue, got %d comments at %q", commentCalls, commentPath)
 	}
 
-	// The reopened issue is remembered: an immediate repeat skips entirely.
+	// The re-occurrence comment is a short pointer to the log, not the full report.
+	if want := "This error re-occurred — [view log](https://panel.example.com/panel/collectors/prod/apps/api/logs/groups/7)."; commentBody != want {
+		t.Errorf("unexpected comment body:\n got %q\nwant %q", commentBody, want)
+	}
+
+	// The closed issue is remembered: an immediate repeat skips entirely.
 	if err := n.Notify(alertNotification()); err != nil {
 		t.Fatalf("repeat alert: %v", err)
 	}
-	if reopenCalls != 1 || createCalls != 0 {
-		t.Fatalf("repeat alert must hit the cache, got reopen=%d create=%d", reopenCalls, createCalls)
+	if commentCalls != 1 || createCalls != 0 {
+		t.Fatalf("repeat alert must hit the cache, got comment=%d create=%d", commentCalls, createCalls)
 	}
 }
 
@@ -195,10 +209,11 @@ func TestNotifyIgnoresIssueFromOtherRepo(t *testing.T) {
 }
 
 func TestNotifyTruncatesLongTitle(t *testing.T) {
-	var gotTitle string
+	var gotTitle, gotSearch string
 	n := newTestNotifier(t, func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/v1/repos/issues/search":
+			gotSearch = r.URL.Query().Get("q")
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(`[]`))
 		case "/api/v1/repos/x/barse/issues":
@@ -235,6 +250,12 @@ func TestNotifyTruncatesLongTitle(t *testing.T) {
 	}
 	if !utf8.ValidString(gotTitle) {
 		t.Errorf("title splits a UTF-8 sequence: %q", gotTitle)
+	}
+
+	// The search keys on the same truncated value used for the title, so a
+	// repeat of the same message finds the existing (truncated) issue.
+	if !strings.Contains(gotSearch, gotTitle) {
+		t.Errorf("search key %q does not contain the truncated title %q", gotSearch, gotTitle)
 	}
 }
 
@@ -492,7 +513,7 @@ func TestIssueTemplatesFormat(t *testing.T) {
 	if err := issueTemplates.ExecuteTemplate(&titleBuf, "title", data); err != nil {
 		t.Fatalf("title: %v", err)
 	}
-	wantTitle := "connection refused [hash123456]"
+	wantTitle := "connection refused"
 	if titleBuf.String() != wantTitle {
 		t.Errorf("title:\n got %q\nwant %q", titleBuf.String(), wantTitle)
 	}
