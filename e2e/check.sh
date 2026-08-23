@@ -162,6 +162,23 @@ log "checking panel health and demo logs"
 wait_for_panel_health "${collector_name}"
 wait_for_logs "${collector_name}"
 
+log "checking collector self-registration"
+# tracer-collector must have registered itself on install. The self-app has a
+# health probe pointing at the local panel, which is already up by now, so its
+# card must show a numeric uptime.
+collector_card="$(curl -fsS "${DEMO_URL}/panel/collectors/${collector_name}/apps" -H "Cookie: ${COOKIE}")"
+if ! grep -Fq 'tracer-collector' <<<"${collector_card}"; then
+  fail "collector self-registration did not create tracer-collector app"
+fi
+if ! grep -Eq 'uptime: <span[^>]*>[0-9]+</span>' <<<"${collector_card}"; then
+  fail "self-registered tracer-collector app has no numeric uptime"
+fi
+# The self-app must exist in the collector's own config too.
+collector_cfg="$(docker exec "${DEMO_CONTAINER}" cat /etc/tracer/collector.yaml)"
+if ! grep -Fq 'tracer-collector' <<<"${collector_cfg}"; then
+  fail "tracer-collector not found in collector config"
+fi
+
 log "crawling panel UI"
 (
   cd "${REPO_ROOT}"

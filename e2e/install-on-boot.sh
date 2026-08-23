@@ -61,6 +61,7 @@ tracer-collector add demo-api.service
 tracer-collector add demo-worker.service
 tracer-collector add demo-cron.service
 tracer-collector add -health "${TRACER_PANEL_HOST}/auth/login" tracer-panel.service
-tracer-collector add tracer-collector.service
+# tracer-collector.service is not added manually: tracer-collector install
+# self-registers it (slog text parser + health probe) when it runs.
 
 systemctl restart tracer-collector

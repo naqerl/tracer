@@ -22,3 +22,6 @@ var PanelUser = "tracer-panel"
 
 // CollectorUser is the system user for the collector service (set via ldflags).
 var CollectorUser = "tracer-collector"
+
+// CollectorName is the collector's own systemd unit name.
+var CollectorName = "tracer-collector"

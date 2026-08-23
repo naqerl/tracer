@@ -9,6 +9,7 @@ import (
 	"os/user"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	"tracer/build"
 )
@@ -22,6 +23,20 @@ func systemdDetected() bool {
 		return false
 	}
 	return true
+}
+
+// SystemdRunning reports whether systemd is the active init and PID 1 is
+// systemd. It is stricter than systemdDetected, which only checks for a
+// systemctl binary and a /run/systemd directory — both present in containers
+// that never booted systemd as PID 1.
+func SystemdRunning() bool {
+	if !systemdDetected() {
+		return false
+	}
+	if b, err := os.ReadFile("/proc/1/comm"); err == nil {
+		return strings.TrimSpace(string(b)) == "systemd"
+	}
+	return false
 }
 
 func CreateGroup(name string) error {
