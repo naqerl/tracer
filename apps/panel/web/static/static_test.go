@@ -23,3 +23,27 @@ func TestStaticAssetsRevalidate(t *testing.T) {
 		t.Errorf("Cache-Control = %q, want %q", got, "public, max-age=0, must-revalidate")
 	}
 }
+
+// TestFaviconsServed asserts the favicon assets referenced by the page head are
+// available and served with the correct content type.
+func TestFaviconsServed(t *testing.T) {
+	mux := InitMux()
+
+	cases := map[string]string{
+		"/img/favicon.svg": "image/svg+xml",
+		"/img/favicon.png": "image/png",
+	}
+
+	for path, wantContentType := range cases {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		rr := httptest.NewRecorder()
+		mux.ServeHTTP(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Fatalf("%s: expected 200, got %d", path, rr.Code)
+		}
+		if got := rr.Header().Get("Content-Type"); got != wantContentType {
+			t.Errorf("%s: Content-Type = %q, want %q", path, got, wantContentType)
+		}
+	}
+}

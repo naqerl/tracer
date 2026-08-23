@@ -32,7 +32,7 @@ func Head() templ.Component {
 			templ_7745c5c3_Var1 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<meta charset=\"UTF-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"><link rel=\"preconnect\" href=\"https://cdn.tailwindcss.com\" crossorigin=\"crossorigin\"><link rel=\"stylesheet\" href=\"/static/uPlot.min.css\"><link rel=\"stylesheet\" href=\"/static/scrollbar.css\"><link rel=\"stylesheet\" href=\"/static/app.css\"><script src=\"https://cdn.tailwindcss.com?plugins=forms\"></script><meta name=\"htmx-config\" content='{\"responseHandling\":[{\"code\":\"204\",\"swap\":false},{\"code\":\"[23]..\",\"swap\":true},{\"code\":\"422\",\"swap\":true},{\"code\":\"[45]..\",\"swap\":false,\"error\":true},{\"code\":\"...\",\"swap\":false}]}'><script src=\"/static/htmx.min.js\"></script><script src=\"/static/anime.umd.min.js\" defer=\"defer\"></script><script src=\"/static/uPlot.iife.min.js\" async=\"async\"></script><script type=\"text/javascript\">\n\t\ttailwind.config = {\n\t\t\ttheme: {\n\t\t\t\textend: {\n\t\t\t\t\tcolors: {\n\t\t\t\t\t\tbg: {\n\t\t\t\t\t\t\tDEFAULT: '#0A0A0A',\n\t\t\t\t\t\t\tsecondary: '#1E1E1E',\n\t\t\t\t\t\t},\n\t\t\t\t\t\tfg: {\n\t\t\t\t\t\t\tDEFAULT: '#EEEEEE',\n\t\t\t\t\t\t\tsecondary: '#808080',\n\t\t\t\t\t\t},\n\t\t\t\t\t\taccent: '#5C9CF5',\n\t\t\t\t\t\tsecondary: '#F5A742',\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t}\n\t\t}\n\t</script><style type=\"text/tailwindcss\">\n\t\t@layer base {\n\t\t\tbody {\n\t\t\t\t@apply bg-bg text-fg font-sans antialiased;\n\t\t\t}\n\t\t}\n\t</style>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<meta charset=\"UTF-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"><link rel=\"icon\" type=\"image/svg+xml\" href=\"/static/img/favicon.svg\"><link rel=\"apple-touch-icon\" href=\"/static/img/favicon.png\"><link rel=\"preconnect\" href=\"https://cdn.tailwindcss.com\" crossorigin=\"crossorigin\"><link rel=\"stylesheet\" href=\"/static/uPlot.min.css\"><link rel=\"stylesheet\" href=\"/static/scrollbar.css\"><link rel=\"stylesheet\" href=\"/static/app.css\"><script src=\"https://cdn.tailwindcss.com?plugins=forms\"></script><meta name=\"htmx-config\" content='{\"responseHandling\":[{\"code\":\"204\",\"swap\":false},{\"code\":\"[23]..\",\"swap\":true},{\"code\":\"422\",\"swap\":true},{\"code\":\"[45]..\",\"swap\":false,\"error\":true},{\"code\":\"...\",\"swap\":false}]}'><script src=\"/static/htmx.min.js\"></script><script src=\"/static/anime.umd.min.js\" defer=\"defer\"></script><script src=\"/static/uPlot.iife.min.js\" async=\"async\"></script><script type=\"text/javascript\">\n\t\ttailwind.config = {\n\t\t\ttheme: {\n\t\t\t\textend: {\n\t\t\t\t\tcolors: {\n\t\t\t\t\t\tbg: {\n\t\t\t\t\t\t\tDEFAULT: '#0A0A0A',\n\t\t\t\t\t\t\tsecondary: '#1E1E1E',\n\t\t\t\t\t\t},\n\t\t\t\t\t\tfg: {\n\t\t\t\t\t\t\tDEFAULT: '#EEEEEE',\n\t\t\t\t\t\t\tsecondary: '#808080',\n\t\t\t\t\t\t},\n\t\t\t\t\t\taccent: '#5C9CF5',\n\t\t\t\t\t\tsecondary: '#F5A742',\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t}\n\t\t}\n\t</script><style type=\"text/tailwindcss\">\n\t\t@layer base {\n\t\t\tbody {\n\t\t\t\t@apply bg-bg text-fg font-sans antialiased;\n\t\t\t}\n\t\t}\n\t</style>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -69,7 +69,7 @@ func Navbar(nav NavData) templ.Component {
 		var templ_7745c5c3_Var3 string
 		templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(nav.Since)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/templates/shared.templ`, Line: 60, Col: 40}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/templates/shared.templ`, Line: 62, Col: 40}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 		if templ_7745c5c3_Err != nil {
@@ -121,7 +121,7 @@ func Layout(title string, nav NavData) templ.Component {
 		var templ_7745c5c3_Var5 string
 		templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinStringErrs(title)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/templates/shared.templ`, Line: 84, Col: 17}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/templates/shared.templ`, Line: 86, Col: 17}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var5))
 		if templ_7745c5c3_Err != nil {
@@ -192,7 +192,7 @@ func ErrorPage(title string, message string, status int, nav NavData) templ.Comp
 			var templ_7745c5c3_Var8 string
 			templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(title)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/templates/shared.templ`, Line: 100, Col: 56}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/templates/shared.templ`, Line: 102, Col: 56}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
 			if templ_7745c5c3_Err != nil {
@@ -205,7 +205,7 @@ func ErrorPage(title string, message string, status int, nav NavData) templ.Comp
 			var templ_7745c5c3_Var9 string
 			templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(message)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/templates/shared.templ`, Line: 102, Col: 41}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/templates/shared.templ`, Line: 104, Col: 41}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
 			if templ_7745c5c3_Err != nil {
@@ -255,7 +255,7 @@ func Indicator(id, text string) templ.Component {
 		var templ_7745c5c3_Var11 string
 		templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.ResolveAttributeValue(id)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/templates/shared.templ`, Line: 110, Col: 14}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/templates/shared.templ`, Line: 112, Col: 14}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var11)
 		if templ_7745c5c3_Err != nil {
@@ -268,7 +268,7 @@ func Indicator(id, text string) templ.Component {
 		var templ_7745c5c3_Var12 string
 		templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.JoinStringErrs(text)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/templates/shared.templ`, Line: 112, Col: 8}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/templates/shared.templ`, Line: 114, Col: 8}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var12))
 		if templ_7745c5c3_Err != nil {
@@ -348,7 +348,7 @@ func FieldStatus(id, text string, ok, oob bool) templ.Component {
 		var templ_7745c5c3_Var16 string
 		templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.ResolveAttributeValue(id)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/templates/shared.templ`, Line: 125, Col: 14}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/templates/shared.templ`, Line: 127, Col: 14}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var16)
 		if templ_7745c5c3_Err != nil {
@@ -407,7 +407,7 @@ func FieldStatus(id, text string, ok, oob bool) templ.Component {
 			var templ_7745c5c3_Var20 string
 			templ_7745c5c3_Var20, templ_7745c5c3_Err = templ.JoinStringErrs(text)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/templates/shared.templ`, Line: 127, Col: 81}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/templates/shared.templ`, Line: 129, Col: 81}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var20))
 			if templ_7745c5c3_Err != nil {
@@ -456,7 +456,7 @@ func MarkdownCheckbox(id string, name string, label string, value string, checke
 		var templ_7745c5c3_Var22 string
 		templ_7745c5c3_Var22, templ_7745c5c3_Err = templruntime.SanitizeStyleAttributeValues("padding-left: " + strconv.Itoa(indent*24) + "px")
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/templates/shared.templ`, Line: 135, Col: 63}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/templates/shared.templ`, Line: 137, Col: 63}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var22))
 		if templ_7745c5c3_Err != nil {
@@ -469,7 +469,7 @@ func MarkdownCheckbox(id string, name string, label string, value string, checke
 		var templ_7745c5c3_Var23 string
 		templ_7745c5c3_Var23, templ_7745c5c3_Err = templ.ResolveAttributeValue(name)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/templates/shared.templ`, Line: 136, Col: 34}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/templates/shared.templ`, Line: 138, Col: 34}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var23)
 		if templ_7745c5c3_Err != nil {
@@ -482,7 +482,7 @@ func MarkdownCheckbox(id string, name string, label string, value string, checke
 		var templ_7745c5c3_Var24 string
 		templ_7745c5c3_Var24, templ_7745c5c3_Err = templ.ResolveAttributeValue(id + "_value")
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/templates/shared.templ`, Line: 136, Col: 55}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/templates/shared.templ`, Line: 138, Col: 55}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var24)
 		if templ_7745c5c3_Err != nil {
@@ -495,7 +495,7 @@ func MarkdownCheckbox(id string, name string, label string, value string, checke
 		var templ_7745c5c3_Var25 string
 		templ_7745c5c3_Var25, templ_7745c5c3_Err = templ.ResolveAttributeValue(tern(checked, value, ""))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/templates/shared.templ`, Line: 136, Col: 90}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/templates/shared.templ`, Line: 138, Col: 90}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var25)
 		if templ_7745c5c3_Err != nil {
@@ -508,7 +508,7 @@ func MarkdownCheckbox(id string, name string, label string, value string, checke
 		var templ_7745c5c3_Var26 string
 		templ_7745c5c3_Var26, templ_7745c5c3_Err = templ.ResolveAttributeValue(value)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/templates/shared.templ`, Line: 136, Col: 119}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/templates/shared.templ`, Line: 138, Col: 119}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var26)
 		if templ_7745c5c3_Err != nil {
@@ -530,7 +530,7 @@ func MarkdownCheckbox(id string, name string, label string, value string, checke
 		var templ_7745c5c3_Var28 string
 		templ_7745c5c3_Var28, templ_7745c5c3_Err = templ.ResolveAttributeValue(id + "_toggle")
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/templates/shared.templ`, Line: 137, Col: 43}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/templates/shared.templ`, Line: 139, Col: 43}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var28)
 		if templ_7745c5c3_Err != nil {
@@ -556,7 +556,7 @@ func MarkdownCheckbox(id string, name string, label string, value string, checke
 		var templ_7745c5c3_Var30 string
 		templ_7745c5c3_Var30, templ_7745c5c3_Err = templ.ResolveAttributeValue(id)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/templates/shared.templ`, Line: 137, Col: 171}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/templates/shared.templ`, Line: 139, Col: 171}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var30)
 		if templ_7745c5c3_Err != nil {
@@ -569,7 +569,7 @@ func MarkdownCheckbox(id string, name string, label string, value string, checke
 		var templ_7745c5c3_Var31 string
 		templ_7745c5c3_Var31, templ_7745c5c3_Err = templ.ResolveAttributeValue(label)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/templates/shared.templ`, Line: 137, Col: 222}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/templates/shared.templ`, Line: 139, Col: 222}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var31)
 		if templ_7745c5c3_Err != nil {
@@ -582,7 +582,7 @@ func MarkdownCheckbox(id string, name string, label string, value string, checke
 		var templ_7745c5c3_Var32 string
 		templ_7745c5c3_Var32, templ_7745c5c3_Err = templ.JoinStringErrs(tern(checked, "[x] ", "[ ] ") + label)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/templates/shared.templ`, Line: 138, Col: 42}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/templates/shared.templ`, Line: 140, Col: 42}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var32))
 		if templ_7745c5c3_Err != nil {

@@ -27,7 +27,7 @@ LDFLAGS := -s -w \
 	-X tracer/apps/panel.Version=$(VERSION) \
 	-X tracer/apps/collector.Version=$(VERSION)
 
-.PHONY: build build-collector build-panel checksums clean test vet dev-setup generate sqlc install \
+.PHONY: build build-collector build-panel checksums clean test vet dev-setup generate sqlc install favicon \
 	docker-build-panel docker-tag-panel docker-push-panel \
 	docker-build-demo docker-tag-demo docker-push-demo
 
@@ -62,6 +62,14 @@ dev-setup:
 
 generate:
 	go tool templ generate
+
+# Regenerate the panel favicon assets from ./scripts/gen-favicon. The favicon.svg
+# is produced by the generator (it is not hand-edited); the apple-touch-icon PNG
+# is rasterized from it with librsvg. Run after changing the geometry in
+# scripts/gen-favicon/main.go.
+favicon:
+	go run ./scripts/gen-favicon
+	rsvg-convert -w 180 -h 180 -o apps/panel/web/static/static/img/favicon.png apps/panel/web/static/static/img/favicon.svg
 
 sqlc:
 	cd apps/panel && sqlc generate
