@@ -100,6 +100,8 @@ func expectedPayloadType(typ NotificationType) reflect.Type {
 		return reflect.TypeOf(LogEntry{})
 	case TypeResource:
 		return reflect.TypeOf(ResourceEntry{})
+	case TypeUptime:
+		return reflect.TypeOf(UptimeEntry{})
 	case TypeLifecycle, TypeWelcome, TypeSubscription:
 		return reflect.TypeOf("")
 	default:
@@ -116,6 +118,7 @@ func TestNotificationPayloadTypeMapping(t *testing.T) {
 		TypeLifecycle:    "restart",
 		TypeWelcome:      "hello",
 		TypeSubscription: "subscribed",
+		TypeUptime:       UptimeEntry{Status: "down", Previous: "up"},
 	}
 
 	for typ, payload := range payloads {
@@ -135,7 +138,7 @@ func TestNotificationPayloadTypeMapping(t *testing.T) {
 
 	// Every defined type must have a documented mapping; otherwise a new
 	// notification type silently breaks the contract.
-	for _, typ := range []NotificationType{TypeAlert, TypeResource, TypeLifecycle, TypeWelcome, TypeSubscription} {
+	for _, typ := range []NotificationType{TypeAlert, TypeResource, TypeLifecycle, TypeWelcome, TypeSubscription, TypeUptime} {
 		if expectedPayloadType(typ) == nil {
 			t.Errorf("type %s: missing from the payload mapping table", typ)
 		}

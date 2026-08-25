@@ -751,7 +751,9 @@ func (s *Service) SaveHealthPeriod(ctx context.Context, req StoreHealthRequest) 
 		return err
 	}
 
-	return handle.Write(ctx, func(tx db.DBTX) error {
+	var prev types.HealthStatus
+
+	err = handle.Write(ctx, func(tx db.DBTX) error {
 		q := db.New(tx)
 
 		current, err := q.GetOpenHealthPeriod(ctx)
@@ -760,6 +762,7 @@ func (s *Service) SaveHealthPeriod(ctx context.Context, req StoreHealthRequest) 
 			if current.Status == string(req.Status) {
 				return nil
 			}
+			prev = types.HealthStatus(current.Status)
 			if err := q.CloseHealthPeriod(ctx, db.CloseHealthPeriodParams{
 				EndedAt: sql.NullInt64{Int64: req.Time.Unix(), Valid: true},
 				ID:      current.ID,
@@ -777,6 +780,29 @@ func (s *Service) SaveHealthPeriod(ctx context.Context, req StoreHealthRequest) 
 			EndedAt:   sql.NullInt64{},
 		})
 	})
+	if err != nil {
+		return err
+	}
+
+	// Notify on status change, but not on initial "up" state (normal startup).
+	if prev != req.Status && !(prev == types.HealthStatusUnknown && req.Status == types.HealthStatusUp) {
+		select {
+		case s.notifyChan <- notify.Notification{
+			Type:          notify.TypeUptime,
+			CollectorName: req.CollectorName,
+			AppName:       req.AppName,
+			Payload: notify.UptimeEntry{
+				Status:    req.Status,
+				Previous:  prev,
+				Timestamp: req.Time.Unix(),
+			},
+		}:
+		default:
+			slog.Error("Notification channel full, dropping uptime notification")
+		}
+	}
+
+	return nil
 }
 
 // sendLogNotification sends a log-derived notification with its structured

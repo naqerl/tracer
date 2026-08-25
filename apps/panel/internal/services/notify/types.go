@@ -17,6 +17,7 @@ const (
 	TypeResource     NotificationType = "resource"     // Resource threshold overflow alerts
 	TypeWelcome      NotificationType = "welcome"      // Welcome message for new notifiers
 	TypeSubscription NotificationType = "subscription" // Subscription confirmation
+	TypeUptime       NotificationType = "uptime"       // Uptime status changes (up/down)
 )
 
 // LogEntry carries the structured log data behind a log-derived notification
@@ -47,6 +48,15 @@ type ResourceEntry struct {
 	Timestamp       int64
 }
 
+// UptimeEntry carries the structured data behind an uptime status change
+// notification (TypeUptime). Notifiers render their own presentation
+// from these fields.
+type UptimeEntry struct {
+	Status    types.HealthStatus
+	Previous  types.HealthStatus
+	Timestamp int64
+}
+
 // Notification represents a notification to be sent. Payload's concrete type
 // is tied to Type: LogEntry for TypeAlert, ResourceEntry for TypeResource,
 // string for the remaining types.
@@ -71,6 +81,12 @@ func FormatMessage(n Notification) string {
 		}
 	case ResourceEntry:
 		msg = formatResourceEntry(p)
+	case UptimeEntry:
+		if p.Previous == "" {
+			msg = fmt.Sprintf("status: %s", p.Status)
+		} else {
+			msg = fmt.Sprintf("status changed: %s -> %s", p.Previous, p.Status)
+		}
 	case string:
 		msg = p
 	default:
