@@ -28,6 +28,10 @@ type SettingsPageProps struct {
 	CPUDeltaPercent         float64
 	MemDeltaKB              int
 	DiskDeltaKB             int
+	CPUThresholdPercent     float64
+	MemThresholdPercent     float64
+	DiskThresholdPercent    float64
+	ResourceNotifyMinutes  int
 }
 
 type CollectorAPIKeyView struct {
@@ -269,19 +273,19 @@ templ SettingsPage(props SettingsPageProps) {
 						<div class="space-y-4">
 							<div>
 								<label class="block text-sm text-fg-secondary mb-1">CPU Delta (%)</label>
-								<input type="number" name="cpu_delta_percent" step="0.1" min="0" value={ fmt.Sprintf("%.1f", props.CPUDeltaPercent) }
+								<input type="number" name="cpu_delta_percent" step="0.1" min="0" value={ fmt.Sprintf("%.1f", props.CPUDeltaPercent) } required="required"
 									   class="w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg"/>
 								<p class="text-xs text-fg-secondary/60 mt-1">Default: 1.0</p>
 							</div>
 							<div>
 								<label class="block text-sm text-fg-secondary mb-1">Memory Delta (KB)</label>
-								<input type="number" name="mem_delta_kb" min="0" value={ strconv.Itoa(props.MemDeltaKB) }
+								<input type="number" name="mem_delta_kb" min="0" value={ strconv.Itoa(props.MemDeltaKB) } required="required"
 									   class="w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg"/>
 								<p class="text-xs text-fg-secondary/60 mt-1">Default: 64</p>
 							</div>
 							<div>
 								<label class="block text-sm text-fg-secondary mb-1">Disk Delta (KB)</label>
-								<input type="number" name="disk_delta_kb" min="0" value={ strconv.Itoa(props.DiskDeltaKB) }
+								<input type="number" name="disk_delta_kb" min="0" value={ strconv.Itoa(props.DiskDeltaKB) } required="required"
 									   class="w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg"/>
 								<p class="text-xs text-fg-secondary/60 mt-1">Default: 1024</p>
 							</div>
@@ -293,6 +297,46 @@ templ SettingsPage(props SettingsPageProps) {
 					<span class="error"></span>
 				</div>
 			}
+			<div class="mb-10">
+				<h2 class="text-xl font-medium mb-6">Resource Alert Thresholds</h2>
+				<form hx-post="/settings/config"
+					  hx-target="next .error"
+					  class="max-w-lg border border-bg-secondary/70 p-6">
+					<p class="text-sm text-fg-secondary mb-6">
+						Send a notification when resource usage exceeds the threshold percentage. Set to 0 to disable.
+					</p>
+					<div class="space-y-4">
+						<div>
+							<label class="block text-sm text-fg-secondary mb-1">CPU Threshold (%)</label>
+							<input type="number" name="cpu_threshold_percent" step="1" min="0" max="100" value={ fmt.Sprintf("%.0f", props.CPUThresholdPercent) } required="required"
+									   class="w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg"/>
+							<p class="text-xs text-fg-secondary/60 mt-1">Disabled: 0</p>
+						</div>
+						<div>
+							<label class="block text-sm text-fg-secondary mb-1">Memory Threshold (%)</label>
+							<input type="number" name="mem_threshold_percent" step="1" min="0" max="100" value={ fmt.Sprintf("%.0f", props.MemThresholdPercent) } required="required"
+									   class="w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg"/>
+							<p class="text-xs text-fg-secondary/60 mt-1">Disabled: 0</p>
+						</div>
+						<div>
+							<label class="block text-sm text-fg-secondary mb-1">Disk Threshold (%)</label>
+							<input type="number" name="disk_threshold_percent" step="1" min="0" max="100" value={ fmt.Sprintf("%.0f", props.DiskThresholdPercent) } required="required"
+									   class="w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg"/>
+							<p class="text-xs text-fg-secondary/60 mt-1">Disabled: 0</p>
+						</div>
+						<div>
+							<label class="block text-sm text-fg-secondary mb-1">Once Per (minutes)</label>
+							<input type="number" name="resource_notify_minutes" min="0" value={ strconv.Itoa(props.ResourceNotifyMinutes) } required="required"
+									   class="w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg"/>
+							<p class="text-xs text-fg-secondary/60 mt-1">Send at most one notification per resource per period while exceeded. 0 disables throttling.</p>
+						</div>
+					</div>
+					<div class="mt-6">
+						<button type="submit" class="text-sm text-fg border border-fg px-4 py-2 hover:bg-fg hover:text-bg transition-colors">Save</button>
+					</div>
+				</form>
+				<span class="error"></span>
+			</div>
 			<div class="mb-10">
 				<h2 class="text-xl font-medium mb-6">Notifications</h2>
 				<p class="text-base text-fg-secondary mb-6">

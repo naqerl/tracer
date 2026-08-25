@@ -15,16 +15,29 @@ import (
 
 // testIngestConfig implements IngestConfig for testing.
 type testIngestConfig struct {
-	cpuDeltaPercent float64
-	memDeltaKB      int
-	diskDeltaKB     int
-	sampleRate      float64
+	cpuDeltaPercent       float64
+	memDeltaKB            int
+	diskDeltaKB           int
+	sampleRate            float64
+	cpuThresholdPercent   float64
+	memThresholdPercent   float64
+	diskThresholdPercent  float64
+	resourceNotifyMinutes int
 }
 
-func (c *testIngestConfig) GetCPUDeltaPercent() float64 { return c.cpuDeltaPercent }
-func (c *testIngestConfig) GetMemDeltaKB() int          { return c.memDeltaKB }
-func (c *testIngestConfig) GetDiskDeltaKB() int         { return c.diskDeltaKB }
-func (c *testIngestConfig) GetSampleRate() float64      { return c.sampleRate }
+func (c *testIngestConfig) GetCPUDeltaPercent() float64      { return c.cpuDeltaPercent }
+func (c *testIngestConfig) GetMemDeltaKB() int               { return c.memDeltaKB }
+func (c *testIngestConfig) GetDiskDeltaKB() int              { return c.diskDeltaKB }
+func (c *testIngestConfig) GetSampleRate() float64           { return c.sampleRate }
+func (c *testIngestConfig) GetCPUThresholdPercent() float64  { return c.cpuThresholdPercent }
+func (c *testIngestConfig) GetMemThresholdPercent() float64  { return c.memThresholdPercent }
+func (c *testIngestConfig) GetDiskThresholdPercent() float64 { return c.diskThresholdPercent }
+func (c *testIngestConfig) GetResourceNotifyMinutes() int {
+	if c.resourceNotifyMinutes == 0 {
+		return 10
+	}
+	return c.resourceNotifyMinutes
+}
 
 // notifyCounts tracks which notification types one StoreLog produced.
 type notifyCounts struct {
@@ -60,6 +73,100 @@ func storeLogAndCount(t *testing.T, svc *Service, ch chan notify.Notification, c
 		default:
 			return counts
 		}
+	}
+}
+
+// saveSystemStatsAndDrain saves stats and drains the channel, returning the
+// single TypeResource notification payload if one was produced.
+func saveSystemStatsAndDrain(t *testing.T, svc *Service, ch chan notify.Notification, collector string, stats types.Stats) (notify.ResourceEntry, bool) {
+	t.Helper()
+
+	if err := svc.SaveSystemStats(t.Context(), SaveSystemStatsRequest{
+		CollectorName: collector,
+		Stats:         stats,
+	}); err != nil {
+		t.Fatalf("save stats: %v", err)
+	}
+
+	for {
+		select {
+		case n := <-ch:
+			if n.Type != notify.TypeResource {
+				t.Fatalf("unexpected notification type %s", n.Type)
+			}
+			entry, ok := n.Payload.(notify.ResourceEntry)
+			if !ok {
+				t.Fatalf("expected ResourceEntry payload, got %T", n.Payload)
+			}
+			return entry, true
+		default:
+			return notify.ResourceEntry{}, false
+		}
+	}
+}
+
+// TestResourceThresholdNotification fires a notification when CPU exceeds the
+// threshold, suppresses repeats during the cooldown, and re-fires the same
+// resource after it recovers and breaches again.
+func TestResourceThresholdNotification(t *testing.T) {
+	mgr := testutil.NewTestDBManager(t)
+	ch := make(chan notify.Notification, 32)
+	cfg := &testIngestConfig{
+		sampleRate:          1.0,
+		cpuDeltaPercent:     1.0,
+		cpuThresholdPercent: 90.0,
+	}
+	svc := New(mgr, ch, nil, cfg)
+
+	if err := svc.RegisterCollector(t.Context(), RegisterCollectorRequest{
+		CollectorName: "test-collector",
+		Apps:          []string{"test-app"},
+	}); err != nil {
+		t.Fatalf("register collector: %v", err)
+	}
+
+	now := time.Now().Truncate(time.Second).Unix()
+	build := func(cpu float64, ts int64) types.Stats {
+		return types.Stats{
+			CPUUsagePercent: cpu,
+			MemTotalMB:      8192,
+			MemUsedMB:       2048,
+			MemAvailableMB:  6144,
+			DiskTotalGB:     250,
+			DiskUsedGB:      100,
+			DiskAvailGB:     150,
+			Timestamp:       time.Unix(ts, 0),
+		}
+	}
+
+	// Below threshold: no notification.
+	if _, fired := saveSystemStatsAndDrain(t, svc, ch, "test-collector", build(50.0, now)); fired {
+		t.Fatal("below threshold: expected no notification")
+	}
+
+	// Above threshold: notification fires with the breached resource.
+	entry, fired := saveSystemStatsAndDrain(t, svc, ch, "test-collector", build(97.0, now+1))
+	if !fired {
+		t.Fatal("above threshold: expected a notification")
+	}
+	if len(entry.Breached) != 1 || entry.Breached[0] != "cpu" {
+		t.Fatalf("expected breached [cpu], got %v", entry.Breached)
+	}
+	if entry.CPUUsagePercent != 97.0 {
+		t.Fatalf("expected CPU 97, got %v", entry.CPUUsagePercent)
+	}
+
+	// Still above threshold but within the cooldown: suppressed.
+	if _, fired := saveSystemStatsAndDrain(t, svc, ch, "test-collector", build(98.0, now+2)); fired {
+		t.Fatal("within cooldown: expected no notification")
+	}
+
+	// Recovers below threshold, then breaches again: notifies immediately.
+	if _, fired := saveSystemStatsAndDrain(t, svc, ch, "test-collector", build(50.0, now+3)); fired {
+		t.Fatal("recovery: expected no notification")
+	}
+	if _, fired := saveSystemStatsAndDrain(t, svc, ch, "test-collector", build(95.0, now+4)); !fired {
+		t.Fatal("re-breach after recovery: expected a notification")
 	}
 }
 

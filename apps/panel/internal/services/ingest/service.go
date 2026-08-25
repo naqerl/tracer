@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"log/slog"
 	"math/rand"
+	"slices"
+	"sync"
 	"time"
 
 	"tracer/apps/panel/db"
@@ -42,6 +44,10 @@ type IngestConfig interface {
 	GetMemDeltaKB() int
 	GetDiskDeltaKB() int
 	GetSampleRate() float64
+	GetCPUThresholdPercent() float64
+	GetMemThresholdPercent() float64
+	GetDiskThresholdPercent() float64
+	GetResourceNotifyMinutes() int
 }
 
 type Service struct {
@@ -49,6 +55,9 @@ type Service struct {
 	notifyChan     chan<- notify.Notification
 	alertFormatter func(collectorName, appName string, logID int64) string
 	cfg            IngestConfig
+
+	mu           sync.Mutex
+	lastNotified map[string]int64 // collector/resource -> last notify unix time
 }
 
 // New creates a new ingest service. A nil notifyChan or alertFormatter is
@@ -65,6 +74,7 @@ func New(dbManager DBManager, notifyChan chan<- notify.Notification, alertFormat
 		notifyChan:     notifyChan,
 		alertFormatter: alertFormatter,
 		cfg:            cfg,
+		lastNotified:   make(map[string]int64),
 	}
 }
 
@@ -112,6 +122,7 @@ func (r SaveSystemStatsRequest) Validate() error {
 // SaveSystemStats saves system statistics for a collector using change-based periods.
 // Creates a new period only when the value changes from the current open period.
 // If the value is unchanged, the existing period continues (no INSERT).
+// After saving, checks resource thresholds and sends notifications for breaches.
 func (s *Service) SaveSystemStats(ctx context.Context, req SaveSystemStatsRequest) error {
 	handle, err := s.dbManager.GetCollectorDB(req.CollectorName)
 	if err != nil {
@@ -119,7 +130,7 @@ func (s *Service) SaveSystemStats(ctx context.Context, req SaveSystemStatsReques
 	}
 	nowUnix := req.Stats.Timestamp.Unix()
 
-	return handle.Write(ctx, func(tx db.DBTX) error {
+	err = handle.Write(ctx, func(tx db.DBTX) error {
 		q := db.New(tx)
 
 		// --- CPU ---
@@ -139,6 +150,12 @@ func (s *Service) SaveSystemStats(ctx context.Context, req SaveSystemStatsReques
 
 		return nil
 	})
+	if err != nil {
+		return err
+	}
+
+	s.checkResourceThresholds(req.CollectorName, req.Stats, nowUnix)
+	return nil
 }
 
 func (s *Service) saveCPUPeriod(ctx context.Context, q *db.Queries, collectorName string, usagePercent float64, nowUnix int64) error {
@@ -263,6 +280,88 @@ func (s *Service) saveDiskPeriod(ctx context.Context, q *db.Queries, collectorNa
 		StartedAt:     nowUnix,
 	})
 	return err
+}
+
+// checkResourceThresholds evaluates CPU, memory, and disk usage against
+// configured thresholds and sends a notification for each breach.
+func (s *Service) checkResourceThresholds(collectorName string, stats types.Stats, nowUnix int64) {
+	var breached []string
+
+	memUsedPct := 0.0
+	if stats.MemTotalMB > 0 {
+		memUsedPct = float64(stats.MemUsedMB) / float64(stats.MemTotalMB) * 100
+	}
+	diskUsedPct := 0.0
+	if stats.DiskTotalGB > 0 {
+		diskUsedPct = float64(stats.DiskUsedGB) / float64(stats.DiskTotalGB) * 100
+	}
+
+	if cpuThreshold := s.cfg.GetCPUThresholdPercent(); cpuThreshold > 0 && stats.CPUUsagePercent >= cpuThreshold {
+		breached = append(breached, "cpu")
+	}
+	if memThreshold := s.cfg.GetMemThresholdPercent(); memThreshold > 0 && memUsedPct >= memThreshold {
+		breached = append(breached, "mem")
+	}
+	if diskThreshold := s.cfg.GetDiskThresholdPercent(); diskThreshold > 0 && diskUsedPct >= diskThreshold {
+		breached = append(breached, "disk")
+	}
+
+	if s.suppressResourceNotify(collectorName, breached, nowUnix) {
+		return
+	}
+
+	entry := notify.ResourceEntry{
+		CPUUsagePercent: stats.CPUUsagePercent,
+		MemUsedPercent:  memUsedPct,
+		MemTotalMB:      stats.MemTotalMB,
+		MemUsedMB:       stats.MemUsedMB,
+		MemAvailableMB:  stats.MemAvailableMB,
+		DiskUsedPercent: diskUsedPct,
+		DiskTotalGB:     stats.DiskTotalGB,
+		DiskUsedGB:      stats.DiskUsedGB,
+		DiskAvailGB:     stats.DiskAvailGB,
+		Breached:        breached,
+		Timestamp:       nowUnix,
+	}
+
+	select {
+	case s.notifyChan <- notify.Notification{
+		Type:          notify.TypeResource,
+		CollectorName: collectorName,
+		Payload:       entry,
+	}:
+	default:
+		slog.Error("Notification channel full, dropping resource notification")
+	}
+}
+
+// suppressResourceNotify reports whether a resource notification should be
+// skipped for a collector: true when nothing is breached, or when every
+// breached resource is still within its cooldown. Resources no longer in
+// breach are re-armed so their next breach notifies immediately.
+func (s *Service) suppressResourceNotify(collectorName string, breached []string, nowUnix int64) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// Re-arm recovered resources so their next breach notifies immediately.
+	for _, res := range []string{"cpu", "mem", "disk"} {
+		if !slices.Contains(breached, res) {
+			delete(s.lastNotified, collectorName+"/"+res)
+		}
+	}
+	if len(breached) == 0 {
+		return true
+	}
+
+	cooldown := int64(s.cfg.GetResourceNotifyMinutes()) * 60
+	for _, res := range breached {
+		last, ok := s.lastNotified[collectorName+"/"+res]
+		if !ok || cooldown <= 0 || nowUnix-last >= cooldown {
+			s.lastNotified[collectorName+"/"+res] = nowUnix
+			return false
+		}
+	}
+	return true
 }
 
 // GetLatestStats returns the latest system stats for a collector by combining

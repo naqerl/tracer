@@ -111,9 +111,13 @@ func (h *handler) settingsPage(w http.ResponseWriter, r *http.Request) {
 			NtfyURL:        "https://ntfy.sh",
 			ForgejoBaseURL: defaultForgejoBaseURL,
 		},
-		CPUDeltaPercent: h.cfg.GetCPUDeltaPercent(),
-		MemDeltaKB:      h.cfg.GetMemDeltaKB(),
-		DiskDeltaKB:     h.cfg.GetDiskDeltaKB(),
+		CPUDeltaPercent:       h.cfg.GetCPUDeltaPercent(),
+		MemDeltaKB:            h.cfg.GetMemDeltaKB(),
+		DiskDeltaKB:           h.cfg.GetDiskDeltaKB(),
+		CPUThresholdPercent:   h.cfg.GetCPUThresholdPercent(),
+		MemThresholdPercent:   h.cfg.GetMemThresholdPercent(),
+		DiskThresholdPercent:  h.cfg.GetDiskThresholdPercent(),
+		ResourceNotifyMinutes: h.cfg.GetResourceNotifyMinutes(),
 	}
 
 	// Load notifiers (admins see all, non-admins see only their own)
@@ -1295,27 +1299,65 @@ func (h *handler) updateConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cpuDelta, err := strconv.ParseFloat(r.FormValue("cpu_delta_percent"), 64)
-	if err != nil || cpuDelta < 0 {
-		http.Error(w, "Invalid CPU delta percent", http.StatusBadRequest)
-		return
+	// Delta thresholds (from Stats Period Thresholds form)
+	if v := r.FormValue("cpu_delta_percent"); v != "" {
+		cpuDelta, err := strconv.ParseFloat(v, 64)
+		if err != nil || cpuDelta < 0 {
+			http.Error(w, "Invalid CPU delta percent", http.StatusBadRequest)
+			return
+		}
+		h.cfg.SetCPUDeltaPercent(cpuDelta)
+	}
+	if v := r.FormValue("mem_delta_kb"); v != "" {
+		memDelta, err := strconv.Atoi(v)
+		if err != nil || memDelta < 0 {
+			http.Error(w, "Invalid memory delta KB", http.StatusBadRequest)
+			return
+		}
+		h.cfg.SetMemDeltaKB(memDelta)
+	}
+	if v := r.FormValue("disk_delta_kb"); v != "" {
+		diskDelta, err := strconv.Atoi(v)
+		if err != nil || diskDelta < 0 {
+			http.Error(w, "Invalid disk delta KB", http.StatusBadRequest)
+			return
+		}
+		h.cfg.SetDiskDeltaKB(diskDelta)
 	}
 
-	memDelta, err := strconv.Atoi(r.FormValue("mem_delta_kb"))
-	if err != nil || memDelta < 0 {
-		http.Error(w, "Invalid memory delta KB", http.StatusBadRequest)
-		return
+	// Resource alert thresholds
+	if v := r.FormValue("cpu_threshold_percent"); v != "" {
+		cpuThreshold, err := strconv.ParseFloat(v, 64)
+		if err != nil || cpuThreshold < 0 || cpuThreshold > 100 {
+			http.Error(w, "Invalid CPU threshold percent", http.StatusBadRequest)
+			return
+		}
+		h.cfg.SetCPUThresholdPercent(cpuThreshold)
 	}
-
-	diskDelta, err := strconv.Atoi(r.FormValue("disk_delta_kb"))
-	if err != nil || diskDelta < 0 {
-		http.Error(w, "Invalid disk delta KB", http.StatusBadRequest)
-		return
+	if v := r.FormValue("mem_threshold_percent"); v != "" {
+		memThreshold, err := strconv.ParseFloat(v, 64)
+		if err != nil || memThreshold < 0 || memThreshold > 100 {
+			http.Error(w, "Invalid memory threshold percent", http.StatusBadRequest)
+			return
+		}
+		h.cfg.SetMemThresholdPercent(memThreshold)
 	}
-
-	h.cfg.SetCPUDeltaPercent(cpuDelta)
-	h.cfg.SetMemDeltaKB(memDelta)
-	h.cfg.SetDiskDeltaKB(diskDelta)
+	if v := r.FormValue("disk_threshold_percent"); v != "" {
+		diskThreshold, err := strconv.ParseFloat(v, 64)
+		if err != nil || diskThreshold < 0 || diskThreshold > 100 {
+			http.Error(w, "Invalid disk threshold percent", http.StatusBadRequest)
+			return
+		}
+		h.cfg.SetDiskThresholdPercent(diskThreshold)
+	}
+	if v := r.FormValue("resource_notify_minutes"); v != "" {
+		minutes, err := strconv.Atoi(v)
+		if err != nil || minutes < 0 {
+			http.Error(w, "Invalid resource notify period", http.StatusBadRequest)
+			return
+		}
+		h.cfg.SetResourceNotifyMinutes(minutes)
+	}
 
 	htmx.Redirect(w, r, "/settings/")
 }

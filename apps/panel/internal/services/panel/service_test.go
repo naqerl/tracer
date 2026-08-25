@@ -23,16 +23,23 @@ import (
 
 // testIngestConfig implements ingest.IngestConfig for testing.
 type testIngestConfig struct {
-	cpuDeltaPercent float64
-	memDeltaKB      int
-	diskDeltaKB     int
-	sampleRate      float64
+	cpuDeltaPercent      float64
+	memDeltaKB           int
+	diskDeltaKB          int
+	sampleRate           float64
+	cpuThresholdPercent  float64
+	memThresholdPercent  float64
+	diskThresholdPercent float64
 }
 
-func (c *testIngestConfig) GetCPUDeltaPercent() float64 { return c.cpuDeltaPercent }
-func (c *testIngestConfig) GetMemDeltaKB() int          { return c.memDeltaKB }
-func (c *testIngestConfig) GetDiskDeltaKB() int         { return c.diskDeltaKB }
-func (c *testIngestConfig) GetSampleRate() float64      { return c.sampleRate }
+func (c *testIngestConfig) GetCPUDeltaPercent() float64      { return c.cpuDeltaPercent }
+func (c *testIngestConfig) GetMemDeltaKB() int               { return c.memDeltaKB }
+func (c *testIngestConfig) GetDiskDeltaKB() int              { return c.diskDeltaKB }
+func (c *testIngestConfig) GetSampleRate() float64           { return c.sampleRate }
+func (c *testIngestConfig) GetCPUThresholdPercent() float64  { return c.cpuThresholdPercent }
+func (c *testIngestConfig) GetMemThresholdPercent() float64  { return c.memThresholdPercent }
+func (c *testIngestConfig) GetDiskThresholdPercent() float64 { return c.diskThresholdPercent }
+func (c *testIngestConfig) GetResourceNotifyMinutes() int    { return 10 }
 
 // setupTestService creates a fully wired panel Service for testing.
 // It creates a test user (admin), registers a collector+app DB, and grants access.

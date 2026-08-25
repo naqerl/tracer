@@ -20,6 +20,17 @@ type Panel struct {
 	CPUDeltaPercent float64 `yaml:"cpu_delta_percent"`
 	MemDeltaKB      int     `yaml:"mem_delta_kb"`
 	DiskDeltaKB     int     `yaml:"disk_delta_kb"`
+
+	// Resource alert thresholds: percentage above which a notification fires.
+	// 0 means disabled.
+	CPUThresholdPercent  float64 `yaml:"cpu_threshold_percent"`
+	MemThresholdPercent  float64 `yaml:"mem_threshold_percent"`
+	DiskThresholdPercent float64 `yaml:"disk_threshold_percent"`
+
+	// Resource notify period: minimum minutes between resource notifications
+	// per collector+resource while a breach persists. 0 means notify on every
+	// stats save.
+	ResourceNotifyMinutes int `yaml:"resource_notify_minutes"`
 }
 
 // Config wraps Panel with thread-safe access via RWMutex.
@@ -39,6 +50,11 @@ const (
 	defaultCPUDeltaPercent = 1.0
 	defaultMemDeltaKB      = 64
 	defaultDiskDeltaKB     = 1024
+
+	defaultCPUThresholdPercent   = 0.0 // disabled
+	defaultMemThresholdPercent   = 0.0
+	defaultDiskThresholdPercent  = 0.0
+	defaultResourceNotifyMinutes = 10
 )
 
 func DataDir() string {
@@ -50,14 +66,18 @@ func DataDir() string {
 
 func Default() Panel {
 	return Panel{
-		Port:            defaultPort,
-		DataDir:         DataDir(),
-		SampleRate:      defaultSampleRate,
-		RetentionDays:   defaultRetentionDays,
-		Host:            "",
-		CPUDeltaPercent: defaultCPUDeltaPercent,
-		MemDeltaKB:      defaultMemDeltaKB,
-		DiskDeltaKB:     defaultDiskDeltaKB,
+		Port:                  defaultPort,
+		DataDir:               DataDir(),
+		SampleRate:            defaultSampleRate,
+		RetentionDays:         defaultRetentionDays,
+		Host:                  "",
+		CPUDeltaPercent:       defaultCPUDeltaPercent,
+		MemDeltaKB:            defaultMemDeltaKB,
+		DiskDeltaKB:           defaultDiskDeltaKB,
+		CPUThresholdPercent:   defaultCPUThresholdPercent,
+		MemThresholdPercent:   defaultMemThresholdPercent,
+		DiskThresholdPercent:  defaultDiskThresholdPercent,
+		ResourceNotifyMinutes: defaultResourceNotifyMinutes,
 	}
 }
 
@@ -202,6 +222,58 @@ func (c *Config) SetDiskDeltaKB(v int) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.data.DiskDeltaKB = v
+	c.persist()
+}
+
+func (c *Config) GetCPUThresholdPercent() float64 {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.data.CPUThresholdPercent
+}
+
+func (c *Config) GetMemThresholdPercent() float64 {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.data.MemThresholdPercent
+}
+
+func (c *Config) GetDiskThresholdPercent() float64 {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.data.DiskThresholdPercent
+}
+
+func (c *Config) SetCPUThresholdPercent(v float64) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.data.CPUThresholdPercent = v
+	c.persist()
+}
+
+func (c *Config) SetMemThresholdPercent(v float64) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.data.MemThresholdPercent = v
+	c.persist()
+}
+
+func (c *Config) SetDiskThresholdPercent(v float64) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.data.DiskThresholdPercent = v
+	c.persist()
+}
+
+func (c *Config) GetResourceNotifyMinutes() int {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.data.ResourceNotifyMinutes
+}
+
+func (c *Config) SetResourceNotifyMinutes(v int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.data.ResourceNotifyMinutes = v
 	c.persist()
 }
 
