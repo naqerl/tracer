@@ -11,7 +11,7 @@ on:
 
 jobs:
   build:
-    name: Build and Lint
+    name: Release
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
