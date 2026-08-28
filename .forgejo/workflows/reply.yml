@@ -6,7 +6,7 @@ on:
 
 jobs:
   reply:
-    runs-on: debian
+    runs-on: agent-debian
     steps:
       - name: Install Go
         run: |
