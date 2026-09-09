@@ -75,7 +75,8 @@ func (r RegisterRequest) Validate() error {
 }
 
 type GenerateCollectorAPIKeyRequest struct {
-	Name string
+	Name   string
+	UserID int64
 }
 
 func (r GenerateCollectorAPIKeyRequest) Validate() error {
@@ -109,6 +110,7 @@ type APIKey struct {
 // CollectorAPIKey is the service-layer view of a stored collector API key.
 type CollectorAPIKey struct {
 	APIKey
+	UserID int64
 }
 
 // UserAPIKey is the service-layer view of a stored user API key.
@@ -440,6 +442,7 @@ func (s *Service) GenerateCollectorAPIKey(ctx context.Context, actor domain.Acto
 			KeyHash:      hashAPIKey(key),
 			KeyEncrypted: encrypted,
 			CreatedAt:    time.Now().UTC().Unix(),
+			UserID:       req.UserID,
 		})
 		return err
 	})
@@ -447,7 +450,7 @@ func (s *Service) GenerateCollectorAPIKey(ctx context.Context, actor domain.Acto
 		return GeneratedCollectorAPIKey{}, fmt.Errorf("create collector api key: %w", err)
 	}
 
-	slog.Info("Collector API key created", "name", req.Name)
+	slog.Info("Collector API key created", "name", req.Name, "user_id", req.UserID)
 	return GeneratedCollectorAPIKey{Key: collectorAPIKeyFromRow(row), Plaintext: key}, nil
 }
 
@@ -516,30 +519,37 @@ func (s *Service) DeleteCollectorAPIKey(ctx context.Context, actor domain.Actor,
 	})
 }
 
-func (s *Service) ValidateCollectorAPIKey(ctx context.Context, key string) (bool, error) {
+func (s *Service) ValidateCollectorAPIKey(ctx context.Context, key string) (int64, error) {
 	if key == "" {
-		return false, nil
+		return 0, ErrInvalidCredentials
 	}
 
-	var rows int64
+	keyHash := hashAPIKey(key)
+
+	// Look up the key to resolve the user.
+	var result db.ValidateAndUpdateCollectorAPIKeyRow
 	err := s.handle.Write(ctx, func(tx db.DBTX) error {
-		result, err := db.New(tx).ValidateAndUpdateCollectorAPIKey(ctx, db.ValidateAndUpdateCollectorAPIKeyParams{
-			LastUsedAt: sql.NullInt64{Int64: time.Now().UTC().Unix(), Valid: true},
-			KeyHash:    hashAPIKey(key),
-		})
-		if err != nil {
-			return err
-		}
-		rows = result
-		return nil
+		var err error
+		result, err = db.New(tx).ValidateAndUpdateCollectorAPIKey(ctx, keyHash)
+		return err
 	})
 	if err != nil {
-		return false, err
+		if errors.Is(err, sql.ErrNoRows) {
+			return 0, ErrInvalidCredentials
+		}
+		return 0, fmt.Errorf("could not validate collector api key: %w", err)
 	}
-	if rows == 0 {
-		return false, nil
-	}
-	return true, nil
+
+	// Touch last_used_at in the background (best-effort).
+	s.handle.Write(ctx, func(tx db.DBTX) error {
+		_, err := db.New(tx).TouchCollectorAPIKey(ctx, db.TouchCollectorAPIKeyParams{
+			LastUsedAt: sql.NullInt64{Int64: time.Now().UTC().Unix(), Valid: true},
+			KeyHash:    keyHash,
+		})
+		return err
+	})
+
+	return result.UserID, nil
 }
 
 // User API Key management (LLM compatibility)
@@ -715,6 +725,7 @@ func (s *Service) GenerateUserAPIKey(ctx context.Context, actor domain.Actor, re
 func collectorAPIKeyFromRow(row db.CollectorApiKey) CollectorAPIKey {
 	return CollectorAPIKey{
 		APIKey: apiKeyFromRow(row.ID, row.Name, row.CreatedAt, row.LastUsedAt, row.KeyEncrypted),
+		UserID: row.UserID,
 	}
 }
 

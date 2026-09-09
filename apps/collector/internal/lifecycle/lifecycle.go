@@ -5,7 +5,6 @@ import (
 	"regexp"
 	"strings"
 
-	collectorconfig "tracer/apps/collector/internal/config"
 	"tracer/libs/types"
 )
 
@@ -17,8 +16,8 @@ type Detector struct {
 	exit    *regexp.Regexp
 }
 
-// New creates a lifecycle detector from app lifecycle config.
-func New(spec collectorconfig.LifecycleSpec) (Detector, error) {
+// New creates a lifecycle detector from a shared LifecycleSpec.
+func New(spec types.LifecycleSpec) (Detector, error) {
 	var d Detector
 	if err := d.RegisterPattern(types.LifecycleStart, spec.StartPattern); err != nil {
 		return Detector{}, err

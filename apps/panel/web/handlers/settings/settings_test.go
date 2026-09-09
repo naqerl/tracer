@@ -21,6 +21,7 @@ import (
 	ingestsvc "tracer/apps/panel/internal/services/ingest"
 	notifysvc "tracer/apps/panel/internal/services/notify"
 	"tracer/apps/panel/internal/services/notify/forgejo"
+	panelsvc "tracer/apps/panel/internal/services/panel"
 	usersvc "tracer/apps/panel/internal/services/user"
 	"tracer/apps/panel/internal/testutil"
 	authmw "tracer/apps/panel/web/middleware/auth"
@@ -31,19 +32,19 @@ import (
 // registers a user (admin or not). It returns the handler, the auth service
 // (to create API keys), the panel DB handle (for direct inserts) and a session
 // token cookie.
-func newAuthedHandler(t *testing.T, isAdmin, readOnly bool) (http.Handler, *authsvc.Service, *dbmanager.DBHandle, string) {
-	h, a, d, tok, _ := newAuthedHandlerWithFactories(t, isAdmin, readOnly, map[string]notifysvc.FromRawJSON{})
+func newAuthedHandler(t *testing.T, isAdmin bool) (http.Handler, *authsvc.Service, *dbmanager.DBHandle, string) {
+	h, a, d, tok, _ := newAuthedHandlerWithFactories(t, isAdmin, map[string]notifysvc.FromRawJSON{})
 	return h, a, d, tok
 }
 
-func newAuthedHandlerWithFactories(t *testing.T, isAdmin, readOnly bool, factories map[string]notifysvc.FromRawJSON) (http.Handler, *authsvc.Service, *dbmanager.DBHandle, string, *notifysvc.Service) {
-	h, a, d, tok, n, _ := newAuthedHandlerWithFactoriesAndManager(t, isAdmin, readOnly, factories)
+func newAuthedHandlerWithFactories(t *testing.T, isAdmin bool, factories map[string]notifysvc.FromRawJSON) (http.Handler, *authsvc.Service, *dbmanager.DBHandle, string, *notifysvc.Service) {
+	h, a, d, tok, n, _ := newAuthedHandlerWithFactoriesAndManager(t, isAdmin, factories)
 	return h, a, d, tok, n
 }
 
 // newAuthedHandlerWithFactoriesAndManager additionally returns the dbmanager
 // so tests can seed collector/app databases for subscription pages.
-func newAuthedHandlerWithFactoriesAndManager(t *testing.T, isAdmin, readOnly bool, factories map[string]notifysvc.FromRawJSON) (http.Handler, *authsvc.Service, *dbmanager.DBHandle, string, *notifysvc.Service, *dbmanager.Manager) {
+func newAuthedHandlerWithFactoriesAndManager(t *testing.T, isAdmin bool, factories map[string]notifysvc.FromRawJSON) (http.Handler, *authsvc.Service, *dbmanager.DBHandle, string, *notifysvc.Service, *dbmanager.Manager) {
 	t.Helper()
 
 	db := testutil.NewTestDB(t)
@@ -87,7 +88,8 @@ func newAuthedHandlerWithFactoriesAndManager(t *testing.T, isAdmin, readOnly boo
 	notifyService := notifysvc.New(db, userService, dbMgr, factories)
 
 	mux := http.NewServeMux()
-	mux.Handle("/settings/", http.StripPrefix("/settings", InitMux(authService, userService, ingestService, dbMgr, notifyService, cfg, readOnly)))
+	panelService := panelsvc.New(dbMgr, ingestService, ingestsvc.NewTracker(), userService, nil, nil)
+	mux.Handle("/settings/", http.StripPrefix("/settings", InitMux(authService, userService, ingestService, dbMgr, notifyService, cfg, panelService)))
 	handler := authmw.BuildAuthMiddleware(authService, userService)(mux)
 
 	return handler, authService, db, token, notifyService, dbMgr
@@ -122,7 +124,7 @@ func collectorKeyID(t *testing.T, authService *authsvc.Service, name string) int
 }
 
 func TestRevealCollectorAPIKeyReturnsPlaintextForAdmin(t *testing.T) {
-	handler, authService, _, token := newAuthedHandler(t, true, false)
+	handler, authService, _, token := newAuthedHandler(t, true)
 
 	created, err := authService.GenerateCollectorAPIKey(t.Context(), domain.System{}, authsvc.GenerateCollectorAPIKeyRequest{Name: "prod-a"})
 	if err != nil {
@@ -144,7 +146,7 @@ func TestRevealCollectorAPIKeyReturnsPlaintextForAdmin(t *testing.T) {
 }
 
 func TestRevealCollectorAPIKeyHidesPlaintextForAdmin(t *testing.T) {
-	handler, authService, _, token := newAuthedHandler(t, true, false)
+	handler, authService, _, token := newAuthedHandler(t, true)
 
 	created, err := authService.GenerateCollectorAPIKey(t.Context(), domain.System{}, authsvc.GenerateCollectorAPIKeyRequest{Name: "prod-a"})
 	if err != nil {
@@ -166,7 +168,7 @@ func TestRevealCollectorAPIKeyHidesPlaintextForAdmin(t *testing.T) {
 }
 
 func TestRevealCollectorAPIKeyForbiddenForNonAdmin(t *testing.T) {
-	handler, authService, _, token := newAuthedHandler(t, false, false)
+	handler, authService, _, token := newAuthedHandler(t, false)
 
 	if _, err := authService.GenerateCollectorAPIKey(t.Context(), domain.System{}, authsvc.GenerateCollectorAPIKeyRequest{Name: "prod-a"}); err != nil {
 		t.Fatalf("generate collector api key: %v", err)
@@ -181,7 +183,7 @@ func TestRevealCollectorAPIKeyForbiddenForNonAdmin(t *testing.T) {
 }
 
 func TestRevealCollectorAPIKeyNotFound(t *testing.T) {
-	handler, _, _, token := newAuthedHandler(t, true, false)
+	handler, _, _, token := newAuthedHandler(t, true)
 
 	rr := httptest.NewRecorder()
 	handler.ServeHTTP(rr, revealRequest(999999, token, true))
@@ -192,7 +194,7 @@ func TestRevealCollectorAPIKeyNotFound(t *testing.T) {
 }
 
 func TestCollectorAPIKeyDetailPageDoesNotLeakPlaintext(t *testing.T) {
-	handler, authService, _, token := newAuthedHandler(t, true, false)
+	handler, authService, _, token := newAuthedHandler(t, true)
 
 	created, err := authService.GenerateCollectorAPIKey(t.Context(), domain.System{}, authsvc.GenerateCollectorAPIKeyRequest{Name: "prod-a"})
 	if err != nil {
@@ -215,33 +217,9 @@ func TestCollectorAPIKeyDetailPageDoesNotLeakPlaintext(t *testing.T) {
 	}
 }
 
-func TestCollectorAPIKeyDetailPageReadOnlyHidesRevealButton(t *testing.T) {
-	handler, authService, _, token := newAuthedHandler(t, true, true)
-
-	if _, err := authService.GenerateCollectorAPIKey(t.Context(), domain.System{}, authsvc.GenerateCollectorAPIKeyRequest{Name: "prod-a"}); err != nil {
-		t.Fatalf("generate collector api key: %v", err)
-	}
-
-	req := httptest.NewRequest(http.MethodGet, "/settings/admin/collector-api-keys/"+strconv.FormatInt(collectorKeyID(t, authService, "prod-a"), 10), nil)
-	req.AddCookie(&http.Cookie{Name: "tracer_session", Value: token})
-	rr := httptest.NewRecorder()
-	handler.ServeHTTP(rr, req)
-
-	if rr.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", rr.Code)
-	}
-	body := rr.Body.String()
-	if strings.Contains(body, "/reveal") {
-		t.Fatal("expected no reveal button in read-only detail page")
-	}
-	if !strings.Contains(body, "Read-only") {
-		t.Fatalf("expected read-only indicator, got %q", body)
-	}
-}
-
 func TestRevealCollectorAPIKeyLegacyFragmentShowsNotRevealable(t *testing.T) {
 	ctx := t.Context()
-	handler, authService, db, token := newAuthedHandler(t, true, false)
+	handler, authService, db, token := newAuthedHandler(t, true)
 
 	// Simulate a key created before reveal support: empty ciphertext.
 	if err := db.Write(ctx, func(tx paneldb.DBTX) error {
@@ -272,7 +250,7 @@ func TestRevealCollectorAPIKeyLegacyFragmentShowsNotRevealable(t *testing.T) {
 
 func TestRevealCollectorAPIKeyDecryptFailureShowsError(t *testing.T) {
 	ctx := t.Context()
-	handler, authService, db, token := newAuthedHandler(t, true, false)
+	handler, authService, db, token := newAuthedHandler(t, true)
 
 	// Insert a key with garbage ciphertext so decryption fails.
 	if err := db.Write(ctx, func(tx paneldb.DBTX) error {
@@ -368,7 +346,7 @@ func revealAsAdmin(t *testing.T, authService *authsvc.Service, token string, id 
 }
 
 func TestRevealUserAPIKeyReturnsPlaintextForOwner(t *testing.T) {
-	handler, authService, _, token := newAuthedHandler(t, true, false)
+	handler, authService, _, token := newAuthedHandler(t, true)
 
 	id := userAPIKeyID(t, authService, token, "my-key")
 	plaintext := revealAsAdmin(t, authService, token, id)
@@ -388,7 +366,7 @@ func TestRevealUserAPIKeyReturnsPlaintextForOwner(t *testing.T) {
 }
 
 func TestRevealUserAPIKeyHidesPlaintextForOwner(t *testing.T) {
-	handler, authService, _, token := newAuthedHandler(t, true, false)
+	handler, authService, _, token := newAuthedHandler(t, true)
 
 	id := userAPIKeyID(t, authService, token, "my-key")
 	plaintext := revealAsAdmin(t, authService, token, id)
@@ -408,7 +386,7 @@ func TestRevealUserAPIKeyHidesPlaintextForOwner(t *testing.T) {
 }
 
 func TestRevealUserAPIKeyForbiddenForNonOwner(t *testing.T) {
-	handler, authService, _, token := newAuthedHandler(t, false, false)
+	handler, authService, _, token := newAuthedHandler(t, false)
 
 	id := userAPIKeyID(t, authService, token, "alice-key")
 
@@ -431,7 +409,7 @@ func TestRevealUserAPIKeyForbiddenForNonOwner(t *testing.T) {
 }
 
 func TestRevealUserAPIKeyNotFound(t *testing.T) {
-	handler, _, _, token := newAuthedHandler(t, true, false)
+	handler, _, _, token := newAuthedHandler(t, true)
 
 	rr := httptest.NewRecorder()
 	handler.ServeHTTP(rr, userAPIKeyRevealRequest(999999, token, true))
@@ -442,7 +420,7 @@ func TestRevealUserAPIKeyNotFound(t *testing.T) {
 }
 
 func TestUserAPIKeyDetailPageDoesNotLeakPlaintext(t *testing.T) {
-	handler, authService, _, token := newAuthedHandler(t, true, false)
+	handler, authService, _, token := newAuthedHandler(t, true)
 
 	id := userAPIKeyID(t, authService, token, "my-key")
 	plaintext := revealAsAdmin(t, authService, token, id)
@@ -467,30 +445,8 @@ func TestUserAPIKeyDetailPageDoesNotLeakPlaintext(t *testing.T) {
 	}
 }
 
-func TestUserAPIKeyDetailPageReadOnlyHidesRevealButton(t *testing.T) {
-	handler, authService, _, token := newAuthedHandler(t, true, true)
-
-	id := userAPIKeyID(t, authService, token, "my-key")
-
-	req := httptest.NewRequest(http.MethodGet, "/settings/api-keys/"+strconv.FormatInt(id, 10), nil)
-	req.AddCookie(&http.Cookie{Name: "tracer_session", Value: token})
-	rr := httptest.NewRecorder()
-	handler.ServeHTTP(rr, req)
-
-	if rr.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", rr.Code)
-	}
-	body := rr.Body.String()
-	if strings.Contains(body, "/reveal") {
-		t.Fatal("expected no reveal button in read-only detail page")
-	}
-	if !strings.Contains(body, "Read-only") {
-		t.Fatalf("expected read-only indicator, got %q", body)
-	}
-}
-
 func TestAPIKeyEndpointsRedirectUnauthenticated(t *testing.T) {
-	handler, authService, _, token := newAuthedHandler(t, true, false)
+	handler, authService, _, token := newAuthedHandler(t, true)
 
 	id := userAPIKeyID(t, authService, token, "my-key")
 
@@ -522,7 +478,7 @@ func TestAPIKeyEndpointsRedirectUnauthenticated(t *testing.T) {
 }
 
 func TestCreateCollectorAPIKeyRedirectsToDetailPage(t *testing.T) {
-	handler, _, _, token := newAuthedHandler(t, true, false)
+	handler, _, _, token := newAuthedHandler(t, true)
 
 	// The settings forms use hx-post, so the real browser flow is the
 	// HX-Redirect path: 200 + HX-Redirect header, not a 303.
@@ -556,7 +512,7 @@ func TestCreateCollectorAPIKeyRedirectsToDetailPage(t *testing.T) {
 }
 
 func TestCreateUserAPIKeyRedirectsToDetailPage(t *testing.T) {
-	handler, _, _, token := newAuthedHandler(t, false, false)
+	handler, _, _, token := newAuthedHandler(t, false)
 
 	// The settings forms use hx-post, so the real browser flow is the
 	// HX-Redirect path: 200 + HX-Redirect header, not a 303.
@@ -590,7 +546,7 @@ func TestCreateUserAPIKeyRedirectsToDetailPage(t *testing.T) {
 }
 
 func TestCollectorAPIKeyCreateDeleteForbiddenForNonAdmin(t *testing.T) {
-	handler, _, _, token := newAuthedHandler(t, false, false)
+	handler, _, _, token := newAuthedHandler(t, false)
 
 	create := httptest.NewRequest(http.MethodPost, "/settings/admin/collector-api-keys", strings.NewReader("name=prod-a"))
 	create.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -613,7 +569,7 @@ func TestCollectorAPIKeyCreateDeleteForbiddenForNonAdmin(t *testing.T) {
 }
 
 func TestUserAPIKeyDetailPageNotFoundForNonOwner(t *testing.T) {
-	handler, authService, _, token := newAuthedHandler(t, false, false)
+	handler, authService, _, token := newAuthedHandler(t, false)
 
 	// alice owns a key; bob must get 404 (not 403) on her detail page so key
 	// existence is not revealed.
@@ -640,7 +596,7 @@ func TestUserAPIKeyDetailPageNotFoundForNonOwner(t *testing.T) {
 
 func TestRevealUserAPIKeyLegacyShowsNotRevealable(t *testing.T) {
 	ctx := t.Context()
-	handler, authService, db, token := newAuthedHandler(t, true, false)
+	handler, authService, db, token := newAuthedHandler(t, true)
 
 	userID, _, err := authService.ValidateSession(t.Context(), token)
 	if err != nil {
@@ -678,7 +634,7 @@ func TestRevealUserAPIKeyLegacyShowsNotRevealable(t *testing.T) {
 
 func TestRevealUserAPIKeyDecryptFailureShowsError(t *testing.T) {
 	ctx := t.Context()
-	handler, authService, db, token := newAuthedHandler(t, true, false)
+	handler, authService, db, token := newAuthedHandler(t, true)
 
 	userID, _, err := authService.ValidateSession(t.Context(), token)
 	if err != nil {
@@ -719,7 +675,7 @@ func TestRevealUserAPIKeyDecryptFailureShowsError(t *testing.T) {
 // the agent prompt block with the configured host, a copy-paste curl pointing
 // at the /panel route, and a copy button.
 func TestUserAPIKeyDetailShowsUsage(t *testing.T) {
-	handler, authService, _, token := newAuthedHandler(t, true, false)
+	handler, authService, _, token := newAuthedHandler(t, true)
 
 	id := userAPIKeyID(t, authService, token, "my-key")
 
@@ -746,7 +702,7 @@ func TestUserAPIKeyDetailShowsUsage(t *testing.T) {
 }
 
 func TestUserAPIKeyTableLinksToDetailPage(t *testing.T) {
-	handler, authService, _, token := newAuthedHandler(t, true, false)
+	handler, authService, _, token := newAuthedHandler(t, true)
 	id := userAPIKeyID(t, authService, token, "my-key")
 
 	req := httptest.NewRequest(http.MethodGet, "/settings/", nil)
@@ -769,7 +725,7 @@ func TestUserAPIKeyTableLinksToDetailPage(t *testing.T) {
 }
 
 func TestSettingsPageShowsVersionFooter(t *testing.T) {
-	handler, _, _, token := newAuthedHandler(t, true, false)
+	handler, _, _, token := newAuthedHandler(t, true)
 
 	req := httptest.NewRequest(http.MethodGet, "/settings/", nil)
 	req.AddCookie(&http.Cookie{Name: "tracer_session", Value: token})
@@ -793,7 +749,7 @@ func TestSettingsPageShowsVersionFooter(t *testing.T) {
 // submit the user form, then navigate to the user's detail page where the
 // info grid and the disabled-by-default app scope tree are shown.
 func TestCreateUserRedirectsToDetailPage(t *testing.T) {
-	handler, _, _, token := newAuthedHandler(t, true, false)
+	handler, _, _, token := newAuthedHandler(t, true)
 
 	// htmx POST (forms use hx-post) → HX-Redirect to the new user's detail page.
 	req := httptest.NewRequest(http.MethodPost, "/settings/users", strings.NewReader("username=bob&password=secret123"))
@@ -880,7 +836,7 @@ func TestCreateForgejoNotifier(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	handler, _, _, token, notifyService := newAuthedHandlerWithFactories(t, true, false, map[string]notifysvc.FromRawJSON{
+	handler, _, _, token, notifyService := newAuthedHandlerWithFactories(t, true, map[string]notifysvc.FromRawJSON{
 		"forgejo": func(name, config string) (notifysvc.Notifier, error) {
 			return forgejo.New(name, config, forgejo.NewCache(time.Minute))
 		},
@@ -918,7 +874,7 @@ func TestCreateForgejoNotifier(t *testing.T) {
 
 func TestNotifierDetailPageMasksForgejoToken(t *testing.T) {
 	srv := forgejoTestServer(t)
-	handler, _, _, token, _ := newAuthedHandlerWithFactories(t, true, false, map[string]notifysvc.FromRawJSON{
+	handler, _, _, token, _ := newAuthedHandlerWithFactories(t, true, map[string]notifysvc.FromRawJSON{
 		"forgejo": func(name, config string) (notifysvc.Notifier, error) {
 			return forgejo.New(name, config, forgejo.NewCache(time.Minute))
 		},
@@ -956,7 +912,7 @@ func TestNotifierDetailPageMasksForgejoToken(t *testing.T) {
 
 func TestNotifierDetailPageShowsAppSubscriptions(t *testing.T) {
 	srv := forgejoTestServer(t)
-	handler, _, _, token, notifyService, dbMgr := newAuthedHandlerWithFactoriesAndManager(t, true, false, map[string]notifysvc.FromRawJSON{
+	handler, _, _, token, notifyService, dbMgr := newAuthedHandlerWithFactoriesAndManager(t, true, map[string]notifysvc.FromRawJSON{
 		"forgejo": func(name, config string) (notifysvc.Notifier, error) {
 			return forgejo.New(name, config, forgejo.NewCache(time.Minute))
 		},
@@ -1042,49 +998,12 @@ func TestNotifierDetailPageShowsAppSubscriptions(t *testing.T) {
 	}
 }
 
-// TestNotifierDetailPageReadOnlyHidesMutationControls verifies the notifier
-// detail page hides the delete, toggle, and subscription form controls when the
-// panel runs in read-only mode.
-func TestNotifierDetailPageReadOnlyHidesMutationControls(t *testing.T) {
-	srv := forgejoTestServer(t)
-	handler, _, _, token, _ := newAuthedHandlerWithFactories(t, true, true, map[string]notifysvc.FromRawJSON{
-		"forgejo": func(name, config string) (notifysvc.Notifier, error) {
-			return forgejo.New(name, config, forgejo.NewCache(time.Minute))
-		},
-	})
-
-	body := fmt.Sprintf("type=forgejo&name=issues&base_url=%s&token=sekret&owner_repo=x/barse", srv.URL)
-	req := httptest.NewRequest(http.MethodPost, "/settings/notifiers", strings.NewReader(body))
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.AddCookie(&http.Cookie{Name: "tracer_session", Value: token})
-	rr := httptest.NewRecorder()
-	handler.ServeHTTP(rr, req)
-	if rr.Code != http.StatusSeeOther {
-		t.Fatalf("expected redirect after create, got %d (body: %s)", rr.Code, rr.Body.String())
-	}
-
-	detailReq := httptest.NewRequest(http.MethodGet, "/settings/notifiers/1", nil)
-	detailReq.AddCookie(&http.Cookie{Name: "tracer_session", Value: token})
-	detailRR := httptest.NewRecorder()
-	handler.ServeHTTP(detailRR, detailReq)
-	if detailRR.Code != http.StatusOK {
-		t.Fatalf("expected 200 for notifier detail, got %d (body: %s)", detailRR.Code, detailRR.Body.String())
-	}
-
-	out := detailRR.Body.String()
-	for _, forbidden := range []string{"hx-delete", "hx-put", `data-action="toggle-scope-collector"`, ">Save Changes</button>"} {
-		if strings.Contains(out, forbidden) {
-			t.Errorf("expected no %s in read-only notifier detail page, got: %s", forbidden, out)
-		}
-	}
-}
-
 // TestUserAppsUsesSharedScopeTree verifies the user detail page renders the
 // same hierarchical scope tree as notifier subscriptions (full page with back
 // link and info grid, shared ScopeTree component), with unchecked apps
 // submitting nothing (so by default no access is granted).
 func TestUserAppsUsesSharedScopeTree(t *testing.T) {
-	handler, authService, _, token, _, dbMgr := newAuthedHandlerWithFactoriesAndManager(t, true, false, map[string]notifysvc.FromRawJSON{})
+	handler, authService, _, token, _, dbMgr := newAuthedHandlerWithFactoriesAndManager(t, true, map[string]notifysvc.FromRawJSON{})
 
 	if _, err := dbMgr.CreateAppDB("prod", "api"); err != nil {
 		t.Fatalf("create prod/api app db: %v", err)
@@ -1150,36 +1069,9 @@ func TestUserAppsUsesSharedScopeTree(t *testing.T) {
 	}
 }
 
-// TestUserDetailPageReadOnlyHidesMutationControls verifies the user detail page
-// hides the delete button and the permission form when the panel runs in
-// read-only mode.
-func TestUserDetailPageReadOnlyHidesMutationControls(t *testing.T) {
-	handler, authService, _, token := newAuthedHandler(t, true, true)
-
-	target, err := authService.Register(t.Context(), authsvc.RegisterRequest{Username: "bob", Password: "secret", IsAdmin: false})
-	if err != nil {
-		t.Fatalf("register bob: %v", err)
-	}
-
-	req := httptest.NewRequest(http.MethodGet, "/settings/users/"+strconv.FormatInt(target.ID, 10), nil)
-	req.AddCookie(&http.Cookie{Name: "tracer_session", Value: token})
-	rr := httptest.NewRecorder()
-	handler.ServeHTTP(rr, req)
-	if rr.Code != http.StatusOK {
-		t.Fatalf("expected 200 for user detail, got %d (body: %s)", rr.Code, rr.Body.String())
-	}
-
-	out := rr.Body.String()
-	for _, forbidden := range []string{"hx-delete", `data-action="toggle-scope-collector"`, ">Save Changes</button>"} {
-		if strings.Contains(out, forbidden) {
-			t.Errorf("expected no %s in read-only user detail page, got: %s", forbidden, out)
-		}
-	}
-}
-
 func TestCreateForgejoNotifierWithoutLabelsOrMilestone(t *testing.T) {
 	srv := forgejoTestServer(t)
-	handler, _, _, token, notifyService := newAuthedHandlerWithFactories(t, true, false, map[string]notifysvc.FromRawJSON{
+	handler, _, _, token, notifyService := newAuthedHandlerWithFactories(t, true, map[string]notifysvc.FromRawJSON{
 		"forgejo": func(name, config string) (notifysvc.Notifier, error) {
 			return forgejo.New(name, config, forgejo.NewCache(time.Minute))
 		},
@@ -1206,7 +1098,7 @@ func TestCreateForgejoNotifierWithoutLabelsOrMilestone(t *testing.T) {
 }
 
 func TestCreateForgejoNotifierMissingFields(t *testing.T) {
-	handler, _, _, token := newAuthedHandler(t, true, false)
+	handler, _, _, token := newAuthedHandler(t, true)
 
 	body := "type=forgejo&name=issues&base_url=https://git.naqerl.com&token=sekret&owner_repo=x"
 	req := httptest.NewRequest(http.MethodPost, "/settings/notifiers", strings.NewReader(body))
@@ -1262,7 +1154,7 @@ func forgejoTestServer(t *testing.T) *httptest.Server {
 
 func TestForgejoLookupReturnsOwnerRepos(t *testing.T) {
 	srv := forgejoTestServer(t)
-	handler, _, _, token, _ := newAuthedHandlerWithFactories(t, true, false, map[string]notifysvc.FromRawJSON{})
+	handler, _, _, token, _ := newAuthedHandlerWithFactories(t, true, map[string]notifysvc.FromRawJSON{})
 
 	body := fmt.Sprintf("base_url=%s&token=sekret", srv.URL)
 	req := httptest.NewRequest(http.MethodPost, "/settings/notifiers/forgejo/lookup", strings.NewReader(body))
@@ -1309,7 +1201,7 @@ func TestForgejoLookupUnauthorizedShowsError(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	handler, _, _, token, _ := newAuthedHandlerWithFactories(t, true, false, map[string]notifysvc.FromRawJSON{})
+	handler, _, _, token, _ := newAuthedHandlerWithFactories(t, true, map[string]notifysvc.FromRawJSON{})
 
 	body := fmt.Sprintf("base_url=%s&token=badtoken", srv.URL)
 	req := httptest.NewRequest(http.MethodPost, "/settings/notifiers/forgejo/lookup", strings.NewReader(body))
@@ -1331,7 +1223,7 @@ func TestForgejoLookupUnauthorizedShowsError(t *testing.T) {
 }
 
 func TestForgejoLookupMissingFields(t *testing.T) {
-	handler, _, _, token, _ := newAuthedHandlerWithFactories(t, true, false, map[string]notifysvc.FromRawJSON{})
+	handler, _, _, token, _ := newAuthedHandlerWithFactories(t, true, map[string]notifysvc.FromRawJSON{})
 
 	req := httptest.NewRequest(http.MethodPost, "/settings/notifiers/forgejo/lookup", strings.NewReader("base_url=https://git.naqerl.com"))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -1345,7 +1237,7 @@ func TestForgejoLookupMissingFields(t *testing.T) {
 }
 
 func TestForgejoFormInitialStateAndFetchingIndicator(t *testing.T) {
-	handler, _, _, token, _ := newAuthedHandlerWithFactories(t, true, false, map[string]notifysvc.FromRawJSON{})
+	handler, _, _, token, _ := newAuthedHandlerWithFactories(t, true, map[string]notifysvc.FromRawJSON{})
 
 	req := httptest.NewRequest(http.MethodGet, "/settings/notifiers/new?type=forgejo", nil)
 	req.AddCookie(&http.Cookie{Name: "tracer_session", Value: token})
@@ -1394,7 +1286,7 @@ func TestForgejoFormInitialStateAndFetchingIndicator(t *testing.T) {
 }
 
 func TestNotifierFormsHaveInputLabels(t *testing.T) {
-	handler, _, _, token, _ := newAuthedHandlerWithFactories(t, true, false, map[string]notifysvc.FromRawJSON{})
+	handler, _, _, token, _ := newAuthedHandlerWithFactories(t, true, map[string]notifysvc.FromRawJSON{})
 
 	for _, tc := range []struct {
 		typ    string
@@ -1422,7 +1314,7 @@ func TestNotifierFormsHaveInputLabels(t *testing.T) {
 
 func TestForgejoOptionsLoadsSelects(t *testing.T) {
 	srv := forgejoTestServer(t)
-	handler, _, _, token, _ := newAuthedHandlerWithFactories(t, true, false, map[string]notifysvc.FromRawJSON{})
+	handler, _, _, token, _ := newAuthedHandlerWithFactories(t, true, map[string]notifysvc.FromRawJSON{})
 
 	body := fmt.Sprintf("base_url=%s&token=sekret&owner_repo=x/barse", srv.URL)
 	req := httptest.NewRequest(http.MethodPost, "/settings/notifiers/forgejo/options", strings.NewReader(body))
@@ -1500,7 +1392,7 @@ func TestForgejoOptionsDisablesEmptyLabelsAndMilestones(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	handler, _, _, token, _ := newAuthedHandlerWithFactories(t, true, false, map[string]notifysvc.FromRawJSON{})
+	handler, _, _, token, _ := newAuthedHandlerWithFactories(t, true, map[string]notifysvc.FromRawJSON{})
 
 	body := fmt.Sprintf("base_url=%s&token=sekret&owner_repo=x/barse", srv.URL)
 	req := httptest.NewRequest(http.MethodPost, "/settings/notifiers/forgejo/options", strings.NewReader(body))
@@ -1527,7 +1419,7 @@ func TestForgejoOptionsDisablesEmptyLabelsAndMilestones(t *testing.T) {
 
 func TestForgejoOptionsRejectsUnknownOwnerRepo(t *testing.T) {
 	srv := forgejoTestServer(t)
-	handler, _, _, token, _ := newAuthedHandlerWithFactories(t, true, false, map[string]notifysvc.FromRawJSON{})
+	handler, _, _, token, _ := newAuthedHandlerWithFactories(t, true, map[string]notifysvc.FromRawJSON{})
 
 	body := fmt.Sprintf("base_url=%s&token=sekret&owner_repo=ghost/nope", srv.URL)
 	req := httptest.NewRequest(http.MethodPost, "/settings/notifiers/forgejo/options", strings.NewReader(body))
@@ -1550,7 +1442,7 @@ func TestForgejoOptionsRejectsUnknownOwnerRepo(t *testing.T) {
 
 func TestCreateForgejoNotifierRejectsUnknownOwnerRepo(t *testing.T) {
 	srv := forgejoTestServer(t)
-	handler, _, _, token, _ := newAuthedHandlerWithFactories(t, true, false, map[string]notifysvc.FromRawJSON{})
+	handler, _, _, token, _ := newAuthedHandlerWithFactories(t, true, map[string]notifysvc.FromRawJSON{})
 
 	body := fmt.Sprintf("type=forgejo&name=issues&base_url=%s&token=sekret&owner_repo=ghost/nope", srv.URL)
 	req := httptest.NewRequest(http.MethodPost, "/settings/notifiers", strings.NewReader(body))
@@ -1570,7 +1462,7 @@ func TestCreateForgejoNotifierRejectsUnknownOwnerRepo(t *testing.T) {
 
 func TestCreateForgejoNotifierRejectsUnknownLabel(t *testing.T) {
 	srv := forgejoTestServer(t)
-	handler, _, _, token, _ := newAuthedHandlerWithFactories(t, true, false, map[string]notifysvc.FromRawJSON{})
+	handler, _, _, token, _ := newAuthedHandlerWithFactories(t, true, map[string]notifysvc.FromRawJSON{})
 
 	body := fmt.Sprintf("type=forgejo&name=issues&base_url=%s&token=sekret&owner_repo=x/barse&labels=bug,ghost", srv.URL)
 	req := httptest.NewRequest(http.MethodPost, "/settings/notifiers", strings.NewReader(body))
@@ -1593,7 +1485,7 @@ func TestCreateForgejoNotifierRejectsUnknownLabel(t *testing.T) {
 
 func TestCreateForgejoNotifierRejectsUnknownMilestone(t *testing.T) {
 	srv := forgejoTestServer(t)
-	handler, _, _, token, _ := newAuthedHandlerWithFactories(t, true, false, map[string]notifysvc.FromRawJSON{})
+	handler, _, _, token, _ := newAuthedHandlerWithFactories(t, true, map[string]notifysvc.FromRawJSON{})
 
 	body := fmt.Sprintf("type=forgejo&name=issues&base_url=%s&token=sekret&owner_repo=x/barse&milestone_name=ghost", srv.URL)
 	req := httptest.NewRequest(http.MethodPost, "/settings/notifiers", strings.NewReader(body))
@@ -1615,7 +1507,7 @@ func TestCreateForgejoNotifierRejectsUnknownMilestone(t *testing.T) {
 }
 
 func TestNotifierFormsHaveRequiredAsterisks(t *testing.T) {
-	handler, _, _, token, _ := newAuthedHandlerWithFactories(t, true, false, map[string]notifysvc.FromRawJSON{})
+	handler, _, _, token, _ := newAuthedHandlerWithFactories(t, true, map[string]notifysvc.FromRawJSON{})
 
 	for _, tc := range []struct {
 		typ    string
@@ -1678,7 +1570,7 @@ func TestCreateForgejoNotifierRejectedByWelcomeValidation(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	handler, _, _, token, _ := newAuthedHandlerWithFactories(t, true, false, map[string]notifysvc.FromRawJSON{
+	handler, _, _, token, _ := newAuthedHandlerWithFactories(t, true, map[string]notifysvc.FromRawJSON{
 		"forgejo": func(name, config string) (notifysvc.Notifier, error) {
 			return forgejo.New(name, config, forgejo.NewCache(time.Minute))
 		},

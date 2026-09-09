@@ -9,11 +9,35 @@ type AppStatsProps struct {
 	Stats AppStatsData
 }
 
+// AppStatsData carries the log counts for the overview cards. HasLogs is
+// false when the app never received a log, in which case the counts render
+// as "N/A".
 type AppStatsData struct {
+	HasLogs  bool
 	Total    int64
 	Errors   int64
 	Warnings int64
 	Infos    int64
+}
+
+// statValue formats a log count, or "N/A" when the app has no logs.
+func statValue(hasLogs bool, v int64) string {
+	if !hasLogs {
+		return "N/A"
+	}
+	return strconv.FormatInt(v, 10)
+}
+
+// statClass returns the card accent for a log count, muted when the app has
+// no logs or the count is zero.
+func statClass(hasLogs bool, v int64, accent string) string {
+	if !hasLogs || v == 0 {
+		return "text-fg-secondary"
+	}
+	if accent == "" {
+		return "text-fg-secondary"
+	}
+	return accent
 }
 
 // AppStatsSkeleton renders placeholder stat cards matching AppStats (same
@@ -43,19 +67,19 @@ templ AppStats(props AppStatsProps) {
 		<h2 class="text-lg font-medium mb-4">Overview</h2>
 		<div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
 			<div class="bg-bg-secondary p-4 text-center">
-				<div class="text-2xl font-bold value-breath">{ strconv.FormatInt(props.Stats.Total, 10) }</div>
+				<div class={ "text-2xl font-bold value-breath " + statClass(props.Stats.HasLogs, props.Stats.Total, "") }>{ statValue(props.Stats.HasLogs, props.Stats.Total) }</div>
 				<div class="mt-2 text-xs text-fg-secondary">Total Logs</div>
 			</div>
 			<div class="bg-bg-secondary p-4 text-center">
-				<div class="text-2xl font-bold text-red-400 value-breath">{ strconv.FormatInt(props.Stats.Errors, 10) }</div>
+				<div class={ "text-2xl font-bold value-breath " + statClass(props.Stats.HasLogs, props.Stats.Errors, "text-red-400") }>{ statValue(props.Stats.HasLogs, props.Stats.Errors) }</div>
 				<div class="mt-2 text-xs text-fg-secondary">Errors</div>
 			</div>
 			<div class="bg-bg-secondary p-4 text-center">
-				<div class="text-2xl font-bold text-yellow-400 value-breath">{ strconv.FormatInt(props.Stats.Warnings, 10) }</div>
+				<div class={ "text-2xl font-bold value-breath " + statClass(props.Stats.HasLogs, props.Stats.Warnings, "text-yellow-400") }>{ statValue(props.Stats.HasLogs, props.Stats.Warnings) }</div>
 				<div class="mt-2 text-xs text-fg-secondary">Warnings</div>
 			</div>
 			<div class="bg-bg-secondary p-4 text-center">
-				<div class="text-2xl font-bold text-blue-400 value-breath">{ strconv.FormatInt(props.Stats.Infos, 10) }</div>
+				<div class={ "text-2xl font-bold value-breath " + statClass(props.Stats.HasLogs, props.Stats.Infos, "text-blue-400") }>{ statValue(props.Stats.HasLogs, props.Stats.Infos) }</div>
 				<div class="mt-2 text-xs text-fg-secondary">Info</div>
 			</div>
 		</div>

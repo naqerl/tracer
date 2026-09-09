@@ -2,6 +2,8 @@ package ingest
 
 import (
 	"context"
+	"encoding/json"
+	"io"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -9,9 +11,14 @@ import (
 
 	"github.com/google/uuid"
 
+	"tracer/apps/panel/internal/domain"
 	"tracer/apps/panel/internal/services/auth"
 	"tracer/apps/panel/internal/services/ingest"
-	topologysvc "tracer/apps/panel/internal/services/topology"
+	panelSvc "tracer/apps/panel/internal/services/panel"
+	topologySvc "tracer/apps/panel/internal/services/topology"
+	"tracer/apps/panel/internal/services/user"
+	"tracer/apps/panel/internal/transport"
+	"tracer/apps/panel/web/middleware"
 	"tracer/libs/types"
 	"tracer/libs/wsx"
 )
@@ -20,19 +27,27 @@ type handler struct {
 	authService   *auth.Service
 	ingestService *ingest.Service
 	tracker       *ingest.Tracker
-	topology      *topologysvc.Service
+	topology      *topologySvc.Service
+	panelService  *panelSvc.Service
+	userService   *user.Service
+	conns         *transport.Connections
 }
 
-func InitMux(authService *auth.Service, ingestService *ingest.Service, tracker *ingest.Tracker, topology *topologysvc.Service) *http.ServeMux {
+func InitMux(authService *auth.Service, ingestService *ingest.Service, tracker *ingest.Tracker, topology *topologySvc.Service, panelService *panelSvc.Service, userService *user.Service, conns *transport.Connections) *http.ServeMux {
 	m := http.NewServeMux()
 	h := &handler{
 		authService:   authService,
 		ingestService: ingestService,
 		tracker:       tracker,
 		topology:      topology,
+		panelService:  panelService,
+		userService:   userService,
+		conns:         conns,
 	}
 
 	m.HandleFunc("GET /ws", h.handleWebSocket)
+	m.HandleFunc("PUT /config/{collector}", h.putCollectorConfig)
+	m.HandleFunc("POST /format/{collector}", h.guessFormat)
 
 	return m
 }
@@ -46,6 +61,10 @@ func (h *handler) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 
 	connID := uuid.New().String()
 	remoteAddr := extractIP(r.RemoteAddr)
+
+	// Collector name once the connection registers, so we can drop it from
+	// the live-connection registry on disconnect.
+	var collectorName string
 
 	client, err := wsx.Upgrade(r.Context(), w, r,
 		wsx.WithReadLimit(10*1024*1024),
@@ -65,6 +84,9 @@ func (h *handler) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	defer func() {
 		client.Close()
 		h.tracker.Disconnect(connID)
+		if collectorName != "" {
+			h.conns.Remove(collectorName, client)
+		}
 		slog.Info("WebSocket disconnected", "remote", remoteAddr, "conn_id", connID)
 	}()
 
@@ -72,10 +94,14 @@ func (h *handler) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	for evt := range client.Recv() {
 		switch e := evt.(type) {
 		case types.RegisterEvent:
-			h.topology.Publish(topologysvc.Message{
+			h.topology.Publish(topologySvc.Message{
 				Register: &e,
 			})
-			h.handleRegistration(r.Context(), connID, remoteAddr, e)
+			collectorName = e.Collector
+			h.conns.Add(collectorName, client)
+			h.handleRegistration(r.Context(), client, connID, remoteAddr, e)
+		case types.FormatResultEvent:
+			h.conns.HandleFormatResult(e)
 		case types.Envelope:
 			h.handleEnvelope(r.Context(), e)
 		default:
@@ -84,7 +110,9 @@ func (h *handler) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// Helpers
+// handleRegistration processes the collector's registration event.
+// The collector is purely panel-config-driven: it has no local app
+// configuration. The panel pushes the stored config on registration.
 
 func (h *handler) handleEnvelope(ctx context.Context, env types.Envelope) {
 	switch env.Type {
@@ -103,7 +131,7 @@ func (h *handler) handleEnvelope(ctx context.Context, env types.Envelope) {
 		}
 		h.handleLifecycle(ctx, env.Collector, evt)
 	case types.EventTypeStats:
-		h.topology.Publish(topologysvc.Message{
+		h.topology.Publish(topologySvc.Message{
 			Envelope: &env,
 		})
 		var evt types.StatsEvent
@@ -125,7 +153,7 @@ func (h *handler) handleEnvelope(ctx context.Context, env types.Envelope) {
 		}
 		h.handleLog(ctx, env.Collector, evt.App, entry, nil)
 	case types.EventTypeHealth:
-		h.topology.Publish(topologysvc.Message{
+		h.topology.Publish(topologySvc.Message{
 			Envelope: &env,
 		})
 		var evt types.HealthEvent
@@ -139,19 +167,18 @@ func (h *handler) handleEnvelope(ctx context.Context, env types.Envelope) {
 	}
 }
 
-func (h *handler) handleRegistration(ctx context.Context, connID, remoteAddr string, msg types.RegisterEvent) {
+func (h *handler) handleRegistration(ctx context.Context, client *wsx.Client, connID, remoteAddr string, msg types.RegisterEvent) {
 	if len(msg.Apps) == 0 {
-		slog.Info("Skipping empty collector registration", "collector", msg.Collector, "remote", remoteAddr, "conn_id", connID)
+		slog.Info("Empty collector registration, pushing stored config", "collector", msg.Collector, "remote", remoteAddr, "conn_id", connID)
+		h.pushStoredConfig(ctx, client, msg.Collector)
 		return
 	}
 
-	// Construct request from message
 	req := ingest.RegisterCollectorRequest{
 		CollectorName: msg.Collector,
 		Apps:          msg.Apps,
 	}
 
-	// Validate request
 	if err := req.Validate(); err != nil {
 		slog.Error("Invalid registration request", "error", err, "remote", remoteAddr, "conn_id", connID)
 		return
@@ -159,10 +186,9 @@ func (h *handler) handleRegistration(ctx context.Context, connID, remoteAddr str
 
 	slog.Info("Received app registration", "ingest", req.CollectorName, "remote", remoteAddr, "apps", req.Apps, "count", len(req.Apps))
 
-	// Register ingest with tracker
+	_, alreadyConnected := h.tracker.Get(req.CollectorName)
 	h.tracker.Register(connID, req.CollectorName, remoteAddr, req.Apps)
 
-	// Create all databases via ingest service
 	if err := h.ingestService.RegisterCollector(ctx, req); err != nil {
 		slog.Error("Failed to register collector", "collector", req.CollectorName, "error", err)
 		return
@@ -173,6 +199,43 @@ func (h *handler) handleRegistration(ctx context.Context, connID, remoteAddr str
 			slog.Info("Registered app", "app_name", appName)
 		}
 	}
+
+	if alreadyConnected {
+		return
+	}
+	h.pushStoredConfig(ctx, client, req.CollectorName)
+}
+
+// pushStoredConfig loads the panel-stored config for a collector, ensures the
+// self-app is present, and sends it over the WebSocket connection.
+func (h *handler) pushStoredConfig(ctx context.Context, client *wsx.Client, collectorName string) {
+	cfgJSON, err := h.panelService.FetchCollectorConfig(ctx, collectorName)
+	if err != nil {
+		slog.Error("could not load collector config to push", "collector", collectorName, "error", err)
+		return
+	}
+	var cfg types.CollectorConfig
+	if cfgJSON != "" {
+		if err := json.Unmarshal([]byte(cfgJSON), &cfg); err != nil {
+			slog.Error("could not parse stored config", "collector", collectorName, "error", err)
+			return
+		}
+	}
+	cfg.EnsureSelfApp(collectorName)
+	if cfg.Stats == nil {
+		def := types.DefaultStatsConfig()
+		cfg.Stats = &def
+	}
+	out, err := json.Marshal(&cfg)
+	if err != nil {
+		slog.Error("could not marshal config", "collector", collectorName, "error", err)
+		return
+	}
+	if err := client.Send(types.ConfigEvent{Type: types.EventTypeConfig, Config: string(out)}); err != nil {
+		slog.Error("failed to push config to collector", "collector", collectorName, "error", err)
+		return
+	}
+	slog.Info("pushed config to collector", "collector", collectorName)
 }
 
 func (h *handler) handleLifecycle(ctx context.Context, collector string, evt types.LifecycleEvent) {
@@ -211,8 +274,8 @@ func (h *handler) handleLog(ctx context.Context, collector, app string, entry ty
 	}
 
 	if logID > 0 {
-		msg := topologysvc.Message{
-			Persisted: &topologysvc.PersistedLogMessage{
+		msg := topologySvc.Message{
+			Persisted: &topologySvc.PersistedLogMessage{
 				Collector: collector,
 				App:       app,
 				Level:     string(entry.Level),
@@ -271,16 +334,114 @@ func (h *handler) requireCollectorAPIKey(w http.ResponseWriter, r *http.Request)
 		return false
 	}
 
-	valid, err := h.authService.ValidateCollectorAPIKey(r.Context(), apiKey)
+	userID, err := h.authService.ValidateCollectorAPIKey(r.Context(), apiKey)
 	if err != nil {
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-		return false
-	}
-	if !valid {
 		http.Error(w, "Invalid API key", http.StatusUnauthorized)
 		return false
 	}
+
+	// Resolve the user from the collector API key's user_id.
+	user, err := h.userService.FindByID(r.Context(), domain.System{}, userID)
+	if err != nil {
+		slog.Error("could not resolve user from collector API key", "user_id", userID, "error", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return false
+	}
+
+	*r = *middleware.SetActor(r, user)
 	return true
+}
+
+// putCollectorConfig stores and pushes the configuration for a
+// collector, authenticated with the collector API key. It is used to seed
+// and update collector config from the e2e/demo workflow; the collector
+// itself pushes no config, so production uses the session-authenticated
+// settings endpoint instead.
+func (h *handler) putCollectorConfig(w http.ResponseWriter, r *http.Request) {
+	if !h.requireCollectorAPIKey(w, r) {
+		return
+	}
+
+	collector := r.PathValue("collector")
+	if err := domain.ValidateCollectorName(collector); err != nil {
+		http.Error(w, "Invalid collector name", http.StatusBadRequest)
+		return
+	}
+
+	body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20)) // 1 MB
+	if err != nil {
+		http.Error(w, "Could not read body", http.StatusBadRequest)
+		return
+	}
+	if !json.Valid(body) || strings.TrimSpace(string(body)) == "" {
+		http.Error(w, "Config JSON body is required", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.panelService.SaveCollectorConfig(r.Context(), collector, string(body)); err != nil {
+		slog.Error("Failed to save collector config", "error", err, "collector", collector)
+		http.Error(w, "Could not save collector config", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusCreated)
+}
+
+// guessFormat sends a format guess request to a collector via WebSocket
+// and waits for the result. The user provides only a service name.
+func (h *handler) guessFormat(w http.ResponseWriter, r *http.Request) {
+	if !h.requireCollectorAPIKey(w, r) {
+		return
+	}
+
+	collector := r.PathValue("collector")
+	if err := domain.ValidateCollectorName(collector); err != nil {
+		http.Error(w, "Invalid collector name", http.StatusBadRequest)
+		return
+	}
+
+	var req struct {
+		Service string `json:"service"`
+		AppName string `json:"app_name"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 64*1024)).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+	service := strings.TrimSpace(req.Service)
+	if service == "" {
+		http.Error(w, "service is required", http.StatusBadRequest)
+		return
+	}
+	appName := strings.TrimSpace(req.AppName)
+	if appName == "" {
+		appName = service
+	}
+
+	requestID := uuid.New().String()
+	ch := h.conns.RegisterFormatResult(requestID)
+
+	err := h.conns.SendFormatRequest(collector, types.FormatRequestEvent{
+		Type:      types.EventTypeFormatRequest,
+		RequestID: requestID,
+		App:       appName,
+		Service:   service,
+	})
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadGateway)
+		return
+	}
+
+	result, err := h.conns.WaitForFormatResult(r.Context(), ch)
+	if err != nil {
+		http.Error(w, "format guess timed out", http.StatusGatewayTimeout)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(result); err != nil {
+		slog.Error("could not encode format result", "error", err)
+	}
 }
 
 // extractIP extracts the IP address from remote address (removes port)

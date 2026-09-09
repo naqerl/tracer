@@ -10,10 +10,11 @@ DEMO_IMAGE ?= tracer-e2e:local
 DEMO_CONTAINER ?= tracer-e2e
 DEMO_PORT ?= 18081
 DEMO_PANEL_URL ?= http://localhost:$(DEMO_PORT)
-DEMO_UNITS := demo-api.service demo-worker.service demo-cron.service
+DEMO_UNITS := demo-api.service demo-worker.service demo-cron.service demo-conflict.service
 
-# Panel starts read-only by default; set E2E_PANEL_READONLY=0 to allow
-# state-changing requests (e.g. notifier management) in the demo panel.
+# The public demo panel is gated by nginx (port 8081), which enforces read-only
+# when E2E_PANEL_READONLY is non-zero. Set E2E_PANEL_READONLY=0 to allow
+# state-changing requests (e.g. notifier management) through the proxy.
 E2E_PANEL_READONLY ?= 1
 
 build:
@@ -26,7 +27,7 @@ up: down build
 	docker run -d --name $(DEMO_CONTAINER) \
 		--privileged \
 		--cgroupns=host \
-		-p $(DEMO_PORT):8080 \
+		-p $(DEMO_PORT):8081 \
 		-e E2E_PANEL_READONLY=$(E2E_PANEL_READONLY) \
 		-v /sys/fs/cgroup:/sys/fs/cgroup:rw \
 		--tmpfs /run \
@@ -42,7 +43,7 @@ up-release: down build-release
 	docker run -d --name $(DEMO_CONTAINER) \
 		--privileged \
 		--cgroupns=host \
-		-p $(DEMO_PORT):8080 \
+		-p $(DEMO_PORT):8081 \
 		-e E2E_PANEL_READONLY=$(E2E_PANEL_READONLY) \
 		-v /sys/fs/cgroup:/sys/fs/cgroup:rw \
 		--tmpfs /run \

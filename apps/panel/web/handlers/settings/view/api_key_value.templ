@@ -4,23 +4,19 @@ package view
 // reveal endpoint. RevealURL is the POST target that toggles the plaintext;
 // TargetID is the element id htmx swaps the fragment into. Revealed controls
 // whether the plaintext is shown; RevealError, when set, is displayed instead
-// of a reveal button; ReadOnly hides the reveal button entirely (the reveal
-// POST is blocked by the read-only middleware).
+// of a reveal button.
 type APIKeyValueProps struct {
 	RevealURL    string
 	TargetID     string
 	CanReveal    bool
 	Revealed     bool
-	ReadOnly     bool
 	PlaintextKey string
 	RevealError  string
 }
 
 // APIKeyValue renders the key value shared by the collector and user API key
 // detail pages. The reveal endpoint returns this fragment standalone so htmx
-// can swap it in place; the reveal/hide buttons POST to the reveal endpoint,
-// which is rejected by the read-only middleware so keys can never be exposed
-// in read-only mode.
+// can swap it in place; the reveal/hide buttons POST to the reveal endpoint.
 templ APIKeyValue(props APIKeyValueProps) {
 	<span id={ props.TargetID } class="flex items-center gap-2">
 		if props.Revealed && props.PlaintextKey != "" {
@@ -39,8 +35,6 @@ templ APIKeyValue(props APIKeyValueProps) {
 			<code class="text-sm font-mono">••••••••••••</code>
 			if props.RevealError != "" {
 				<span class="text-xs text-red-400">{ props.RevealError }</span>
-			} else if props.ReadOnly {
-				<span class="text-xs text-fg-secondary/60" title="Read-only mode hides API keys">Read-only</span>
 			} else if !props.CanReveal {
 				<span class="text-xs text-fg-secondary/60" title="Key was created before reveal support and cannot be shown again">Not revealable</span>
 			} else {

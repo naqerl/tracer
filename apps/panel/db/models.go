@@ -14,6 +14,12 @@ type AccessPolicy struct {
 	AppName       string
 }
 
+type AppHealthCheck struct {
+	ID     int64
+	Status string
+	At     int64
+}
+
 type AppHealthPeriod struct {
 	ID        int64
 	Status    string
@@ -28,6 +34,13 @@ type CollectorApiKey struct {
 	KeyEncrypted string
 	CreatedAt    int64
 	LastUsedAt   sql.NullInt64
+	UserID       int64
+}
+
+type CollectorConfig struct {
+	ID         int64
+	ConfigJson string
+	UpdatedAt  int64
 }
 
 type CpuPeriod struct {

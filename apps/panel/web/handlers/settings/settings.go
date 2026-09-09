@@ -24,6 +24,7 @@ import (
 	"tracer/apps/panel/internal/services/ingest"
 	"tracer/apps/panel/internal/services/notify"
 	"tracer/apps/panel/internal/services/notify/forgejo"
+	panelsvc "tracer/apps/panel/internal/services/panel"
 	usersvc "tracer/apps/panel/internal/services/user"
 	"tracer/apps/panel/web/handlers/settings/view"
 	"tracer/apps/panel/web/htmx"
@@ -37,8 +38,8 @@ type handler struct {
 	ingestService *ingest.Service
 	dbManager     *dbmanager.Manager
 	notifyService *notify.Service
+	panelService  *panelsvc.Service
 	cfg           *config.Config
-	readOnly      bool
 }
 
 func appKey(collectorName, appName string) string {
@@ -48,7 +49,7 @@ func appKey(collectorName, appName string) string {
 // defaultForgejoBaseURL pre-fills the Forgejo base URL in the notifier form.
 const defaultForgejoBaseURL = "https://git.naqerl.com"
 
-func InitMux(authService *auth.Service, userService *usersvc.Service, ingestService *ingest.Service, dbManager *dbmanager.Manager, notifyService *notify.Service, cfg *config.Config, readOnly bool) *http.ServeMux {
+func InitMux(authService *auth.Service, userService *usersvc.Service, ingestService *ingest.Service, dbManager *dbmanager.Manager, notifyService *notify.Service, cfg *config.Config, panelService *panelsvc.Service) *http.ServeMux {
 	m := http.NewServeMux()
 	h := handler{
 		authService:   authService,
@@ -56,8 +57,8 @@ func InitMux(authService *auth.Service, userService *usersvc.Service, ingestServ
 		ingestService: ingestService,
 		dbManager:     dbManager,
 		notifyService: notifyService,
+		panelService:  panelService,
 		cfg:           cfg,
-		readOnly:      readOnly,
 	}
 
 	// Users management
@@ -91,6 +92,10 @@ func InitMux(authService *auth.Service, userService *usersvc.Service, ingestServ
 
 	// Config management
 	m.HandleFunc("POST /config", h.updateConfig)
+
+	// Per-collector panel-driven configuration (via ingest API key)
+	// Config is managed through the collector settings page using the
+	// ingest endpoint's PUT /config/{collector} with the collector API key.
 
 	return m
 }
@@ -323,7 +328,6 @@ func (h *handler) buildUserDetailProps(user domain.User, id int64, w http.Respon
 		UserName: target.Username,
 		Role:     target.Role,
 		Apps:     apps,
-		ReadOnly: h.readOnly,
 	}, true
 }
 
@@ -427,7 +431,8 @@ func (h *handler) createCollectorAPIKey(w http.ResponseWriter, r *http.Request) 
 	}
 
 	req := auth.GenerateCollectorAPIKeyRequest{
-		Name: strings.TrimSpace(r.FormValue("name")),
+		Name:   strings.TrimSpace(r.FormValue("name")),
+		UserID: user.ID,
 	}
 	if err := req.Validate(); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -510,16 +515,13 @@ func (h *handler) getCollectorAPIKey(w http.ResponseWriter, r *http.Request) {
 		LastUsed:      key.LastUsedAt,
 		LastUsedValid: key.LastUsedSet,
 		CanReveal:     key.CanReveal,
-		ReadOnly:      h.readOnly,
 		Host:          h.cfg.GetHost(),
 	}).Render(r.Context(), w)
 }
 
 // revealCollectorAPIKey toggles the plaintext visibility of a collector API key.
 // The key is decrypted server-side and rendered as a fragment that htmx swaps
-// into the detail page. It is registered as POST so the global read-only
-// middleware (which rejects every non-GET request) makes reveal impossible in
-// read-only mode.
+// into the detail page.
 func (h *handler) revealCollectorAPIKey(w http.ResponseWriter, r *http.Request) {
 	user, err := authmw.RequireUser(w, r)
 	if err != nil {
@@ -551,7 +553,6 @@ func (h *handler) revealCollectorAPIKey(w http.ResponseWriter, r *http.Request) 
 		TargetID:  "collector-api-key-value",
 		CanReveal: key.CanReveal,
 		Revealed:  r.FormValue("revealed") == "1",
-		ReadOnly:  h.readOnly,
 	}
 
 	if props.Revealed {
@@ -676,16 +677,13 @@ func (h *handler) getAPIKey(w http.ResponseWriter, r *http.Request) {
 		LastUsed:      key.LastUsedAt,
 		LastUsedValid: key.LastUsedSet,
 		CanReveal:     key.CanReveal,
-		ReadOnly:      h.readOnly,
 		Host:          h.cfg.GetHost(),
 	}).Render(r.Context(), w)
 }
 
 // revealAPIKey toggles the plaintext visibility of a user API key. The key is
 // decrypted server-side and rendered as a fragment that htmx swaps into the
-// detail page. It is registered as POST so the global read-only middleware
-// (which rejects every non-GET request) makes reveal impossible in read-only
-// mode.
+// detail page.
 func (h *handler) revealAPIKey(w http.ResponseWriter, r *http.Request) {
 	user, err := authmw.RequireUser(w, r)
 	if err != nil {
@@ -717,7 +715,6 @@ func (h *handler) revealAPIKey(w http.ResponseWriter, r *http.Request) {
 		TargetID:  "user-api-key-value",
 		CanReveal: key.CanReveal,
 		Revealed:  r.FormValue("revealed") == "1",
-		ReadOnly:  h.readOnly,
 	}
 
 	if props.Revealed {
@@ -787,9 +784,8 @@ func (h *handler) buildNotifierDetailData(w http.ResponseWriter, r *http.Request
 	}
 
 	return view.NotifierDetailProps{
-		Setup:    setup,
-		Apps:     options,
-		ReadOnly: h.readOnly,
+		Setup: setup,
+		Apps:  options,
 	}, true
 }
 

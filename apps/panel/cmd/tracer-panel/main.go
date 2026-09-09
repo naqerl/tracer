@@ -31,6 +31,7 @@ import (
 	"tracer/apps/panel/internal/services/panel"
 	"tracer/apps/panel/internal/services/topology"
 	"tracer/apps/panel/internal/services/user"
+	"tracer/apps/panel/internal/transport"
 	"tracer/apps/panel/web"
 	"tracer/build"
 	"tracer/libs/installx"
@@ -50,7 +51,6 @@ func main() {
 		initPassword   = flag.String("password", "", "admin password for -init (auto-generated if empty)")
 		keyName        = flag.String("key-name", "default", "collector API key name for -generate-api-key")
 		noAuth         = flag.Bool("no-auth", false, "disable authentication, inject admin user for all requests")
-		readOnly       = flag.Bool("readonly", false, "allow only GET requests")
 		printVersion   = flag.Bool("version", false, "print version and exit")
 		setCmd         = flag.NewFlagSet("set", flag.ExitOnError)
 	)
@@ -136,7 +136,7 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	if err := serve(ctx, cfgObj, *noAuth, *readOnly); err != nil {
+	if err := serve(ctx, cfgObj, *noAuth); err != nil {
 		log.Fatalf("failed to serve: %s", err)
 	}
 }
@@ -189,7 +189,7 @@ func generateAPIKeyCmd(name string) error {
 	}
 	defer handle.Close()
 
-	apiKey, err := cli.GenerateCollectorAPIKey(ctx, authSvc, name)
+	apiKey, err := cli.GenerateCollectorAPIKey(ctx, authSvc, name, 0)
 	if err != nil {
 		return err
 	}
@@ -222,7 +222,7 @@ func initPanelCmd(username, password string, force bool) error {
 	return nil
 }
 
-func serve(ctx context.Context, cfg *config.Config, noAuth, readOnly bool) error {
+func serve(ctx context.Context, cfg *config.Config, noAuth bool) error {
 	var wg sync.WaitGroup
 
 	// Initialize database manager
@@ -303,7 +303,8 @@ func serve(ctx context.Context, cfg *config.Config, noAuth, readOnly bool) error
 
 	// Initialize collector tracker
 	tracker := ingest.NewTracker()
-	panelService := panel.New(dbManager, ingestService, tracker, userService)
+	collectorConns := transport.NewConnections()
+	panelService := panel.New(dbManager, ingestService, tracker, userService, collectorConns, collectorConns)
 	topologyService := topology.NewService(panelService)
 
 	// Run services
@@ -340,17 +341,18 @@ func serve(ctx context.Context, cfg *config.Config, noAuth, readOnly bool) error
 
 	// Initialize HTTP server
 	deps := web.Dependencies{
-		DBManagerx:   dbManager,
-		Ingest:       ingestService,
-		Notify:       notifyService,
-		Auth:         authService,
-		User:         userService,
-		Tracker:      tracker,
-		Topology:     topologyService,
-		PanelService: panelService,
-		Config:       cfg,
+		DBManagerx:     dbManager,
+		Ingest:         ingestService,
+		Notify:         notifyService,
+		Auth:           authService,
+		User:           userService,
+		Tracker:        tracker,
+		Topology:       topologyService,
+		PanelService:   panelService,
+		Config:         cfg,
+		CollectorConns: collectorConns,
 	}
-	server := web.NewServer(deps, cfg.GetPort(), noAuth, readOnly)
+	server := web.NewServer(deps, cfg.GetPort(), noAuth)
 
 	// Handle server shutdown
 	wg.Go(func() {

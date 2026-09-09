@@ -88,12 +88,9 @@ templ Dashboard(p DashboardProps) {
 			<div>
 				if len(p.Collectors) == 0 {
 					<div class="text-center text-fg-secondary py-12">
-						<p>No collectors connected. Start a collector to begin receiving logs.</p>
+						<p>No collectors connected. Create a collector API key in <a href="/settings" class="text-fg underline">Settings</a> to get started.</p>
 					</div>
 				}
-				<div class="flex justify-end mb-4">
-					<a href="/panel/stats" class="text-sm text-fg-secondary hover:text-fg transition-colors">Stats</a>
-				</div>
 				for _, c := range p.Collectors {
 					<div class="mb-10">
 						<!-- Collector Header -->

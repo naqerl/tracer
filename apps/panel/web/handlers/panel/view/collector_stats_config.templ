@@ -1,0 +1,95 @@
+package view
+
+import "tracer/apps/panel/web/templates"
+
+// StatsConfigProps carries the state for the metrics collection
+// configuration form.
+type StatsConfigProps struct {
+	Title     string
+	Collector string
+	Interval  string
+	CPU       bool
+	Mem       bool
+	Disk      bool
+	Status    string
+	StatusOK  bool
+}
+
+// StatsConfigPage renders the full-page metrics configuration form.
+templ StatsConfigPage(p StatsConfigProps) {
+	@templates.Layout(p.Title, templates.NavData{Since: "24h"}) {
+		<div class="max-w-4xl mx-auto p-2 md:p-6">
+			<h1 class="text-xl font-semibold mb-6">Metrics config - { p.Collector }</h1>
+			<a href={ "/panel/collectors/" + p.Collector + "/resources" } onclick="if (window.history.length > 1) { window.history.back(); return false; }" class="text-fg-secondary hover:text-fg text-sm mb-6 inline-block">&lt; back</a>
+			<div id="stats-config-container" class="space-y-6">
+				if p.Status != "" {
+					<div class={ "border p-4 " + tern(p.StatusOK, "border-green-500/30", "border-red-500/30") }>
+						<span class={ "text-sm " + tern(p.StatusOK, "text-green-400", "text-red-400") }>{ p.Status }</span>
+					</div>
+				}
+				<form
+					hx-post={ "/panel/collectors/" + p.Collector + "/stats/configure" }
+					hx-target="#stats-config-container"
+					hx-swap="innerHTML"
+					class="space-y-6">
+
+					<div class="border border-bg-secondary/70 p-4">
+						<h3 class="text-fg font-medium mb-3">Collect interval</h3>
+						<select name="interval" style="color-scheme: dark" class="w-full bg-bg text-fg border border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base">
+							<option class="bg-bg text-fg" value="10s" selected?={ p.Interval == "10s" }>Every 10 seconds</option>
+							<option class="bg-bg text-fg" value="30s" selected?={ p.Interval == "30s" || p.Interval == "" }>Every 30 seconds</option>
+							<option class="bg-bg text-fg" value="60s" selected?={ p.Interval == "60s" }>Every 60 seconds</option>
+							<option class="bg-bg text-fg" value="300s" selected?={ p.Interval == "300s" }>Every 5 minutes</option>
+							<option class="bg-bg text-fg" value="900s" selected?={ p.Interval == "900s" }>Every 15 minutes</option>
+						</select>
+						<p class="text-xs text-fg-secondary mt-1">How often the collector samples resource usage.</p>
+					</div>
+
+					<div class="border border-bg-secondary/70 p-4">
+						<h3 class="text-fg font-medium mb-3">Metrics to collect</h3>
+						<p class="text-xs text-fg-secondary mb-3">Enable or disable individual resource metrics. Disabled metrics are not sampled or reported.</p>
+						<div class="space-y-3">
+							@templates.MarkdownCheckbox("cpu", "cpu", "CPU usage", "on", p.CPU, 0)
+							@templates.MarkdownCheckbox("mem", "mem", "Memory usage", "on", p.Mem, 0)
+							@templates.MarkdownCheckbox("disk", "disk", "Disk usage", "on", p.Disk, 0)
+						</div>
+					</div>
+
+					<div class="flex gap-2">
+						<button type="submit" class="text-sm text-fg border border-fg px-4 py-2 hover:bg-fg hover:text-bg transition-colors">Save metrics config</button>
+						<a href={ "/panel/collectors/" + p.Collector + "/resources" } onclick="if (window.history.length > 1) { window.history.back(); return false; }" class="text-sm text-fg-secondary border border-bg-secondary px-4 py-2 hover:text-fg transition-colors inline-block">Cancel</a>
+					</div>
+				</form>
+			</div>
+		</div>
+		@templates.MarkdownCheckboxScript()
+	}
+}
+
+// StatsConfigSavedProps carries the state for the metrics config success
+// view.
+type StatsConfigSavedProps struct {
+	Collector string
+}
+
+// StatsConfigSaved renders the success view after saving metrics config.
+templ StatsConfigSaved(p StatsConfigSavedProps) {
+	<div class="border border-green-500/30 p-4 mb-4">
+		<div class="text-green-400 font-medium mb-2">✓ Metrics config saved</div>
+		<div class="text-sm text-fg-secondary mb-3">The configuration has been pushed to collector "{ p.Collector }".</div>
+		<div class="flex gap-2">
+			<a
+				href={ "/panel/collectors/" + p.Collector + "/resources" }
+				class="text-sm text-fg border border-fg px-4 py-2 hover:bg-fg hover:text-bg transition-colors inline-block"
+			>
+				Back to metrics
+			</a>
+			<a
+				href={ "/panel/collectors/" + p.Collector }
+				class="text-sm text-fg-secondary border border-bg-secondary px-4 py-2 hover:text-fg transition-colors inline-block"
+			>
+				Collector
+			</a>
+		</div>
+	</div>
+}

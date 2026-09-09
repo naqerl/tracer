@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"tracer/libs/types"
 )
 
 type Checker interface {
@@ -16,8 +18,8 @@ type Poller struct {
 	interval time.Duration
 }
 
-func New(spec Spec) (Poller, error) {
-	interval, err := spec.interval()
+func New(spec types.HealthCheckSpec) (Poller, error) {
+	interval, err := specInterval(spec)
 	if err != nil {
 		return Poller{}, fmt.Errorf("health: %w", err)
 	}
@@ -27,7 +29,7 @@ func New(spec Spec) (Poller, error) {
 	case "":
 		return Poller{}, fmt.Errorf("health type is required")
 	case "http":
-		httpConfig, err := spec.httpConfig()
+		httpConfig, err := specHTTPConfig(spec)
 		if err != nil {
 			return Poller{}, fmt.Errorf("http health: %w", err)
 		}

@@ -5,12 +5,9 @@ import (
 	"strconv"
 	"strings"
 	"time"
-)
 
-type Spec struct {
-	Type   string            `yaml:"type"`
-	Params map[string]string `yaml:"params"`
-}
+	"tracer/libs/types"
+)
 
 type HTTPConfig struct {
 	URL            string
@@ -27,27 +24,7 @@ func (HTTPConfig) Default() HTTPConfig {
 	}
 }
 
-func (c HTTPConfig) Spec() Spec {
-	expected := make([]string, 0, len(c.ExpectedStatus))
-	for code := range c.ExpectedStatus {
-		expected = append(expected, strconv.Itoa(code))
-	}
-
-	spec := Spec{
-		Type: "http",
-		Params: map[string]string{
-			"url":     c.URL,
-			"method":  c.Method,
-			"timeout": c.Timeout.String(),
-		},
-	}
-	if len(expected) > 0 {
-		spec.Params["expected_status"] = strings.Join(expected, ",")
-	}
-	return spec
-}
-
-func (s Spec) interval() (time.Duration, error) {
+func specInterval(s types.HealthCheckSpec) (time.Duration, error) {
 	raw := strings.TrimSpace(s.Params["interval"])
 	if raw == "" {
 		return 30 * time.Second, nil
@@ -62,7 +39,7 @@ func (s Spec) interval() (time.Duration, error) {
 	return d, nil
 }
 
-func (s Spec) httpConfig() (HTTPConfig, error) {
+func specHTTPConfig(s types.HealthCheckSpec) (HTTPConfig, error) {
 	url, err := getParam(s, "url")
 	if err != nil {
 		return HTTPConfig{}, err
@@ -107,7 +84,7 @@ func (s Spec) httpConfig() (HTTPConfig, error) {
 	}, nil
 }
 
-func getParam(spec Spec, key string) (string, error) {
+func getParam(spec types.HealthCheckSpec, key string) (string, error) {
 	if spec.Params == nil {
 		return "", fmt.Errorf("missing params.%s", key)
 	}

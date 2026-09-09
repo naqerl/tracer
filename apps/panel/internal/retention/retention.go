@@ -89,6 +89,9 @@ func (s *Service) runCleanup(ctx context.Context) {
 				if err := q.RecalculateLogGroupCounters(ctx); err != nil {
 					return err
 				}
+				if err := q.DeleteOldHealthChecks(ctx, cutoff.Unix()); err != nil {
+					return err
+				}
 				return q.DeleteOldHealthPeriods(ctx, sql.NullInt64{Int64: cutoff.Unix(), Valid: true})
 			}); err != nil {
 				slog.Error("Failed to cleanup app data", "collector", collector, "app", appName, "error", err)

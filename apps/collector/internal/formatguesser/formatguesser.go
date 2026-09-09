@@ -14,10 +14,10 @@ import (
 	"strings"
 	"time"
 
-	"tracer/apps/collector/internal/config"
 	"tracer/apps/collector/internal/parser"
 	"tracer/apps/collector/internal/parser/format"
 	"tracer/apps/collector/internal/source"
+	"tracer/libs/types"
 )
 
 type AddRequest struct {
@@ -27,25 +27,25 @@ type AddRequest struct {
 
 // AddResult contains the result of adding an app including preview data
 type AddResult struct {
-	App         config.AppSpec
+	App         types.AppSpec
 	ParserSpec  parser.Spec
 	SampleLines []string
 	SampleData  map[string]string
 }
 
-func Add(ctx context.Context, cfg *config.Config, name string, spec source.Spec, req AddRequest) (*AddResult, error) {
+func Add(ctx context.Context, cfg *types.CollectorConfig, name string, spec source.Spec, req AddRequest) (*AddResult, error) {
 	result := &AddResult{}
-	var app config.AppSpec
+	var app types.AppSpec
 	existingIdx := -1
 
 	if cfg.Parsers == nil {
-		cfg.Parsers = map[string]parser.Spec{}
+		cfg.Parsers = map[string]types.ParserSpec{}
 	}
 
 	appNames := make([]string, 0, len(cfg.Apps))
 	for i, v := range cfg.Apps {
 		appNames = append(appNames, v.Name)
-		if reflect.DeepEqual(v.Source, spec) {
+		if v.Source != nil && reflect.DeepEqual(*v.Source, types.SourceSpec{Type: spec.Type, Params: spec.Params}) {
 			if !req.Override {
 				return nil, fmt.Errorf("app with this source already exists. Pass --override to replace it")
 			}
@@ -56,7 +56,7 @@ func Add(ctx context.Context, cfg *config.Config, name string, spec source.Spec,
 	if existingIdx == -1 {
 		app.Name = generateName(appNames, name)
 	}
-	app.Source = spec
+	app.Source = &types.SourceSpec{Type: spec.Type, Params: spec.Params}
 
 	src, err := source.New(spec)
 	if err != nil {
@@ -93,7 +93,7 @@ func Add(ctx context.Context, cfg *config.Config, name string, spec source.Spec,
 			break
 		}
 	}
-	cfg.Parsers[parserID] = buildResult.Spec
+	cfg.Parsers[parserID] = types.ParserSpec{Type: buildResult.Spec.Type, Params: buildResult.Spec.Params}
 	app.ParserID = parserID
 
 	if existingIdx >= 0 {

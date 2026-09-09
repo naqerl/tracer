@@ -46,9 +46,12 @@ templ CollectorStats(props CollectorStatsProps) {
 
 // CollectorStatsContent renders the content area.
 templ CollectorStatsContent(props CollectorStatsProps) {
-	<div class="mb-6">
-		<h2 class="text-xl font-medium">{ props.CollectorName }</h2>
-		<p class="text-base text-fg-secondary mt-1">Resource usage</p>
+	<div class="mb-6 flex items-start justify-between">
+		<div>
+			<h2 class="text-xl font-medium">{ props.CollectorName }</h2>
+			<p class="text-base text-fg-secondary mt-1">Resource usage</p>
+		</div>
+		<a href={ "/panel/collectors/" + props.CollectorName + "/stats/configure" } class="text-sm text-fg-secondary hover:text-fg transition-colors">configure</a>
 	</div>
 	@CollectorStatsData(props)
 }

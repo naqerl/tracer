@@ -10,13 +10,11 @@ import (
 
 // NotifierDetailProps holds data for the notifier detail page.
 type NotifierDetailProps struct {
-	Setup    notify.Setup
-	Apps     []domain.ScopeEntry
-	ReadOnly bool
+	Setup notify.Setup
+	Apps  []domain.ScopeEntry
 }
 
-// NotifierDetail renders the notifier detail page. In read-only mode the
-// delete, toggle, and subscription form controls are hidden.
+// NotifierDetail renders the notifier detail page.
 templ NotifierDetail(props NotifierDetailProps) {
 	@templates.Layout("Notifier", templates.NavData{Since: "24h"}) {
 		<div class="max-w-5xl mx-auto p-6">
@@ -28,12 +26,10 @@ templ NotifierDetail(props NotifierDetailProps) {
 
 			<div class="mb-6 flex items-center justify-between gap-4">
 				<h2 class="text-xl font-medium">Notifier</h2>
-				if !props.ReadOnly {
-					<button hx-delete={ "/settings/notifiers/" + strconv.FormatInt(props.Setup.ID, 10) }
-							hx-confirm={ "Delete notifier " + props.Setup.Name + "?" }
-							hx-target="body" hx-swap="outerHTML"
-							class="text-sm text-fg-secondary hover:text-red-500 underline transition-colors">Delete</button>
-				}
+				<button hx-delete={ "/settings/notifiers/" + strconv.FormatInt(props.Setup.ID, 10) }
+						hx-confirm={ "Delete notifier " + props.Setup.Name + "?" }
+						hx-target="body" hx-swap="outerHTML"
+						class="text-sm text-fg-secondary hover:text-red-500 underline transition-colors">Delete</button>
 			</div>
 
 			<div class="mb-8">
@@ -51,17 +47,15 @@ templ NotifierDetail(props NotifierDetailProps) {
 						} else {
 							Disabled
 						}
-						if !props.ReadOnly {
-							<button hx-put={ "/settings/notifiers/" + strconv.FormatInt(props.Setup.ID, 10) + "/toggle" }
-									hx-target="body" hx-swap="outerHTML"
-									class="text-sm text-fg-secondary hover:text-fg transition-colors">
-								if props.Setup.Enabled == 1 {
-									Disable
-								} else {
-									Enable
-								}
-							</button>
-						}
+						<button hx-put={ "/settings/notifiers/" + strconv.FormatInt(props.Setup.ID, 10) + "/toggle" }
+								hx-target="body" hx-swap="outerHTML"
+								class="text-sm text-fg-secondary hover:text-fg transition-colors">
+							if props.Setup.Enabled == 1 {
+								Disable
+							} else {
+								Enable
+							}
+						</button>
 					</span>
 				</div>
 			</div>
@@ -71,17 +65,15 @@ templ NotifierDetail(props NotifierDetailProps) {
 				@templates.JSONViewerFull(props.Setup.Config, true)
 			</div>
 
-			if !props.ReadOnly {
-				<div class="mb-6">
-					<h3 class="text-xl font-medium mb-4">Subscriptions</h3>
-					<p class="text-base text-fg-secondary mb-6">Select which applications this notifier receives alerts for:</p>
-					@ScopeTree(
-						"put",
-						"/settings/notifiers/" + strconv.FormatInt(props.Setup.ID, 10) + "/subscriptions",
-						props.Apps,
-					)
-				</div>
-			}
+			<div class="mb-6">
+				<h3 class="text-xl font-medium mb-4">Subscriptions</h3>
+				<p class="text-base text-fg-secondary mb-6">Select which applications this notifier receives alerts for:</p>
+				@ScopeTree(
+					"put",
+					"/settings/notifiers/" + strconv.FormatInt(props.Setup.ID, 10) + "/subscriptions",
+					props.Apps,
+				)
+			</div>
 		</div>
 	}
 }

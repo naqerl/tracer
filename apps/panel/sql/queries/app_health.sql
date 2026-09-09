@@ -31,3 +31,19 @@ ORDER BY started_at ASC;
 DELETE FROM app_health_period
 WHERE ended_at IS NOT NULL
   AND ended_at < ?;
+
+-- name: SaveHealthCheck :exec
+INSERT INTO app_health_check (status, at)
+VALUES (?, ?);
+
+-- name: ListHealthCheckCountsBySlot :many
+SELECT (at - ?) / ? AS slot, COUNT(*) AS cnt
+FROM app_health_check
+WHERE at >= ?
+  AND at <= ?
+GROUP BY slot
+ORDER BY slot ASC;
+
+-- name: DeleteOldHealthChecks :exec
+DELETE FROM app_health_check
+WHERE at < ?;

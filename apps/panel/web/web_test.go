@@ -28,11 +28,11 @@ import (
 	"tracer/libs/types"
 )
 
-// newServer builds the full web server stack (services, mux, auth middleware,
-// read-only middleware) exactly as production does, registers an admin user
-// and a collector API key, and returns the handler, a valid session token, and
-// the ID of a log group seeded under the demo collector's "myapp" app.
-func newServer(t *testing.T, readOnly bool) (http.Handler, string, int64, *ingestsvc.Service, *authsvc.Service) {
+// newServer builds the full web server stack (services, mux, auth middleware)
+// exactly as production does, registers an admin user and a collector API key,
+// and returns the handler, a valid session token, and the ID of a log group
+// seeded under the demo collector's "myapp" app.
+func newServer(t *testing.T) (http.Handler, string, int64, *ingestsvc.Service, *authsvc.Service) {
 	t.Helper()
 
 	panelHandle := testutil.NewTestDB(t)
@@ -86,7 +86,7 @@ func newServer(t *testing.T, readOnly bool) (http.Handler, string, int64, *inges
 	notifyService := notifysvc.New(panelHandle, userService, dbMgr, map[string]notifysvc.FromRawJSON{})
 	ingestService := ingestsvc.New(dbMgr, notifyChan, func(_, _ string, _ int64) string { return "" }, cfg)
 	tracker := ingestsvc.NewTracker()
-	panelService := panelsvc.New(dbMgr, ingestService, tracker, userService)
+	panelService := panelsvc.New(dbMgr, ingestService, tracker, userService, nil, nil)
 	topologyService := topologysvc.NewService(panelService)
 
 	// Seed one error log group via the public ingest API, then resolve its
@@ -134,7 +134,7 @@ func newServer(t *testing.T, readOnly bool) (http.Handler, string, int64, *inges
 		Topology:     topologyService,
 		PanelService: panelService,
 		Config:       cfg,
-	}, "8080", false, readOnly)
+	}, "8080", false)
 
 	return srv.Handler, token, groupID, ingestService, authService
 }
@@ -156,44 +156,11 @@ func collectorKeyID(t *testing.T, authService *authsvc.Service, name string) int
 	return 0
 }
 
-func TestReadOnlyServerBlocksKeyReveal(t *testing.T) {
-	handler, token, _, _, authService := newServer(t, true)
+func TestServerAllowsKeyReveal(t *testing.T) {
+	handler, token, _, _, authService := newServer(t)
 
-	// The detail page is a GET and must still render, masked, without leaking
-	// the plaintext — and without the reveal button.
-	keyID := collectorKeyID(t, authService, "prod-a")
-	req := httptest.NewRequest(http.MethodGet, "/settings/admin/collector-api-keys/"+strconv.FormatInt(keyID, 10), nil)
-	req.AddCookie(&http.Cookie{Name: "tracer_session", Value: token})
-	rr := httptest.NewRecorder()
-	handler.ServeHTTP(rr, req)
-	if rr.Code != http.StatusOK {
-		t.Fatalf("expected 200 for detail page in read-only mode, got %d", rr.Code)
-	}
-	body := rr.Body.String()
-	if !strings.Contains(body, "•") {
-		t.Fatalf("expected masked placeholder on detail page, got %q", body)
-	}
-	if strings.Contains(body, "/reveal") {
-		t.Fatal("expected no reveal button in read-only mode")
-	}
-
-	// Reveal is POST — the read-only middleware must reject it with 405 before
-	// any handler runs, even with a valid admin session.
-	req = httptest.NewRequest(http.MethodPost, "/settings/admin/collector-api-keys/"+strconv.FormatInt(keyID, 10)+"/reveal", strings.NewReader("revealed=1"))
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.AddCookie(&http.Cookie{Name: "tracer_session", Value: token})
-	rr = httptest.NewRecorder()
-	handler.ServeHTTP(rr, req)
-	if rr.Code != http.StatusMethodNotAllowed {
-		t.Fatalf("expected 405 for reveal POST in read-only mode, got %d", rr.Code)
-	}
-}
-
-func TestReadWriteServerAllowsKeyReveal(t *testing.T) {
-	handler, token, _, _, authService := newServer(t, false)
-
-	// In normal mode the same POST reveal returns the plaintext through the
-	// full stack (auth middleware + settings handler).
+	// The reveal POST returns the plaintext through the full stack (auth
+	// middleware + settings handler).
 	keyID := collectorKeyID(t, authService, "prod-a")
 	req := httptest.NewRequest(http.MethodPost, "/settings/admin/collector-api-keys/"+strconv.FormatInt(keyID, 10)+"/reveal", strings.NewReader("revealed=1"))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -201,7 +168,7 @@ func TestReadWriteServerAllowsKeyReveal(t *testing.T) {
 	rr := httptest.NewRecorder()
 	handler.ServeHTTP(rr, req)
 	if rr.Code != http.StatusOK {
-		t.Fatalf("expected 200 for reveal POST in normal mode, got %d", rr.Code)
+		t.Fatalf("expected 200 for reveal POST, got %d", rr.Code)
 	}
 	if rr.Header().Get("Cache-Control") != "no-store" {
 		t.Fatalf("expected Cache-Control no-store, got %q", rr.Header().Get("Cache-Control"))
@@ -209,7 +176,7 @@ func TestReadWriteServerAllowsKeyReveal(t *testing.T) {
 }
 
 func TestAutoRefreshDashboardRendersPollingTriggers(t *testing.T) {
-	handler, token, _, _, _ := newServer(t, false)
+	handler, token, _, _, _ := newServer(t)
 
 	req := httptest.NewRequest(http.MethodGet, "/panel/", nil)
 	req.AddCookie(&http.Cookie{Name: "tracer_session", Value: token})
@@ -241,7 +208,7 @@ func TestAutoRefreshDashboardRendersPollingTriggers(t *testing.T) {
 }
 
 func TestAutoRefreshAppsGridBakesStats(t *testing.T) {
-	handler, token, _, _, _ := newServer(t, false)
+	handler, token, _, _, _ := newServer(t)
 
 	req := httptest.NewRequest(http.MethodGet, "/panel/collectors/demo/apps", nil)
 	req.AddCookie(&http.Cookie{Name: "tracer_session", Value: token})
@@ -273,8 +240,35 @@ func TestAutoRefreshAppsGridBakesStats(t *testing.T) {
 	}
 }
 
+func TestDeleteAppRemovesAppAndRedirects(t *testing.T) {
+	handler, token, _, _, _ := newServer(t)
+
+	req := httptest.NewRequest(http.MethodDelete, "/panel/collectors/demo/apps/myapp", nil)
+	req.AddCookie(&http.Cookie{Name: "tracer_session", Value: token})
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusNoContent {
+		t.Fatalf("expected 204 for delete, got %d", rr.Code)
+	}
+	if got := rr.Header().Get("HX-Redirect"); got != "/panel/collectors/demo" {
+		t.Fatalf("expected HX-Redirect to the collector page, got %q", got)
+	}
+
+	grid := httptest.NewRequest(http.MethodGet, "/panel/collectors/demo/apps", nil)
+	grid.AddCookie(&http.Cookie{Name: "tracer_session", Value: token})
+	gridRR := httptest.NewRecorder()
+	handler.ServeHTTP(gridRR, grid)
+	if gridRR.Code != http.StatusOK {
+		t.Fatalf("expected 200 for apps grid after delete, got %d", gridRR.Code)
+	}
+	if strings.Contains(gridRR.Body.String(), "myapp") {
+		t.Fatalf("expected app to disappear from grid after delete, got %q", gridRR.Body.String())
+	}
+}
+
 func TestAutoRefreshCollectorOverviewRendersPollingTriggers(t *testing.T) {
-	handler, token, _, _, _ := newServer(t, false)
+	handler, token, _, _, _ := newServer(t)
 
 	req := httptest.NewRequest(http.MethodGet, "/panel/collectors/demo", nil)
 	req.AddCookie(&http.Cookie{Name: "tracer_session", Value: token})
@@ -300,7 +294,7 @@ func TestAutoRefreshCollectorOverviewRendersPollingTriggers(t *testing.T) {
 }
 
 func TestAutoRefreshCollectorStatsFragment(t *testing.T) {
-	handler, token, _, _, _ := newServer(t, false)
+	handler, token, _, _, _ := newServer(t)
 
 	req := httptest.NewRequest(http.MethodGet, "/panel/collectors/demo/stats", nil)
 	req.AddCookie(&http.Cookie{Name: "tracer_session", Value: token})
@@ -318,7 +312,7 @@ func TestAutoRefreshCollectorStatsFragment(t *testing.T) {
 func TestAutoRefreshDashboardBreathesValuesOnly(t *testing.T) {
 	// Seed real stats through the public ingest API so the stats row renders
 	// actual CPU/RAM/Disk values instead of the "no stats" fallback.
-	handler, token, _, ingestService, _ := newServer(t, false)
+	handler, token, _, ingestService, _ := newServer(t)
 	if err := ingestService.SaveSystemStats(t.Context(), ingestsvc.SaveSystemStatsRequest{
 		CollectorName: "demo",
 		Stats: types.Stats{
@@ -354,7 +348,7 @@ func TestAutoRefreshDashboardBreathesValuesOnly(t *testing.T) {
 }
 
 func TestAutoRefreshAppStatsFragmentBreathesValuesOnly(t *testing.T) {
-	handler, token, _, _, _ := newServer(t, false)
+	handler, token, _, _, _ := newServer(t)
 
 	req := httptest.NewRequest(http.MethodGet, "/panel/collectors/demo/apps/myapp/stats", nil)
 	req.AddCookie(&http.Cookie{Name: "tracer_session", Value: token})
@@ -380,7 +374,7 @@ func TestAutoRefreshAppStatsFragmentBreathesValuesOnly(t *testing.T) {
 }
 
 func TestAutoRefreshUptimeFragmentBreathesValue(t *testing.T) {
-	handler, token, _, _, _ := newServer(t, false)
+	handler, token, _, _, _ := newServer(t)
 
 	req := httptest.NewRequest(http.MethodGet, "/panel/collectors/demo/apps/myapp/uptime", nil)
 	req.AddCookie(&http.Cookie{Name: "tracer_session", Value: token})
@@ -397,7 +391,7 @@ func TestAutoRefreshUptimeFragmentBreathesValue(t *testing.T) {
 }
 
 func TestAutoRefreshCollectorStatsFragmentNotFound(t *testing.T) {
-	handler, token, _, _, _ := newServer(t, false)
+	handler, token, _, _, _ := newServer(t)
 
 	req := httptest.NewRequest(http.MethodGet, "/panel/collectors/ghost/stats", nil)
 	req.AddCookie(&http.Cookie{Name: "tracer_session", Value: token})
@@ -410,7 +404,7 @@ func TestAutoRefreshCollectorStatsFragmentNotFound(t *testing.T) {
 }
 
 func TestAutoRefreshAppUptimeFragmentNotFound(t *testing.T) {
-	handler, token, _, _, _ := newServer(t, false)
+	handler, token, _, _, _ := newServer(t)
 
 	req := httptest.NewRequest(http.MethodGet, "/panel/collectors/demo/apps/ghost/uptime", nil)
 	req.AddCookie(&http.Cookie{Name: "tracer_session", Value: token})
@@ -423,7 +417,7 @@ func TestAutoRefreshAppUptimeFragmentNotFound(t *testing.T) {
 }
 
 func TestAutoRefreshLogGroupSummaryFragmentNotFound(t *testing.T) {
-	handler, token, _, _, _ := newServer(t, false)
+	handler, token, _, _, _ := newServer(t)
 
 	req := httptest.NewRequest(http.MethodGet, "/panel/collectors/demo/apps/ghost/logs/groups/1/summary", nil)
 	req.AddCookie(&http.Cookie{Name: "tracer_session", Value: token})
@@ -436,7 +430,7 @@ func TestAutoRefreshLogGroupSummaryFragmentNotFound(t *testing.T) {
 }
 
 func TestAutoRefreshAppPageRendersPollingTriggers(t *testing.T) {
-	handler, token, _, _, _ := newServer(t, false)
+	handler, token, _, _, _ := newServer(t)
 
 	req := httptest.NewRequest(http.MethodGet, "/panel/collectors/demo/apps/myapp?level=error", nil)
 	req.AddCookie(&http.Cookie{Name: "tracer_session", Value: token})
@@ -471,7 +465,7 @@ func TestAutoRefreshAppPageRendersPollingTriggers(t *testing.T) {
 }
 
 func TestAutoRefreshUptimeFragmentSuccess(t *testing.T) {
-	handler, token, _, _, _ := newServer(t, false)
+	handler, token, _, _, _ := newServer(t)
 
 	req := httptest.NewRequest(http.MethodGet, "/panel/collectors/demo/apps/myapp/uptime", nil)
 	req.AddCookie(&http.Cookie{Name: "tracer_session", Value: token})
@@ -487,7 +481,7 @@ func TestAutoRefreshUptimeFragmentSuccess(t *testing.T) {
 }
 
 func TestAutoRefreshLogGroupsFragmentSelfPoll(t *testing.T) {
-	handler, token, _, _, _ := newServer(t, false)
+	handler, token, _, _, _ := newServer(t)
 
 	req := httptest.NewRequest(http.MethodGet, "/panel/collectors/demo/apps/myapp/logs/groups?level=error", nil)
 	req.AddCookie(&http.Cookie{Name: "tracer_session", Value: token})
@@ -519,7 +513,7 @@ func TestAutoRefreshLogGroupsFragmentSelfPoll(t *testing.T) {
 }
 
 func TestAutoRefreshLogGroupSummaryFragmentSuccess(t *testing.T) {
-	handler, token, groupID, _, _ := newServer(t, false)
+	handler, token, groupID, _, _ := newServer(t)
 
 	req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/panel/collectors/demo/apps/myapp/logs/groups/%d/summary", groupID), nil)
 	req.AddCookie(&http.Cookie{Name: "tracer_session", Value: token})
@@ -539,7 +533,7 @@ func TestAutoRefreshLogGroupSummaryFragmentSuccess(t *testing.T) {
 }
 
 func TestAutoRefreshLogGroupSummaryNewLogs(t *testing.T) {
-	handler, token, groupID, _, _ := newServer(t, false)
+	handler, token, groupID, _, _ := newServer(t)
 
 	// A since timestamp in the past (before the seeded log) must surface the
 	// "+N" indicator.
@@ -579,7 +573,7 @@ func TestAutoRefreshLogGroupSummaryNewLogs(t *testing.T) {
 // body carries the redirect anchor plus the llm docs — HTML for browsers and
 // markdown (via the Accept middleware) for agents.
 func TestRootServesDocs(t *testing.T) {
-	handler, token, _, _, _ := newServer(t, false)
+	handler, token, _, _, _ := newServer(t)
 
 	// Authenticated browser: redirected to /panel/.
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -642,7 +636,7 @@ func TestRootServesDocs(t *testing.T) {
 // TestUserAPIKeyAuthenticatesPlainRoute verifies that a user API key
 // authenticates a plain /panel route directly.
 func TestUserAPIKeyAuthenticatesPlainRoute(t *testing.T) {
-	handler, _, _, _, authService := newServer(t, false)
+	handler, _, _, _, authService := newServer(t)
 
 	registered, err := authService.Register(t.Context(), authsvc.RegisterRequest{
 		Username: "keyuser",
@@ -670,7 +664,7 @@ func TestUserAPIKeyAuthenticatesPlainRoute(t *testing.T) {
 }
 
 func TestMarkdownAcceptDashboard(t *testing.T) {
-	handler, token, _, _, _ := newServer(t, false)
+	handler, token, _, _, _ := newServer(t)
 
 	// Plain HTML (default Accept) — untouched.
 	req := httptest.NewRequest(http.MethodGet, "/panel/", nil)
@@ -727,7 +721,7 @@ func TestMarkdownAcceptDashboard(t *testing.T) {
 }
 
 func TestMarkdownAcceptSSEUnchanged(t *testing.T) {
-	handler, token, _, _, _ := newServer(t, false)
+	handler, token, _, _, _ := newServer(t)
 
 	// The topology SSE stream is infinite; cancel the request context so the
 	// handler returns after the first flush. Content-Type must stay
@@ -754,7 +748,7 @@ func TestMarkdownAcceptSSEUnchanged(t *testing.T) {
 // (GET /panel/collectors/{collector}) converts to markdown with the seeded
 // collector name and stats area present, and stays HTML without the header.
 func TestMarkdownAcceptCollectorPage(t *testing.T) {
-	handler, token, _, _, _ := newServer(t, false)
+	handler, token, _, _, _ := newServer(t)
 
 	// Plain HTML (default Accept) — untouched.
 	req := httptest.NewRequest(http.MethodGet, "/panel/collectors/demo", nil)
@@ -807,7 +801,7 @@ func TestMarkdownAcceptCollectorPage(t *testing.T) {
 // markdown with the seeded app name and uptime heading present, and stays
 // HTML without the header.
 func TestMarkdownAcceptAppPage(t *testing.T) {
-	handler, token, _, _, _ := newServer(t, false)
+	handler, token, _, _, _ := newServer(t)
 
 	// Plain HTML (default Accept) — untouched.
 	req := httptest.NewRequest(http.MethodGet, "/panel/collectors/demo/apps/myapp?level=error", nil)
@@ -862,7 +856,7 @@ func TestMarkdownAcceptAppPage(t *testing.T) {
 // converts to markdown carrying the seeded "demo group" log message — the
 // page data the app page loads via hx-get on mount.
 func TestMarkdownAcceptLogGroupsFragment(t *testing.T) {
-	handler, token, _, _, _ := newServer(t, false)
+	handler, token, _, _, _ := newServer(t)
 
 	req := httptest.NewRequest(http.MethodGet, "/panel/collectors/demo/apps/myapp/logs/groups?level=error", nil)
 	req.Header.Set("Accept", "text/markdown")
@@ -891,7 +885,7 @@ func TestMarkdownAcceptLogGroupsFragment(t *testing.T) {
 // TestMarkdownAcceptNotFoundStaysHTML verifies a missing resource keeps its
 // HTML error page rather than being converted to markdown.
 func TestMarkdownAcceptNotFoundStaysHTML(t *testing.T) {
-	handler, token, _, _, _ := newServer(t, false)
+	handler, token, _, _, _ := newServer(t)
 
 	req := httptest.NewRequest(http.MethodGet, "/panel/collectors/ghost", nil)
 	req.Header.Set("Accept", "text/markdown")
@@ -919,7 +913,7 @@ func TestMarkdownAcceptNotFoundStaysHTML(t *testing.T) {
 // uncommitted flush would commit an implicit empty 200 before the middleware
 // acts. A real server exposes the corruption that httptest.NewRecorder masks.
 func TestMarkdownAcceptRealServer(t *testing.T) {
-	handler, token, _, _, _ := newServer(t, false)
+	handler, token, _, _, _ := newServer(t)
 	srv := httptest.NewServer(handler)
 	defer srv.Close()
 
@@ -962,7 +956,7 @@ func TestMarkdownAcceptRealServer(t *testing.T) {
 // clean back link, the message as heading, one Metadata line per field, and
 // one Context line per key, with absent values rendered as "-".
 func TestMarkdownAcceptLogDetail(t *testing.T) {
-	handler, token, _, ingestService, _ := newServer(t, false)
+	handler, token, _, ingestService, _ := newServer(t)
 
 	ts := time.Unix(1785000000, 0)
 	logID, err := ingestService.StoreLog(t.Context(), ingestsvc.StoreLogRequest{

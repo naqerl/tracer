@@ -94,6 +94,10 @@ SELECT
 FROM log l1
 WHERE l1.created_at >= ?1;
 
+-- name: HasLog :one
+-- Whether the app ever received a log.
+SELECT EXISTS(SELECT 1 FROM log) AS has_log;
+
 -- name: GetLogVolumeTimeSeries :many
 -- Get log volume over time bucketed by intervals and grouped by level
 SELECT

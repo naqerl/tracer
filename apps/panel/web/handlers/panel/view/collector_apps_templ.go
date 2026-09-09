@@ -8,8 +8,6 @@ package view
 import "github.com/a-h/templ"
 import templruntime "github.com/a-h/templ/runtime"
 
-import "strconv"
-
 // CollectorAppsProps holds data for the collector apps view (HTMX fragment).
 type CollectorAppsProps struct {
 	CollectorName string
@@ -17,12 +15,13 @@ type CollectorAppsProps struct {
 }
 
 // AppView is an app card in the apps grid; UptimeClass/ErrorClass carry the
-// health color-coding.
+// health color-coding. ErrorText carries the formatted error count or "N/A"
+// when the app never received logs.
 type AppView struct {
 	Name        string
 	UptimeText  string
 	UptimeClass string
-	ErrorCount  int64
+	ErrorText   string
 	ErrorClass  string
 }
 
@@ -69,20 +68,20 @@ func AppCard(collectorName string, app AppView, loading bool) templ.Component {
 			var templ_7745c5c3_Var2 templ.SafeURL
 			templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.JoinURLErrs("/panel/collectors/" + collectorName + "/apps/" + app.Name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/panel/view/collector_apps.templ`, Line: 34, Col: 71}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/panel/view/collector_apps.templ`, Line: 33, Col: 71}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var2))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "\" class=\"block hover:bg-bg-secondary/80 transition-all hover:-translate-y-0.5\"><div class=\"font-medium\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "\" class=\"block hover:bg-bg-secondary/80 transition-all hover:-translate-y-0.5\"><div class=\"font-medium truncate\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var3 string
 			templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(app.Name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/panel/view/collector_apps.templ`, Line: 35, Col: 39}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/panel/view/collector_apps.templ`, Line: 34, Col: 48}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 			if templ_7745c5c3_Err != nil {
@@ -117,7 +116,7 @@ func AppCard(collectorName string, app AppView, loading bool) templ.Component {
 			var templ_7745c5c3_Var6 string
 			templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.JoinStringErrs(app.UptimeText)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/panel/view/collector_apps.templ`, Line: 37, Col: 148}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/panel/view/collector_apps.templ`, Line: 36, Col: 148}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var6))
 			if templ_7745c5c3_Err != nil {
@@ -150,9 +149,9 @@ func AppCard(collectorName string, app AppView, loading bool) templ.Component {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var9 string
-			templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(strconv.FormatInt(app.ErrorCount, 10))
+			templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(app.ErrorText)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/panel/view/collector_apps.templ`, Line: 39, Col: 169}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/panel/view/collector_apps.templ`, Line: 38, Col: 145}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
 			if templ_7745c5c3_Err != nil {
@@ -254,12 +253,25 @@ func CollectorApps(props CollectorAppsProps) templ.Component {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, "</div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, "<a href=\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var12 templ.SafeURL
+			templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.JoinURLErrs("/panel/collectors/" + props.CollectorName + "/apps/new")
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/panel/view/collector_apps.templ`, Line: 68, Col: 69}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var12))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "\" class=\"block bg-bg-secondary p-4 flex items-center justify-center hover:bg-bg-secondary/80 transition-all hover:-translate-y-0.5\" aria-label=\"Add app\"><img src=\"/static/img/plus.svg\" alt=\"Add app\" class=\"w-6 h-6\"></a></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		} else {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "<div class=\"text-fg-secondary text-sm\">No apps registered</div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 19, "<div class=\"text-fg-secondary text-sm\">No apps registered</div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

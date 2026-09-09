@@ -756,6 +756,13 @@ func (s *Service) SaveHealthPeriod(ctx context.Context, req StoreHealthRequest) 
 	err = handle.Write(ctx, func(tx db.DBTX) error {
 		q := db.New(tx)
 
+		if err := q.SaveHealthCheck(ctx, db.SaveHealthCheckParams{
+			Status: string(req.Status),
+			At:     req.Time.Unix(),
+		}); err != nil {
+			return err
+		}
+
 		current, err := q.GetOpenHealthPeriod(ctx)
 		switch {
 		case err == nil:

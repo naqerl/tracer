@@ -17,7 +17,8 @@ Demo: [tracer.naqel.com](https://tracer.naqel.com) &middot; Landing: [naqerl.com
 - **API access for agents** &mdash; collector API keys for machine-to-machine auth, per-user API keys for scripted access, both with per-key revocation
 - **Multiple log formats** &mdash; JSON with customizable field mappings, Go slog text, user-defined regex, journalctl
 - **Per-app SQLite databases** &mdash; WAL mode, automatic retention cleanup (default: 90 days), configurable sample rate for non-error logs (default: 10%; errors always 100%)
-- **Interactive log source setup** &mdash; auto-detect log format and field mappings from a sample, resolve conflicts with `--favour`
+- **Panel-driven collector config** &mdash; collectors are configured entirely from the panel UI; config is pushed over the live WebSocket and hot-reloads with no local files
+- **Auto-detected log sources** &mdash; give a service name and the collector guesses the log format (JSON / slog text / regex) and field mappings automatically
 
 ## Quick Install
 
@@ -34,36 +35,28 @@ curl -fsSL https://git.naqerl.com/naqerl/tracer/raw/main/install.sh | sudo TRACE
 > Pass `TRACER_COLLECTOR_ONLY` *through* `sudo` — a plain `export` in your shell
 > won't reach the script, because `sudo` resets the environment by default.
 
-The script downloads pre-built binaries, creates system users (`tracer-panel`, `tracer-collector`, group `tracer`), installs systemd services, and creates default configs at `/etc/tracer/panel.yaml` and `/etc/tracer/collector.yaml`.
+The script downloads pre-built binaries, creates system users (`tracer-panel`, `tracer-collector`, group `tracer`), installs systemd services, and creates default configs at `/etc/tracer/panel.yaml` and `/etc/tracer/collector.yaml` (the collector's config holds only the sender connection: api key, panel host, and name — apps are managed from the panel).
 
-### Configure collector
+### Configure apps from the panel
 
-`tracer-collector` automatically detects log formats (JSON, slog text) and field mappings:
+Collectors are configured entirely from the panel UI. The collector has no
+local app configuration — it connects to the panel, and the panel pushes the
+stored app config over the live WebSocket connection. Collectors hot-reload on
+receipt, so you can add, edit, and delete apps without touching the collector
+host.
 
-```bash
-# Add a systemd unit as a log source
-tracer-collector add myapp
-
-# Add a log file
-tracer-collector add /var/log/myapp.log
-
-# Add a Kubernetes resource as a log source (kubectl)
-tracer-collector add deployment/myapp -n default
-```
+- **Add an app** — the settings page for a collector has an *Add app* button. Give a service name (systemd unit, kubectl resource, or any log source). For uptime-only monitoring, add an optional health-check URL; the collector polls it and no log collection happens.
+- **Format guessing** — the collector runs the format guesser on the named service over the WebSocket and auto-detects the log format (JSON or slog text) and field mappings. The panel saves the result and pushes it back.
+- **Delete / edit apps** — each app card has a *Delete* button (with confirmation) and a *setting* link.
+- **Raw config** — the settings page exposes the JSON collector config for direct editing.
 
 `tracer-collector -help` prints the complete CLI — every command and its
-flags. `tracer-collector <command> -help` shows a single command's usage
-(e.g. `tracer-collector add -help`), and `tracer-collector help` is an alias
-for the top-level help. Help works even when the collector is not yet
-configured.
+flags. Help works even when the collector is not yet configured.
 
 Kubectl sources are read by the collector daemon, which runs as the
 `tracer-collector` service user — a user with no home directory and no
-kubeconfig of its own. `add` handles this automatically: it installs a
-kubeconfig at `/etc/tracer/kubeconfig` (auto-detected from `$KUBECONFIG`,
-`~/.kube/config`, or k3s/kubeadm locations, or forced with `--kubeconfig
-<path>`), points the source at it, and verifies it can read the resource.
-If you need to (re)configure kubectl access separately, run:
+kubeconfig of its own. If you need to (re)configure kubectl access separately,
+run:
 
 ```bash
 sudo tracer-collector kubectl-setup          # auto-detect the source config
@@ -98,13 +91,8 @@ sudo tracer-collector verify
 (invalid API key), a handshake rejection (not a tracer panel), or a connection
 failure. It exits non-zero on failure, so it can be used in setup scripts.
 
-If logs use inconsistent field names, resolve conflicts iteratively with `--favour`:
-
-```bash
-tracer-collector add myapp --favour 'level_field:"status"'
-```
-
-See [format-guessing.md](./docs/format-guessing.md) for details.
+See [format-guessing.md](./docs/format-guessing.md) for details on how
+auto-detection works.
 
 ### Start services
 
@@ -133,11 +121,10 @@ sudo tracer-panel -init -force -username admin -password 'new-password'
 - If `-password` is omitted, a random password is generated and printed.
 - `-init -force` never touches the existing collector API key.
 
-### API key reveal & read-only mode
+### API key reveal
 
 - On the collector API key detail page (`/settings/admin/collector-api-keys/{name}`)
-  an eye icon reveals the full key. Reveal is a POST request, so it is rejected by
-  the read-only middleware (`-readonly`): a read-only panel can never expose keys.
+  an eye icon reveals the full key. Reveal is a POST request.
 - Keys created before this version store no plaintext and show **Not revealable**.
 - The master key used to encrypt collector key plaintext at rest lives in
   `{dataDir}/keys.key` (created with 0600 permissions on first use) and can be

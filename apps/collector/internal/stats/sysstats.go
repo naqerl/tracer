@@ -16,32 +16,39 @@ type SystemStats struct {
 	lastCPUTotal uint64
 }
 
-// Collect gathers current system statistics
-func (c *SystemStats) Snapshot() (Stats, error) {
+// Snapshot gathers current system statistics, skipping any metric that is
+// disabled in spec.
+func (c *SystemStats) Snapshot(spec Spec) (Stats, error) {
 	stats := Stats{
 		Timestamp: time.Now().UTC(),
 	}
 
 	// Collect CPU usage
-	cpuPercent, err := c.getCPUUsage()
-	if err == nil {
-		stats.CPUUsagePercent = cpuPercent
+	if spec.CPU {
+		cpuPercent, err := c.getCPUUsage()
+		if err == nil {
+			stats.CPUUsagePercent = cpuPercent
+		}
 	}
 
 	// Collect memory stats
-	memTotal, memUsed, memAvail, err := c.getMemStats()
-	if err == nil {
-		stats.MemTotalMB = memTotal
-		stats.MemUsedMB = memUsed
-		stats.MemAvailableMB = memAvail
+	if spec.Mem {
+		memTotal, memUsed, memAvail, err := c.getMemStats()
+		if err == nil {
+			stats.MemTotalMB = memTotal
+			stats.MemUsedMB = memUsed
+			stats.MemAvailableMB = memAvail
+		}
 	}
 
 	// Collect disk stats
-	diskTotal, diskUsed, diskAvail, err := c.getDiskStats()
-	if err == nil {
-		stats.DiskTotalGB = diskTotal
-		stats.DiskUsedGB = diskUsed
-		stats.DiskAvailGB = diskAvail
+	if spec.Disk {
+		diskTotal, diskUsed, diskAvail, err := c.getDiskStats()
+		if err == nil {
+			stats.DiskTotalGB = diskTotal
+			stats.DiskUsedGB = diskUsed
+			stats.DiskAvailGB = diskAvail
+		}
 	}
 
 	return stats, nil

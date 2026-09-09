@@ -9,16 +9,18 @@ import (
 	panelsvc "tracer/apps/panel/internal/services/panel"
 	topologysvc "tracer/apps/panel/internal/services/topology"
 	"tracer/apps/panel/internal/services/user"
+	"tracer/apps/panel/internal/transport"
 )
 
 type Dependencies struct {
-	DBManagerx   *dbmanager.Manager
-	Ingest       *ingest.Service
-	Notify       *notify.Service
-	Auth         *auth.Service
-	User         *user.Service
-	Tracker      *ingest.Tracker
-	Topology     *topologysvc.Service
-	PanelService *panelsvc.Service
-	Config       *config.Config
+	DBManagerx     *dbmanager.Manager
+	Ingest         *ingest.Service
+	Notify         *notify.Service
+	Auth           *auth.Service
+	User           *user.Service
+	Tracker        *ingest.Tracker
+	Topology       *topologysvc.Service
+	PanelService   *panelsvc.Service
+	Config         *config.Config
+	CollectorConns *transport.Connections
 }

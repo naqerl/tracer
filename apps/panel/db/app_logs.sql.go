@@ -302,6 +302,18 @@ func (q *Queries) GetPercentiles(ctx context.Context, createdAt int64) (GetPerce
 	return i, err
 }
 
+const hasLog = `-- name: HasLog :one
+SELECT EXISTS(SELECT 1 FROM log) AS has_log
+`
+
+// Whether the app ever received a log.
+func (q *Queries) HasLog(ctx context.Context) (bool, error) {
+	row := q.db.QueryRowContext(ctx, hasLog)
+	var has_log bool
+	err := row.Scan(&has_log)
+	return has_log, err
+}
+
 const incrementLogGroupCounter = `-- name: IncrementLogGroupCounter :exec
 UPDATE log_group
 SET last_log_at = ?

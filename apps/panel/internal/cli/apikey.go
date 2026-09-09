@@ -11,8 +11,8 @@ import (
 // GenerateCollectorAPIKey creates a new collector API key with the given name.
 // authSvc is the already-constructed auth service; main.go builds it once with
 // the production bcrypt cost and shares it across all CLI commands.
-func GenerateCollectorAPIKey(ctx context.Context, authSvc *auth.Service, name string) (string, error) {
-	req := auth.GenerateCollectorAPIKeyRequest{Name: name}
+func GenerateCollectorAPIKey(ctx context.Context, authSvc *auth.Service, name string, userID int64) (string, error) {
+	req := auth.GenerateCollectorAPIKeyRequest{Name: name, UserID: userID}
 	if err := req.Validate(); err != nil {
 		return "", fmt.Errorf("validate collector api key request: %w", err)
 	}

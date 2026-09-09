@@ -9,17 +9,20 @@ import (
 type EventType string
 
 const (
-	EventTypeRegister  EventType = "register"
-	EventTypeLog       EventType = "log"
-	EventTypeLifecycle EventType = "lifecycle"
-	EventTypeStats     EventType = "stats"
-	EventTypeError     EventType = "error"
-	EventTypeHealth    EventType = "health"
+	EventTypeRegister      EventType = "register"
+	EventTypeLog           EventType = "log"
+	EventTypeLifecycle     EventType = "lifecycle"
+	EventTypeStats         EventType = "stats"
+	EventTypeError         EventType = "error"
+	EventTypeHealth        EventType = "health"
+	EventTypeConfig        EventType = "config"
+	EventTypeFormatRequest EventType = "format_request"
+	EventTypeFormatResult  EventType = "format_result"
 )
 
 func (t EventType) Validate() error {
 	switch t {
-	case EventTypeRegister, EventTypeLog, EventTypeLifecycle, EventTypeStats, EventTypeError, EventTypeHealth:
+	case EventTypeRegister, EventTypeLog, EventTypeLifecycle, EventTypeStats, EventTypeError, EventTypeHealth, EventTypeConfig, EventTypeFormatRequest, EventTypeFormatResult:
 		return nil
 	}
 	return fmt.Errorf("invalid event type: %q", t)
@@ -109,6 +112,65 @@ type RegisterEvent struct {
 
 func (r RegisterEvent) EventType() EventType { return EventTypeRegister }
 func (r RegisterEvent) Timestamp() time.Time { return time.Time{} }
+
+// ConfigEvent carries the panel-driven CollectorConfig for a collector. The
+// Config field is the JSON encoding of CollectorConfig; the collector keeps
+// its local sender section (api key, panel host, name) and only reconciles the
+// pushed apps and parsers. The panel derives the exact bytes to send by
+// marshalling CollectorConfig after ensuring the self-app, so the field stays
+// opaque JSON rather than a typed struct to avoid a re-marshal round-trip at
+// the ingest boundary.
+type ConfigEvent struct {
+	Type   EventType `json:"type"`
+	Config string    `json:"config"`
+}
+
+func (e ConfigEvent) EventType() EventType { return EventTypeConfig }
+func (e ConfigEvent) Timestamp() time.Time { return time.Time{} }
+
+// FormatRequestEvent asks the collector to run the format guesser on a
+// named service (systemd unit, kubectl pod, etc.) and return the detected
+// source and parser configuration.
+type FormatRequestEvent struct {
+	Type      EventType  `json:"type"`
+	RequestID string     `json:"request_id"`
+	App       string     `json:"app"`              // desired app name
+	Service   string     `json:"service"`          // systemd unit / kubectl resource
+	Favour    ParserSpec `json:"favour,omitempty"` // manual parser spec to resolve conflicts
+}
+
+func (e FormatRequestEvent) EventType() EventType { return EventTypeFormatRequest }
+func (e FormatRequestEvent) Timestamp() time.Time { return time.Time{} }
+
+// FormatConflict describes a parser guess inconsistency the user must resolve,
+// e.g. two log lines disagreeing on which key holds the level. Options lists
+// the distinct values seen for the conflicting Field so the UI can offer a
+// choice; PrevValue and CurrValue are the first and later values that clashed
+// and FirstLine and CurrLine the log records carrying them.
+type FormatConflict struct {
+	Field     string   `json:"field"`
+	PrevValue string   `json:"prev_value"`
+	CurrValue string   `json:"curr_value"`
+	Options   []string `json:"options,omitempty"`
+	FirstLine string   `json:"first_line,omitempty"`
+	CurrLine  string   `json:"curr_line,omitempty"`
+}
+
+// FormatResultEvent carries the result of a format guess back to the panel.
+type FormatResultEvent struct {
+	Type      EventType         `json:"type"`
+	RequestID string            `json:"request_id"`
+	Error     string            `json:"error,omitempty"`
+	NotFound  bool              `json:"not_found,omitempty"` // service could not be located
+	Conflict  *FormatConflict   `json:"conflict,omitempty"`  // guess halted on an inconsistency
+	App       AppSpec           `json:"app,omitempty"`
+	Parser    ParserSpec        `json:"parser,omitempty"`
+	Samples   []string          `json:"samples,omitempty"` // sample parsed fields from first line
+	Fields    map[string]string `json:"fields,omitempty"`  // first line parsed fields
+}
+
+func (e FormatResultEvent) EventType() EventType { return EventTypeFormatResult }
+func (e FormatResultEvent) Timestamp() time.Time { return time.Time{} }
 
 // ErrorEvent represents a source error for reporting to panel.
 type ErrorEvent struct {

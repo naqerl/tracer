@@ -45,16 +45,13 @@ func TestGenerateAndValidateCollectorAPIKey(t *testing.T) {
 	if err != nil {
 		t.Fatalf("validate collector api key: %v", err)
 	}
-	if !valid {
-		t.Fatal("expected generated collector key to validate")
+	if valid != 0 {
+		t.Fatalf("expected user_id 0 for system-created key, got %d", valid)
 	}
 
 	invalid, err := svc.ValidateCollectorAPIKey(ctx, "wrong-key")
-	if err != nil {
-		t.Fatalf("validate wrong collector api key: %v", err)
-	}
-	if invalid {
-		t.Fatal("expected wrong collector key to fail validation")
+	if err != ErrInvalidCredentials {
+		t.Fatalf("expected ErrInvalidCredentials for wrong key, got valid=%d err=%v", invalid, err)
 	}
 }
 
@@ -100,8 +97,8 @@ func TestValidateCollectorAPIKeyUpdatesLastUsedAt(t *testing.T) {
 	if err != nil {
 		t.Fatalf("validate collector api key: %v", err)
 	}
-	if !valid {
-		t.Fatal("expected collector key to validate")
+	if valid != 0 {
+		t.Fatalf("expected user_id 0 for system-created key, got %d", valid)
 	}
 
 	row := collectorAPIKeyRow(t, svc, req.Name)

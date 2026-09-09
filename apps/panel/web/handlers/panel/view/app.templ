@@ -17,6 +17,27 @@ type AppProps struct {
 templ App(props AppProps) {
 	@templates.Layout(props.App+" Analytics", templates.NavData{Since: props.Since}) {
 		<div class="max-w-5xl mx-auto p-6">
+			<div class="flex items-center justify-between mb-6">
+				<a href={ "/panel/collectors/" + props.Collector } onclick="if (window.history.length > 1) { window.history.back(); return false; }" class="text-fg-secondary hover:text-fg text-sm">&lt; back</a>
+				<div class="flex items-center gap-3">
+					<a
+						href={ "/panel/collectors/" + props.Collector + "/apps/" + props.App + "/settings" }
+						class="text-sm text-fg-secondary hover:text-fg transition-colors"
+						title="Configure app"
+					>
+						Settings
+					</a>
+<button
+					hx-delete={ "/panel/collectors/" + props.Collector + "/apps/" + props.App }
+					hx-confirm={ "Delete app '" + props.App + "'?" }
+					class="text-sm text-red-500 hover:text-red-400 transition-colors"
+					title="Delete app"
+				>
+					Delete
+				</button>
+				</div>
+			</div>
+
 			<h1 class="text-3xl font-semibold mb-6">{ props.App }</h1>
 
 			<div

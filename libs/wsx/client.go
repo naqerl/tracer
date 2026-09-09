@@ -261,6 +261,24 @@ func decodeEvent(data []byte) (types.Event, error) {
 			return nil, err
 		}
 		return msg, nil
+	case types.EventTypeConfig:
+		var msg types.ConfigEvent
+		if err := json.Unmarshal(data, &msg); err != nil {
+			return nil, err
+		}
+		return msg, nil
+	case types.EventTypeFormatRequest:
+		var msg types.FormatRequestEvent
+		if err := json.Unmarshal(data, &msg); err != nil {
+			return nil, err
+		}
+		return msg, nil
+	case types.EventTypeFormatResult:
+		var msg types.FormatResultEvent
+		if err := json.Unmarshal(data, &msg); err != nil {
+			return nil, err
+		}
+		return msg, nil
 	default:
 		var env types.Envelope
 		if err := json.Unmarshal(data, &env); err != nil {

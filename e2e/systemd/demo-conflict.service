@@ -1,0 +1,16 @@
+[Unit]
+Description=Demo logger with inconsistent log formats (for the add-app conflict UI)
+After=systemd-journald.service
+Wants=systemd-journald.service
+
+[Service]
+Type=simple
+ExecStart=/etc/systemd/system/demo-conflict-loggen.sh
+Restart=always
+RestartSec=5
+DynamicUser=yes
+NoNewPrivileges=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

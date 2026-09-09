@@ -31,9 +31,9 @@ type Service struct {
 // New creates a Service. The client automatically reconnects on failure.
 //
 // The factory dials the panel, authenticates, and sends a RegisterEvent
-// before returning. If registration fails, the entire factory call fails
-// and the reconnecting wrapper retries.
-func New(spec Spec, appNames []string, events <-chan types.Event) *Service {
+// with an empty app list before returning. The panel pushes the stored
+// configuration on registration.
+func New(spec Spec, events <-chan types.Event) *Service {
 	headers := http.Header{}
 	headers.Set("X-API-Key", spec.APIKey)
 
@@ -52,7 +52,6 @@ func New(spec Spec, appNames []string, events <-chan types.Event) *Service {
 		if err := c.Send(types.RegisterEvent{
 			Type:      types.EventTypeRegister,
 			Collector: spec.Name,
-			Apps:      appNames,
 		}); err != nil {
 			c.Close()
 			return nil, fmt.Errorf("register: %w", err)
@@ -65,6 +64,29 @@ func New(spec Spec, appNames []string, events <-chan types.Event) *Service {
 		events: events,
 		spec:   spec,
 	}
+}
+
+// Recv exposes incoming events from the panel (e.g. ConfigEvent). The
+// channel stays open across reconnects; callers drain it and handle the
+// events they care about while ignoring the rest.
+func (s *Service) Recv() <-chan types.Event {
+	return s.client.Recv()
+}
+
+// Register (re)sends a registration event so the panel can create databases
+// for any apps added via a pushed configuration. It uses the current
+// connection or dials a new one transparently.
+func (s *Service) Register(apps []string) error {
+	return s.client.Send(types.RegisterEvent{
+		Type:      types.EventTypeRegister,
+		Collector: s.spec.Name,
+		Apps:      apps,
+	})
+}
+
+// Send delivers an event to the panel over the current WebSocket connection.
+func (s *Service) Send(event types.Event) error {
+	return s.client.Send(event)
 }
 
 // Start forwards events from the events channel to the panel.

@@ -10,7 +10,6 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"tracer/apps/collector/internal/config"
-	"tracer/apps/collector/internal/selfapp"
 	"tracer/build"
 	"tracer/libs/installx"
 )
@@ -51,9 +50,6 @@ func Run() error {
 	if err := createConfig(); err != nil {
 		return fmt.Errorf("create config: %w", err)
 	}
-	if err := selfRegister(); err != nil {
-		return fmt.Errorf("self-register: %w", err)
-	}
 	if err := installSystemd(); err != nil {
 		return fmt.Errorf("install systemd: %w", err)
 	}
@@ -68,7 +64,7 @@ func createConfig() error {
 		return nil
 	}
 
-	cfg := config.Default()
+	cfg := config.Config{}
 	if envKey := os.Getenv("TRACER_COLLECTOR_API_KEY"); envKey != "" {
 		cfg.Sender.APIKey = envKey
 	}
@@ -81,21 +77,6 @@ func createConfig() error {
 	// The config is owned by the collector service user so the daemon can
 	// manage it; root and the tracer group keep read access via 0640.
 	return installx.WriteConfig(ConfigFilePath, out, 0640, build.CollectorUser, build.TracerGroup)
-}
-
-// selfRegister adds the collector's own service as an app. It runs after the
-// config file exists (its app entry is persisted by the selfapp package) but
-// before the systemd unit is installed. The best-effort selfapp package never
-// fails an install.
-func selfRegister() error {
-	cfg, err := config.Load(ConfigFilePath)
-	if err != nil {
-		return fmt.Errorf("load config: %w", err)
-	}
-	if _, err := selfapp.Ensure(ConfigFilePath, cfg); err != nil {
-		return fmt.Errorf("ensure self app: %w", err)
-	}
-	return nil
 }
 
 func installSystemd() error {

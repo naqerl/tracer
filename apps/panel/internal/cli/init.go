@@ -68,12 +68,13 @@ func initWithHandle(ctx context.Context, authSvc *auth.Service, username, passwo
 
 	if !hasUsers {
 		// Fresh panel: create the admin user and a collector API key.
-		if _, err := authSvc.Register(ctx, registerReq); err != nil {
+		admin, err := authSvc.Register(ctx, registerReq)
+		if err != nil {
 			return InitResult{}, fmt.Errorf("create admin user: %w", err)
 		}
 
-		// Generate collector API key
-		apiKeyReq := auth.GenerateCollectorAPIKeyRequest{Name: "default"}
+		// Generate collector API key, associated with the admin user.
+		apiKeyReq := auth.GenerateCollectorAPIKeyRequest{Name: "default", UserID: admin.ID}
 		if err := apiKeyReq.Validate(); err != nil {
 			return InitResult{}, fmt.Errorf("validate collector api key request: %w", err)
 		}

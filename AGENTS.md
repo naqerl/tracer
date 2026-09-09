@@ -7,6 +7,12 @@
   - format
   - build
 
+# E2E hot reload
+
+After each completed job that touches the panel (Go, templ, CSS, or static assets), hot reload the running demo container with `make -C e2e live-reload` instead of manually re-deploying the binary. It rebuilds the panel and restarts the service in the existing container.
+
+Note: `live-reload.sh` copies the new binary to the container's `/tmp` (a tmpfs) which can silently fail; if that happens, `docker cp` the binary straight to `/usr/local/bin`, install it, and restart `tracer-panel.service` manually.
+
 # Unrelated changes
 
 If any `make` target returns some issues from the code that you have not touched, DO NOT "nah, that's not me, i would not touch it". Instead fix it or interrupt and ask operator about how should it be fixed if not obvious. I do not care about who written the code that does not work, if it does not work for you - it's your responsibility to fix it.

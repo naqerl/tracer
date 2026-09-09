@@ -3,8 +3,12 @@ package panel
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -95,7 +99,7 @@ func setupTestService(t *testing.T) (*Service, *dbmanager.DBHandle, int64, strin
 	}
 
 	// --- Create the panel service ---
-	svc := New(mgr, ingestSvc, tracker, userSvc)
+	svc := New(mgr, ingestSvc, tracker, userSvc, &fakeConfigPusher{}, nil)
 
 	return svc, panelDB, user.ID, "test-collector", "test-app"
 }
@@ -133,7 +137,7 @@ func setupTestServiceNoAccess(t *testing.T) (*Service, int64) {
 		t.Fatalf("register user: %v", err)
 	}
 
-	svc := New(mgr, ingestSvc, tracker, userSvc)
+	svc := New(mgr, ingestSvc, tracker, userSvc, &fakeConfigPusher{}, nil)
 	return svc, user.ID
 }
 
@@ -360,6 +364,45 @@ func TestGetAppHealth_Success(t *testing.T) {
 	}
 }
 
+func TestGetAppHealth_CheckCountsPerBucket(t *testing.T) {
+	svc, _, userID, collectorName, appName := setupTestService(t)
+	ctx := t.Context()
+	now := time.Now()
+
+	for i := 0; i < 3; i++ {
+		err := svc.ingestSvc.SaveHealthPeriod(ctx, ingestsvc.StoreHealthRequest{
+			CollectorName: collectorName,
+			AppName:       appName,
+			Status:        types.HealthStatusUp,
+			Time:          now.Add(-time.Duration(i) * time.Minute),
+		})
+		if err != nil {
+			t.Fatalf("seed health check %d: %v", i, err)
+		}
+	}
+
+	health, err := svc.GetAppHealth(ctx, GetAppHealthRequest{
+		UserID:        userID,
+		CollectorName: collectorName,
+		AppName:       appName,
+		Since:         now.Add(-time.Hour),
+	})
+	if err != nil {
+		t.Fatalf("GetAppHealth: %v", err)
+	}
+
+	total := 0
+	for _, b := range health.Buckets {
+		if b.Checks < 0 {
+			t.Fatalf("negative checks %d in bucket", b.Checks)
+		}
+		total += b.Checks
+	}
+	if total != 3 {
+		t.Fatalf("expected 3 checks across buckets, got %d", total)
+	}
+}
+
 func TestGetAppHealth_AccessDenied(t *testing.T) {
 	svc, noAccessUserID := setupTestServiceNoAccess(t)
 	ctx := t.Context()
@@ -453,6 +496,9 @@ func TestListCollectorAppsWithStats(t *testing.T) {
 	if apps[0].ErrorCount != 1 {
 		t.Fatalf("expected 1 error, got %d", apps[0].ErrorCount)
 	}
+	if !apps[0].HasLogs {
+		t.Fatal("expected app with seeded error log to have logs")
+	}
 	if apps[0].UptimePeriods < 1 {
 		t.Fatalf("expected at least 1 uptime period, got %d", apps[0].UptimePeriods)
 	}
@@ -490,8 +536,8 @@ func TestListCollectorAppsWithStats_EmptyApp(t *testing.T) {
 	}
 	for _, app := range apps {
 		if app.Name == "empty-app" {
-			if app.ErrorCount != 0 || app.UptimePeriods != 0 {
-				t.Fatalf("expected empty app to degrade to N/A / 0, got errors=%d periods=%d", app.ErrorCount, app.UptimePeriods)
+			if app.ErrorCount != 0 || app.UptimePeriods != 0 || app.HasLogs {
+				t.Fatalf("expected empty app to degrade to N/A / 0, got errors=%d periods=%d hasLogs=%v", app.ErrorCount, app.UptimePeriods, app.HasLogs)
 			}
 			return
 		}
@@ -638,6 +684,9 @@ func TestGetAppStats_Success(t *testing.T) {
 	}
 	if stats.Total != 0 {
 		t.Fatalf("expected total 0, got %d", stats.Total)
+	}
+	if stats.HasLogs {
+		t.Fatal("expected fresh app to have no logs")
 	}
 }
 
@@ -1344,7 +1393,7 @@ func TestBuildHealthBuckets(t *testing.T) {
 		},
 	}
 
-	buckets := buildHealthBuckets(periods, since, now)
+	buckets := buildHealthBuckets(periods, nil, since, now)
 	if len(buckets) < 37 {
 		t.Fatalf("expected at least 37 buckets, got %d", len(buckets))
 	}
@@ -1365,6 +1414,40 @@ func TestBuildHealthBuckets(t *testing.T) {
 	}
 	if totalUp+totalDown <= 0 {
 		t.Fatal("expected some duration in buckets")
+	}
+}
+
+func TestBuildHealthBucketsCheckCounts(t *testing.T) {
+	now := time.Date(2025, 1, 15, 12, 0, 0, 0, time.UTC)
+	since := now.Add(-3 * time.Hour)
+	bucketCount := 37
+	slotSize := int64(now.Sub(since)/time.Second) / int64(bucketCount)
+
+	checkCounts := []db.ListHealthCheckCountsBySlotRow{
+		{Slot: 0, Cnt: 2},
+		{Slot: 5, Cnt: 3},
+		{Slot: int64(bucketCount), Cnt: 1},
+	}
+
+	buckets := buildHealthBuckets(nil, checkCounts, since, now)
+	if len(buckets) != bucketCount {
+		t.Fatalf("expected %d buckets, got %d", bucketCount, len(buckets))
+	}
+	if got := buckets[0].Checks; got != 2 {
+		t.Fatalf("expected 2 checks in bucket 0, got %d", got)
+	}
+	if got := buckets[5].Checks; got != 3 {
+		t.Fatalf("expected 3 checks in bucket 5, got %d", got)
+	}
+	if got := buckets[bucketCount-1].Checks; got != 1 {
+		t.Fatalf("expected tail slot clamped to last bucket with 1 check, got %d", got)
+	}
+	if got := buckets[0].Start; !got.Equal(since) {
+		t.Fatalf("expected first bucket to start at since, got %v", got)
+	}
+	expectedLastStart := since.Add(time.Duration(bucketCount-1) * time.Duration(slotSize) * time.Second)
+	if got := buckets[bucketCount-1].Start; !got.Equal(expectedLastStart) {
+		t.Fatalf("expected last bucket to start at %v, got %v", expectedLastStart, got)
 	}
 }
 
@@ -1603,6 +1686,38 @@ func TestDBManager_CreateAppDB(t *testing.T) {
 	}
 	if len(apps) != 1 || apps[0] != "my-app" {
 		t.Fatalf("expected [my-app], got %v", apps)
+	}
+}
+
+func TestDBManager_DeleteAppDB(t *testing.T) {
+	mgr := testutil.NewTestDBManager(t)
+
+	if _, err := mgr.CreateAppDB("my-collector", "my-app"); err != nil {
+		t.Fatalf("create app db: %v", err)
+	}
+	if _, err := mgr.CreateAppDB("my-collector", "keep-app"); err != nil {
+		t.Fatalf("create keep-app db: %v", err)
+	}
+
+	if err := mgr.DeleteAppDB("my-collector", "my-app"); err != nil {
+		t.Fatalf("delete app db: %v", err)
+	}
+
+	apps, err := mgr.ListApps("my-collector")
+	if err != nil {
+		t.Fatalf("list apps: %v", err)
+	}
+	if len(apps) != 1 || apps[0] != "keep-app" {
+		t.Fatalf("expected [keep-app] after delete, got %v", apps)
+	}
+
+	handle, err := mgr.GetAppDB("my-collector", "my-app")
+	if !errors.Is(err, dbmanager.ErrDBNotFound) {
+		t.Fatalf("expected ErrDBNotFound after delete, got handle=%v err=%v", handle, err)
+	}
+
+	if err := mgr.DeleteAppDB("my-collector", "missing-app"); err != nil {
+		t.Fatalf("deleting a never-created app db should be idempotent: %v", err)
 	}
 }
 
@@ -2145,5 +2260,268 @@ func TestComputePercentiles_Empty(t *testing.T) {
 	result := PanelPercentiles{}
 	if result.P50 != 0 {
 		t.Fatalf("expected zero percentiles, got %+v", result)
+	}
+}
+
+func TestCollectorConfigStorage(t *testing.T) {
+	svc, _, _, collector, _ := setupTestService(t)
+	ctx := t.Context()
+
+	// No config stored yet: empty, no error.
+	got, err := svc.FetchCollectorConfig(ctx, collector)
+	if err != nil {
+		t.Fatalf("get empty config: %v", err)
+	}
+	if got != "" {
+		t.Fatalf("expected empty config, got %q", got)
+	}
+
+	cfgJSON := `{"parsers":{"p1":{"type":"json","params":{"level_field":"level","message_field":"msg","timestamp_field":"time","timestamp_format":"2006-01-02T15:04:05.999999999Z07:00"}}},"apps":[{"name":"nginx","parser_id":"p1","source":{"type":"journalctl","params":{}}}]}`
+	if err := svc.SaveCollectorConfig(ctx, collector, cfgJSON); err != nil {
+		t.Fatalf("save config: %v", err)
+	}
+
+	got, err = svc.FetchCollectorConfig(ctx, collector)
+	if err != nil {
+		t.Fatalf("get config: %v", err)
+	}
+	statsDefaulted := `{"parsers":{"p1":{"type":"json","params":{"level_field":"level","message_field":"msg","timestamp_field":"time","timestamp_format":"2006-01-02T15:04:05.999999999Z07:00"}}},"apps":[{"name":"nginx","parser_id":"p1","source":{"type":"journalctl","params":{}}}],"stats":{"interval":"30s","cpu":true,"mem":true,"disk":true}}`
+	if got != statsDefaulted {
+		t.Fatalf("config mismatch:\n got: %q\nwant: %q", got, statsDefaulted)
+	}
+
+	// Upsert overwrites.
+	updatedJSON := `{"parsers":{"p2":{"type":"json","params":{"level_field":"level","message_field":"msg","timestamp_field":"time","timestamp_format":"2006-01-02T15:04:05.999999999Z07:00"}}},"apps":[{"name":"redis","parser_id":"p2","source":{"type":"journalctl","params":{}}}]}`
+	if err := svc.SaveCollectorConfig(ctx, collector, updatedJSON); err != nil {
+		t.Fatalf("update config: %v", err)
+	}
+	got, err = svc.FetchCollectorConfig(ctx, collector)
+	if err != nil {
+		t.Fatalf("get updated config: %v", err)
+	}
+	updatedDefaulted := `{"parsers":{"p2":{"type":"json","params":{"level_field":"level","message_field":"msg","timestamp_field":"time","timestamp_format":"2006-01-02T15:04:05.999999999Z07:00"}}},"apps":[{"name":"redis","parser_id":"p2","source":{"type":"journalctl","params":{}}}],"stats":{"interval":"30s","cpu":true,"mem":true,"disk":true}}`
+	if got != updatedDefaulted {
+		t.Fatalf("updated config mismatch:\n got: %q\nwant: %q", got, updatedDefaulted)
+	}
+}
+
+func TestSaveCollectorConfigRequiresJSON(t *testing.T) {
+	svc, _, _, collector, _ := setupTestService(t)
+	if err := svc.SaveCollectorConfig(t.Context(), collector, "   "); err == nil {
+		t.Fatal("expected error saving empty config")
+	}
+}
+
+type fakeConfigPusher struct {
+	mu         sync.Mutex
+	pushedTo   string
+	pushedJSON string
+}
+
+func (f *fakeConfigPusher) PushCollectorConfig(collector, configJSON string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.pushedTo = collector
+	f.pushedJSON = configJSON
+}
+
+func TestSaveCollectorConfigPushesToConnectedCollectors(t *testing.T) {
+	ctx := t.Context()
+	mgr := testutil.NewTestDBManager(t)
+	tracker := ingestsvc.NewTracker()
+	userSvc := usersvc.NewService(testutil.NewTestDB(t))
+	ingestSvc := ingestsvc.New(mgr, nil, nil, &testIngestConfig{
+		sampleRate:      1.0,
+		cpuDeltaPercent: 1.0,
+		memDeltaKB:      64,
+		diskDeltaKB:     1024,
+	})
+	if err := ingestSvc.RegisterCollector(ctx, ingestsvc.RegisterCollectorRequest{
+		CollectorName: "push-collector",
+		Apps:          []string{"a"},
+	}); err != nil {
+		t.Fatalf("register collector: %v", err)
+	}
+
+	pusher := &fakeConfigPusher{}
+	svc := New(mgr, ingestSvc, tracker, userSvc, pusher, nil)
+
+	cfgJSON := `{"parsers":{"p":{"type":"json","params":{"level_field":"level","message_field":"msg","timestamp_field":"time","timestamp_format":"2006-01-02T15:04:05.999999999Z07:00"}}},"apps":[{"name":"a","parser_id":"p","source":{"type":"journalctl","params":{}}}]}`
+	if err := svc.SaveCollectorConfig(ctx, "push-collector", cfgJSON); err != nil {
+		t.Fatalf("save config: %v", err)
+	}
+
+	pusher.mu.Lock()
+	defer pusher.mu.Unlock()
+	if pusher.pushedTo != "push-collector" {
+		t.Fatalf("push target = %q, want push-collector", pusher.pushedTo)
+	}
+	want := `{"parsers":{"p":{"type":"json","params":{"level_field":"level","message_field":"msg","timestamp_field":"time","timestamp_format":"2006-01-02T15:04:05.999999999Z07:00"}}},"apps":[{"name":"a","parser_id":"p","source":{"type":"journalctl","params":{}}}],"stats":{"interval":"30s","cpu":true,"mem":true,"disk":true}}`
+	if pusher.pushedJSON != want {
+		t.Fatalf("pushed JSON mismatch:\n got: %q\nwant: %q", pusher.pushedJSON, want)
+	}
+}
+
+func TestDeleteCollectorApp(t *testing.T) {
+	ctx := t.Context()
+	mgr := testutil.NewTestDBManager(t)
+	tracker := ingestsvc.NewTracker()
+	userSvc := usersvc.NewService(testutil.NewTestDB(t))
+	ingestSvc := ingestsvc.New(mgr, nil, nil, &testIngestConfig{
+		sampleRate:      1.0,
+		cpuDeltaPercent: 1.0,
+		memDeltaKB:      64,
+		diskDeltaKB:     1024,
+	})
+	if err := ingestSvc.RegisterCollector(ctx, ingestsvc.RegisterCollectorRequest{
+		CollectorName: "del-collector",
+		Apps:          []string{"keep", "remove"},
+	}); err != nil {
+		t.Fatalf("register collector: %v", err)
+	}
+
+	pusher := &fakeConfigPusher{}
+	svc := New(mgr, ingestSvc, tracker, userSvc, pusher, nil)
+
+	cfgJSON := `{"parsers":{"p-keep":{"type":"json","params":{"level_field":"level","message_field":"msg","timestamp_field":"time","timestamp_format":"2006-01-02T15:04:05.999999999Z07:00"}},"p-remove":{"type":"json","params":{"level_field":"level","message_field":"msg","timestamp_field":"time","timestamp_format":"2006-01-02T15:04:05.999999999Z07:00"}}},"apps":[{"name":"keep","parser_id":"p-keep","source":{"type":"journalctl","params":{}}},{"name":"remove","parser_id":"p-remove","source":{"type":"journalctl","params":{}}}]}`
+	if err := svc.SaveCollectorConfig(ctx, "del-collector", cfgJSON); err != nil {
+		t.Fatalf("save config: %v", err)
+	}
+
+	if err := svc.DeleteCollectorApp(ctx, "del-collector", "remove"); err != nil {
+		t.Fatalf("delete app: %v", err)
+	}
+
+	stored, err := svc.FetchCollectorConfig(ctx, "del-collector")
+	if err != nil {
+		t.Fatalf("fetch config: %v", err)
+	}
+	var cfg types.CollectorConfig
+	if err := json.Unmarshal([]byte(stored), &cfg); err != nil {
+		t.Fatalf("unmarshal stored config: %v", err)
+	}
+	if len(cfg.Apps) != 1 || cfg.Apps[0].Name != "keep" {
+		t.Fatalf("config apps = %v, want only keep", cfg.Apps)
+	}
+	if _, ok := cfg.Parsers["p-keep"]; !ok {
+		t.Fatalf("parser p-keep must survive removal of the other app, parsers = %v", cfg.Parsers)
+	}
+	if _, ok := cfg.Parsers["p-remove"]; ok {
+		t.Fatalf("parser p-remove should be dropped, parsers = %v", cfg.Parsers)
+	}
+
+	apps, err := mgr.ListApps("del-collector")
+	if err != nil {
+		t.Fatalf("list apps: %v", err)
+	}
+	if len(apps) != 1 || apps[0] != "keep" {
+		t.Fatalf("listed apps = %v, want only keep", apps)
+	}
+
+	pusher.mu.Lock()
+	pushed := pusher.pushedJSON
+	pusher.mu.Unlock()
+	if strings.Contains(pushed, "remove") {
+		t.Fatalf("pusher received config still containing removed app: %s", pushed)
+	}
+}
+
+func TestBuildCollectorConfig(t *testing.T) {
+	src := types.SourceSpec{Type: "journalctl", Params: map[string]string{"unit": "nginx.service"}}
+	parser := types.ParserSpec{Type: "json", Params: map[string]string{"level_field": "level"}}
+
+	var cfg types.CollectorConfig
+	if err := cfg.AddApp("nginx", src, parser); err != nil {
+		t.Fatalf("AddApp: %v", err)
+	}
+	if len(cfg.Apps) != 1 {
+		t.Fatalf("expected 1 app, got %d", len(cfg.Apps))
+	}
+
+	if err := cfg.AddApp("redis", src, parser); err != nil {
+		t.Fatalf("AddApp second: %v", err)
+	}
+	if len(cfg.Apps) != 2 {
+		t.Fatalf("expected 2 apps, got %d", len(cfg.Apps))
+	}
+}
+
+func TestBuildUptimeAppConfig(t *testing.T) {
+	var cfg types.CollectorConfig
+	if err := cfg.AddUptimeApp("status-page", "https://example.com", "30s", "200"); err != nil {
+		t.Fatalf("AddUptimeApp: %v", err)
+	}
+	if len(cfg.Apps) != 1 {
+		t.Fatalf("expected 1 app, got %d", len(cfg.Apps))
+	}
+}
+
+func TestRemoveApp(t *testing.T) {
+	src := types.SourceSpec{Type: "journalctl", Params: map[string]string{"unit": "nginx.service"}}
+	parser := types.ParserSpec{Type: "json", Params: map[string]string{"level_field": "level"}}
+
+	var cfg types.CollectorConfig
+	if err := cfg.AddApp("nginx", src, parser); err != nil {
+		t.Fatalf("AddApp: %v", err)
+	}
+	if err := cfg.AddApp("redis", src, parser); err != nil {
+		t.Fatalf("AddApp second: %v", err)
+	}
+
+	cfg.RemoveApp("nginx")
+	if len(cfg.Apps) != 1 {
+		t.Fatalf("expected 1 app after remove, got %d", len(cfg.Apps))
+	}
+
+	// Re-add nginx should work
+	if err := cfg.AddApp("nginx", src, parser); err != nil {
+		t.Fatalf("re-add nginx: %v", err)
+	}
+	if len(cfg.Apps) != 2 {
+		t.Fatalf("expected 2 apps after re-add, got %d", len(cfg.Apps))
+	}
+}
+
+type fakeFormatGuesser struct {
+	result types.FormatResultEvent
+	err    error
+}
+
+func (f *fakeFormatGuesser) GuessFormat(ctx context.Context, collector string, req types.FormatRequestEvent) (types.FormatResultEvent, error) {
+	return f.result, f.err
+}
+
+func TestPreviewFormat(t *testing.T) {
+	ctx := t.Context()
+	guesser := &fakeFormatGuesser{
+		result: types.FormatResultEvent{
+			App: types.AppSpec{
+				Source: &types.SourceSpec{Type: "journalctl", Params: map[string]string{"unit": "nginx.service"}},
+			},
+			Parser:  types.ParserSpec{Type: "json", Params: map[string]string{"level_field": "level"}},
+			Samples: []string{`{"level":"info"}`},
+		},
+	}
+	svc := New(nil, nil, nil, nil, nil, guesser)
+
+	result, err := svc.PreviewFormat(ctx, "collector-a", "nginx", types.ParserSpec{})
+	if err != nil {
+		t.Fatalf("PreviewFormat: %v", err)
+	}
+	if result.App.Source.Type != "journalctl" {
+		t.Fatalf("source type = %q, want journalctl", result.App.Source.Type)
+	}
+	if result.Parser.Type != "json" {
+		t.Fatalf("parser type = %q, want json", result.Parser.Type)
+	}
+	if len(result.Samples) != 1 {
+		t.Fatalf("samples = %v", result.Samples)
+	}
+}
+
+func TestPreviewFormatNilGuesser(t *testing.T) {
+	svc := New(nil, nil, nil, nil, nil, nil)
+	if _, err := svc.PreviewFormat(t.Context(), "collector-a", "nginx", types.ParserSpec{}); err == nil {
+		t.Fatal("expected error when guesser is unavailable")
 	}
 }

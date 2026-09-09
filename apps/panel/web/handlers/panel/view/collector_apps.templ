@@ -1,7 +1,5 @@
 package view
 
-import "strconv"
-
 // CollectorAppsProps holds data for the collector apps view (HTMX fragment).
 type CollectorAppsProps struct {
 	CollectorName string
@@ -9,12 +7,13 @@ type CollectorAppsProps struct {
 }
 
 // AppView is an app card in the apps grid; UptimeClass/ErrorClass carry the
-// health color-coding.
+// health color-coding. ErrorText carries the formatted error count or "N/A"
+// when the app never received logs.
 type AppView struct {
 	Name        string
 	UptimeText  string
 	UptimeClass string
-	ErrorCount  int64
+	ErrorText   string
 	ErrorClass  string
 }
 
@@ -32,11 +31,11 @@ templ AppCard(collectorName string, app AppView, loading bool) {
 			</div>
 		} else {
 			<a href={ "/panel/collectors/" + collectorName + "/apps/" + app.Name } class="block hover:bg-bg-secondary/80 transition-all hover:-translate-y-0.5">
-				<div class="font-medium">{ app.Name }</div>
+				<div class="font-medium truncate">{ app.Name }</div>
 				<div class="mt-2 text-xs text-fg-secondary">
 					<span>uptime: <span class={ "inline-block w-[3ch] tabular-nums text-right whitespace-nowrap value-breath " + app.UptimeClass }>{ app.UptimeText }</span></span>
 					<span class="text-fg-secondary"> | </span>
-					<span>errors: <span class={ "inline-block w-[3ch] tabular-nums text-left whitespace-nowrap value-breath " + app.ErrorClass }>{ strconv.FormatInt(app.ErrorCount, 10) }</span></span>
+					<span>errors: <span class={ "inline-block w-[3ch] tabular-nums text-left whitespace-nowrap value-breath " + app.ErrorClass }>{ app.ErrorText }</span></span>
 				</div>
 			</a>
 		}
@@ -61,11 +60,14 @@ templ CollectorAppsSkeleton(count int) {
 // CollectorApps renders the apps grid for a collector with uptime and
 // error-count stats.
 templ CollectorApps(props CollectorAppsProps) {
-	if len(props.Apps) > 0 {
+		if len(props.Apps) > 0 {
 		<div class="apps-grid">
 			for _, app := range props.Apps {
 				@AppCard(props.CollectorName, app, false)
 			}
+			<a href={ "/panel/collectors/" + props.CollectorName + "/apps/new" } class="block bg-bg-secondary p-4 flex items-center justify-center hover:bg-bg-secondary/80 transition-all hover:-translate-y-0.5" aria-label="Add app">
+				<img src="/static/img/plus.svg" alt="Add app" class="w-6 h-6"/>
+			</a>
 		</div>
 	} else {
 		<div class="text-fg-secondary text-sm">No apps registered</div>

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -118,7 +119,9 @@ func (js *journalctlSource) Close() error {
 		return nil
 	}
 	if err := js.cmd.Process.Kill(); err != nil {
-		slog.Warn("journalctl source: failed to kill process", "error", err, "unit", js.unit)
+		if !errors.Is(err, os.ErrProcessDone) {
+			slog.Warn("journalctl source: failed to kill process", "error", err, "unit", js.unit)
+		}
 	}
 	// Reap the process unless Next already waited after draining stdout.
 	if !js.waited {

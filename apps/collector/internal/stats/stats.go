@@ -2,14 +2,16 @@ package stats
 
 import (
 	"context"
-	"log"
 	"time"
 
 	"tracer/libs/types"
 )
 
 type Spec struct {
-	StatsInterval time.Duration `yaml:"stats_interval"`
+	StatsInterval time.Duration
+	CPU           bool
+	Mem           bool
+	Disk          bool
 }
 
 type Stats struct {
@@ -32,7 +34,7 @@ type ResourceMonitor struct {
 
 func New(spec Spec) ResourceMonitor {
 	if spec.StatsInterval <= 0 {
-		log.Fatalf("stats_interval should be greated that 0 (%d)", spec.StatsInterval)
+		spec.StatsInterval = 30 * time.Second
 	}
 	return ResourceMonitor{
 		spec: spec,
@@ -44,15 +46,14 @@ func (rm ResourceMonitor) Produce(ctx context.Context) <-chan types.Event {
 
 	go func() {
 		defer close(out)
-		interval := rm.spec.StatsInterval
-		ticker := time.NewTicker(interval)
+		ticker := time.NewTicker(rm.spec.StatsInterval)
 		defer ticker.Stop()
 
 		var stats SystemStats
 		for {
 			select {
 			case <-ticker.C:
-				snapshot, err := stats.Snapshot()
+				snapshot, err := stats.Snapshot(rm.spec)
 				if err == nil {
 					out <- types.StatsEvent{
 						Time: snapshot.Timestamp,

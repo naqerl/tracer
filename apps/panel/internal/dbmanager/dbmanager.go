@@ -198,6 +198,38 @@ func (m *Manager) openAppDB(collectorName, appName string) (*DBHandle, error) {
 	return h, nil
 }
 
+// DeleteAppDB closes and removes the database for a collector's app,
+// including WAL and shared-memory sidecars.
+func (m *Manager) DeleteAppDB(collectorName, appName string) error {
+	if err := domain.ValidateCollectorName(collectorName); err != nil {
+		return fmt.Errorf("invalid collector name: %w", err)
+	}
+	if err := domain.ValidateAppName(appName); err != nil {
+		return fmt.Errorf("invalid app name: %w", err)
+	}
+
+	key := appDBKey(collectorName, appName)
+
+	m.mu.Lock()
+	if h, ok := m.appDBs[key]; ok {
+		if err := h.Close(); err != nil {
+			m.mu.Unlock()
+			return fmt.Errorf("could not close app database %s/%s: %w", collectorName, appName, err)
+		}
+		delete(m.appDBs, key)
+	}
+	m.mu.Unlock()
+
+	dbPath := m.appDBPath(collectorName, appName)
+	for _, path := range []string{dbPath, dbPath + "-wal", dbPath + "-shm"} {
+		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("could not remove app database %s/%s: %w", collectorName, appName, err)
+		}
+	}
+	slog.Info("Deleted database for app", "collector_name", collectorName, "app_name", appName, "path", dbPath)
+	return nil
+}
+
 // GetCollectorDB returns the stats DBHandle for a collector.
 // Returns ErrDBNotFound if the database does not exist.
 func (m *Manager) GetCollectorDB(collectorName string) (*DBHandle, error) {

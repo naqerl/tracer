@@ -19,7 +19,7 @@ import (
 )
 
 // NewServer creates and configures an HTTP server with all handlers.
-func NewServer(deps Dependencies, port string, noAuth bool, readOnly bool) *http.Server {
+func NewServer(deps Dependencies, port string, noAuth bool) *http.Server {
 	mux := http.NewServeMux()
 	authMux := auth.InitMux(deps.Auth, deps.User)
 
@@ -47,22 +47,17 @@ func NewServer(deps Dependencies, port string, noAuth bool, readOnly bool) *http
 		llm.RenderDocs(w, r)
 	})
 	mux.Handle("/static/", http.StripPrefix("/static", static.InitMux()))
-	mux.Handle("/ingest/", http.StripPrefix("/ingest", ingest.InitMux(deps.Auth, deps.Ingest, deps.Tracker, deps.Topology)))
-	mux.Handle("/panel/", http.StripPrefix("/panel", panel.InitMux(deps.PanelService)))
+	mux.Handle("/ingest/", http.StripPrefix("/ingest", ingest.InitMux(deps.Auth, deps.Ingest, deps.Tracker, deps.Topology, deps.PanelService, deps.User, deps.CollectorConns)))
+	mux.Handle("/panel/", http.StripPrefix("/panel", panel.InitMux(deps.PanelService, deps.Auth)))
 	mux.Handle("/topology/", http.StripPrefix("/topology", topology.InitMux(deps.Topology, deps.User)))
 	mux.Handle("/auth/", http.StripPrefix("/auth", authMux))
 	mux.Handle("/llm", llm.InitMux())
-	mux.Handle("/settings/", http.StripPrefix("/settings", settings.InitMux(deps.Auth, deps.User, deps.Ingest, deps.DBManagerx, deps.Notify, deps.Config, readOnly)))
+	mux.Handle("/settings/", http.StripPrefix("/settings", settings.InitMux(deps.Auth, deps.User, deps.Ingest, deps.DBManagerx, deps.Notify, deps.Config, deps.PanelService)))
 
 	loginPathMiddleware := authmw.BuildLoginPathMiddleware("/auth/login")
 	authMiddleware := authmw.BuildAuthMiddleware(deps.Auth, deps.User)
 
 	var handler http.Handler = mux
-
-	if readOnly {
-		handler = middleware.BuildReadOnlyMiddleware()(handler)
-		slog.Info("read-only mode enabled")
-	}
 
 	handler = authMiddleware(handler)
 	handler = loginPathMiddleware(handler)

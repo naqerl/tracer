@@ -165,7 +165,8 @@ func (h *handler) setup(w http.ResponseWriter, r *http.Request) {
 	slog.Info("Admin user created", "user_id", user.ID, "username", username)
 
 	apiKeyReq := auth.GenerateCollectorAPIKeyRequest{
-		Name: "default",
+		Name:   "default",
+		UserID: user.ID,
 	}
 	if err := apiKeyReq.Validate(); err != nil {
 		h.renderSetupPage(w, r, "User created but failed to create collector API key: "+err.Error())

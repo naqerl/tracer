@@ -40,6 +40,7 @@ type Querier interface {
 	DeleteNotifier(ctx context.Context, id int64) error
 	DeleteOldCPUPeriods(ctx context.Context, endedAt sql.NullInt64) error
 	DeleteOldDiskPeriods(ctx context.Context, endedAt sql.NullInt64) error
+	DeleteOldHealthChecks(ctx context.Context, at int64) error
 	DeleteOldHealthPeriods(ctx context.Context, endedAt sql.NullInt64) error
 	DeleteOldLogs(ctx context.Context, createdAt int64) error
 	DeleteOldMemPeriods(ctx context.Context, endedAt sql.NullInt64) error
@@ -55,6 +56,7 @@ type Querier interface {
 	GetCPUHistory(ctx context.Context, endedAt sql.NullInt64) ([]CpuPeriod, error)
 	GetCollectorAPIKeyByID(ctx context.Context, id int64) (CollectorApiKey, error)
 	GetCollectorAPIKeys(ctx context.Context) ([]CollectorApiKey, error)
+	GetCollectorConfig(ctx context.Context) (string, error)
 	GetDiskHistory(ctx context.Context, endedAt sql.NullInt64) ([]DiskPeriod, error)
 	GetLatestHealthPeriod(ctx context.Context) (AppHealthPeriod, error)
 	GetLogByID(ctx context.Context, id int64) (Log, error)
@@ -88,8 +90,11 @@ type Querier interface {
 	GetSession(ctx context.Context, id string) (Session, error)
 	GetUserAPIKeyByID(ctx context.Context, id int64) (UserApiKey, error)
 	GetUserAPIKeysByUser(ctx context.Context, userID int64) ([]UserApiKey, error)
+	GetUserByCollectorAPIKey(ctx context.Context, id int64) (GetUserByCollectorAPIKeyRow, error)
 	GetUserByID(ctx context.Context, id int64) (User, error)
 	GrantAppAccess(ctx context.Context, arg GrantAppAccessParams) error
+	// Whether the app ever received a log.
+	HasLog(ctx context.Context) (bool, error)
 	// Update last_log_at for a group
 	IncrementLogGroupCounter(ctx context.Context, arg IncrementLogGroupCounterParams) error
 	InsertCPUPeriod(ctx context.Context, arg InsertCPUPeriodParams) (CpuPeriod, error)
@@ -98,6 +103,7 @@ type Querier interface {
 	InsertLog(ctx context.Context, arg InsertLogParams) (Log, error)
 	InsertMemPeriod(ctx context.Context, arg InsertMemPeriodParams) (MemPeriod, error)
 	ListAllNotifiers(ctx context.Context) ([]Notifier, error)
+	ListHealthCheckCountsBySlot(ctx context.Context, arg ListHealthCheckCountsBySlotParams) ([]ListHealthCheckCountsBySlotRow, error)
 	ListHealthPeriodsOverlappingRange(ctx context.Context, arg ListHealthPeriodsOverlappingRangeParams) ([]AppHealthPeriod, error)
 	ListLogGroups(ctx context.Context, arg ListLogGroupsParams) ([]ListLogGroupsRow, error)
 	ListNotifiersByUser(ctx context.Context, userID int64) ([]Notifier, error)
@@ -107,10 +113,13 @@ type Querier interface {
 	RefreshSession(ctx context.Context, arg RefreshSessionParams) error
 	RemoveAllNotifierSubscriptions(ctx context.Context, notifierID int64) error
 	RevokeAppAccess(ctx context.Context, arg RevokeAppAccessParams) error
+	SaveHealthCheck(ctx context.Context, arg SaveHealthCheckParams) error
 	SaveHealthPeriod(ctx context.Context, arg SaveHealthPeriodParams) error
 	SetUserAdmin(ctx context.Context, id int64) error
+	TouchCollectorAPIKey(ctx context.Context, arg TouchCollectorAPIKeyParams) (int64, error)
 	UpdateUserPassword(ctx context.Context, arg UpdateUserPasswordParams) (int64, error)
-	ValidateAndUpdateCollectorAPIKey(ctx context.Context, arg ValidateAndUpdateCollectorAPIKeyParams) (int64, error)
+	UpsertCollectorConfig(ctx context.Context, arg UpsertCollectorConfigParams) error
+	ValidateAndUpdateCollectorAPIKey(ctx context.Context, keyHash string) (ValidateAndUpdateCollectorAPIKeyRow, error)
 	ValidateAndUpdateUserAPIKey(ctx context.Context, arg ValidateAndUpdateUserAPIKeyParams) (int64, error)
 }
 

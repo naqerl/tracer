@@ -3,13 +3,17 @@ package panel
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 	"math"
 	"sort"
+	"strings"
 	"sync"
 	"time"
+
+	"github.com/google/uuid"
 
 	"tracer/apps/panel/db"
 	"tracer/apps/panel/internal/dbmanager"
@@ -24,12 +28,6 @@ var (
 	ErrAppNotFound       = errors.New("app not found")
 	ErrLogNotFound       = errors.New("log not found")
 	ErrAccessDenied      = errors.New("access denied")
-	ErrInvalidCollector  = errors.New("invalid collector name")
-	ErrInvalidApp        = errors.New("invalid app name")
-	ErrInvalidGroupID    = errors.New("invalid group ID")
-	ErrInvalidLogID      = errors.New("invalid log ID")
-	ErrInvalidOffset     = errors.New("invalid offset")
-	ErrInvalidLimit      = errors.New("invalid limit")
 )
 
 const (
@@ -37,12 +35,14 @@ const (
 	sinceValidationSkew = time.Second
 )
 
-func New(dbManager *dbmanager.Manager, ingestSvc *ingest.Service, tracker *ingest.Tracker, userSvc *user.Service) *Service {
+func New(dbManager *dbmanager.Manager, ingestSvc *ingest.Service, tracker *ingest.Tracker, userSvc *user.Service, pusher ConfigPusher, guesser FormatGuesser) *Service {
 	return &Service{
 		dbManager: dbManager,
 		ingestSvc: ingestSvc,
 		userSvc:   userSvc,
 		tracker:   tracker,
+		pusher:    pusher,
+		guesser:   guesser,
 	}
 }
 
@@ -51,6 +51,21 @@ type Service struct {
 	ingestSvc *ingest.Service
 	userSvc   *user.Service
 	tracker   *ingest.Tracker
+	pusher    ConfigPusher
+	guesser   FormatGuesser
+}
+
+// ConfigPusher delivers configuration to collectors that are currently
+// connected. The implementation (a live WebSocket registry) is supplied by the
+// transport layer; it is optional so non-serving contexts (tests) can omit it.
+type ConfigPusher interface {
+	PushCollectorConfig(collector, configJSON string)
+}
+
+// FormatGuesser sends a format guess request to a collector over WebSocket
+// and waits for the result. The transport layer implements this.
+type FormatGuesser interface {
+	GuessFormat(ctx context.Context, collector string, req sharedtypes.FormatRequestEvent) (sharedtypes.FormatResultEvent, error)
 }
 
 // Collector provides a complete view of a collector for display,
@@ -115,7 +130,7 @@ func (r GetCollectorRequest) Validate() error {
 }
 
 func (s *Service) GetCollector(ctx context.Context, req GetCollectorRequest) (Collector, error) {
-	exists, err := s.collectorExists(req.CollectorName)
+	exists, err := s.CollectorExists(req.CollectorName)
 	if err != nil {
 		return Collector{}, fmt.Errorf("could not ensure collector existence: %w", err)
 	}
@@ -139,7 +154,214 @@ func (s *Service) GetCollector(ctx context.Context, req GetCollectorRequest) (Co
 	return collector, nil
 }
 
-func (s *Service) collectorExists(name string) (bool, error) {
+// FetchCollectorConfig returns the panel-driven configuration for a
+// collector. An empty string means no configuration has been stored yet.
+func (s *Service) FetchCollectorConfig(ctx context.Context, collectorName string) (string, error) {
+	if err := domain.ValidateCollectorName(collectorName); err != nil {
+		return "", fmt.Errorf("invalid collector name: %w", err)
+	}
+
+	handle, err := s.dbManager.GetCollectorDB(collectorName)
+	if err != nil {
+		if errors.Is(err, dbmanager.ErrDBNotFound) {
+			return "", nil
+		}
+		return "", fmt.Errorf("could not open collector database: %w", err)
+	}
+
+	cfg, err := db.New(handle.Read()).GetCollectorConfig(ctx)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("could not read collector config: %w", err)
+	}
+	return cfg, nil
+}
+
+// SaveCollectorConfig persists the panel-driven configuration for a
+// collector. configJSON is the JSON-encoded CollectorConfig. It upserts
+// the single config row and pushes the update to any connected collectors.
+func (s *Service) SaveCollectorConfig(ctx context.Context, collectorName, configJSON string) error {
+	if err := domain.ValidateCollectorName(collectorName); err != nil {
+		return fmt.Errorf("invalid collector name: %w", err)
+	}
+	if strings.TrimSpace(configJSON) == "" {
+		return fmt.Errorf("config json is required")
+	}
+
+	var cfg sharedtypes.CollectorConfig
+	if err := json.Unmarshal([]byte(configJSON), &cfg); err != nil {
+		return fmt.Errorf("invalid collector config: %w", err)
+	}
+	if err := cfg.Validate(); err != nil {
+		return fmt.Errorf("invalid collector config: %w", err)
+	}
+	if cfg.Stats == nil {
+		def := sharedtypes.DefaultStatsConfig()
+		cfg.Stats = &def
+		updated, err := json.Marshal(&cfg)
+		if err != nil {
+			return fmt.Errorf("could not marshal collector config: %w", err)
+		}
+		configJSON = string(updated)
+	}
+
+	handle, err := s.dbManager.GetCollectorDB(collectorName)
+	if err != nil {
+		if errors.Is(err, dbmanager.ErrDBNotFound) {
+			handle, err = s.dbManager.CreateCollectorDB(collectorName)
+		}
+		if err != nil {
+			return fmt.Errorf("could not open collector database: %w", err)
+		}
+	}
+
+	if err := handle.Write(ctx, func(tx db.DBTX) error {
+		return db.New(tx).UpsertCollectorConfig(ctx, db.UpsertCollectorConfigParams{
+			ConfigJson: configJSON,
+			UpdatedAt:  time.Now().Unix(),
+		})
+	}); err != nil {
+		return fmt.Errorf("could not store collector config: %w", err)
+	}
+
+	if s.pusher != nil {
+		s.pusher.PushCollectorConfig(collectorName, configJSON)
+	}
+	return nil
+}
+
+// DeleteCollectorApp removes an app from the collector's stored config and
+// deletes its retained database so it stops appearing in dashboards.
+func (s *Service) DeleteCollectorApp(ctx context.Context, collectorName, appName string) error {
+	if err := domain.ValidateCollectorName(collectorName); err != nil {
+		return fmt.Errorf("invalid collector name: %w", err)
+	}
+	if err := domain.ValidateAppName(appName); err != nil {
+		return fmt.Errorf("invalid app name: %w", err)
+	}
+
+	existing, err := s.FetchCollectorConfig(ctx, collectorName)
+	if err != nil {
+		return fmt.Errorf("could not load config: %w", err)
+	}
+
+	var cfg sharedtypes.CollectorConfig
+	if existing != "" {
+		if err := json.Unmarshal([]byte(existing), &cfg); err != nil {
+			return fmt.Errorf("invalid stored config: %w", err)
+		}
+	}
+	cfg.RemoveApp(appName)
+	updated, err := json.Marshal(&cfg)
+	if err != nil {
+		return fmt.Errorf("could not marshal config: %w", err)
+	}
+
+	if err := s.SaveCollectorConfig(ctx, collectorName, string(updated)); err != nil {
+		return fmt.Errorf("could not save config: %w", err)
+	}
+
+	if err := s.dbManager.DeleteAppDB(collectorName, appName); err != nil {
+		return fmt.Errorf("could not delete app database: %w", err)
+	}
+	return nil
+}
+
+// GuessFormatAndSave sends a format guess request to the collector via
+// WebSocket, builds an app config from the result, saves it, and pushes
+// the updated config to the collector. Returns an error on failure.
+func (s *Service) GuessFormatAndSave(ctx context.Context, collectorName, appName string) error {
+	if s.guesser == nil {
+		return fmt.Errorf("format guessing not available")
+	}
+
+	requestID := uuid.NewString()
+	result, err := s.guesser.GuessFormat(ctx, collectorName, sharedtypes.FormatRequestEvent{
+		Type:      sharedtypes.EventTypeFormatRequest,
+		RequestID: requestID,
+		App:       appName,
+		Service:   appName,
+	})
+	if err != nil {
+		return fmt.Errorf("could not detect format: %w", err)
+	}
+	if result.Error != "" {
+		return fmt.Errorf("format detection failed: %s", result.Error)
+	}
+
+	existing, err := s.FetchCollectorConfig(ctx, collectorName)
+	if err != nil {
+		return fmt.Errorf("could not load config: %w", err)
+	}
+
+	var cfg sharedtypes.CollectorConfig
+	if existing != "" {
+		if jErr := json.Unmarshal([]byte(existing), &cfg); jErr != nil {
+			return fmt.Errorf("invalid stored config: %w", jErr)
+		}
+	}
+
+	if err := cfg.AddApp(appName, *result.App.Source, sharedtypes.ParserSpec{
+		Type:   result.Parser.Type,
+		Params: result.Parser.Params,
+	}); err != nil {
+		return fmt.Errorf("could not add app: %w", err)
+	}
+
+	updated, err := json.Marshal(&cfg)
+	if err != nil {
+		return fmt.Errorf("could not marshal config: %w", err)
+	}
+
+	if err := s.SaveCollectorConfig(ctx, collectorName, string(updated)); err != nil {
+		return fmt.Errorf("could not save config: %w", err)
+	}
+
+	return nil
+}
+
+// PreviewFormat asks the collector to detect the log format for a service
+// without saving anything. It returns the raw result so the caller can
+// distinguish a not-found service, a guess conflict, and a successful guess.
+// favour carries a user-chosen resolution for a prior conflict.
+func (s *Service) PreviewFormat(ctx context.Context, collectorName, serviceName string, favour sharedtypes.ParserSpec) (sharedtypes.FormatResultEvent, error) {
+	if s.guesser == nil {
+		return sharedtypes.FormatResultEvent{}, fmt.Errorf("format guessing not available")
+	}
+
+	requestID := uuid.NewString()
+	result, err := s.guesser.GuessFormat(ctx, collectorName, sharedtypes.FormatRequestEvent{
+		Type:      sharedtypes.EventTypeFormatRequest,
+		RequestID: requestID,
+		App:       serviceName,
+		Service:   serviceName,
+		Favour:    favour,
+	})
+	if err != nil {
+		return result, fmt.Errorf("could not detect format: %w", err)
+	}
+	return result, nil
+}
+
+// ErrCannotModifyCollector indicates the user lacks permission to modify a collector.
+var ErrCannotModifyCollector = errors.New("cannot modify collector")
+
+// CanModifyCollector reports whether the user is admin or has access to the collector.
+func (s *Service) CanModifyCollector(ctx context.Context, userID int64, collectorName string) error {
+	access, err := s.userSvc.FindAccessPolicy(ctx, userID)
+	if err != nil {
+		return fmt.Errorf("could not load access for user %d: %w", userID, err)
+	}
+	if access.AllowedTo(collectorName, "") {
+		return nil
+	}
+	return ErrCannotModifyCollector
+}
+
+// CollectorExists reports whether a collector with the given name exists.
+func (s *Service) CollectorExists(name string) (bool, error) {
 	collectors, err := s.dbManager.ListCollectors()
 	if err != nil {
 		return false, err
@@ -218,6 +440,7 @@ type CollectorApp struct {
 	UptimePercent float64
 	UptimePeriods int
 	ErrorCount    int64
+	HasLogs       bool
 }
 
 // ListCollectorAppsWithStatsRequest requests the accessible apps of a
@@ -282,7 +505,7 @@ func (s *Service) ListCollectorAppsWithStats(ctx context.Context, req ListCollec
 // listAccessibleApps is the shared access-check + name-listing core of
 // ListCollectorApps and ListCollectorAppsWithStats.
 func (s *Service) listAccessibleApps(ctx context.Context, userID int64, collectorName string) ([]string, error) {
-	exists, err := s.collectorExists(collectorName)
+	exists, err := s.CollectorExists(collectorName)
 	if err != nil {
 		return nil, fmt.Errorf("could not ensure collector existence: %w", err)
 	}
@@ -346,6 +569,12 @@ func (s *Service) appStats(ctx context.Context, collectorName, appName string, s
 		slog.Error("could not read app stats for grid", "collector", collectorName, "app", appName, "error", err)
 	} else {
 		app.ErrorCount = counts.Errors
+		hasLogs, err := queries.HasLog(ctx)
+		if err != nil {
+			slog.Error("could not read app log presence for grid", "collector", collectorName, "app", appName, "error", err)
+		} else {
+			app.HasLogs = hasLogs
+		}
 	}
 	return app
 }
@@ -362,6 +591,7 @@ type HealthBucket struct {
 	End          time.Time
 	UpDuration   time.Duration
 	DownDuration time.Duration
+	Checks       int
 }
 
 type GetAppHealthRequest struct {
@@ -451,6 +681,7 @@ type AppStats struct {
 	Errors   int64
 	Warnings int64
 	Infos    int64
+	HasLogs  bool
 }
 
 func (r GetAppStatsRequest) Validate() error {
@@ -485,7 +716,11 @@ func (s *Service) GetAppStats(ctx context.Context, req GetAppStatsRequest) (AppS
 
 	counts, err := queries.GetPercentiles(ctx, req.Since.Unix())
 	if err != nil {
-		return AppStats{}, err
+		return AppStats{}, fmt.Errorf("could not read app stats: %w", err)
+	}
+	hasLogs, err := queries.HasLog(ctx)
+	if err != nil {
+		return AppStats{}, fmt.Errorf("could not read app log presence: %w", err)
 	}
 
 	return AppStats{
@@ -493,6 +728,7 @@ func (s *Service) GetAppStats(ctx context.Context, req GetAppStatsRequest) (AppS
 		Errors:   counts.Errors,
 		Warnings: counts.Warnings,
 		Infos:    counts.Infos,
+		HasLogs:  hasLogs,
 	}, nil
 }
 
@@ -974,7 +1210,21 @@ func (s *Service) readAppHealthWithBars(ctx context.Context, queries *db.Queries
 	}
 
 	now := time.Now()
-	health.Buckets = buildHealthBuckets(periods, since, now)
+	var checkCounts []db.ListHealthCheckCountsBySlotRow
+	if now.After(since) {
+		bucketSize := healthBucketSize(now.Sub(since), healthWindowBucketCount(len(periods)))
+		checkCounts, err = queries.ListHealthCheckCountsBySlot(ctx, db.ListHealthCheckCountsBySlotParams{
+			At:   since.Unix(),
+			At_2: int64(bucketSize / time.Second),
+			At_3: since.Unix(),
+			At_4: now.Unix(),
+		})
+		if err != nil {
+			return health, err
+		}
+	}
+
+	health.Buckets = buildHealthBuckets(periods, checkCounts, since, now)
 	return health, nil
 }
 
@@ -1025,25 +1275,37 @@ func (s *Service) readHealthAndPeriods(ctx context.Context, queries *db.Queries,
 	return health, periods, nil
 }
 
-func buildHealthBuckets(periods []db.AppHealthPeriod, since, now time.Time) []HealthBucket {
+// healthWindowBucketCount returns the number of uptime buckets shown for a
+// window; periods set a floor so sparse data still fills the visualization.
+func healthWindowBucketCount(periodCount int) int {
+	if periodCount < 37 {
+		return 37
+	}
+	return periodCount
+}
+
+// healthBucketSize divides the window into whole-second buckets.
+func healthBucketSize(window time.Duration, bucketCount int) time.Duration {
+	size := int64(window/time.Second) / int64(bucketCount)
+	if size <= 0 {
+		size = 1
+	}
+	return time.Duration(size) * time.Second
+}
+
+func buildHealthBuckets(periods []db.AppHealthPeriod, checkCounts []db.ListHealthCheckCountsBySlotRow, since, now time.Time) []HealthBucket {
 	if now.Before(since) {
 		now = since
 	}
 
-	bucketCount := len(periods)
-	if bucketCount < 37 {
-		bucketCount = 37
-	}
+	bucketCount := healthWindowBucketCount(len(periods))
 
 	window := now.Sub(since)
 	if window <= 0 {
 		return []HealthBucket{{Start: since, End: now}}
 	}
 
-	bucketSize := time.Duration(float64(window) / float64(bucketCount))
-	if bucketSize <= 0 {
-		bucketSize = time.Second
-	}
+	bucketSize := healthBucketSize(window, bucketCount)
 
 	buckets := make([]HealthBucket, 0, bucketCount)
 	current := since
@@ -1071,6 +1333,15 @@ func buildHealthBuckets(periods []db.AppHealthPeriod, since, now time.Time) []He
 		}
 		buckets = append(buckets, bucket)
 		current = next
+	}
+
+	lastSlot := int64(bucketCount - 1)
+	for _, row := range checkCounts {
+		slot := row.Slot
+		if slot > lastSlot {
+			slot = lastSlot
+		}
+		buckets[slot].Checks += int(row.Cnt)
 	}
 
 	return buckets

@@ -12,9 +12,9 @@ import (
 
 const createCollectorAPIKey = `-- name: CreateCollectorAPIKey :one
 
-INSERT INTO collector_api_key (name, key_hash, key_encrypted, created_at)
-VALUES (?, ?, ?, ?)
-RETURNING id, name, key_hash, key_encrypted, created_at, last_used_at
+INSERT INTO collector_api_key (name, key_hash, key_encrypted, created_at, user_id)
+VALUES (?, ?, ?, ?, ?)
+RETURNING id, name, key_hash, key_encrypted, created_at, last_used_at, user_id
 `
 
 type CreateCollectorAPIKeyParams struct {
@@ -22,6 +22,7 @@ type CreateCollectorAPIKeyParams struct {
 	KeyHash      string
 	KeyEncrypted string
 	CreatedAt    int64
+	UserID       int64
 }
 
 // Collector API keys
@@ -31,6 +32,7 @@ func (q *Queries) CreateCollectorAPIKey(ctx context.Context, arg CreateCollector
 		arg.KeyHash,
 		arg.KeyEncrypted,
 		arg.CreatedAt,
+		arg.UserID,
 	)
 	var i CollectorApiKey
 	err := row.Scan(
@@ -40,6 +42,7 @@ func (q *Queries) CreateCollectorAPIKey(ctx context.Context, arg CreateCollector
 		&i.KeyEncrypted,
 		&i.CreatedAt,
 		&i.LastUsedAt,
+		&i.UserID,
 	)
 	return i, err
 }
@@ -58,7 +61,7 @@ func (q *Queries) DeleteCollectorAPIKey(ctx context.Context, id int64) (int64, e
 }
 
 const getCollectorAPIKeyByID = `-- name: GetCollectorAPIKeyByID :one
-SELECT id, name, key_hash, key_encrypted, created_at, last_used_at FROM collector_api_key
+SELECT id, name, key_hash, key_encrypted, created_at, last_used_at, user_id FROM collector_api_key
 WHERE id = ?
 `
 
@@ -72,12 +75,13 @@ func (q *Queries) GetCollectorAPIKeyByID(ctx context.Context, id int64) (Collect
 		&i.KeyEncrypted,
 		&i.CreatedAt,
 		&i.LastUsedAt,
+		&i.UserID,
 	)
 	return i, err
 }
 
 const getCollectorAPIKeys = `-- name: GetCollectorAPIKeys :many
-SELECT id, name, key_hash, key_encrypted, created_at, last_used_at FROM collector_api_key
+SELECT id, name, key_hash, key_encrypted, created_at, last_used_at, user_id FROM collector_api_key
 ORDER BY created_at DESC, name DESC
 `
 
@@ -97,6 +101,7 @@ func (q *Queries) GetCollectorAPIKeys(ctx context.Context) ([]CollectorApiKey, e
 			&i.KeyEncrypted,
 			&i.CreatedAt,
 			&i.LastUsedAt,
+			&i.UserID,
 		); err != nil {
 			return nil, err
 		}
@@ -111,21 +116,64 @@ func (q *Queries) GetCollectorAPIKeys(ctx context.Context) ([]CollectorApiKey, e
 	return items, nil
 }
 
-const validateAndUpdateCollectorAPIKey = `-- name: ValidateAndUpdateCollectorAPIKey :execrows
+const getUserByCollectorAPIKey = `-- name: GetUserByCollectorAPIKey :one
+SELECT u.id, u.username, u.is_admin, u.created_at FROM user u
+JOIN collector_api_key k ON k.user_id = u.id
+WHERE k.id = ?
+`
+
+type GetUserByCollectorAPIKeyRow struct {
+	ID        int64
+	Username  string
+	IsAdmin   int64
+	CreatedAt int64
+}
+
+func (q *Queries) GetUserByCollectorAPIKey(ctx context.Context, id int64) (GetUserByCollectorAPIKeyRow, error) {
+	row := q.db.QueryRowContext(ctx, getUserByCollectorAPIKey, id)
+	var i GetUserByCollectorAPIKeyRow
+	err := row.Scan(
+		&i.ID,
+		&i.Username,
+		&i.IsAdmin,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const touchCollectorAPIKey = `-- name: TouchCollectorAPIKey :execrows
 UPDATE collector_api_key
 SET last_used_at = ?
 WHERE key_hash = ?
 `
 
-type ValidateAndUpdateCollectorAPIKeyParams struct {
+type TouchCollectorAPIKeyParams struct {
 	LastUsedAt sql.NullInt64
 	KeyHash    string
 }
 
-func (q *Queries) ValidateAndUpdateCollectorAPIKey(ctx context.Context, arg ValidateAndUpdateCollectorAPIKeyParams) (int64, error) {
-	result, err := q.db.ExecContext(ctx, validateAndUpdateCollectorAPIKey, arg.LastUsedAt, arg.KeyHash)
+func (q *Queries) TouchCollectorAPIKey(ctx context.Context, arg TouchCollectorAPIKeyParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, touchCollectorAPIKey, arg.LastUsedAt, arg.KeyHash)
 	if err != nil {
 		return 0, err
 	}
 	return result.RowsAffected()
+}
+
+const validateAndUpdateCollectorAPIKey = `-- name: ValidateAndUpdateCollectorAPIKey :one
+SELECT id, name, user_id FROM collector_api_key
+WHERE key_hash = ?
+`
+
+type ValidateAndUpdateCollectorAPIKeyRow struct {
+	ID     int64
+	Name   string
+	UserID int64
+}
+
+func (q *Queries) ValidateAndUpdateCollectorAPIKey(ctx context.Context, keyHash string) (ValidateAndUpdateCollectorAPIKeyRow, error) {
+	row := q.db.QueryRowContext(ctx, validateAndUpdateCollectorAPIKey, keyHash)
+	var i ValidateAndUpdateCollectorAPIKeyRow
+	err := row.Scan(&i.ID, &i.Name, &i.UserID)
+	return i, err
 }

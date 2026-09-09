@@ -1,0 +1,316 @@
+package view
+
+import (
+	"encoding/json"
+	"tracer/apps/panel/web/templates"
+)
+
+func tern(condition bool, a, b string) string {
+	if condition {
+		return a
+	}
+	return b
+}
+
+// FormatConflictView holds a detected guessing conflict, the values the user
+// may favour to resolve it, and the clashing log records behind each value.
+type FormatConflictView struct {
+	Field   string
+	Options []string
+	Samples []FormatSampleView
+}
+
+// FormatSampleView is one log record involved in a guess conflict, paired
+// with the conflicting field value it carries.
+type FormatSampleView struct {
+	Line  string
+	Value string
+}
+
+// FormatGuessView carries the outcome of a format detection attempt.
+type FormatGuessView struct {
+	NotFound     bool
+	Detected     bool
+	Status       string
+	StatusOK     bool
+	Collector    string
+	Service      string
+	SourceType   string
+	SourceParams string
+	ParserType   string
+	ParserParams map[string]string
+	Samples      []string
+	Conflict     *FormatConflictView
+}
+
+// SampleLogRows renders a list of log samples. Each entry is a bordered box
+// showing either a JSON tree view with a collapsible raw fallback, or a raw
+// preformatted block for non-JSON lines.
+templ SampleLogRows(samples []string) {
+	for _, s := range samples {
+		@SampleLogRow(s)
+	}
+}
+
+templ SampleLogRow(s string) {
+	<div class="border border-bg-secondary">
+		if json.Valid([]byte(s)) {
+			<div class="p-3 overflow-x-auto">
+				<div class="min-w-max">
+					@templates.JSONViewer(s, true)
+				</div>
+			</div>
+			<details>
+				<summary class="px-3 py-1 text-xs text-fg-secondary cursor-pointer select-none hover:text-fg">raw</summary>
+				<pre class="bg-bg border-t border-bg-secondary/50 px-3 py-2 font-mono text-xs text-fg overflow-x-auto whitespace-pre-wrap">{ s }</pre>
+			</details>
+		} else {
+			<pre class="bg-bg p-2 font-mono text-xs text-fg overflow-x-auto whitespace-pre-wrap">{ s }</pre>
+		}
+	</div>
+}
+
+// AppFormProps carries the state for creating a new app or editing an
+// existing one. ServiceName is empty for a new app and is the app name for
+// an edit.
+type AppFormProps struct {
+	Title          string
+	Collector      string
+	ServiceName    string
+	IsEdit         bool
+	URL            string
+	Interval       string
+	ExpectedStatus string
+	Error          string
+	Guess          FormatGuessView
+}
+
+// AppFormPage is the full-page wrapper for the app form.
+templ AppFormPage(p AppFormProps) {
+	@templates.Layout(p.Title, templates.NavData{Since: "24h"}) {
+		<div class="max-w-4xl mx-auto p-2 md:p-6">
+			<h1 class="text-xl font-semibold mb-6">
+				if p.IsEdit {
+					Edit app - { p.ServiceName }
+				} else {
+					Add app
+				}
+			</h1>
+			<a href={ "/panel/collectors/" + p.Collector } onclick="if (window.history.length > 1) { window.history.back(); return false; }" class="text-fg-secondary hover:text-fg text-sm mb-6 inline-block">&lt; back</a>
+			@AppForm(p)
+		</div>
+	}
+}
+
+// AppForm is the app configuration form in three blocks: the app name, the
+// log source (with the detected format, example log, and precise settings),
+// and the uptime health check. The log source field guesses the format
+// against the collector on input with a 500ms debounce. The result renders in
+// place (not-found warning left of the log source label, label-level status on
+// success, or a conflict to resolve) and the precise settings accordion
+// appears prefilled with the detected values once a format is guessed. The
+// form is an outer swap target so guess and save updates happen in place.
+templ AppForm(p AppFormProps) {
+	<div id="app-form-container" class="space-y-6">
+		<form
+			if p.IsEdit {
+				hx-put={ "/panel/collectors/" + p.Collector + "/apps/" + p.ServiceName }
+			} else {
+				hx-post={ "/panel/collectors/" + p.Collector + "/apps" }
+			}
+			hx-target="#app-form-container" hx-swap="innerHTML"
+			class="space-y-6">
+
+			<div class="border border-bg-secondary/70 p-4">
+				<h3 class="text-fg font-medium mb-3">
+					Name
+					@templates.Required()
+					@templates.FieldStatus("app-name-status", p.Error, false, false)
+				</h3>
+				if p.IsEdit {
+					<input type="text" name="name" value={ p.ServiceName } disabled class="w-full bg-transparent border-b border-fg/20 px-2 py-2 text-base text-fg/60"/>
+				} else {
+					<input type="text" name="name" value={ p.ServiceName } required placeholder="e.g. nginx, grafana-server"
+						   id="app-name-input"
+						   class="w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg placeholder:text-fg-secondary/50"/>
+					<p class="text-xs text-fg-secondary mt-1">Letters, digits, and . - _ only, no spaces.</p>
+				}
+			</div>
+
+			<div class="border border-bg-secondary/70 p-4">
+				<h3 class="text-fg font-medium mb-3">Log source</h3>
+				<div class="space-y-4">
+					<div>
+						<label class="block text-sm text-fg-secondary mb-1">
+							if p.Guess.NotFound {
+								<span class="text-red-500 font-medium mr-1">not found</span>
+							}
+							Log source
+							@templates.FieldStatus("app-format-status", tern(p.Guess.NotFound, "", p.Guess.Status), p.Guess.StatusOK, false)
+							@templates.Indicator("app-format-indicator", "Guessing format…")
+						</label>
+					<input type="text" name="service" value={ p.Guess.Service } placeholder={ tern(p.ServiceName == "", "e.g. nginx.service, pod/nginx-1", p.ServiceName) }
+						   hx-post={ "/panel/collectors/" + p.Collector + "/apps/preview" }
+						   hx-trigger="input changed delay:500ms"
+						   hx-include="closest form"
+						   hx-target="#app-form-container"
+						   hx-swap="innerHTML"
+						   hx-indicator="#app-format-indicator"
+						   id="app-service-input"
+						   hx-on:focus="if (!this.value) { var n = document.getElementById('app-name-input'); if (n) { this.value = n.value; htmx.trigger(this, 'input'); } }"
+						   class="w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg placeholder:text-fg-secondary/50"/>
+						<p class="text-xs text-fg-secondary mt-1">Systemd unit name, kubectl resource, or custom source. Defaults to the app name.</p>
+					</div>
+					@AppFormatFeedback(p.Guess)
+					if p.Guess.Detected && len(p.Guess.Samples) > 0 {
+						<div>
+							<p class="text-sm text-fg-secondary mb-2">Example log</p>
+							<div class="space-y-3">
+								@SampleLogRows(p.Guess.Samples)
+							</div>
+						</div>
+					}
+					if p.Guess.Detected || p.IsEdit {
+						<details class="border border-bg-secondary/70 p-4" open?={ p.IsEdit }>
+							<summary class="text-fg font-medium cursor-pointer select-none hover:text-fg">Precise settings</summary>
+							<div class="space-y-4 mt-4">
+								<div>
+									<label class="block text-sm text-fg-secondary mb-1">Source type</label>
+									<select name="source_type" style="color-scheme: dark" class="w-full bg-bg text-fg border border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base">
+										<option class="bg-bg text-fg" value="" selected?={ p.Guess.SourceType == "" }>Auto (journalctl / kubectl)</option>
+										<option class="bg-bg text-fg" value="journalctl" selected?={ p.Guess.SourceType == "journalctl" }>journalctl (systemd unit)</option>
+										<option class="bg-bg text-fg" value="kubectl" selected?={ p.Guess.SourceType == "kubectl" }>kubectl (container)</option>
+										<option class="bg-bg text-fg" value="file" selected?={ p.Guess.SourceType == "file" }>file</option>
+									</select>
+								</div>
+								<div>
+									<label class="block text-sm text-fg-secondary mb-1">Source params</label>
+									<textarea name="source_params" rows="3" placeholder={"key: value\nunit: my-service"} class="w-full bg-transparent border border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-sm font-mono text-fg placeholder:text-fg-secondary/50 resize-y">{ p.Guess.SourceParams }</textarea>
+								</div>
+								<div>
+									<label class="block text-sm text-fg-secondary mb-1">Parser type</label>
+									<select name="parser_type" style="color-scheme: dark" class="w-full bg-bg text-fg border border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base">
+										<option class="bg-bg text-fg" value="" selected?={ p.Guess.ParserType == "" }>Auto (detect)</option>
+										<option class="bg-bg text-fg" value="json" selected?={ p.Guess.ParserType == "json" }>json</option>
+										<option class="bg-bg text-fg" value="slogtext" selected?={ p.Guess.ParserType == "slogtext" }>slogtext</option>
+										<option class="bg-bg text-fg" value="regex" selected?={ p.Guess.ParserType == "regex" }>regex</option>
+									</select>
+								</div>
+								<div>
+									<p class="text-sm text-fg-secondary mb-1">Parser parameters</p>
+									<div class="space-y-2">
+										@ParserParamField("level_field", p.Guess.ParserParams["level_field"], "level")
+										@ParserParamField("message_field", p.Guess.ParserParams["message_field"], "message")
+										@ParserParamField("timestamp_field", p.Guess.ParserParams["timestamp_field"], "time")
+										@ParserParamField("timestamp_format", p.Guess.ParserParams["timestamp_format"], "2006-01-02T15:04:05")
+										@ParserParamField("trace_id_field", p.Guess.ParserParams["trace_id_field"], "trace_id (optional)")
+										if p.Guess.ParserType == "regex" {
+											@ParserParamField("pattern", p.Guess.ParserParams["pattern"], `(?P<level>[A-Z]+)`)
+										}
+									</div>
+								</div>
+							</div>
+						</details>
+					}
+				</div>
+			</div>
+
+			<div class="border border-bg-secondary/70 p-4">
+				<h3 class="text-fg font-medium mb-1">Uptime</h3>
+				<p class="text-xs text-fg-secondary mb-3">Health check (optional — HTTP uptime monitoring)</p>
+				<div class="space-y-3" id="health-check-form">
+					<div>
+						<label class="block text-sm text-fg-secondary mb-1">
+							URL to check
+							@templates.FieldStatus("app-health-status", "", false, false)
+							@templates.Indicator("health-probe-spinner", "probing")
+						</label>
+						<input type="url" name="url" value={ p.URL } placeholder="https://naqerl.com" autocomplete="off" hx-post={ "/panel/collectors/" + p.Collector + "/apps/health-probe" } hx-trigger="input changed delay:500ms, focusout" hx-target="#app-health-status" hx-swap="outerHTML" hx-include="closest #health-check-form" hx-indicator="#health-probe-spinner" class="w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base font-mono text-fg placeholder:text-fg-secondary/50"/>
+					</div>
+					<div>
+						<label class="block text-sm text-fg-secondary mb-1">Check interval</label>
+						<select name="interval" style="color-scheme: dark" class="w-full bg-bg text-fg border border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base">
+							<option class="bg-bg text-fg" value="10s" selected?={ p.Interval == "10s" }>Every 10 seconds</option>
+							<option class="bg-bg text-fg" value="30s" selected?={ p.Interval == "30s" || p.Interval == "" }>Every 30 seconds</option>
+							<option class="bg-bg text-fg" value="60s" selected?={ p.Interval == "60s" }>Every 60 seconds</option>
+							<option class="bg-bg text-fg" value="300s" selected?={ p.Interval == "300s" }>Every 5 minutes</option>
+						</select>
+					</div>
+					<div>
+						<label class="block text-sm text-fg-secondary mb-1">Expected status codes</label>
+						<input type="text" name="expected_status" value={ tern(p.ExpectedStatus == "", "200", p.ExpectedStatus) } placeholder="200" autocomplete="off" hx-post={ "/panel/collectors/" + p.Collector + "/apps/health-probe" } hx-trigger="input changed delay:500ms, focusout" hx-target="#app-health-status" hx-swap="outerHTML" hx-include="closest #health-check-form" hx-indicator="#health-probe-spinner" class="w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base font-mono text-fg placeholder:text-fg-secondary/50"/>
+					</div>
+				</div>
+			</div>
+
+			<div class="flex gap-2">
+				<button type="submit" class="text-sm text-fg border border-fg px-4 py-2 hover:bg-fg hover:text-bg transition-colors">
+					if p.IsEdit {
+						Save changes
+					} else {
+						Save app
+					}
+				</button>
+				<a href={ "/panel/collectors/" + p.Collector } onclick="if (window.history.length > 1) { window.history.back(); return false; }" class="text-sm text-fg-secondary border border-bg-secondary px-4 py-2 hover:text-fg transition-colors inline-block">
+					Cancel
+				</a>
+			</div>
+		</form>
+	</div>
+	@AppFormScript()
+}
+
+// AppFormScript renders the app-form JavaScript. A window flag makes it
+// idempotent so re-rendering the fragment on htmx swaps never double-wires.
+templ AppFormScript() {
+	<script src="/static/app-form.js"></script>
+}
+
+// ParserParamField renders one editable parser parameter input. The name is
+// submitted as "parser_param_<name>" so the saved spec can be rebuilt on the
+// server from individual fields.
+templ ParserParamField(name string, value string, placeholder string) {
+	<div>
+		<label class="block text-sm text-fg-secondary mb-1">{ name }</label>
+		<input type="text" name={ "parser_param_" + name } value={ value } placeholder={ placeholder } class="w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-sm font-mono text-fg placeholder:text-fg-secondary/50"/>
+	</div>
+}
+
+// AppFormatFeedback reports the detection outcome right under the log source
+// field: a conflict to resolve, backed by the clashing log records. The
+// not-found warning is shown left of the log source label and the status line
+// right of it.
+templ AppFormatFeedback(g FormatGuessView) {
+	if g.Conflict != nil {
+		<div class="border border-bg-secondary/70 p-4">
+			<p class="text-sm text-fg-secondary mb-3">
+				The log format is inconsistent on the <span class="text-fg">{ g.Conflict.Field }</span> field.
+				Choose which value to favour:
+			</p>
+			<div class="flex gap-2">
+				for _, opt := range g.Conflict.Options {
+					<button type="button"
+							class="text-sm text-fg border border-fg px-4 py-2 hover:bg-fg hover:text-bg transition-colors"
+							hx-post={ "/panel/collectors/" + g.Collector + "/apps/preview" }
+							hx-include="closest form"
+							hx-vals={ "{\"favour_field\":\"" + g.Conflict.Field + "\",\"favour_value\":\"" + opt + "\"}" }
+							hx-target="#app-form-container"
+							hx-swap="innerHTML"
+							hx-indicator="#app-format-indicator">
+						{ "favour " + opt }
+					</button>
+				}
+			</div>
+			if len(g.Conflict.Samples) > 0 {
+				<div class="mt-3 space-y-2">
+					for _, s := range g.Conflict.Samples {
+						<div class="flex items-start border border-bg-secondary/70">
+							<span class="shrink-0 px-2 py-1 text-xs font-mono text-fg border-r border-bg-secondary/70">{ s.Value }</span>
+							<pre class="flex-1 p-2 font-mono text-xs text-fg overflow-x-auto whitespace-pre-wrap">{ s.Line }</pre>
+						</div>
+					}
+				</div>
+			}
+		</div>
+	}
+}

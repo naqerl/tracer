@@ -136,7 +136,9 @@ func (ks *kubectlSource) Close() error {
 		return nil
 	}
 	if err := ks.cmd.Process.Kill(); err != nil {
-		slog.Warn("kubectl source: failed to kill process", "error", err, "resource", ks.resource)
+		if !errors.Is(err, os.ErrProcessDone) {
+			slog.Warn("kubectl source: failed to kill process", "error", err, "resource", ks.resource)
+		}
 	}
 	// Reap the process unless Next already waited after draining stdout.
 	if !ks.waited {

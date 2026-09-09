@@ -13,14 +13,12 @@ type UserAppsProps struct {
 	UserName string
 	Role     domain.Role
 	Apps     []domain.ScopeEntry
-	ReadOnly bool
 }
 
 // UserDetail renders the user detail page, mirroring the notifier detail page:
 // a back link, a header with a delete button, an info grid, then the shared
 // scope tree for app permissions. The page and notifier subscriptions share
 // the same ScopeTree component so both permission surfaces behave identically.
-// In read-only mode the delete button and the permission form are hidden.
 templ UserDetail(props UserAppsProps) {
 	@templates.Layout("User", templates.NavData{Since: "24h"}) {
 		<div class="max-w-5xl mx-auto p-6">
@@ -32,12 +30,10 @@ templ UserDetail(props UserAppsProps) {
 
 			<div class="mb-6 flex items-center justify-between gap-4">
 				<h2 class="text-xl font-medium">User</h2>
-				if !props.ReadOnly {
-					<button hx-delete={ "/settings/users/" + strconv.FormatInt(props.UserID, 10) }
-							hx-confirm={ "Delete user " + props.UserName + "?" }
-							hx-target="body" hx-swap="outerHTML"
-							class="text-sm text-fg-secondary hover:text-red-500 underline transition-colors">Delete</button>
-				}
+				<button hx-delete={ "/settings/users/" + strconv.FormatInt(props.UserID, 10) }
+						hx-confirm={ "Delete user " + props.UserName + "?" }
+						hx-target="body" hx-swap="outerHTML"
+						class="text-sm text-fg-secondary hover:text-red-500 underline transition-colors">Delete</button>
 			</div>
 
 			<div class="mb-8">
@@ -50,17 +46,15 @@ templ UserDetail(props UserAppsProps) {
 				</div>
 			</div>
 
-			if !props.ReadOnly {
-				<div class="mb-6">
-					<h3 class="text-xl font-medium mb-4">Apps</h3>
-					<p class="text-base text-fg-secondary mb-6">Select which applications this user can access:</p>
-					@ScopeTree(
-						"put",
-						"/settings/users/" + strconv.FormatInt(props.UserID, 10) + "/apps",
-						props.Apps,
-					)
-				</div>
-			}
+			<div class="mb-6">
+				<h3 class="text-xl font-medium mb-4">Apps</h3>
+				<p class="text-base text-fg-secondary mb-6">Select which applications this user can access:</p>
+				@ScopeTree(
+					"put",
+					"/settings/users/" + strconv.FormatInt(props.UserID, 10) + "/apps",
+					props.Apps,
+				)
+			</div>
 		</div>
 	}
 }

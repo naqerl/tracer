@@ -26,7 +26,6 @@ type UserAPIKeyDetailProps struct {
 	LastUsed      int64
 	LastUsedValid bool
 	CanReveal     bool
-	ReadOnly      bool
 	Host          string
 }
 
@@ -54,7 +53,6 @@ templ UserAPIKeyDetail(props UserAPIKeyDetailProps) {
 						RevealURL: "/settings/api-keys/" + strconv.FormatInt(props.KeyID, 10) + "/reveal",
 						TargetID:  "user-api-key-value",
 						CanReveal: props.CanReveal,
-						ReadOnly:  props.ReadOnly,
 					})
 
 					<span class="text-fg-secondary">Created:</span>
@@ -77,7 +75,7 @@ templ UserAPIKeyDetail(props UserAPIKeyDetailProps) {
 					<pre id="agent-prompt" class="bg-bg-secondary p-4 pr-20 overflow-x-auto text-sm"><code>{ agentPrompt(props.Host) }</code></pre>
 					<button type="button"
 							onclick="copyAgentPrompt(this)"
-							class="absolute top-2 right-2 text-xs px-2 py-1 rounded bg-bg text-fg-secondary hover:text-fg transition-colors"
+							class="absolute top-2 right-2 text-xs px-2 py-1 bg-bg text-fg-secondary hover:text-fg transition-colors"
 							title="Copy prompt">Copy</button>
 				</div>
 			</div>

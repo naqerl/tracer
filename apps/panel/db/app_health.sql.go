@@ -26,6 +26,16 @@ func (q *Queries) CloseHealthPeriod(ctx context.Context, arg CloseHealthPeriodPa
 	return err
 }
 
+const deleteOldHealthChecks = `-- name: DeleteOldHealthChecks :exec
+DELETE FROM app_health_check
+WHERE at < ?
+`
+
+func (q *Queries) DeleteOldHealthChecks(ctx context.Context, at int64) error {
+	_, err := q.db.ExecContext(ctx, deleteOldHealthChecks, at)
+	return err
+}
+
 const deleteOldHealthPeriods = `-- name: DeleteOldHealthPeriods :exec
 DELETE FROM app_health_period
 WHERE ended_at IS NOT NULL
@@ -76,6 +86,55 @@ func (q *Queries) GetOpenHealthPeriod(ctx context.Context) (AppHealthPeriod, err
 	return i, err
 }
 
+const listHealthCheckCountsBySlot = `-- name: ListHealthCheckCountsBySlot :many
+SELECT (at - ?) / ? AS slot, COUNT(*) AS cnt
+FROM app_health_check
+WHERE at >= ?
+  AND at <= ?
+GROUP BY slot
+ORDER BY slot ASC
+`
+
+type ListHealthCheckCountsBySlotParams struct {
+	At   int64
+	At_2 int64
+	At_3 int64
+	At_4 int64
+}
+
+type ListHealthCheckCountsBySlotRow struct {
+	Slot int64
+	Cnt  int64
+}
+
+func (q *Queries) ListHealthCheckCountsBySlot(ctx context.Context, arg ListHealthCheckCountsBySlotParams) ([]ListHealthCheckCountsBySlotRow, error) {
+	rows, err := q.db.QueryContext(ctx, listHealthCheckCountsBySlot,
+		arg.At,
+		arg.At_2,
+		arg.At_3,
+		arg.At_4,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListHealthCheckCountsBySlotRow
+	for rows.Next() {
+		var i ListHealthCheckCountsBySlotRow
+		if err := rows.Scan(&i.Slot, &i.Cnt); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listHealthPeriodsOverlappingRange = `-- name: ListHealthPeriodsOverlappingRange :many
 SELECT id, status, started_at, ended_at
 FROM app_health_period
@@ -115,6 +174,21 @@ func (q *Queries) ListHealthPeriodsOverlappingRange(ctx context.Context, arg Lis
 		return nil, err
 	}
 	return items, nil
+}
+
+const saveHealthCheck = `-- name: SaveHealthCheck :exec
+INSERT INTO app_health_check (status, at)
+VALUES (?, ?)
+`
+
+type SaveHealthCheckParams struct {
+	Status string
+	At     int64
+}
+
+func (q *Queries) SaveHealthCheck(ctx context.Context, arg SaveHealthCheckParams) error {
+	_, err := q.db.ExecContext(ctx, saveHealthCheck, arg.Status, arg.At)
+	return err
 }
 
 const saveHealthPeriod = `-- name: SaveHealthPeriod :exec
