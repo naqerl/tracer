@@ -39,12 +39,11 @@ fi
 # panel starts. A panel that serves with a half-initialized database rejects
 # every collector WebSocket handshake until it is restarted; the install
 # script orders it this way too.
-if [ "${E2E_INSTALL_MODE:-build}" = "release" ]; then
-    # In release mode, install script already ran -init and set the api key.
-    # Re-init if needed (will exit 2 = already initialized, which is fine).
-    tracer-panel -init -username demo -password demo1234 2>/dev/null || true
-else
-    api_key=$(tracer-panel -init -username demo -password demo1234 2>/dev/null | grep '^collector_api_key=' | cut -d= -f2) || true
+api_key=$(tracer-panel -init -username demo -password demo1234 2>/dev/null | grep '^collector_api_key=' | cut -d= -f2) || true
+# When the panel was already initialized (e.g. release install), -init prints
+# nothing, so fall back to the installed collector config.
+if [ -z "${api_key:-}" ]; then
+    api_key=$(sed -n 's/.*api_key: *\([^ ]*\).*/\1/p' /etc/tracer/collector.yaml | head -n1) || true
 fi
 
 systemctl start demo-api demo-worker demo-cron demo-conflict
@@ -112,4 +111,29 @@ if [ -n "${api_key:-}" ]; then
         http://localhost:8080/ingest/config/demo
 else
     echo "[e2e] WARNING: no panel API key available, skipping app config push"
+fi
+
+# Seed a "registered yet disabled" collector (demo-idle): it has its own
+# systemd service, connects to the panel and reports resource stats on a 10s
+# cadence for the first minute of the demo, then the service stops. Pushing a
+# stored config creates its collector database so the panel keeps listing it
+# as registered after it goes offline; its "last update X ago" indicator then
+# ages to yellow/red.
+if [ -n "${api_key:-}" ]; then
+    cat > /etc/tracer/collector-idle.yaml <<CONFIG
+sender:
+  name: demo-idle
+  panel_host: http://localhost:8080
+  api_key: ${api_key}
+CONFIG
+    chown tracer-collector:tracer /etc/tracer/collector-idle.yaml
+    chmod 0640 /etc/tracer/collector-idle.yaml
+    curl -fsS -X PUT \
+        -H "X-API-Key: ${api_key}" \
+        -H "Content-Type: application/json" \
+        --data-binary '{"parsers": {}, "stats": {"interval": "10s", "cpu": true, "mem": true, "disk": true}, "apps": []}' \
+        http://localhost:8080/ingest/config/demo-idle
+    systemctl start tracer-collector-idle
+else
+    echo "[e2e] WARNING: no panel API key available, skipping demo-idle collector seeding"
 fi

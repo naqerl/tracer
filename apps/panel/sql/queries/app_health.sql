@@ -44,6 +44,9 @@ WHERE at >= ?
 GROUP BY slot
 ORDER BY slot ASC;
 
+-- name: GetLatestHealthCheckAt :one
+SELECT CAST(COALESCE(MAX(at), 0) AS INTEGER) FROM app_health_check;
+
 -- name: DeleteOldHealthChecks :exec
 DELETE FROM app_health_check
 WHERE at < ?;

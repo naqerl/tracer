@@ -1,0 +1,23 @@
+[Unit]
+Description=Tracer Demo-Idle Collector (registers and reports for one minute)
+Documentation=https://git.naqerl.com/eco/tracer/about
+After=network.target systemd-journald.service
+Wants=systemd-journald.service
+
+[Service]
+Type=simple
+User=tracer-collector
+Group=tracer
+SupplementaryGroups=systemd-journal adm
+ExecStart=/etc/systemd/system/tracer-idle-collector.sh
+
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+
+[Install]
+WantedBy=multi-user.target

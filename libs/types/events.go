@@ -117,9 +117,8 @@ func (r RegisterEvent) Timestamp() time.Time { return time.Time{} }
 // Config field is the JSON encoding of CollectorConfig; the collector keeps
 // its local sender section (api key, panel host, name) and only reconciles the
 // pushed apps and parsers. The panel derives the exact bytes to send by
-// marshalling CollectorConfig after ensuring the self-app, so the field stays
-// opaque JSON rather than a typed struct to avoid a re-marshal round-trip at
-// the ingest boundary.
+// marshalling CollectorConfig, so the field stays opaque JSON rather than a
+// typed struct to avoid a re-marshal round-trip at the ingest boundary.
 type ConfigEvent struct {
 	Type   EventType `json:"type"`
 	Config string    `json:"config"`

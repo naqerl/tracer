@@ -218,6 +218,59 @@ log "crawling panel UI"
   fi
 )
 
+log "checking registered-but-disabled collector indicator"
+idle_collector="demo-idle"
+idle_unit="tracer-collector-idle.service"
+last_update_url="${DEMO_URL}/panel/collectors/${idle_collector}/last-update"
+
+# The panel must keep listing demo-idle as a registered collector even though
+# its service only reports stats during its first minute.
+attempt=0
+until curl -fsS "${DEMO_URL}/panel/" -H "Cookie: ${COOKIE}" | grep -Fq "${idle_collector}"; do
+  attempt=$((attempt+1))
+  [ "${attempt}" -ge 30 ] && fail "dashboard did not list registered collector ${idle_collector}"
+  sleep 1
+done
+
+wait_for_last_update() {
+  local phase="$1" regex="$2"
+  local attempt page
+  for attempt in $(seq 1 60); do
+    page="$(curl -fsS "${last_update_url}" -H "Cookie: ${COOKIE}")"
+    if grep -Eq "${regex}" <<<"${page}"; then
+      return 0
+    fi
+    sleep 1
+  done
+  fail "last-update indicator for ${idle_collector} did not ${phase}"
+}
+
+wait_for_idle_stats() {
+  local attempt page
+  for attempt in $(seq 1 60); do
+    page="$(curl -fsS "${DEMO_URL}/panel/collectors/${idle_collector}/stats" -H "Cookie: ${COOKIE}")"
+    if ! grep -Fq 'No stats available' <<<"${page}"; then
+      return 0
+    fi
+    sleep 1
+  done
+  fail "${idle_collector} did not report resource stats"
+}
+
+# Seed at least one stats sample so "stale after stop" has a timestamp to age,
+# then confirm the indicator turns stale once events stop and fresh again
+# once the collector resumes reporting.
+docker exec "${DEMO_CONTAINER}" systemctl start "${idle_unit}"
+wait_for_idle_stats
+docker exec "${DEMO_CONTAINER}" systemctl stop "${idle_unit}" >/dev/null 2>&1 || true
+wait_for_last_update "turn stale after its service stopped" 'text-(yellow-400|red-400)[^>]*>[^<]*last update'
+
+docker exec "${DEMO_CONTAINER}" systemctl start "${idle_unit}"
+wait_for_last_update "hide once fresh after its service restarted" '^[[:space:]]*$'
+
+# Leave the demo in the registered-but-disabled state.
+docker exec "${DEMO_CONTAINER}" systemctl stop "${idle_unit}" >/dev/null 2>&1 || true
+
 log "checking panel and collector journals"
 assert_no_errors tracer-panel.service
 assert_no_errors tracer-collector.service

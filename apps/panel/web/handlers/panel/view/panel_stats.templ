@@ -3,6 +3,7 @@ package view
 import (
 	"fmt"
 	"strconv"
+	"time"
 	"tracer/apps/panel/web/templates"
 )
 
@@ -24,15 +25,47 @@ type PanelStatsCollector struct {
 
 // PanelStatsApp holds per-app stats for the stats page.
 type PanelStatsApp struct {
-	Name        string
-	LogCount    int64
-	IsStray     bool
-	P50         int64
-	P75         int64
-	P95         int64
-	P99         int64
-	Max         int64
-	Min         int64
+	Name       string
+	LogCount   int64
+	IsStray    bool
+	LastUpdate time.Time
+	P50        int64
+	P75        int64
+	P95        int64
+	P99        int64
+	Max        int64
+	Min        int64
+}
+
+// lastUpdateAgeText renders a relative time string like "5m ago".
+func lastUpdateAgeText(age time.Duration) string {
+	if age < 0 {
+		age = 0
+	}
+	secs := int(age.Round(time.Second) / time.Second)
+	switch {
+	case secs < 60:
+		return strconv.Itoa(secs) + "s ago"
+	case secs < 3600:
+		return strconv.Itoa(secs/60) + "m ago"
+	case secs < 86400:
+		return strconv.Itoa(secs/3600) + "h " + strconv.Itoa((secs%3600)/60) + "m ago"
+	default:
+		return strconv.Itoa(secs/86400) + "d " + strconv.Itoa((secs%86400)/3600) + "h ago"
+	}
+}
+
+// lastUpdateAgeClass colors the age indicator by staleness.
+func lastUpdateAgeClass(age time.Duration) string {
+	interval := 30 * time.Second
+	switch {
+	case age <= 2*interval:
+		return "text-fg-secondary"
+	case age <= 5*interval:
+		return "text-yellow-400"
+	default:
+		return "text-red-400"
+	}
 }
 
 // PanelStats renders the panel stats page.
@@ -100,7 +133,12 @@ templ PanelStats(props PanelStatsProps) {
 													if app.IsStray {
 														<span class="text-red-400" title="No logs in the selected period">{ app.Name }</span>
 													} else {
-														<span>{ app.Name }</span>
+														<div class="flex items-center gap-2">
+															<span>{ app.Name }</span>
+															if !app.LastUpdate.IsZero() {
+																<span class={ "text-xs whitespace-nowrap " + lastUpdateAgeClass(time.Since(app.LastUpdate)) }>{ lastUpdateAgeText(time.Since(app.LastUpdate)) }</span>
+															}
+														</div>
 													}
 												</td>
 												<td class="py-2 pr-4 text-right tabular-nums">{ strconv.FormatInt(app.LogCount, 10) }</td>

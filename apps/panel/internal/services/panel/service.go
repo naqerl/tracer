@@ -28,11 +28,14 @@ var (
 	ErrAppNotFound       = errors.New("app not found")
 	ErrLogNotFound       = errors.New("log not found")
 	ErrAccessDenied      = errors.New("access denied")
+	ErrAppNoSource       = errors.New("app has no log source or uptime check: nothing to do")
 )
 
 const (
-	maxSinceAge         = 30 * 24 * time.Hour
-	sinceValidationSkew = time.Second
+	maxSinceAge           = 30 * 24 * time.Hour
+	sinceValidationSkew   = time.Second
+	defaultStatsInterval  = 30 * time.Second
+	defaultHealthInterval = 30 * time.Second
 )
 
 func New(dbManager *dbmanager.Manager, ingestSvc *ingest.Service, tracker *ingest.Tracker, userSvc *user.Service, pusher ConfigPusher, guesser FormatGuesser) *Service {
@@ -179,6 +182,68 @@ func (s *Service) FetchCollectorConfig(ctx context.Context, collectorName string
 	return cfg, nil
 }
 
+// EnsureSelfApps adds tracer-collector and tracer-panel journal apps when they
+// are missing, using the collector's format-guess API. Missing units and
+// failed guesses are skipped so the stored config can still be pushed.
+func (s *Service) EnsureSelfApps(ctx context.Context, collectorName string) error {
+	if s.guesser == nil {
+		return nil
+	}
+
+	raw, err := s.FetchCollectorConfig(ctx, collectorName)
+	if err != nil {
+		return err
+	}
+	var cfg sharedtypes.CollectorConfig
+	if raw != "" {
+		if err := json.Unmarshal([]byte(raw), &cfg); err != nil {
+			return fmt.Errorf("could not parse stored config: %w", err)
+		}
+	}
+
+	changed := false
+	for _, appName := range []string{"tracer-collector", "tracer-panel"} {
+		if collectorConfigHasApp(cfg, appName) {
+			continue
+		}
+		result, err := s.PreviewFormat(ctx, collectorName, appName, sharedtypes.ParserSpec{})
+		if err != nil {
+			continue
+		}
+		if result.NotFound || result.Error != "" || result.App.Source == nil {
+			continue
+		}
+		if err := cfg.AddApp(appName, *result.App.Source, sharedtypes.ParserSpec{
+			Type:   result.Parser.Type,
+			Params: result.Parser.Params,
+		}); err != nil {
+			return fmt.Errorf("could not add %s: %w", appName, err)
+		}
+		changed = true
+	}
+	if !changed {
+		return nil
+	}
+
+	updated, err := json.Marshal(&cfg)
+	if err != nil {
+		return fmt.Errorf("could not marshal collector config: %w", err)
+	}
+	if err := s.SaveCollectorConfig(ctx, collectorName, string(updated)); err != nil {
+		return fmt.Errorf("could not save collector config: %w", err)
+	}
+	return nil
+}
+
+func collectorConfigHasApp(cfg sharedtypes.CollectorConfig, name string) bool {
+	for _, app := range cfg.Apps {
+		if app.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
 // SaveCollectorConfig persists the panel-driven configuration for a
 // collector. configJSON is the JSON-encoded CollectorConfig. It upserts
 // the single config row and pushes the update to any connected collectors.
@@ -287,8 +352,14 @@ func (s *Service) GuessFormatAndSave(ctx context.Context, collectorName, appName
 	if err != nil {
 		return fmt.Errorf("could not detect format: %w", err)
 	}
+	if result.NotFound {
+		return fmt.Errorf("no log source found for %s: %w", appName, ErrAppNoSource)
+	}
 	if result.Error != "" {
 		return fmt.Errorf("format detection failed: %s", result.Error)
+	}
+	if result.App.Source == nil {
+		return fmt.Errorf("could not detect log source for %s: %w", appName, ErrAppNoSource)
 	}
 
 	existing, err := s.FetchCollectorConfig(ctx, collectorName)
@@ -418,6 +489,97 @@ func (s *Service) getCollector(ctx context.Context, collectorName string) (Colle
 	return view, err
 }
 
+// CollectorActivity reports when the collector last reported resource stats
+// and the longest interval those resources are sampled at. Missing reports the
+// collector has never sent stats.
+func (s *Service) CollectorActivity(ctx context.Context, collectorName string) (Activity, bool, error) {
+	stats, err := s.ingestSvc.GetLatestStats(ctx, collectorName)
+	if errors.Is(err, sql.ErrNoRows) || errors.Is(err, dbmanager.ErrDBNotFound) {
+		return Activity{}, false, nil
+	}
+	if err != nil {
+		return Activity{}, false, fmt.Errorf("could not read collector stats: %w", err)
+	}
+
+	interval, err := s.collectorStatsInterval(ctx, collectorName)
+	if err != nil {
+		return Activity{}, false, fmt.Errorf("could not resolve collector interval: %w", err)
+	}
+	return Activity{At: time.Unix(stats.Timestamp, 0), Interval: interval}, true, nil
+}
+
+// AppActivity reports when an app last produced data (health check or log) and
+// the interval its health checks run at.
+func (s *Service) AppActivity(ctx context.Context, collectorName, appName string) (Activity, bool, error) {
+	queries, err := s.queriesForApp(collectorName, appName)
+	if err != nil {
+		return Activity{}, false, err
+	}
+
+	at := s.appLastUpdate(ctx, queries)
+	if at.IsZero() {
+		return Activity{}, false, nil
+	}
+
+	interval, err := s.appInterval(ctx, collectorName, appName)
+	if err != nil {
+		return Activity{}, false, fmt.Errorf("could not resolve app interval: %w", err)
+	}
+	return Activity{At: at, Interval: interval}, true, nil
+}
+
+// collectorStatsInterval returns the collector's resource sampling interval,
+// defaulting when the collector is unconfigured or configured with an
+// unparseable value.
+func (s *Service) collectorStatsInterval(ctx context.Context, collectorName string) (time.Duration, error) {
+	cfg, err := s.FetchCollectorConfig(ctx, collectorName)
+	if err != nil {
+		return defaultStatsInterval, err
+	}
+	if cfg == "" {
+		return defaultStatsInterval, nil
+	}
+
+	var decoded sharedtypes.CollectorConfig
+	if err := json.Unmarshal([]byte(cfg), &decoded); err != nil {
+		return defaultStatsInterval, nil
+	}
+	stats := decoded.GetStats()
+	if interval, ok := parseIntervalParam(stats.Interval, defaultStatsInterval); ok {
+		return interval, nil
+	}
+	return defaultStatsInterval, nil
+}
+
+// appInterval returns the health-check interval of an app, defaulting when the
+// app is unconfigured or has no health check.
+func (s *Service) appInterval(ctx context.Context, collectorName, appName string) (time.Duration, error) {
+	var cfg sharedtypes.CollectorConfig
+	raw, err := s.FetchCollectorConfig(ctx, collectorName)
+	if err != nil {
+		return defaultHealthInterval, err
+	}
+	if raw == "" {
+		return defaultHealthInterval, nil
+	}
+	if err := json.Unmarshal([]byte(raw), &cfg); err != nil {
+		return defaultHealthInterval, nil
+	}
+
+	for _, spec := range cfg.Apps {
+		if spec.Name != appName {
+			continue
+		}
+		if health, ok := spec.HealthSpec(); ok {
+			if interval, ok := parseIntervalParam(health.Params["interval"], defaultHealthInterval); ok {
+				return interval, nil
+			}
+		}
+		return defaultHealthInterval, nil
+	}
+	return defaultHealthInterval, nil
+}
+
 type ListCollectorAppsRequest struct {
 	UserID        int64
 	CollectorName string
@@ -441,6 +603,16 @@ type CollectorApp struct {
 	UptimePeriods int
 	ErrorCount    int64
 	HasLogs       bool
+	LastUpdateAt  time.Time
+	Interval      time.Duration
+}
+
+// Activity describes the last time a collector or app reported data and the
+// longest sampling interval it is configured with; the interval drives the
+// staleness thresholds of the live "updated X ago" indicator.
+type Activity struct {
+	At       time.Time
+	Interval time.Duration
 }
 
 // ListCollectorAppsWithStatsRequest requests the accessible apps of a
@@ -484,10 +656,11 @@ func (s *Service) ListCollectorAppsWithStats(ctx context.Context, req ListCollec
 	}
 
 	results := make(chan indexedApp, len(apps))
+	intervals := s.appHealthIntervals(ctx, req.CollectorName, apps)
 	var wg sync.WaitGroup
 	for i, app := range apps {
 		wg.Go(func() {
-			results <- indexedApp{idx: i, app: s.appStats(ctx, req.CollectorName, app, req.Since)}
+			results <- indexedApp{idx: i, app: s.appStats(ctx, req.CollectorName, app, req.Since, intervals[app])}
 		})
 	}
 	go func() {
@@ -544,8 +717,8 @@ func filterAccessibleApps(access user.AccessPolicy, collectorName string, apps [
 }
 
 // appStats reads the uptime percentage and error count for a single app.
-func (s *Service) appStats(ctx context.Context, collectorName, appName string, since time.Time) CollectorApp {
-	app := CollectorApp{Name: appName}
+func (s *Service) appStats(ctx context.Context, collectorName, appName string, since time.Time, interval time.Duration) CollectorApp {
+	app := CollectorApp{Name: appName, Interval: interval}
 
 	queries, err := s.queriesForApp(collectorName, appName)
 	if errors.Is(err, ErrAppNotFound) {
@@ -576,7 +749,87 @@ func (s *Service) appStats(ctx context.Context, collectorName, appName string, s
 			app.HasLogs = hasLogs
 		}
 	}
+
+	app.LastUpdateAt = s.appLastUpdate(ctx, queries)
 	return app
+}
+
+// appLastUpdate returns the most recent of the app's health check and log
+// timestamps, or the zero time when the app never reported anything.
+func (s *Service) appLastUpdate(ctx context.Context, queries *db.Queries) time.Time {
+	hcAt, err := queries.GetLatestHealthCheckAt(ctx)
+	if errors.Is(err, sql.ErrNoRows) {
+		hcAt = 0
+	} else if err != nil {
+		slog.Error("could not read latest health check", "error", err)
+		hcAt = 0
+	}
+
+	logAt, err := queries.GetLatestLogAt(ctx)
+	if errors.Is(err, sql.ErrNoRows) {
+		logAt = 0
+	} else if err != nil {
+		slog.Error("could not read latest log", "error", err)
+		logAt = 0
+	}
+
+	latest := hcAt
+	if logAt > latest {
+		latest = logAt
+	}
+	if latest == 0 {
+		return time.Time{}
+	}
+	return time.Unix(latest, 0)
+}
+
+// appHealthIntervals returns the health-check interval per app, falling back
+// to the default for apps without a configured health check. Missing config is
+// also resolved to the default so the grid stays usable.
+func (s *Service) appHealthIntervals(ctx context.Context, collectorName string, apps []string) map[string]time.Duration {
+	intervals := make(map[string]time.Duration, len(apps))
+	for _, app := range apps {
+		intervals[app] = defaultHealthInterval
+	}
+
+	var cfg sharedtypes.CollectorConfig
+	raw, err := s.FetchCollectorConfig(ctx, collectorName)
+	if err != nil {
+		slog.Warn("could not read collector config for app intervals", "collector", collectorName, "error", err)
+		return intervals
+	}
+	if raw == "" {
+		return intervals
+	}
+	if err := json.Unmarshal([]byte(raw), &cfg); err != nil {
+		slog.Warn("could not unmarshal collector config for app intervals", "collector", collectorName, "error", err)
+		return intervals
+	}
+
+	for _, spec := range cfg.Apps {
+		health, ok := spec.HealthSpec()
+		if !ok {
+			continue
+		}
+		interval, ok := parseIntervalParam(health.Params["interval"], defaultHealthInterval)
+		if ok {
+			intervals[spec.Name] = interval
+		}
+	}
+	return intervals
+}
+
+// parseIntervalParam parses a Go duration string, returning the fallback when
+// parsing fails or the value is empty; ok reports whether parsing succeeded.
+func parseIntervalParam(raw string, fallback time.Duration) (time.Duration, bool) {
+	if raw == "" {
+		return fallback, false
+	}
+	d, err := time.ParseDuration(raw)
+	if err != nil {
+		return fallback, false
+	}
+	return d, true
 }
 
 type AppHealth struct {
@@ -1400,6 +1653,7 @@ type PanelAppStats struct {
 	Name       string
 	LogCount   int64
 	IsStray    bool
+	LastUpdate time.Time
 	Percentile PanelPercentiles
 }
 
@@ -1496,6 +1750,12 @@ func (s *Service) GetPanelStats(ctx context.Context, req PanelStatsRequest) (Pan
 			// Compute percentiles from log volume time series (1h buckets)
 			if count > 0 {
 				pa.Percentile = computePercentiles(ctx, appQueries, req.Since)
+			}
+
+			// Get last log timestamp for update indicator
+			lastLog, err := appQueries.GetLatestLogAt(ctx)
+			if err == nil {
+				pa.LastUpdate = time.Unix(lastLog, 0)
 			}
 
 			cs.Apps = append(cs.Apps, pa)

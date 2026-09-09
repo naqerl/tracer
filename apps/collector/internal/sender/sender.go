@@ -31,8 +31,8 @@ type Service struct {
 // New creates a Service. The client automatically reconnects on failure.
 //
 // The factory dials the panel, authenticates, and sends a RegisterEvent
-// with an empty app list before returning. The panel pushes the stored
-// configuration on registration.
+// with an empty app list before returning. After that handshake the panel
+// pushes stored configuration.
 func New(spec Spec, events <-chan types.Event) *Service {
 	headers := http.Header{}
 	headers.Set("X-API-Key", spec.APIKey)

@@ -99,7 +99,9 @@ func (h *handler) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			})
 			collectorName = e.Collector
 			h.conns.Add(collectorName, client)
-			h.handleRegistration(r.Context(), client, connID, remoteAddr, e)
+			if h.handleRegistration(r.Context(), connID, remoteAddr, e) {
+				go h.sendCollectorConfig(r.Context(), client, collectorName)
+			}
 		case types.FormatResultEvent:
 			h.conns.HandleFormatResult(e)
 		case types.Envelope:
@@ -109,10 +111,6 @@ func (h *handler) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 }
-
-// handleRegistration processes the collector's registration event.
-// The collector is purely panel-config-driven: it has no local app
-// configuration. The panel pushes the stored config on registration.
 
 func (h *handler) handleEnvelope(ctx context.Context, env types.Envelope) {
 	switch env.Type {
@@ -167,11 +165,20 @@ func (h *handler) handleEnvelope(ctx context.Context, env types.Envelope) {
 	}
 }
 
-func (h *handler) handleRegistration(ctx context.Context, client *wsx.Client, connID, remoteAddr string, msg types.RegisterEvent) {
+// handleRegistration records the collector on this connection. Config is sent
+// separately after this returns.
+func (h *handler) handleRegistration(ctx context.Context, connID, remoteAddr string, msg types.RegisterEvent) bool {
+	if err := domain.ValidateCollectorName(msg.Collector); err != nil {
+		slog.Error("Invalid registration request", "error", err, "remote", remoteAddr, "conn_id", connID)
+		return false
+	}
+
+	_, alreadyConnected := h.tracker.Get(msg.Collector)
+	h.tracker.Register(connID, msg.Collector, remoteAddr, msg.Apps)
+
 	if len(msg.Apps) == 0 {
-		slog.Info("Empty collector registration, pushing stored config", "collector", msg.Collector, "remote", remoteAddr, "conn_id", connID)
-		h.pushStoredConfig(ctx, client, msg.Collector)
-		return
+		slog.Info("Empty collector registration", "collector", msg.Collector, "remote", remoteAddr, "conn_id", connID)
+		return true
 	}
 
 	req := ingest.RegisterCollectorRequest{
@@ -181,17 +188,14 @@ func (h *handler) handleRegistration(ctx context.Context, client *wsx.Client, co
 
 	if err := req.Validate(); err != nil {
 		slog.Error("Invalid registration request", "error", err, "remote", remoteAddr, "conn_id", connID)
-		return
+		return false
 	}
 
 	slog.Info("Received app registration", "ingest", req.CollectorName, "remote", remoteAddr, "apps", req.Apps, "count", len(req.Apps))
 
-	_, alreadyConnected := h.tracker.Get(req.CollectorName)
-	h.tracker.Register(connID, req.CollectorName, remoteAddr, req.Apps)
-
 	if err := h.ingestService.RegisterCollector(ctx, req); err != nil {
 		slog.Error("Failed to register collector", "collector", req.CollectorName, "error", err)
-		return
+		return false
 	}
 
 	for _, appName := range req.Apps {
@@ -200,14 +204,22 @@ func (h *handler) handleRegistration(ctx context.Context, client *wsx.Client, co
 		}
 	}
 
-	if alreadyConnected {
-		return
-	}
-	h.pushStoredConfig(ctx, client, req.CollectorName)
+	return !alreadyConnected
 }
 
-// pushStoredConfig loads the panel-stored config for a collector, ensures the
-// self-app is present, and sends it over the WebSocket connection.
+// sendCollectorConfig guesses tracer-collector / tracer-panel when those apps
+// are missing, persists the result, then pushes stored config.
+func (h *handler) sendCollectorConfig(ctx context.Context, client *wsx.Client, collectorName string) {
+	guessCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	if err := h.panelService.EnsureSelfApps(guessCtx, collectorName); err != nil {
+		slog.Error("could not ensure self apps", "collector", collectorName, "error", err)
+	}
+	cancel()
+	h.pushStoredConfig(ctx, client, collectorName)
+}
+
+// pushStoredConfig loads the panel-stored config for a collector and sends it
+// over the WebSocket connection.
 func (h *handler) pushStoredConfig(ctx context.Context, client *wsx.Client, collectorName string) {
 	cfgJSON, err := h.panelService.FetchCollectorConfig(ctx, collectorName)
 	if err != nil {
@@ -221,11 +233,11 @@ func (h *handler) pushStoredConfig(ctx context.Context, client *wsx.Client, coll
 			return
 		}
 	}
-	cfg.EnsureSelfApp(collectorName)
 	if cfg.Stats == nil {
 		def := types.DefaultStatsConfig()
 		cfg.Stats = &def
 	}
+
 	out, err := json.Marshal(&cfg)
 	if err != nil {
 		slog.Error("could not marshal config", "collector", collectorName, "error", err)

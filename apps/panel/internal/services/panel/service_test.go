@@ -545,6 +545,328 @@ func TestListCollectorAppsWithStats_EmptyApp(t *testing.T) {
 	t.Fatal("expected empty-app in results")
 }
 
+func TestCollectorActivity_NoStats(t *testing.T) {
+	svc, _, _, collectorName, _ := setupTestService(t)
+	ctx := t.Context()
+
+	if _, ok, err := svc.CollectorActivity(ctx, collectorName); err != nil {
+		t.Fatalf("CollectorActivity: %v", err)
+	} else if ok {
+		t.Fatal("expected no activity before any stats are saved")
+	}
+}
+
+func TestCollectorActivity_WithStatsAndDefaultInterval(t *testing.T) {
+	svc, _, _, collectorName, _ := setupTestService(t)
+	ctx := t.Context()
+
+	now := time.Now().Truncate(time.Second)
+	saveStats(t, ctx, svc, collectorName, types.Stats{
+		CPUUsagePercent: 40.0,
+		MemTotalMB:      8192,
+		MemUsedMB:       2048,
+		MemAvailableMB:  6144,
+		DiskTotalGB:     250,
+		DiskUsedGB:      100,
+		DiskAvailGB:     150,
+		Timestamp:       now,
+	})
+
+	act, ok, err := svc.CollectorActivity(ctx, collectorName)
+	if err != nil {
+		t.Fatalf("CollectorActivity: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected activity after saving stats")
+	}
+	if !act.At.Equal(now) {
+		t.Fatalf("expected activity at %v, got %v", now, act.At)
+	}
+	if act.Interval != 30*time.Second {
+		t.Fatalf("expected default 30s interval, got %v", act.Interval)
+	}
+}
+
+func TestCollectorActivity_WithConfiguredInterval(t *testing.T) {
+	svc, _, _, collectorName, _ := setupTestService(t)
+	ctx := t.Context()
+
+	now := time.Now().Truncate(time.Second)
+	saveStats(t, ctx, svc, collectorName, types.Stats{
+		CPUUsagePercent: 40.0,
+		MemTotalMB:      8192,
+		MemUsedMB:       2048,
+		MemAvailableMB:  6144,
+		DiskTotalGB:     250,
+		DiskUsedGB:      100,
+		DiskAvailGB:     150,
+		Timestamp:       now,
+	})
+
+	cfg := types.CollectorConfig{
+		Stats: &types.StatsConfig{Interval: "300s", CPU: true, Mem: true, Disk: true},
+	}
+	cfgJSON, err := json.Marshal(&cfg)
+	if err != nil {
+		t.Fatalf("marshal config: %v", err)
+	}
+	if err := svc.SaveCollectorConfig(ctx, collectorName, string(cfgJSON)); err != nil {
+		t.Fatalf("SaveCollectorConfig: %v", err)
+	}
+
+	act, ok, err := svc.CollectorActivity(ctx, collectorName)
+	if err != nil {
+		t.Fatalf("CollectorActivity: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected activity after saving stats")
+	}
+	if act.Interval != 5*time.Minute {
+		t.Fatalf("expected 5m interval from config, got %v", act.Interval)
+	}
+}
+
+func TestCollectorActivity_UnchangedStatsAdvanceTimestamp(t *testing.T) {
+	svc, _, _, collectorName, _ := setupTestService(t)
+	ctx := t.Context()
+
+	t0 := time.Now().Truncate(time.Second)
+	t1 := t0.Add(30 * time.Second)
+	sample := types.Stats{
+		CPUUsagePercent: 40.0,
+		MemTotalMB:      8192,
+		MemUsedMB:       2048,
+		MemAvailableMB:  6144,
+		DiskTotalGB:     250,
+		DiskUsedGB:      100,
+		DiskAvailGB:     150,
+		Timestamp:       t0,
+	}
+	saveStats(t, ctx, svc, collectorName, sample)
+	sample.Timestamp = t1
+	saveStats(t, ctx, svc, collectorName, sample)
+
+	act, ok, err := svc.CollectorActivity(ctx, collectorName)
+	if err != nil {
+		t.Fatalf("CollectorActivity: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected activity after saving stats")
+	}
+	if !act.At.Equal(t1) {
+		t.Fatalf("expected activity at %v, got %v", t1, act.At)
+	}
+}
+
+func TestEnsureSelfApps_GuessesMissingUnits(t *testing.T) {
+	svc, _, _, collectorName, _ := setupTestService(t)
+	g := &recordingFormatGuesser{
+		byService: map[string]types.FormatResultEvent{
+			"tracer-collector": slogtextGuess("tracer-collector"),
+			"tracer-panel":     slogtextGuess("tracer-panel"),
+		},
+	}
+	svc.guesser = g
+
+	if err := svc.EnsureSelfApps(t.Context(), collectorName); err != nil {
+		t.Fatalf("EnsureSelfApps: %v", err)
+	}
+	if got := strings.Join(g.services, ","); got != "tracer-collector,tracer-panel" {
+		t.Fatalf("guessed services = %q, want tracer-collector,tracer-panel", got)
+	}
+
+	raw, err := svc.FetchCollectorConfig(t.Context(), collectorName)
+	if err != nil {
+		t.Fatalf("FetchCollectorConfig: %v", err)
+	}
+	var cfg types.CollectorConfig
+	if err := json.Unmarshal([]byte(raw), &cfg); err != nil {
+		t.Fatalf("unmarshal config: %v", err)
+	}
+	if !collectorConfigHasApp(cfg, "tracer-collector") || !collectorConfigHasApp(cfg, "tracer-panel") {
+		t.Fatalf("stored apps = %+v, want tracer-collector and tracer-panel", cfg.Apps)
+	}
+}
+
+func TestEnsureSelfApps_SkipsPresentUnits(t *testing.T) {
+	svc, _, _, collectorName, _ := setupTestService(t)
+	ctx := t.Context()
+	existing := types.CollectorConfig{}
+	if err := existing.AddApp("tracer-collector", types.SourceSpec{
+		Type:   "journalctl",
+		Params: map[string]string{"unit": "tracer-collector.service"},
+	}, types.ParserSpec{
+		Type: "slogtext",
+		Params: map[string]string{
+			"level_field":      "level",
+			"message_field":    "msg",
+			"timestamp_field":  "time",
+			"timestamp_format": "2006-01-02T15:04:05.999999999Z07:00",
+		},
+	}); err != nil {
+		t.Fatalf("seed tracer-collector: %v", err)
+	}
+	raw, err := json.Marshal(&existing)
+	if err != nil {
+		t.Fatalf("marshal seed: %v", err)
+	}
+	if err := svc.SaveCollectorConfig(ctx, collectorName, string(raw)); err != nil {
+		t.Fatalf("SaveCollectorConfig: %v", err)
+	}
+
+	g := &recordingFormatGuesser{
+		byService: map[string]types.FormatResultEvent{
+			"tracer-panel": slogtextGuess("tracer-panel"),
+		},
+	}
+	svc.guesser = g
+	if err := svc.EnsureSelfApps(ctx, collectorName); err != nil {
+		t.Fatalf("EnsureSelfApps: %v", err)
+	}
+	if got := strings.Join(g.services, ","); got != "tracer-panel" {
+		t.Fatalf("guessed services = %q, want tracer-panel only", got)
+	}
+}
+
+func TestEnsureSelfApps_NotFoundIsSkipped(t *testing.T) {
+	svc, _, _, collectorName, _ := setupTestService(t)
+	svc.guesser = &recordingFormatGuesser{}
+	if err := svc.EnsureSelfApps(t.Context(), collectorName); err != nil {
+		t.Fatalf("EnsureSelfApps: %v", err)
+	}
+	raw, err := svc.FetchCollectorConfig(t.Context(), collectorName)
+	if err != nil {
+		t.Fatalf("FetchCollectorConfig: %v", err)
+	}
+	if raw != "" {
+		t.Fatalf("expected no stored config when guesses are not found, got %s", raw)
+	}
+}
+
+func TestEnsureSelfApps_NilGuesser(t *testing.T) {
+	svc, _, _, collectorName, _ := setupTestService(t)
+	if err := svc.EnsureSelfApps(t.Context(), collectorName); err != nil {
+		t.Fatalf("EnsureSelfApps with nil guesser: %v", err)
+	}
+}
+
+func TestAppActivity_NoData(t *testing.T) {
+	svc, _, _, collectorName, appName := setupTestService(t)
+	ctx := t.Context()
+
+	if _, ok, err := svc.AppActivity(ctx, collectorName, appName); err != nil {
+		t.Fatalf("AppActivity: %v", err)
+	} else if ok {
+		t.Fatal("expected no activity before any data is stored")
+	}
+}
+
+func TestAppActivity_WithLog(t *testing.T) {
+	svc, _, _, collectorName, appName := setupTestService(t)
+	ctx := t.Context()
+
+	now := time.Now().Truncate(time.Second)
+	if _, err := svc.ingestSvc.StoreLog(ctx, ingestsvc.StoreLogRequest{
+		CollectorName: collectorName,
+		AppName:       appName,
+		Entry: types.LogEntry{
+			Level:     types.LevelInfo,
+			Message:   "hello",
+			Timestamp: now,
+		},
+	}); err != nil {
+		t.Fatalf("seed log: %v", err)
+	}
+
+	act, ok, err := svc.AppActivity(ctx, collectorName, appName)
+	if err != nil {
+		t.Fatalf("AppActivity: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected activity after storing a log")
+	}
+	if act.At.Unix() != now.Unix() {
+		t.Fatalf("expected activity at %d, got %d", now.Unix(), act.At.Unix())
+	}
+	if act.Interval != 30*time.Second {
+		t.Fatalf("expected default 30s health interval, got %v", act.Interval)
+	}
+}
+
+func TestAppActivity_HealthCheckBeatsLog(t *testing.T) {
+	svc, _, _, collectorName, appName := setupTestService(t)
+	ctx := t.Context()
+
+	logTime := time.Now().Add(-1 * time.Hour).Truncate(time.Second)
+	hcTime := time.Now().Add(-30 * time.Minute).Truncate(time.Second)
+
+	if _, err := svc.ingestSvc.StoreLog(ctx, ingestsvc.StoreLogRequest{
+		CollectorName: collectorName,
+		AppName:       appName,
+		Entry: types.LogEntry{
+			Level:     types.LevelInfo,
+			Message:   "hello",
+			Timestamp: logTime,
+		},
+	}); err != nil {
+		t.Fatalf("seed log: %v", err)
+	}
+	if err := svc.ingestSvc.SaveHealthPeriod(ctx, ingestsvc.StoreHealthRequest{
+		CollectorName: collectorName,
+		AppName:       appName,
+		Status:        types.HealthStatusUp,
+		Time:          hcTime,
+	}); err != nil {
+		t.Fatalf("seed health check: %v", err)
+	}
+
+	act, ok, err := svc.AppActivity(ctx, collectorName, appName)
+	if err != nil {
+		t.Fatalf("AppActivity: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected activity")
+	}
+	if act.At.Unix() != hcTime.Unix() {
+		t.Fatalf("expected activity at health check time %d, got %d", hcTime.Unix(), act.At.Unix())
+	}
+}
+
+func TestListCollectorAppsWithStats_PopulatesLastUpdate(t *testing.T) {
+	svc, _, userID, collectorName, appName := setupTestService(t)
+	ctx := t.Context()
+
+	if _, err := svc.ingestSvc.StoreLog(ctx, ingestsvc.StoreLogRequest{
+		CollectorName: collectorName,
+		AppName:       appName,
+		Entry: types.LogEntry{
+			Level:     types.LevelInfo,
+			Message:   "hello",
+			Timestamp: time.Now().Add(-5 * time.Minute),
+		},
+	}); err != nil {
+		t.Fatalf("seed log: %v", err)
+	}
+
+	apps, err := svc.ListCollectorAppsWithStats(ctx, ListCollectorAppsWithStatsRequest{
+		UserID:        userID,
+		CollectorName: collectorName,
+		Since:         time.Now().Add(-time.Hour),
+	})
+	if err != nil {
+		t.Fatalf("ListCollectorAppsWithStats: %v", err)
+	}
+	if len(apps) != 1 {
+		t.Fatalf("expected 1 app, got %d", len(apps))
+	}
+	if apps[0].LastUpdateAt.IsZero() {
+		t.Fatal("expected LastUpdateAt to be populated")
+	}
+	if apps[0].Interval != 30*time.Second {
+		t.Fatalf("expected default 30s interval, got %v", apps[0].Interval)
+	}
+}
+
 func TestListCollectorAppsWithStats_NotFound(t *testing.T) {
 	svc, _, userID, _, _ := setupTestService(t)
 	ctx := t.Context()
@@ -1840,10 +2162,10 @@ func TestSaveSystemStats_NoopOnSameValue_PeriodCountUnchanged(t *testing.T) {
 		t.Fatalf("expected 1 Disk period, got %d", len(history.DiskPeriods))
 	}
 
-	// The open period timestamp should still be the first save (no update)
+	// Period count is unchanged, but the latest-sample timestamp advances.
 	got := getLatestStats(t, ctx, svc, collectorName)
-	if got.Timestamp != now.Unix() {
-		t.Fatalf("Timestamp should remain from first save: expected %d, got %d", now.Unix(), got.Timestamp)
+	if got.Timestamp != now.Add(time.Second).Unix() {
+		t.Fatalf("Timestamp should advance on unchanged samples: expected %d, got %d", now.Add(time.Second).Unix(), got.Timestamp)
 	}
 }
 
@@ -2491,6 +2813,42 @@ func (f *fakeFormatGuesser) GuessFormat(ctx context.Context, collector string, r
 	return f.result, f.err
 }
 
+type recordingFormatGuesser struct {
+	services  []string
+	byService map[string]types.FormatResultEvent
+	err       error
+}
+
+func (f *recordingFormatGuesser) GuessFormat(ctx context.Context, collector string, req types.FormatRequestEvent) (types.FormatResultEvent, error) {
+	f.services = append(f.services, req.Service)
+	if f.err != nil {
+		return types.FormatResultEvent{}, f.err
+	}
+	if f.byService != nil {
+		if result, ok := f.byService[req.Service]; ok {
+			return result, nil
+		}
+	}
+	return types.FormatResultEvent{NotFound: true}, nil
+}
+
+func slogtextGuess(unit string) types.FormatResultEvent {
+	return types.FormatResultEvent{
+		App: types.AppSpec{
+			Source: &types.SourceSpec{Type: "journalctl", Params: map[string]string{"unit": unit + ".service"}},
+		},
+		Parser: types.ParserSpec{
+			Type: "slogtext",
+			Params: map[string]string{
+				"level_field":      "level",
+				"message_field":    "msg",
+				"timestamp_field":  "time",
+				"timestamp_format": "2006-01-02T15:04:05.999999999Z07:00",
+			},
+		},
+	}
+}
+
 func TestPreviewFormat(t *testing.T) {
 	ctx := t.Context()
 	guesser := &fakeFormatGuesser{
@@ -2523,5 +2881,32 @@ func TestPreviewFormatNilGuesser(t *testing.T) {
 	svc := New(nil, nil, nil, nil, nil, nil)
 	if _, err := svc.PreviewFormat(t.Context(), "collector-a", "nginx", types.ParserSpec{}); err == nil {
 		t.Fatal("expected error when guesser is unavailable")
+	}
+}
+
+func TestGuessFormatAndSaveNoSource(t *testing.T) {
+	ctx := t.Context()
+	svc := New(nil, nil, nil, nil, nil, &fakeFormatGuesser{
+		result: types.FormatResultEvent{},
+	})
+
+	err := svc.GuessFormatAndSave(ctx, "collector-a", "nginx")
+	if !errors.Is(err, ErrAppNoSource) {
+		t.Fatalf("GuessFormatAndSave error = %v, want ErrAppNoSource", err)
+	}
+}
+
+func TestGuessFormatAndSaveNotFound(t *testing.T) {
+	ctx := t.Context()
+	svc := New(nil, nil, nil, nil, nil, &fakeFormatGuesser{
+		result: types.FormatResultEvent{
+			Error:    "no logs found in the source",
+			NotFound: true,
+		},
+	})
+
+	err := svc.GuessFormatAndSave(ctx, "collector-a", "nginx")
+	if !errors.Is(err, ErrAppNoSource) {
+		t.Fatalf("GuessFormatAndSave error = %v, want ErrAppNoSource", err)
 	}
 }

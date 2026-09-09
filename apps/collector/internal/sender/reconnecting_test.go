@@ -67,6 +67,25 @@ func dialOpts() []wsx.ClientOption {
 
 // Tests
 
+func TestReconnectingDialsBeforeFirstSend(t *testing.T) {
+	srv, url := echoServer(t)
+	defer srv.Close()
+
+	dialed := make(chan struct{})
+	var once sync.Once
+	r := newReconnecting(context.Background(), func(ctx context.Context) (Client, error) {
+		once.Do(func() { close(dialed) })
+		return wsx.New(ctx, url, dialOpts()...)
+	})
+	defer r.Close()
+
+	select {
+	case <-dialed:
+	case <-time.After(testTimeout):
+		t.Fatal("did not dial before Send")
+	}
+}
+
 func TestReconnectingBasicSendRecv(t *testing.T) {
 	srv, url := echoServer(t)
 	defer srv.Close()

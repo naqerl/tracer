@@ -16,55 +16,14 @@ type CollectorOverviewProps struct {
 templ CollectorOverview(props CollectorOverviewProps) {
 	@templates.Layout(props.Title, templates.NavData{Since: props.Since}) {
 		<div class="max-w-5xl mx-auto p-2 md:p-6">
-			@CollectorOverviewContent(props)
+			@CollectorSection(CollectorSectionProps{
+				Name:               props.CollectorName,
+				ShowNameBrackets:   true,
+				ShowAddAppButton:   true,
+				ShowStaleness:      true,
+				Stats:              props.Stats,
+				AccessibleAppCount: props.AccessibleAppCount,
+			})
 		</div>
 	}
-}
-
-// CollectorOverviewContent renders the collector overview content
-templ CollectorOverviewContent(props CollectorOverviewProps) {
-	@CollectorOverviewData(props)
-}
-
-// CollectorOverviewData renders the main data section for a collector
-templ CollectorOverviewData(props CollectorOverviewProps) {
-	<div class="mb-10">
-		<!-- Collector Header -->
-		<div class="flex items-center mb-2">
-			<span class="text-fg-secondary text-xl mr-1">[</span>
-			<h2 class="text-xl font-semibold">{ props.CollectorName }</h2>
-			<span class="text-fg-secondary text-xl ml-1">]</span>
-			<a href={ "/panel/collectors/" + props.CollectorName + "/apps/new" } class="text-sm text-fg border border-fg px-3 py-1 hover:bg-fg hover:text-bg transition-colors">Add app</a>
-			<hr class="flex-1 mx-4 border-bg-secondary" />
-			if props.Stats != nil {
-				<span class="text-fg-secondary text-xs mr-1">[</span>
-				if props.Stats.Staleness == "fresh" {
-					<span class="text-xs text-fg">{ props.Stats.TimestampFormatted }</span>
-				} else if props.Stats.Staleness == "warning" {
-					<span class="text-xs text-yellow-400">{ props.Stats.TimestampFormatted }</span>
-				} else {
-					<span class="text-xs text-red-400">{ props.Stats.TimestampFormatted }</span>
-				}
-				<span class="text-fg-secondary text-xs ml-1">]</span>
-			}
-		</div>
-
-		<!-- Stats Row -->
-		<div
-			hx-get={ "/panel/collectors/" + props.CollectorName + "/stats" }
-			hx-trigger="every 15s"
-			hx-swap="innerHTML"
-		>
-			@StatsRow(props.Stats, props.CollectorName)
-		</div>
-
-		<!-- Apps Grid -->
-		<div
-			hx-get={ "/panel/collectors/" + props.CollectorName + "/apps" }
-			hx-trigger="load, every 15s"
-			hx-swap="innerHTML"
-		>
-			@CollectorAppsSkeleton(props.AccessibleAppCount)
-		</div>
-	</div>
 }

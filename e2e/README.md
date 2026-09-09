@@ -68,6 +68,17 @@ used to exercise the detection flow end-to-end:
 
 The source keeps rotating lines, so the conflict reproduces on any fresh guess.
 
+## Registered-but-disabled collector
+
+`tracer-collector-idle.service` seeds a second collector, `demo-idle`, that is
+registered with the panel yet intentionally disabled: it connects, reports
+resource stats on a 10s cadence for the first minute of the demo, then the
+service stops. The indicator on the panel's collector card shows the "last
+update X ago" value ageing from fresh (secondary) to stale (yellow) and then to
+red over time, demonstrating how the panel tracks registered collectors that
+are no longer reporting. The e2e checks (`make -C e2e check`) stop and restart
+the service to assert the indicator turns stale and fresh again.
+
 ## Live reload
 
 Rebuild the panel binary and hot-swap it into the running container on code changes:

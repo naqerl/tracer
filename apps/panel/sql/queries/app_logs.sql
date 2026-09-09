@@ -98,6 +98,9 @@ WHERE l1.created_at >= ?1;
 -- Whether the app ever received a log.
 SELECT EXISTS(SELECT 1 FROM log) AS has_log;
 
+-- name: GetLatestLogAt :one
+SELECT CAST(COALESCE(MAX(created_at), 0) AS INTEGER) FROM log;
+
 -- name: GetLogVolumeTimeSeries :many
 -- Get log volume over time bucketed by intervals and grouped by level
 SELECT

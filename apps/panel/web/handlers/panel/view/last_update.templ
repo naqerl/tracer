@@ -1,0 +1,10 @@
+package view
+
+// LastUpdateBadge renders the "updated X ago" staleness indicator whenever
+// staleness has passed the muted/fresh range; while fresh the indicator is
+// hidden and normal values keep the state visible.
+templ LastUpdateBadge(view LastUpdateView) {
+	if view.Text != "" && view.Class != "text-fg-secondary" {
+		<span class={ "text-xs whitespace-nowrap value-breath " + view.Class }>{ view.Text }</span>
+	}
+}

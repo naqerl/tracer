@@ -15,6 +15,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	panelbuild "tracer/apps/panel"
 	"tracer/apps/panel/internal/config"
@@ -26,6 +27,7 @@ import (
 	"tracer/apps/panel/internal/services/notify/forgejo"
 	panelsvc "tracer/apps/panel/internal/services/panel"
 	usersvc "tracer/apps/panel/internal/services/user"
+	panelview "tracer/apps/panel/web/handlers/panel/view"
 	"tracer/apps/panel/web/handlers/settings/view"
 	"tracer/apps/panel/web/htmx"
 	authmw "tracer/apps/panel/web/middleware/auth"
@@ -92,6 +94,9 @@ func InitMux(authService *auth.Service, userService *usersvc.Service, ingestServ
 
 	// Config management
 	m.HandleFunc("POST /config", h.updateConfig)
+
+	// Stats
+	m.HandleFunc("GET /stats", h.getStats)
 
 	// Per-collector panel-driven configuration (via ingest API key)
 	// Config is managed through the collector settings page using the
@@ -185,6 +190,71 @@ func (h *handler) settingsPage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	view.SettingsPage(props).Render(r.Context(), w)
+}
+
+func (h *handler) getStats(w http.ResponseWriter, r *http.Request) {
+	user, err := authmw.RequireUser(w, r)
+	if err != nil {
+		return
+	}
+
+	sinceLabel, since := settingsReadSince(w, r)
+
+	req := panelsvc.PanelStatsRequest{
+		UserID: user.ID,
+		Since:  since,
+	}
+	if err := req.Validate(); err != nil {
+		templates.RenderError(w, r, "Error", err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	result, err := h.panelService.GetPanelStats(r.Context(), req)
+	if err != nil {
+		templates.RenderError(w, r, "Error", "Failed to get stats", http.StatusInternalServerError)
+		return
+	}
+
+	collectorViews := make([]panelview.PanelStatsCollector, 0, len(result.Collectors))
+	for _, c := range result.Collectors {
+		apps := make([]panelview.PanelStatsApp, 0, len(c.Apps))
+		for _, a := range c.Apps {
+			apps = append(apps, panelview.PanelStatsApp{
+				Name:       a.Name,
+				LogCount:   a.LogCount,
+				IsStray:    a.IsStray,
+				LastUpdate: a.LastUpdate,
+				P50:        a.Percentile.P50,
+				P75:        a.Percentile.P75,
+				P95:        a.Percentile.P95,
+				P99:        a.Percentile.P99,
+				Max:        a.Percentile.Max,
+				Min:        a.Percentile.Min,
+			})
+		}
+		collectorViews = append(collectorViews, panelview.PanelStatsCollector{
+			Name:        c.Name,
+			DiskUsedGB:  c.DiskUsedGB,
+			DiskTotalGB: c.DiskTotalGB,
+			DiskPercent: func() float64 {
+				if c.DiskTotalGB <= 0 {
+					return 0
+				}
+				return float64(c.DiskUsedGB) / float64(c.DiskTotalGB) * 100.0
+			}(),
+			Apps: apps,
+		})
+	}
+
+	panelview.PanelStats(panelview.PanelStatsProps{
+		Title:      "Stats",
+		Since:      sinceLabel,
+		Collectors: collectorViews,
+	}).Render(r.Context(), w)
+}
+
+func settingsReadSince(w http.ResponseWriter, r *http.Request) (string, time.Time) {
+	return templates.ReadSince(w, r)
 }
 
 func (h *handler) createUser(w http.ResponseWriter, r *http.Request) {

@@ -82,6 +82,17 @@ func (q *Queries) DeleteOldLogs(ctx context.Context, createdAt int64) error {
 	return err
 }
 
+const getLatestLogAt = `-- name: GetLatestLogAt :one
+SELECT CAST(COALESCE(MAX(created_at), 0) AS INTEGER) FROM log
+`
+
+func (q *Queries) GetLatestLogAt(ctx context.Context) (int64, error) {
+	row := q.db.QueryRowContext(ctx, getLatestLogAt)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const getLogByID = `-- name: GetLogByID :one
 SELECT id, trace_id, level, message, context, group_id, created_at FROM log
 WHERE id = ?

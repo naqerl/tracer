@@ -47,6 +47,17 @@ func (q *Queries) DeleteOldHealthPeriods(ctx context.Context, endedAt sql.NullIn
 	return err
 }
 
+const getLatestHealthCheckAt = `-- name: GetLatestHealthCheckAt :one
+SELECT CAST(COALESCE(MAX(at), 0) AS INTEGER) FROM app_health_check
+`
+
+func (q *Queries) GetLatestHealthCheckAt(ctx context.Context) (int64, error) {
+	row := q.db.QueryRowContext(ctx, getLatestHealthCheckAt)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const getLatestHealthPeriod = `-- name: GetLatestHealthPeriod :one
 SELECT id, status, started_at, ended_at
 FROM app_health_period

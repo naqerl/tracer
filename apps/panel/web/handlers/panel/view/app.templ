@@ -38,7 +38,14 @@ templ App(props AppProps) {
 				</div>
 			</div>
 
-			<h1 class="text-3xl font-semibold mb-6">{ props.App }</h1>
+			<div class="flex items-center gap-3 mb-6">
+				<h1 class="text-3xl font-semibold">{ props.App }</h1>
+				<div
+					hx-get={ "/panel/collectors/" + props.Collector + "/apps/" + props.App + "/last-update" }
+					hx-trigger="load, every 15s"
+					hx-swap="innerHTML"
+				></div>
+			</div>
 
 			<div
 			  hx-get={ "/panel/collectors/" + props.Collector + "/apps/" + props.App + "/uptime" }

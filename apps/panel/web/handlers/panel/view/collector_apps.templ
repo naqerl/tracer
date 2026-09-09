@@ -15,6 +15,7 @@ type AppView struct {
 	UptimeClass string
 	ErrorText   string
 	ErrorClass  string
+	LastUpdate  LastUpdateView
 }
 
 // AppCard renders a single app card in the apps grid. When loading it renders
@@ -31,7 +32,10 @@ templ AppCard(collectorName string, app AppView, loading bool) {
 			</div>
 		} else {
 			<a href={ "/panel/collectors/" + collectorName + "/apps/" + app.Name } class="block hover:bg-bg-secondary/80 transition-all hover:-translate-y-0.5">
-				<div class="font-medium truncate">{ app.Name }</div>
+				<div class="flex items-center justify-between gap-2">
+					<div class="font-medium truncate">{ app.Name }</div>
+					@LastUpdateBadge(app.LastUpdate)
+				</div>
 				<div class="mt-2 text-xs text-fg-secondary">
 					<span>uptime: <span class={ "inline-block w-[3ch] tabular-nums text-right whitespace-nowrap value-breath " + app.UptimeClass }>{ app.UptimeText }</span></span>
 					<span class="text-fg-secondary"> | </span>
@@ -42,7 +46,8 @@ templ AppCard(collectorName string, app AppView, loading bool) {
 	</div>
 }
 
-// CollectorAppsSkeleton renders placeholder app cards matching the apps grid.
+// CollectorAppsSkeleton renders placeholder app cards matching the apps grid,
+// including the trailing "Add app" entry so the swap does not resize the grid.
 // When no apps are accessible a single bar matching the empty-state line
 // height is shown.
 templ CollectorAppsSkeleton(count int) {
@@ -51,6 +56,9 @@ templ CollectorAppsSkeleton(count int) {
 			for i := 0; i < count; i++ {
 				@AppCard("", AppView{}, true)
 			}
+			<div class="block bg-bg-secondary p-4 flex items-center justify-center">
+				<div class="w-6 h-6 rounded bg-fg/10 animate-pulse"></div>
+			</div>
 		</div>
 	} else {
 		<div class="h-5 w-40 rounded bg-fg/10 animate-pulse" aria-hidden="true"></div>

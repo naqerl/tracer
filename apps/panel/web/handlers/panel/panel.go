@@ -49,11 +49,6 @@ var levelFilters = []LevelFilter{
 
 const defaultLogLevel = "error"
 
-const (
-	sinceCookieName   = "tracer_panel_since"
-	defaultSinceLabel = "24h"
-)
-
 func InitMux(svc *panelsvc.Service, authService *authsvc.Service) *http.ServeMux {
 	m := http.NewServeMux()
 	h := handler{
@@ -64,9 +59,6 @@ func InitMux(svc *panelsvc.Service, authService *authsvc.Service) *http.ServeMux
 	// Dashboard
 	m.HandleFunc("GET /", h.getDashboard)
 	m.HandleFunc("GET /collectors", h.getDashboard)
-
-	// Stats
-	m.HandleFunc("GET /stats", h.getStats)
 
 	// Collector
 	m.HandleFunc("GET /collectors/{collector}", h.getCollector)
@@ -90,9 +82,9 @@ func InitMux(svc *panelsvc.Service, authService *authsvc.Service) *http.ServeMux
 	// Install script (returns shell script for collector setup)
 	m.HandleFunc("GET /collectors/{collector}/install-script", h.getInstallScript)
 
-	// Add collector (API key creation)
-	m.HandleFunc("GET /collectors/new", h.getNewCollector)
-	m.HandleFunc("POST /collectors", h.createCollector)
+	// Last update indicators
+	m.HandleFunc("GET /collectors/{collector}/last-update", h.getCollectorLastUpdate)
+	m.HandleFunc("GET /collectors/{collector}/apps/{app}/last-update", h.getAppLastUpdate)
 
 	// App logs
 	m.HandleFunc("GET /collectors/{collector}/apps/{app}", h.getApp)
@@ -157,66 +149,6 @@ func (h *handler) getDashboard(w http.ResponseWriter, r *http.Request) {
 
 	view.Dashboard(view.DashboardProps{
 		Title:      "Panel",
-		Since:      sinceLabel,
-		Collectors: collectorViews,
-	}).Render(r.Context(), w)
-}
-
-func (h *handler) getStats(w http.ResponseWriter, r *http.Request) {
-	user, err := auth.RequireUser(w, r)
-	if err != nil {
-		return
-	}
-
-	sinceLabel, since := readSince(w, r)
-
-	req := panelsvc.PanelStatsRequest{
-		UserID: user.ID,
-		Since:  since,
-	}
-	if err := req.Validate(); err != nil {
-		templates.RenderError(w, r, "Error", err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	result, err := h.svc.GetPanelStats(r.Context(), req)
-	if err != nil {
-		templates.RenderError(w, r, "Error", "Failed to get stats", http.StatusInternalServerError)
-		return
-	}
-
-	collectorViews := make([]view.PanelStatsCollector, 0, len(result.Collectors))
-	for _, c := range result.Collectors {
-		apps := make([]view.PanelStatsApp, 0, len(c.Apps))
-		for _, a := range c.Apps {
-			apps = append(apps, view.PanelStatsApp{
-				Name:     a.Name,
-				LogCount: a.LogCount,
-				IsStray:  a.IsStray,
-				P50:      a.Percentile.P50,
-				P75:      a.Percentile.P75,
-				P95:      a.Percentile.P95,
-				P99:      a.Percentile.P99,
-				Max:      a.Percentile.Max,
-				Min:      a.Percentile.Min,
-			})
-		}
-		collectorViews = append(collectorViews, view.PanelStatsCollector{
-			Name:        c.Name,
-			DiskUsedGB:  c.DiskUsedGB,
-			DiskTotalGB: c.DiskTotalGB,
-			DiskPercent: func() float64 {
-				if c.DiskTotalGB <= 0 {
-					return 0
-				}
-				return float64(c.DiskUsedGB) / float64(c.DiskTotalGB) * 100.0
-			}(),
-			Apps: apps,
-		})
-	}
-
-	view.PanelStats(view.PanelStatsProps{
-		Title:      "Stats",
 		Since:      sinceLabel,
 		Collectors: collectorViews,
 	}).Render(r.Context(), w)
@@ -389,12 +321,18 @@ func (h *handler) getCollectorApps(w http.ResponseWriter, r *http.Request) {
 
 	viewApps := make([]view.AppView, len(apps))
 	for i, a := range apps {
+		lastUpdate := view.LastUpdateView{}
+		if !a.LastUpdateAt.IsZero() {
+			age := time.Since(a.LastUpdateAt)
+			lastUpdate = view.LastUpdateView{Text: view.FormatAgo(age), Class: view.LastUpdateClass(age, a.Interval)}
+		}
 		viewApps[i] = view.AppView{
 			Name:        a.Name,
 			UptimeText:  uptimePercentText(a.UptimePercent, a.UptimePeriods),
 			UptimeClass: uptimePercentClass(a.UptimePercent, a.UptimePeriods),
 			ErrorText:   errorCountText(a.HasLogs, a.ErrorCount),
 			ErrorClass:  errorCountClass(a.HasLogs, a.ErrorCount),
+			LastUpdate:  lastUpdate,
 		}
 	}
 	view.CollectorApps(view.CollectorAppsProps{
@@ -515,6 +453,35 @@ func (h *handler) getCollectorStats(w http.ResponseWriter, r *http.Request) {
 	}
 
 	view.StatsRow(collectorStatsView(coll.Stats), req.CollectorName).Render(r.Context(), w)
+}
+
+func (h *handler) getCollectorLastUpdate(w http.ResponseWriter, r *http.Request) {
+	_, err := auth.RequireUser(w, r)
+	if err != nil {
+		return
+	}
+
+	collectorName := r.PathValue("collector")
+	if err := domain.ValidateCollectorName(collectorName); err != nil {
+		http.Error(w, "invalid collector name", http.StatusBadRequest)
+		return
+	}
+
+	activity, ok, err := h.svc.CollectorActivity(r.Context(), collectorName)
+	if err != nil {
+		slog.Error("Could not read collector activity", "collector", collectorName, "error", err)
+		return
+	}
+	if !ok {
+		view.LastUpdateBadge(view.LastUpdateView{}).Render(r.Context(), w)
+		return
+	}
+
+	age := time.Since(activity.At)
+	view.LastUpdateBadge(view.LastUpdateView{
+		Text:  view.FormatAgo(age),
+		Class: view.LastUpdateClass(age, activity.Interval),
+	}).Render(r.Context(), w)
 }
 
 // App logs handlers
@@ -657,57 +624,40 @@ func (h *handler) getAppUptime(w http.ResponseWriter, r *http.Request) {
 	view.UptimePanel(appHealthViewFromServiceToView(health)).Render(r.Context(), w)
 }
 
+// getAppLastUpdate returns the app's "updated X ago" indicator as an HTMX
+// fragment.
+func (h *handler) getAppLastUpdate(w http.ResponseWriter, r *http.Request) {
+	_, err := auth.RequireUser(w, r)
+	if err != nil {
+		return
+	}
+
+	collectorName := r.PathValue("collector")
+	appName := r.PathValue("app")
+
+	activity, ok, err := h.svc.AppActivity(r.Context(), collectorName, appName)
+	if err != nil {
+		slog.Error("Could not read app activity", "collector", collectorName, "app", appName, "error", err)
+		return
+	}
+	if !ok {
+		view.LastUpdateBadge(view.LastUpdateView{}).Render(r.Context(), w)
+		return
+	}
+
+	age := time.Since(activity.At)
+	view.LastUpdateBadge(view.LastUpdateView{
+		Text:  view.FormatAgo(age),
+		Class: view.LastUpdateClass(age, activity.Interval),
+	}).Render(r.Context(), w)
+}
+
 func readSince(w http.ResponseWriter, r *http.Request) (string, time.Time) {
-	label := ensureSinceCookie(w, r)
-	return label, parseSinceLabel(label)
+	return templates.ReadSince(w, r)
 }
 
 func ensureSinceCookie(w http.ResponseWriter, r *http.Request) string {
-	cookie, err := r.Cookie(sinceCookieName)
-	if err == nil {
-		label := sanitizeSinceLabel(cookie.Value)
-		if label == cookie.Value {
-			return label
-		}
-	}
-	setSinceCookie(w, r, defaultSinceLabel)
-	return defaultSinceLabel
-}
-
-func setSinceCookie(w http.ResponseWriter, r *http.Request, label string) {
-	secure := r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https"
-	http.SetCookie(w, &http.Cookie{
-		Name:     sinceCookieName,
-		Value:    label,
-		Path:     "/",
-		MaxAge:   31536000,
-		Secure:   secure,
-		SameSite: http.SameSiteLaxMode,
-	})
-}
-
-func parseSinceLabel(label string) time.Time {
-	label = sanitizeSinceLabel(label)
-	duration, err := time.ParseDuration(label)
-	if err != nil {
-		if len(label) > 1 && label[len(label)-1] == 'd' {
-			days, err := strconv.Atoi(label[:len(label)-1])
-			if err == nil {
-				return time.Now().Add(-time.Duration(days) * 24 * time.Hour)
-			}
-		}
-		return time.Now().Add(-24 * time.Hour)
-	}
-	return time.Now().Add(-duration)
-}
-
-func sanitizeSinceLabel(label string) string {
-	switch label {
-	case "1h", "6h", "24h", "7d", "30d":
-		return label
-	default:
-		return defaultSinceLabel
-	}
+	return templates.EnsureSinceCookie(w, r)
 }
 
 // collectorStatsView converts service-level collector stats to the view layer,
@@ -1776,62 +1726,16 @@ func (h *handler) createApp(w http.ResponseWriter, r *http.Request) {
 
 	// Default: only a service name. Ask the collector to detect format via WS.
 	if err := h.svc.GuessFormatAndSave(r.Context(), collectorName, appName); err != nil {
-		http.Error(w, err.Error(), http.StatusBadGateway)
-		return
-	}
-
-	h.renderAppSaved(w, r, collectorName, appName)
-}
-
-func (h *handler) getNewCollector(w http.ResponseWriter, r *http.Request) {
-	view.NewCollectorForm().Render(r.Context(), w)
-}
-
-func (h *handler) createCollector(w http.ResponseWriter, r *http.Request) {
-	user, err := auth.RequireUser(w, r)
-	if err != nil {
-		return
-	}
-
-	name := strings.TrimSpace(r.FormValue("name"))
-	if name == "" {
-		http.Error(w, "collector name is required", http.StatusBadRequest)
-		return
-	}
-	if err := domain.ValidateCollectorName(name); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	created, err := h.authService.GenerateCollectorAPIKey(r.Context(), user, authsvc.GenerateCollectorAPIKeyRequest{
-		Name:   name,
-		UserID: user.ID,
-	})
-	if err != nil {
 		switch {
-		case errors.Is(err, authsvc.ErrAccessDenied):
-			http.Error(w, "Forbidden", http.StatusForbidden)
+		case errors.Is(err, panelsvc.ErrAppNoSource):
+			http.Error(w, "an app needs at least a log source or an uptime check; none could be detected", http.StatusUnprocessableEntity)
 		default:
-			slog.Error("Failed to generate collector API key", "error", err)
-			http.Error(w, "Failed to create collector", http.StatusInternalServerError)
+			http.Error(w, err.Error(), http.StatusBadGateway)
 		}
 		return
 	}
 
-	host := r.Host
-	if fwd := r.Header.Get("X-Forwarded-Host"); fwd != "" {
-		host = fwd
-	}
-	scheme := "http"
-	if r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https" {
-		scheme = "https"
-	}
-
-	view.CollectorCreated(view.CollectorCreatedProps{
-		Name: name,
-		Key:  created.Plaintext,
-		Host: scheme + "://" + host,
-	}).Render(r.Context(), w)
+	h.renderAppSaved(w, r, collectorName, appName)
 }
 
 func (h *handler) getInstallScript(w http.ResponseWriter, r *http.Request) {

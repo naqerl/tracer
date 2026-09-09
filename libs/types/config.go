@@ -106,44 +106,6 @@ func (a AppSpec) IsHealthOnly() bool {
 	return a.Source == nil && a.ParserID == ""
 }
 
-// EnsureSelfApp adds the collector's own systemd journal as an app if not
-// already present. The self-app lets the panel show the collector's own
-// health and logs without manual configuration.
-func (c *CollectorConfig) EnsureSelfApp(collectorName string) {
-	for _, app := range c.Apps {
-		if app.Name == collectorName {
-			return
-		}
-	}
-
-	if c.Parsers == nil {
-		c.Parsers = map[string]ParserSpec{}
-	}
-	parserID := "slogtext-" + collectorName
-	if _, taken := c.Parsers[parserID]; !taken {
-		c.Parsers[parserID] = ParserSpec{
-			Type: "slogtext",
-			Params: map[string]string{
-				"level_field":      "level",
-				"message_field":    "msg",
-				"timestamp_field":  "time",
-				"timestamp_format": "2006-01-02T15:04:05.999999999Z07:00",
-			},
-		}
-	}
-
-	c.Apps = append(c.Apps, AppSpec{
-		Name:     collectorName,
-		ParserID: parserID,
-		Source: &SourceSpec{
-			Type: "journalctl",
-			Params: map[string]string{
-				"unit": collectorName,
-			},
-		},
-	})
-}
-
 // parserRequiredParams lists the params every parser of a given type must
 // define. Configs referencing an unknown type or missing a required param are
 // rejected before they reach the collector, whose parser constructor panics on

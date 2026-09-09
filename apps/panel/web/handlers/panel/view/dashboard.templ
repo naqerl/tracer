@@ -81,6 +81,77 @@ func diskClass(percent float64) string {
 	return "text-fg-secondary"
 }
 
+// CollectorSectionProps configures the shared per-collector block rendered on
+// the dashboard and the single-collector overview page.
+type CollectorSectionProps struct {
+	Name               string
+	HeaderHref         string
+	ShowNameBrackets   bool
+	ShowAddAppButton   bool
+	ShowStaleness      bool
+	Stats              *CollectorStatsView
+	AccessibleAppCount int
+}
+
+// CollectorSection renders a collector's header, stats row, and apps grid.
+templ CollectorSection(props CollectorSectionProps) {
+	<div class="mb-10">
+		<!-- Collector Header -->
+		<div class="flex items-center mb-2">
+			if props.ShowNameBrackets {
+				<span class="text-fg-secondary text-xl mr-1">[</span>
+			}
+			if props.HeaderHref != "" {
+				<a href={ props.HeaderHref } class="text-xl font-semibold hover:opacity-80 transition-opacity">
+					{ props.Name }
+				</a>
+			} else {
+				<h2 class="text-xl font-semibold">{ props.Name }</h2>
+			}
+			if props.ShowNameBrackets {
+				<span class="text-fg-secondary text-xl ml-1">]</span>
+			}
+			<div
+				class="ml-2 mr-4"
+				hx-get={ "/panel/collectors/" + props.Name + "/last-update" }
+				hx-trigger="load, every 15s"
+				hx-swap="innerHTML"
+			></div>
+			if props.ShowAddAppButton {
+				<a href={ "/panel/collectors/" + props.Name + "/apps/new" } class="text-sm text-fg border border-fg px-3 py-1 hover:bg-fg hover:text-bg transition-colors">Add app</a>
+				<hr class="flex-1 mx-4 border-bg-secondary" />
+			}
+			if props.ShowStaleness && props.Stats != nil {
+				<span class="text-fg-secondary text-xs mr-1">[</span>
+				if props.Stats.Staleness == "fresh" {
+					<span class="text-xs text-fg">{ props.Stats.TimestampFormatted }</span>
+				} else if props.Stats.Staleness == "warning" {
+					<span class="text-xs text-yellow-400">{ props.Stats.TimestampFormatted }</span>
+				} else {
+					<span class="text-xs text-red-400">{ props.Stats.TimestampFormatted }</span>
+				}
+				<span class="text-fg-secondary text-xs ml-1">]</span>
+			}
+		</div>
+		<!-- Stats Row -->
+		<div
+			hx-get={ "/panel/collectors/" + props.Name + "/stats" }
+			hx-trigger="every 15s"
+			hx-swap="innerHTML"
+		>
+			@StatsRow(props.Stats, props.Name)
+		</div>
+		<!-- Apps Grid -->
+		<div
+			hx-get={ "/panel/collectors/" + props.Name + "/apps" }
+			hx-trigger="load, every 15s"
+			hx-swap="innerHTML"
+		>
+			@CollectorAppsSkeleton(props.AccessibleAppCount)
+		</div>
+	</div>
+}
+
 // Dashboard renders the dashboard page.
 templ Dashboard(p DashboardProps) {
 	@templates.Layout(p.Title, templates.NavData{Since: p.Since}) {
@@ -92,30 +163,12 @@ templ Dashboard(p DashboardProps) {
 					</div>
 				}
 				for _, c := range p.Collectors {
-					<div class="mb-10">
-						<!-- Collector Header -->
-						<div class="flex items-center mb-2">
-							<a href={ "/panel/collectors/" + c.Name } class="text-xl font-semibold hover:opacity-80 transition-opacity">
-								{ c.Name }
-							</a>
-						</div>
-						<!-- Stats Row -->
-						<div
-							hx-get={ "/panel/collectors/" + c.Name + "/stats" }
-							hx-trigger="every 15s"
-							hx-swap="innerHTML"
-						>
-							@StatsRow(c.Stats, c.Name)
-						</div>
-						<!-- Apps Grid -->
-						<div
-							hx-get={ "/panel/collectors/" + c.Name + "/apps" }
-							hx-trigger="load, every 15s"
-							hx-swap="innerHTML"
-						>
-							@CollectorAppsSkeleton(c.AccessibleAppCount)
-						</div>
-					</div>
+					@CollectorSection(CollectorSectionProps{
+						Name:               c.Name,
+						HeaderHref:         "/panel/collectors/" + c.Name,
+						Stats:              c.Stats,
+						AccessibleAppCount: c.AccessibleAppCount,
+					})
 				}
 			</div>
 		</div>

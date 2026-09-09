@@ -58,7 +58,9 @@ type Querier interface {
 	GetCollectorAPIKeys(ctx context.Context) ([]CollectorApiKey, error)
 	GetCollectorConfig(ctx context.Context) (string, error)
 	GetDiskHistory(ctx context.Context, endedAt sql.NullInt64) ([]DiskPeriod, error)
+	GetLatestHealthCheckAt(ctx context.Context) (int64, error)
 	GetLatestHealthPeriod(ctx context.Context) (AppHealthPeriod, error)
+	GetLatestLogAt(ctx context.Context) (int64, error)
 	GetLogByID(ctx context.Context, id int64) (Log, error)
 	GetLogGroupByID(ctx context.Context, groupID sql.NullInt64) (GetLogGroupByIDRow, error)
 	// Get log volume over time bucketed by intervals and grouped by level

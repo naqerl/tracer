@@ -58,6 +58,7 @@ type Service struct {
 
 	mu           sync.Mutex
 	lastNotified map[string]int64 // collector/resource -> last notify unix time
+	lastStatsAt  map[string]int64 // collector -> last stats sample unix time
 }
 
 // New creates a new ingest service. A nil notifyChan or alertFormatter is
@@ -75,6 +76,7 @@ func New(dbManager DBManager, notifyChan chan<- notify.Notification, alertFormat
 		alertFormatter: alertFormatter,
 		cfg:            cfg,
 		lastNotified:   make(map[string]int64),
+		lastStatsAt:    make(map[string]int64),
 	}
 }
 
@@ -99,7 +101,7 @@ type SystemStat struct {
 	DiskTotalGb     int64
 	DiskUsedGb      int64
 	DiskAvailGb     int64
-	Timestamp       int64 // most recent started_at among open periods
+	Timestamp       int64 // most recent stats sample, including unchanged values
 }
 
 // StatsHistoryResult holds period data for all three resource types.
@@ -153,6 +155,10 @@ func (s *Service) SaveSystemStats(ctx context.Context, req SaveSystemStatsReques
 	if err != nil {
 		return err
 	}
+
+	s.mu.Lock()
+	s.lastStatsAt[req.CollectorName] = nowUnix
+	s.mu.Unlock()
 
 	s.checkResourceThresholds(req.CollectorName, req.Stats, nowUnix)
 	return nil
@@ -365,7 +371,8 @@ func (s *Service) suppressResourceNotify(collectorName string, breached []string
 }
 
 // GetLatestStats returns the latest system stats for a collector by combining
-// the open periods from each resource table.
+// the open periods from each resource table. Timestamp is the most recent
+// sample, including samples that did not open a new period.
 // Returns sql.ErrNoRows if no data exists for any resource.
 func (s *Service) GetLatestStats(ctx context.Context, collector string) (SystemStat, error) {
 	handle, err := s.dbManager.GetCollectorDB(collector)
@@ -418,6 +425,12 @@ func (s *Service) GetLatestStats(ctx context.Context, collector string) (SystemS
 	if !found {
 		return SystemStat{}, sql.ErrNoRows
 	}
+
+	s.mu.Lock()
+	if ts, ok := s.lastStatsAt[collector]; ok && ts > maxTs {
+		maxTs = ts
+	}
+	s.mu.Unlock()
 
 	stat.Timestamp = maxTs
 	return stat, nil

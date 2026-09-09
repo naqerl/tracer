@@ -48,7 +48,7 @@ COPY e2e/nginx/ /opt/tracer/e2e/nginx/
 COPY e2e/systemd/ /etc/systemd/system/
 
 RUN mkdir -p /etc/tracer && echo "E2E_INSTALL_MODE=${E2E_INSTALL_MODE}" > /etc/tracer/e2e.env && \
-    chmod 0755 /opt/tracer/e2e/install-on-boot.sh /usr/local/bin/tracer-demo-loggen /etc/systemd/system/demo-conflict-loggen.sh && \
+    chmod 0755 /opt/tracer/e2e/install-on-boot.sh /usr/local/bin/tracer-demo-loggen /etc/systemd/system/demo-conflict-loggen.sh /etc/systemd/system/tracer-idle-collector.sh && \
     mkdir -p /etc/systemd/system/multi-user.target.wants && \
     ln -sf /etc/systemd/system/install-on-boot.service /etc/systemd/system/multi-user.target.wants/install-on-boot.service && \
     ln -sf /etc/systemd/system/demo-api.service /etc/systemd/system/multi-user.target.wants/demo-api.service && \

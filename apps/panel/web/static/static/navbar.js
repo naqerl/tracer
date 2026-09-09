@@ -38,7 +38,7 @@
 				const isActive =
 					(nav === 'panel' && path === '/panel/') ||
 					(nav === 'topology' && path === '/topology/') ||
-					(nav === 'settings' && path === '/settings/');
+					(nav === 'settings' && (path === '/settings/' || path.startsWith('/settings/')));
 				if (isActive) {
 					link.classList.remove('text-fg-secondary');
 				} else {

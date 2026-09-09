@@ -85,6 +85,7 @@ func (r *reconnecting) Close() {
 func (r *reconnecting) run() {
 	defer close(r.recv)
 	var current Client
+	retry := time.After(0)
 
 	for {
 		// Conditionally observe the current client's Recv channel.
@@ -103,6 +104,7 @@ func (r *reconnecting) run() {
 				}
 				current = nil
 				r.waitWithBackoff()
+				retry = time.After(0)
 				continue
 			}
 			current = newCurrent
@@ -115,6 +117,7 @@ func (r *reconnecting) run() {
 					current.Close()
 				}
 				current = nil
+				retry = time.After(0)
 				continue
 			}
 			select {
@@ -122,6 +125,19 @@ func (r *reconnecting) run() {
 			default:
 				slog.Warn("reconnecting: recv channel full, dropping event")
 			}
+
+		case <-retry:
+			retry = nil
+			if current != nil {
+				continue
+			}
+			c, err := r.factory(r.ctx)
+			if err != nil {
+				retry = time.After(r.nextBackoff())
+				continue
+			}
+			current = c
+			r.backoffDelay = 0
 
 		case <-r.ctx.Done():
 			if current != nil {
@@ -171,17 +187,22 @@ func (r *reconnecting) dialAndSend(current Client, event types.Event) (Client, e
 // waitWithBackoff applies exponential backoff after a failed attempt.
 // Returns immediately when the context is cancelled.
 func (r *reconnecting) waitWithBackoff() {
-	if r.backoffDelay <= 0 {
-		r.backoffDelay = initialBackoff
-	}
-	timer := time.NewTimer(r.backoffDelay)
+	timer := time.NewTimer(r.nextBackoff())
 	select {
 	case <-timer.C:
 	case <-r.ctx.Done():
 	}
 	timer.Stop()
+}
+
+func (r *reconnecting) nextBackoff() time.Duration {
+	if r.backoffDelay <= 0 {
+		r.backoffDelay = initialBackoff
+	}
+	d := r.backoffDelay
 	r.backoffDelay *= 2
 	if r.backoffDelay > maxBackoff {
 		r.backoffDelay = maxBackoff
 	}
+	return d
 }
