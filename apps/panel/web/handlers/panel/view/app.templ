@@ -27,14 +27,6 @@ templ App(props AppProps) {
 					>
 						Settings
 					</a>
-<button
-					hx-delete={ "/panel/collectors/" + props.Collector + "/apps/" + props.App }
-					hx-confirm={ "Delete app '" + props.App + "'?" }
-					class="text-sm text-red-500 hover:text-red-400 transition-colors"
-					title="Delete app"
-				>
-					Delete
-				</button>
 				</div>
 			</div>
 

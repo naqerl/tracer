@@ -98,6 +98,18 @@ templ AppFormPage(p AppFormProps) {
 			</h1>
 			<a href={ "/panel/collectors/" + p.Collector } onclick="if (window.history.length > 1) { window.history.back(); return false; }" class="text-fg-secondary hover:text-fg text-sm mb-6 inline-block">&lt; back</a>
 			@AppForm(p)
+			if p.IsEdit {
+				<div class="mt-8 pt-6 border-t border-bg-secondary/70">
+					<button
+						hx-delete={ "/panel/collectors/" + p.Collector + "/apps/" + p.ServiceName }
+						hx-confirm={ "Delete app '" + p.ServiceName + "'?" }
+						class="text-sm text-red-500 hover:text-red-400 transition-colors"
+						title="Delete app"
+					>
+						Delete app
+					</button>
+				</div>
+			}
 		</div>
 	}
 }
