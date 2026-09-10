@@ -193,15 +193,8 @@ func (c *CollectorConfig) AddUptimeApp(appName, url, interval, expectedStatus st
 	}
 
 	c.Apps = append(c.Apps, AppSpec{
-		Name: appName,
-		Health: &HealthCheckSpec{
-			Type: "http",
-			Params: map[string]string{
-				"url":             url,
-				"interval":        interval,
-				"expected_status": expectedStatus,
-			},
-		},
+		Name:   appName,
+		Health: httpHealthSpec(url, interval, expectedStatus),
 	})
 	return nil
 }
@@ -264,29 +257,64 @@ func (c *CollectorConfig) SetAppSource(name string, src SourceSpec, parser Parse
 	return fmt.Errorf("app %s not found", name)
 }
 
-// SetAppHealth replaces the health check of an existing app, changing it into
-// an uptime-only monitor that collects no logs.
+// SetAppHealth sets or replaces the HTTP health check of an existing app,
+// leaving any log source in place.
 func (c *CollectorConfig) SetAppHealth(name, url, interval, expectedStatus string) error {
 	for i := range c.Apps {
 		if c.Apps[i].Name != name {
 			continue
 		}
-		if c.Apps[i].ParserID != "" {
-			if c.Parsers != nil {
-				delete(c.Parsers, c.Apps[i].ParserID)
-			}
-			c.Apps[i].ParserID = ""
-			c.Apps[i].Source = nil
+		c.Apps[i].Health = httpHealthSpec(url, interval, expectedStatus)
+		return nil
+	}
+	return fmt.Errorf("app %s not found", name)
+}
+
+// ClearAppHealth removes the health check from an existing app.
+func (c *CollectorConfig) ClearAppHealth(name string) error {
+	for i := range c.Apps {
+		if c.Apps[i].Name != name {
+			continue
 		}
-		c.Apps[i].Health = &HealthCheckSpec{
-			Type: "http",
-			Params: map[string]string{
-				"url":             url,
-				"interval":        interval,
-				"expected_status": expectedStatus,
-			},
+		c.Apps[i].Health = nil
+		return nil
+	}
+	return fmt.Errorf("app %s not found", name)
+}
+
+// ClearAppSource removes the log source and parser from an existing app.
+func (c *CollectorConfig) ClearAppSource(name string) error {
+	for i := range c.Apps {
+		if c.Apps[i].Name != name {
+			continue
+		}
+		oldParserID := c.Apps[i].ParserID
+		c.Apps[i].ParserID = ""
+		c.Apps[i].Source = nil
+		if oldParserID != "" && !parserInUse(c.Apps, oldParserID) && c.Parsers != nil {
+			delete(c.Parsers, oldParserID)
 		}
 		return nil
 	}
 	return fmt.Errorf("app %s not found", name)
+}
+
+func httpHealthSpec(url, interval, expectedStatus string) *HealthCheckSpec {
+	return &HealthCheckSpec{
+		Type: "http",
+		Params: map[string]string{
+			"url":             url,
+			"interval":        interval,
+			"expected_status": expectedStatus,
+		},
+	}
+}
+
+func parserInUse(apps []AppSpec, parserID string) bool {
+	for _, app := range apps {
+		if app.ParserID == parserID {
+			return true
+		}
+	}
+	return false
 }

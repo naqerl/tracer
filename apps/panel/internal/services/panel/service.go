@@ -291,6 +291,12 @@ func (s *Service) SaveCollectorConfig(ctx context.Context, collectorName, config
 		return fmt.Errorf("could not store collector config: %w", err)
 	}
 
+	for _, app := range cfg.Apps {
+		if _, err := s.dbManager.CreateAppDB(collectorName, app.Name); err != nil {
+			return fmt.Errorf("could not create app database for %s: %w", app.Name, err)
+		}
+	}
+
 	if s.pusher != nil {
 		s.pusher.PushCollectorConfig(collectorName, configJSON)
 	}

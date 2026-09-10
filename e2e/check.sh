@@ -220,13 +220,21 @@ if ! grep -Eq 'hx-put="[^"]+/apps/demo-api"' <<<"${edit_page}"; then
   fail "edit form must use hx-put for update"
 fi
 
-# Update the log source via PUT and verify the save response.
+# Update the log source via PUT and verify the save response. A health URL
+# must not drop the journalctl source (the form always submits both blocks).
 put_response="$(curl -fsS -X PUT \
   -d 'name=demo-api' \
   -d 'service=demo-api.service' \
   -d 'source_type=journalctl' \
-  -d 'parser_type=' \
-  -d 'url=' \
+  -d 'source_params=unit: demo-api.service' \
+  -d 'parser_type=json' \
+  -d 'parser_param_level_field=level' \
+  -d 'parser_param_message_field=msg' \
+  -d 'parser_param_timestamp_field=time' \
+  -d 'parser_param_timestamp_format=2006-01-02T15:04:05.999999999Z07:00' \
+  -d 'url=http://localhost:8080/healthz' \
+  -d 'interval=5s' \
+  -d 'expected_status=200' \
   -H "Cookie: ${COOKIE}" \
   "${DEMO_URL}/panel/collectors/${collector_name}/apps/demo-api")"
 if ! grep -Fq 'App "demo-api" saved' <<<"${put_response}"; then
@@ -235,6 +243,108 @@ fi
 if ! grep -Eq 'hx-get="[^"]+/apps/demo-api"' <<<"${put_response}"; then
   fail "saved response for edit must hx-get the app page (not apps list)"
 fi
+
+demo_api_settings="$(curl -fsS "${DEMO_URL}/panel/collectors/${collector_name}/apps/demo-api/settings" -H "Cookie: ${COOKIE}")"
+grep -Fq 'value="journalctl"' <<<"${demo_api_settings}" || fail "demo-api edit form lost journalctl source after save with health URL"
+grep -Fq 'value="http://localhost:8080/healthz"' <<<"${demo_api_settings}" || fail "demo-api edit form lost health URL after save"
+
+log "checking create/update save logs and health together"
+combo_app="combo-app"
+create_response="$(curl -fsS -X POST \
+  -d "name=${combo_app}" \
+  -d 'service=demo-api.service' \
+  -d 'source_type=journalctl' \
+  -d 'source_params=unit: demo-api.service' \
+  -d 'parser_type=json' \
+  -d 'parser_param_level_field=level' \
+  -d 'parser_param_message_field=msg' \
+  -d 'parser_param_timestamp_field=time' \
+  -d 'parser_param_timestamp_format=2006-01-02T15:04:05.999999999Z07:00' \
+  -d 'url=http://localhost:8080/healthz' \
+  -d 'interval=5s' \
+  -d 'expected_status=200' \
+  -H "Cookie: ${COOKIE}" \
+  "${DEMO_URL}/panel/collectors/${collector_name}/apps")"
+if ! grep -Fq "App \"${combo_app}\" saved" <<<"${create_response}"; then
+  fail "POST create for ${combo_app} (logs+health) did not return success: ${create_response}"
+fi
+
+wait_for_app_settings() {
+  local app="$1"
+  local attempt page
+  for attempt in $(seq 1 30); do
+    page="$(curl -sS "${DEMO_URL}/panel/collectors/${collector_name}/apps/${app}/settings" -H "Cookie: ${COOKIE}" || true)"
+    if grep -Fq 'value="journalctl"' <<<"${page}" && grep -Fq 'value="http://localhost:8080/healthz"' <<<"${page}"; then
+      return 0
+    fi
+    sleep 1
+  done
+  fail "${app} settings did not show both journalctl source and health URL"
+}
+wait_for_app_settings "${combo_app}"
+
+wait_for_combo_logs() {
+  local attempt page compact
+  for attempt in $(seq 1 30); do
+    page="$(curl -sS "${DEMO_URL}/panel/collectors/${collector_name}/apps/${combo_app}/stats" -H "Cookie: ${COOKIE}" || true)"
+    compact="$(tr '\n' ' ' <<<"${page}")"
+    if grep -Eq '<div class="text-2xl font-bold[^"]*">[1-9][0-9]*</div>.*<div class="[^"]*text-xs text-fg-secondary">Total Logs</div>' <<<"${compact}"; then
+      return 0
+    fi
+    sleep 1
+  done
+  fail "${combo_app} did not ingest logs after create with health URL"
+}
+wait_for_combo_logs
+
+uptime_only="uptime-only-app"
+uptime_response="$(curl -fsS -X POST \
+  -d "name=${uptime_only}" \
+  -d 'url=http://localhost:8080/healthz' \
+  -d 'interval=5s' \
+  -d 'expected_status=200' \
+  -H "Cookie: ${COOKIE}" \
+  "${DEMO_URL}/panel/collectors/${collector_name}/apps")"
+if ! grep -Fq "App \"${uptime_only}\" saved" <<<"${uptime_response}"; then
+  fail "POST create for ${uptime_only} did not return success: ${uptime_response}"
+fi
+
+wait_for_uptime_settings() {
+  local attempt page
+  for attempt in $(seq 1 30); do
+    page="$(curl -sS "${DEMO_URL}/panel/collectors/${collector_name}/apps/${uptime_only}/settings" -H "Cookie: ${COOKIE}" || true)"
+    if grep -Fq 'value="http://localhost:8080/healthz"' <<<"${page}"; then
+      if grep -Eq 'option[^>]*value="journalctl"[^>]*selected' <<<"${page}"; then
+        fail "${uptime_only} should not have a journalctl source"
+      fi
+      return 0
+    fi
+    sleep 1
+  done
+  fail "${uptime_only} settings did not show health URL"
+}
+wait_for_uptime_settings
+
+# Add a health URL to a logs-only app (demo-cron) without dropping its source.
+cron_put="$(curl -fsS -X PUT \
+  -d 'name=demo-cron' \
+  -d 'service=demo-cron.service' \
+  -d 'source_type=journalctl' \
+  -d 'source_params=unit: demo-cron.service' \
+  -d 'parser_type=json' \
+  -d 'parser_param_level_field=level' \
+  -d 'parser_param_message_field=msg' \
+  -d 'parser_param_timestamp_field=time' \
+  -d 'parser_param_timestamp_format=2006-01-02T15:04:05.999999999Z07:00' \
+  -d 'url=http://localhost:8080/healthz' \
+  -d 'interval=5s' \
+  -d 'expected_status=200' \
+  -H "Cookie: ${COOKIE}" \
+  "${DEMO_URL}/panel/collectors/${collector_name}/apps/demo-cron")"
+if ! grep -Fq 'App "demo-cron" saved' <<<"${cron_put}"; then
+  fail "PUT update adding health to demo-cron did not return success"
+fi
+wait_for_app_settings "demo-cron"
 
 log "checking collector self-registration"
 # The collector must have connected and registered its apps. Verify the apps

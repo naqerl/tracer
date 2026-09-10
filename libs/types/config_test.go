@@ -136,6 +136,9 @@ func TestSetAppSource(t *testing.T) {
 	if app.IsHealthOnly() {
 		t.Fatal("expected app to now have a source")
 	}
+	if app.Health == nil {
+		t.Fatal("expected health check to survive SetAppSource")
+	}
 	if app.Source.Type != "file" {
 		t.Fatalf("app source type = %q, want file", app.Source.Type)
 	}
@@ -152,7 +155,7 @@ func TestSetAppSource(t *testing.T) {
 	}
 }
 
-func TestSetAppHealth(t *testing.T) {
+func TestSetAppHealthKeepsSource(t *testing.T) {
 	var cfg CollectorConfig
 	if err := cfg.AddApp("nginx", SourceSpec{Type: "journalctl"}, ParserSpec{Type: "json"}); err != nil {
 		t.Fatalf("AddApp: %v", err)
@@ -163,11 +166,14 @@ func TestSetAppHealth(t *testing.T) {
 	}
 
 	app, _ := cfg.GetApp("nginx")
-	if !app.IsHealthOnly() {
-		t.Fatal("expected app to become health-only after SetAppHealth")
+	if app.IsHealthOnly() {
+		t.Fatal("expected log source to survive SetAppHealth")
 	}
-	if app.Source != nil {
-		t.Fatal("expected source to be cleared")
+	if app.Source == nil || app.Source.Type != "journalctl" {
+		t.Fatalf("source = %+v, want journalctl", app.Source)
+	}
+	if _, ok := cfg.Parsers[app.ParserID]; !ok {
+		t.Fatal("expected parser to survive SetAppHealth")
 	}
 	if app.Health.Params["url"] != "https://example.com" || app.Health.Params["interval"] != "60s" || app.Health.Params["expected_status"] != "204" {
 		t.Fatalf("health params = %v", app.Health.Params)
@@ -175,5 +181,81 @@ func TestSetAppHealth(t *testing.T) {
 
 	if err := cfg.SetAppHealth("missing", "https://example.com", "60s", "200"); err == nil {
 		t.Fatal("expected error for missing app")
+	}
+}
+
+func TestClearAppHealth(t *testing.T) {
+	var cfg CollectorConfig
+	if err := cfg.AddApp("nginx", SourceSpec{Type: "journalctl"}, ParserSpec{Type: "json"}); err != nil {
+		t.Fatalf("AddApp: %v", err)
+	}
+	if err := cfg.SetAppHealth("nginx", "https://example.com", "30s", "200"); err != nil {
+		t.Fatalf("SetAppHealth: %v", err)
+	}
+
+	if err := cfg.ClearAppHealth("nginx"); err != nil {
+		t.Fatalf("ClearAppHealth: %v", err)
+	}
+	app, _ := cfg.GetApp("nginx")
+	if app.Health != nil {
+		t.Fatal("expected health to be cleared")
+	}
+	if app.Source == nil {
+		t.Fatal("expected source to remain")
+	}
+
+	if err := cfg.ClearAppHealth("missing"); err == nil {
+		t.Fatal("expected error for missing app")
+	}
+}
+
+func TestClearAppSource(t *testing.T) {
+	var cfg CollectorConfig
+	if err := cfg.AddApp("nginx", SourceSpec{Type: "journalctl"}, ParserSpec{Type: "json"}); err != nil {
+		t.Fatalf("AddApp: %v", err)
+	}
+	if err := cfg.SetAppHealth("nginx", "https://example.com", "30s", "200"); err != nil {
+		t.Fatalf("SetAppHealth: %v", err)
+	}
+
+	if err := cfg.ClearAppSource("nginx"); err != nil {
+		t.Fatalf("ClearAppSource: %v", err)
+	}
+	app, _ := cfg.GetApp("nginx")
+	if !app.IsHealthOnly() {
+		t.Fatal("expected app to be health-only after clearing source")
+	}
+	if app.Source != nil {
+		t.Fatal("expected source to be cleared")
+	}
+	if len(cfg.Parsers) != 0 {
+		t.Fatalf("parsers = %v, want none after clearing the only source", cfg.Parsers)
+	}
+
+	if err := cfg.ClearAppSource("missing"); err == nil {
+		t.Fatal("expected error for missing app")
+	}
+}
+
+func TestClearAppSourceKeepsSharedParser(t *testing.T) {
+	parser := ParserSpec{Type: "json", Params: map[string]string{
+		"level_field":      "level",
+		"message_field":    "msg",
+		"timestamp_field":  "time",
+		"timestamp_format": "2006-01-02T15:04:05",
+	}}
+	cfg := CollectorConfig{
+		Parsers: map[string]ParserSpec{"shared": parser},
+		Apps: []AppSpec{
+			{Name: "nginx", ParserID: "shared", Source: &SourceSpec{Type: "journalctl"}, Health: httpHealthSpec("https://example.com", "30s", "200")},
+			{Name: "redis", ParserID: "shared", Source: &SourceSpec{Type: "journalctl"}},
+		},
+	}
+
+	if err := cfg.ClearAppSource("nginx"); err != nil {
+		t.Fatalf("ClearAppSource: %v", err)
+	}
+	if _, ok := cfg.Parsers["shared"]; !ok {
+		t.Fatal("shared parser must survive clearing one referencing app")
 	}
 }

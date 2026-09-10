@@ -34,6 +34,12 @@ import (
 // seeded under the demo collector's "myapp" app.
 func newServer(t *testing.T) (http.Handler, string, int64, *ingestsvc.Service, *authsvc.Service) {
 	t.Helper()
+	handler, token, groupID, ingestService, authService, _ := newServerWithGuesser(t, nil)
+	return handler, token, groupID, ingestService, authService
+}
+
+func newServerWithGuesser(t *testing.T, guesser panelsvc.FormatGuesser) (http.Handler, string, int64, *ingestsvc.Service, *authsvc.Service, *panelsvc.Service) {
+	t.Helper()
 
 	panelHandle := testutil.NewTestDB(t)
 
@@ -86,7 +92,7 @@ func newServer(t *testing.T) (http.Handler, string, int64, *ingestsvc.Service, *
 	notifyService := notifysvc.New(panelHandle, userService, dbMgr, map[string]notifysvc.FromRawJSON{})
 	ingestService := ingestsvc.New(dbMgr, notifyChan, func(_, _ string, _ int64) string { return "" }, cfg)
 	tracker := ingestsvc.NewTracker()
-	panelService := panelsvc.New(dbMgr, ingestService, tracker, userService, nil, nil)
+	panelService := panelsvc.New(dbMgr, ingestService, tracker, userService, nil, guesser)
 	topologyService := topologysvc.NewService(panelService)
 
 	// Seed one error log group via the public ingest API, then resolve its
@@ -136,7 +142,7 @@ func newServer(t *testing.T) (http.Handler, string, int64, *ingestsvc.Service, *
 		Config:       cfg,
 	}, "8080", false)
 
-	return srv.Handler, token, groupID, ingestService, authService
+	return srv.Handler, token, groupID, ingestService, authService, panelService
 }
 
 // collectorKeyID resolves the id of the collector API key with the given name

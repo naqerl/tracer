@@ -1482,49 +1482,42 @@ func (h *handler) updateApp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	url := strings.TrimSpace(r.FormValue("url"))
-	sourceType := strings.TrimSpace(r.FormValue("source_type"))
+	sourceType, src, parser, hasSource, srcErr := sourceFromForm(r)
+	if srcErr != nil {
+		http.Error(w, "invalid source parameters", http.StatusBadRequest)
+		return
+	}
+	health := healthFromForm(r)
+	sourceCleared := sourceType == "" && strings.TrimSpace(r.FormValue("parser_type")) == ""
+	_, exists := cfg.GetApp(appName)
 
-	// Health check only: re-check the URL if provided.
-	isEdit := true // PUT is always update
-	if url != "" {
-		interval := strings.TrimSpace(r.FormValue("interval"))
-		if interval == "" {
-			interval = "30s"
-		}
-		expectedStatus := strings.TrimSpace(r.FormValue("expected_status"))
-		if expectedStatus == "" {
-			expectedStatus = "200"
-		}
-		var err error
-		if _, ok := cfg.GetApp(appName); ok {
-			err = cfg.SetAppHealth(appName, url, interval, expectedStatus)
-		} else {
-			err = cfg.AddUptimeApp(appName, url, interval, expectedStatus)
-		}
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-	} else {
-		src, mErr := parseSourceSpec(sourceType, strings.TrimSpace(r.FormValue("source_params")))
-		if mErr != nil {
-			http.Error(w, "invalid source parameters", http.StatusBadRequest)
-			return
-		}
-		parser := types.ParserSpec{
-			Type:   strings.TrimSpace(r.FormValue("parser_type")),
-			Params: parserParamsFromForm(r),
-		}
-		if _, ok := cfg.GetApp(appName); ok {
+	if hasSource {
+		if exists {
 			err = cfg.SetAppSource(appName, src, parser)
 		} else {
 			err = cfg.AddApp(appName, src, parser)
 		}
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
+	} else if sourceCleared && exists {
+		err = cfg.ClearAppSource(appName)
+	}
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	_, exists = cfg.GetApp(appName)
+
+	if health != nil {
+		if exists {
+			err = cfg.SetAppHealth(appName, health.Params["url"], health.Params["interval"], health.Params["expected_status"])
+		} else {
+			err = cfg.AddUptimeApp(appName, health.Params["url"], health.Params["interval"], health.Params["expected_status"])
 		}
+	} else if exists {
+		err = cfg.ClearAppHealth(appName)
+	}
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
 	}
 
 	if err := h.saveCollectorConfig(r.Context(), collectorName, cfg); err != nil {
@@ -1532,7 +1525,7 @@ func (h *handler) updateApp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.renderAppSaved(w, r, collectorName, appName, isEdit)
+	h.renderAppSaved(w, r, collectorName, appName, true)
 }
 
 // renderAppSaved renders the post-save fragment for both create and edit flows.
@@ -1641,97 +1634,74 @@ func (h *handler) createApp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	url := strings.TrimSpace(r.FormValue("url"))
-	sourceType := strings.TrimSpace(r.FormValue("source_type"))
-	sourceParamsRaw := strings.TrimSpace(r.FormValue("source_params"))
+	sourceType, src, parser, hasSource, srcErr := sourceFromForm(r)
+	if srcErr != nil {
+		http.Error(w, "invalid source parameters", http.StatusBadRequest)
+		return
+	}
+	health := healthFromForm(r)
+	if sourceType != "" && !hasSource {
+		renderError("parser type is required when a log source is set")
+		return
+	}
 
-	existing, err := h.svc.FetchCollectorConfig(r.Context(), collectorName)
+	cfg, err := h.loadCollectorConfig(r.Context(), collectorName)
 	if err != nil {
 		templates.RenderError(w, r, "Error", "Failed to load config", http.StatusInternalServerError)
 		return
 	}
 
-	var cfg types.CollectorConfig
-	if existing != "" {
-		if jErr := json.Unmarshal([]byte(existing), &cfg); jErr != nil {
-			templates.RenderError(w, r, "Error", "Invalid stored config", http.StatusInternalServerError)
+	if !hasSource && sourceType == "" && health == nil {
+		if err := h.svc.GuessFormatAndSave(r.Context(), collectorName, appName); err != nil {
+			switch {
+			case errors.Is(err, panelsvc.ErrAppNoSource):
+				http.Error(w, "an app needs at least a log source or an uptime check; none could be detected", http.StatusUnprocessableEntity)
+			default:
+				http.Error(w, err.Error(), http.StatusBadGateway)
+			}
 			return
 		}
-	}
-
-	// Uptime-only app (no log collection)
-	if url != "" {
-		interval := strings.TrimSpace(r.FormValue("interval"))
-		if interval == "" {
-			interval = "30s"
-		}
-		expectedStatus := strings.TrimSpace(r.FormValue("expected_status"))
-		if expectedStatus == "" {
-			expectedStatus = "200"
-		}
-
-		if err := cfg.AddUptimeApp(appName, url, interval, expectedStatus); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-
-		updated, mErr := json.Marshal(&cfg)
-		if mErr != nil {
-			http.Error(w, "could not marshal config", http.StatusInternalServerError)
-			return
-		}
-
-		if err := h.svc.SaveCollectorConfig(r.Context(), collectorName, string(updated)); err != nil {
-			templates.RenderError(w, r, "Error", "Failed to save config", http.StatusInternalServerError)
-			return
-		}
-
 		h.renderAppSaved(w, r, collectorName, appName, false)
 		return
 	}
 
-	// Explicit source_type from advanced form
-	if sourceType != "" {
-		parserType := strings.TrimSpace(r.FormValue("parser_type"))
-
-		src, mErr := parseSourceSpec(sourceType, sourceParamsRaw)
-		if mErr != nil {
-			http.Error(w, "invalid source parameters", http.StatusBadRequest)
-			return
+	if !hasSource && sourceType == "" {
+		service := strings.TrimSpace(r.FormValue("service"))
+		if service == "" {
+			service = appName
 		}
-		parser := types.ParserSpec{
-			Type:   parserType,
-			Params: parserParamsFromForm(r),
+		result, gErr := h.svc.PreviewFormat(r.Context(), collectorName, service, types.ParserSpec{})
+		if gErr == nil && !result.NotFound && result.Error == "" && result.App.Source != nil {
+			hasSource = true
+			src = *result.App.Source
+			parser = types.ParserSpec{Type: result.Parser.Type, Params: result.Parser.Params}
 		}
+	}
 
+	if hasSource {
 		if err := cfg.AddApp(appName, src, parser); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-
-		updated, mErr := json.Marshal(&cfg)
-		if mErr != nil {
-			http.Error(w, "could not marshal config", http.StatusInternalServerError)
+	}
+	if health != nil {
+		if _, ok := cfg.GetApp(appName); ok {
+			err = cfg.SetAppHealth(appName, health.Params["url"], health.Params["interval"], health.Params["expected_status"])
+		} else {
+			err = cfg.AddUptimeApp(appName, health.Params["url"], health.Params["interval"], health.Params["expected_status"])
+		}
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-
-		if err := h.svc.SaveCollectorConfig(r.Context(), collectorName, string(updated)); err != nil {
-			templates.RenderError(w, r, "Error", "Failed to save config", http.StatusInternalServerError)
-			return
-		}
-
-		h.renderAppSaved(w, r, collectorName, appName, false)
+	}
+	if _, ok := cfg.GetApp(appName); !ok {
+		http.Error(w, "an app needs at least a log source or an uptime check; none could be detected", http.StatusUnprocessableEntity)
 		return
 	}
 
-	// Default: only a service name. Ask the collector to detect format via WS.
-	if err := h.svc.GuessFormatAndSave(r.Context(), collectorName, appName); err != nil {
-		switch {
-		case errors.Is(err, panelsvc.ErrAppNoSource):
-			http.Error(w, "an app needs at least a log source or an uptime check; none could be detected", http.StatusUnprocessableEntity)
-		default:
-			http.Error(w, err.Error(), http.StatusBadGateway)
-		}
+	if err := h.saveCollectorConfig(r.Context(), collectorName, cfg); err != nil {
+		templates.RenderError(w, r, "Error", "Failed to save config", http.StatusInternalServerError)
 		return
 	}
 
@@ -1787,6 +1757,45 @@ func parseOffset(offsetParam string) int {
 		return 0
 	}
 	return offset
+}
+
+// healthFromForm returns an HTTP health check when the form includes a URL.
+func healthFromForm(r *http.Request) *types.HealthCheckSpec {
+	url := strings.TrimSpace(r.FormValue("url"))
+	if url == "" {
+		return nil
+	}
+	interval := strings.TrimSpace(r.FormValue("interval"))
+	if interval == "" {
+		interval = "30s"
+	}
+	expectedStatus := strings.TrimSpace(r.FormValue("expected_status"))
+	if expectedStatus == "" {
+		expectedStatus = "200"
+	}
+	return &types.HealthCheckSpec{
+		Type: "http",
+		Params: map[string]string{
+			"url":             url,
+			"interval":        interval,
+			"expected_status": expectedStatus,
+		},
+	}
+}
+
+// sourceFromForm returns the raw source type, a log source and parser when
+// both type fields are set, and whether a valid source was parsed.
+func sourceFromForm(r *http.Request) (sourceType string, src types.SourceSpec, parser types.ParserSpec, hasSource bool, err error) {
+	sourceType = strings.TrimSpace(r.FormValue("source_type"))
+	parserType := strings.TrimSpace(r.FormValue("parser_type"))
+	if sourceType == "" || parserType == "" {
+		return sourceType, types.SourceSpec{}, types.ParserSpec{}, false, nil
+	}
+	src, err = parseSourceSpec(sourceType, strings.TrimSpace(r.FormValue("source_params")))
+	if err != nil {
+		return sourceType, types.SourceSpec{}, types.ParserSpec{}, false, err
+	}
+	return sourceType, src, types.ParserSpec{Type: parserType, Params: parserParamsFromForm(r)}, true, nil
 }
 
 // parseSourceSpec builds a SourceSpec from a type and raw key-value

@@ -2627,6 +2627,29 @@ func TestCollectorConfigStorage(t *testing.T) {
 	}
 }
 
+func TestSaveCollectorConfigCreatesAppDB(t *testing.T) {
+	svc, _, _, collector, _ := setupTestService(t)
+	cfgJSON := `{"parsers":{"p1":{"type":"json","params":{"level_field":"level","message_field":"msg","timestamp_field":"time","timestamp_format":"2006-01-02T15:04:05.999999999Z07:00"}}},"apps":[{"name":"new-from-config","parser_id":"p1","source":{"type":"journalctl","params":{}}}]}`
+	if err := svc.SaveCollectorConfig(t.Context(), collector, cfgJSON); err != nil {
+		t.Fatalf("save config: %v", err)
+	}
+
+	apps, err := svc.ingestSvc.ListApps(collector)
+	if err != nil {
+		t.Fatalf("ListApps: %v", err)
+	}
+	found := false
+	for _, name := range apps {
+		if name == "new-from-config" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("ListApps = %v, want new-from-config", apps)
+	}
+}
+
 func TestSaveCollectorConfigRequiresJSON(t *testing.T) {
 	svc, _, _, collector, _ := setupTestService(t)
 	if err := svc.SaveCollectorConfig(t.Context(), collector, "   "); err == nil {
