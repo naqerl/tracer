@@ -200,6 +200,42 @@ log "checking panel health and demo logs"
 wait_for_panel_health "${collector_name}"
 wait_for_logs "${collector_name}"
 
+log "checking app edit form"
+# The edit form must show the app name in a disabled input (names are immutable)
+# and a working log-source input that can be updated via PUT.
+edit_page="$(curl -fsS "${DEMO_URL}/panel/collectors/${collector_name}/apps/demo-api/settings" -H "Cookie: ${COOKIE}")"
+
+# Name input must be disabled and pre-filled with the app name.
+if ! grep -Eq 'name="name".*value="demo-api".*disabled' <<<"${edit_page}"; then
+  fail "edit form name input must be disabled and pre-filled with demo-api"
+fi
+
+# Log source input must be present and editable (not disabled).
+if ! grep -Eq 'name="service"[^>]*id="app-service-input"' <<<"${edit_page}"; then
+  fail "edit form log source input (app-service-input) must be present"
+fi
+
+# Verify the form submits via PUT.
+if ! grep -Eq 'hx-put="[^"]+/apps/demo-api"' <<<"${edit_page}"; then
+  fail "edit form must use hx-put for update"
+fi
+
+# Update the log source via PUT and verify the save response.
+put_response="$(curl -fsS -X PUT \
+  -d 'name=demo-api' \
+  -d 'service=demo-api.service' \
+  -d 'source_type=journalctl' \
+  -d 'parser_type=' \
+  -d 'url=' \
+  -H "Cookie: ${COOKIE}" \
+  "${DEMO_URL}/panel/collectors/${collector_name}/apps/demo-api")"
+if ! grep -Fq 'App "demo-api" saved' <<<"${put_response}"; then
+  fail "PUT update for demo-api did not return success"
+fi
+if ! grep -Eq 'hx-get="[^"]+/apps/demo-api"' <<<"${put_response}"; then
+  fail "saved response for edit must hx-get the app page (not apps list)"
+fi
+
 log "checking collector self-registration"
 # The collector must have connected and registered its apps. Verify the apps
 # page shows the demo apps with uptime values.

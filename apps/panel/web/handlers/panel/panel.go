@@ -1486,6 +1486,7 @@ func (h *handler) updateApp(w http.ResponseWriter, r *http.Request) {
 	sourceType := strings.TrimSpace(r.FormValue("source_type"))
 
 	// Health check only: re-check the URL if provided.
+	isEdit := true // PUT is always update
 	if url != "" {
 		interval := strings.TrimSpace(r.FormValue("interval"))
 		if interval == "" {
@@ -1531,17 +1532,16 @@ func (h *handler) updateApp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.renderAppSaved(w, r, collectorName, appName)
+	h.renderAppSaved(w, r, collectorName, appName, isEdit)
 }
 
-// renderAppSaved redirects htmx clients to the app page after a successful
-// save and renders the saved confirmation for clients that do not follow
-// HX-Redirect.
-func (h *handler) renderAppSaved(w http.ResponseWriter, r *http.Request, collector, appName string) {
-	w.Header().Set("HX-Redirect", "/panel/collectors/"+collector+"/apps/"+appName)
+// renderAppSaved renders the post-save fragment for both create and edit flows.
+// HTMX clients will follow the fragment's hx-get to load the updated content.
+func (h *handler) renderAppSaved(w http.ResponseWriter, r *http.Request, collector, appName string, isEdit bool) {
 	view.AppSaved(view.AppSavedProps{
 		Collector: collector,
 		AppName:   appName,
+		IsEdit:    isEdit,
 	}).Render(r.Context(), w)
 }
 
@@ -1686,7 +1686,7 @@ func (h *handler) createApp(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		h.renderAppSaved(w, r, collectorName, appName)
+		h.renderAppSaved(w, r, collectorName, appName, false)
 		return
 	}
 
@@ -1720,7 +1720,7 @@ func (h *handler) createApp(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		h.renderAppSaved(w, r, collectorName, appName)
+		h.renderAppSaved(w, r, collectorName, appName, false)
 		return
 	}
 
@@ -1735,7 +1735,7 @@ func (h *handler) createApp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.renderAppSaved(w, r, collectorName, appName)
+	h.renderAppSaved(w, r, collectorName, appName, false)
 }
 
 func (h *handler) getInstallScript(w http.ResponseWriter, r *http.Request) {

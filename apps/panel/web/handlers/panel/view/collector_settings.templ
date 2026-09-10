@@ -3,10 +3,21 @@ package view
 type AppSavedProps struct {
 	Collector string
 	AppName   string
+	IsEdit    bool
 }
 
 templ AppSaved(p AppSavedProps) {
-	<div class="border border-green-500/30 p-4 mb-4">
+	<div
+		if p.IsEdit {
+			hx-get={ "/panel/collectors/" + p.Collector + "/apps/" + p.AppName }
+		} else {
+			hx-get={ "/panel/collectors/" + p.Collector + "/apps" }
+		}
+		hx-target="#app-form-container"
+		hx-swap="outerHTML"
+		hx-trigger="load"
+		class="border border-green-500/30 p-4 mb-4"
+	>
 		<div class="text-green-400 font-medium mb-2">✓ App "{ p.AppName }" saved</div>
 		<div class="text-sm text-fg-secondary mb-3">The configuration has been pushed to collector "{ p.Collector }".</div>
 		<div class="flex gap-2">
