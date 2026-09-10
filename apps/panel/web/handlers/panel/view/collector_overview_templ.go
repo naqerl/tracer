@@ -61,8 +61,6 @@ func CollectorOverview(props CollectorOverviewProps) templ.Component {
 			templ_7745c5c3_Err = CollectorSection(CollectorSectionProps{
 				Name:               props.CollectorName,
 				ShowNameBrackets:   true,
-				ShowAddAppButton:   true,
-				ShowStaleness:      true,
 				Stats:              props.Stats,
 				AccessibleAppCount: props.AccessibleAppCount,
 			}).Render(ctx, templ_7745c5c3_Buffer)

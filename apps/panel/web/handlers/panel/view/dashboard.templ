@@ -87,8 +87,6 @@ type CollectorSectionProps struct {
 	Name               string
 	HeaderHref         string
 	ShowNameBrackets   bool
-	ShowAddAppButton   bool
-	ShowStaleness      bool
 	Stats              *CollectorStatsView
 	AccessibleAppCount int
 }
@@ -117,21 +115,7 @@ templ CollectorSection(props CollectorSectionProps) {
 				hx-trigger="load, every 15s"
 				hx-swap="innerHTML"
 			></div>
-			if props.ShowAddAppButton {
-				<a href={ "/panel/collectors/" + props.Name + "/apps/new" } class="text-sm text-fg border border-fg px-3 py-1 hover:bg-fg hover:text-bg transition-colors">Add app</a>
-				<hr class="flex-1 mx-4 border-bg-secondary" />
-			}
-			if props.ShowStaleness && props.Stats != nil {
-				<span class="text-fg-secondary text-xs mr-1">[</span>
-				if props.Stats.Staleness == "fresh" {
-					<span class="text-xs text-fg">{ props.Stats.TimestampFormatted }</span>
-				} else if props.Stats.Staleness == "warning" {
-					<span class="text-xs text-yellow-400">{ props.Stats.TimestampFormatted }</span>
-				} else {
-					<span class="text-xs text-red-400">{ props.Stats.TimestampFormatted }</span>
-				}
-				<span class="text-fg-secondary text-xs ml-1">]</span>
-			}
+
 		</div>
 		<!-- Stats Row -->
 		<div

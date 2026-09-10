@@ -66,18 +66,14 @@ templ CollectorAppsSkeleton(count int) {
 }
 
 // CollectorApps renders the apps grid for a collector with uptime and
-// error-count stats.
+// error-count stats. The "Add app" card is always present.
 templ CollectorApps(props CollectorAppsProps) {
-		if len(props.Apps) > 0 {
-		<div class="apps-grid">
-			for _, app := range props.Apps {
-				@AppCard(props.CollectorName, app, false)
-			}
-			<a href={ "/panel/collectors/" + props.CollectorName + "/apps/new" } class="block bg-bg-secondary p-4 flex items-center justify-center hover:bg-bg-secondary/80 transition-all hover:-translate-y-0.5" aria-label="Add app">
-				<img src="/static/img/plus.svg" alt="Add app" class="w-6 h-6"/>
-			</a>
-		</div>
-	} else {
-		<div class="text-fg-secondary text-sm">No apps registered</div>
-	}
+	<div class="apps-grid">
+		for _, app := range props.Apps {
+			@AppCard(props.CollectorName, app, false)
+		}
+		<a href={ "/panel/collectors/" + props.CollectorName + "/apps/new" } class="block bg-bg-secondary p-4 flex items-center justify-center hover:bg-bg-secondary/80 transition-all hover:-translate-y-0.5" aria-label="Add app">
+			<img src="/static/img/plus.svg" alt="Add app" class="w-6 h-6"/>
+		</a>
+	</div>
 }
