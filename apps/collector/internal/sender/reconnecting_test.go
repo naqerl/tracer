@@ -333,10 +333,15 @@ func TestReconnectingConcurrentSends(t *testing.T) {
 func TestReconnectingCloseDuringFactory(t *testing.T) {
 	started := make(chan struct{})
 	proceed := make(chan struct{})
+	var startedOnce sync.Once
 
 	r := newReconnecting(context.Background(), func(ctx context.Context) (Client, error) {
-		close(started)
-		<-proceed
+		startedOnce.Do(func() { close(started) })
+		select {
+		case <-proceed:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
 		return nil, errors.New("factory never completes")
 	})
 

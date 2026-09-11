@@ -13,11 +13,13 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-// newTestDB creates an in-memory SQLite DB and returns a DBHandle.
+// newTestDB creates a temporary file-based SQLite DB and returns a DBHandle.
 // The handle is registered for cleanup via t.Cleanup.
+// Each call gets a unique database file for test isolation.
 func newTestDB(t *testing.T) *DBHandle {
 	t.Helper()
-	d, err := sql.Open("sqlite", "file::memory:?cache=shared")
+	f := t.TempDir() + "/test.db"
+	d, err := sql.Open("sqlite", "file:"+f+"?_pragma=journal_mode(WAL)")
 	if err != nil {
 		t.Fatal(err)
 	}

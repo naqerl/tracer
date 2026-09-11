@@ -15,7 +15,8 @@ import (
 // TestConcurrentReadsDuringWrite verifies that reads can happen while a write
 // is in progress. This tests the WAL + MaxOpenConns(4) setup.
 func TestConcurrentReadsDuringWrite(t *testing.T) {
-	d, err := sql.Open("sqlite", "file::memory:?cache=shared")
+	f := t.TempDir() + "/test.db"
+	d, err := sql.Open("sqlite", "file:"+f+"?_pragma=journal_mode(WAL)")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,7 +85,8 @@ func TestConcurrentReadsDuringWrite(t *testing.T) {
 // TestConcurrentWritesAreSerialized verifies that concurrent writes don't
 // cause duplicate or lost updates.
 func TestConcurrentWritesAreSerialized(t *testing.T) {
-	d, err := sql.Open("sqlite", "file::memory:?cache=shared")
+	f := t.TempDir() + "/test.db"
+	d, err := sql.Open("sqlite", "file:"+f+"?_pragma=journal_mode(WAL)")
 	if err != nil {
 		t.Fatal(err)
 	}

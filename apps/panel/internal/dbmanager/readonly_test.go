@@ -9,7 +9,8 @@ import (
 )
 
 func TestReadOnlyDB_RejectsExec(t *testing.T) {
-	db, err := sql.Open("sqlite", "file::memory:?cache=shared")
+	f := t.TempDir() + "/test.db"
+	db, err := sql.Open("sqlite", "file:"+f+"?_pragma=journal_mode(WAL)")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -23,7 +24,8 @@ func TestReadOnlyDB_RejectsExec(t *testing.T) {
 }
 
 func TestReadOnlyDB_AllowsQuery(t *testing.T) {
-	db, err := sql.Open("sqlite", "file::memory:?cache=shared")
+	f := t.TempDir() + "/test.db"
+	db, err := sql.Open("sqlite", "file:"+f+"?_pragma=journal_mode(WAL)")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -44,7 +46,8 @@ func TestReadOnlyDB_AllowsQuery(t *testing.T) {
 }
 
 func TestReadOnlyDB_AllowsQueryRow(t *testing.T) {
-	db, err := sql.Open("sqlite", "file::memory:?cache=shared")
+	f := t.TempDir() + "/test.db"
+	db, err := sql.Open("sqlite", "file:"+f+"?_pragma=journal_mode(WAL)")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,7 +61,8 @@ func TestReadOnlyDB_AllowsQueryRow(t *testing.T) {
 }
 
 func TestReadOnlyDB_AllowsPrepare(t *testing.T) {
-	db, err := sql.Open("sqlite", "file::memory:?cache=shared")
+	f := t.TempDir() + "/test.db"
+	db, err := sql.Open("sqlite", "file:"+f+"?_pragma=journal_mode(WAL)")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -131,6 +131,9 @@ func (r *reconnecting) run() {
 			if current != nil {
 				continue
 			}
+			if err := r.ctx.Err(); err != nil {
+				return
+			}
 			c, err := r.factory(r.ctx)
 			if err != nil {
 				retry = time.After(r.nextBackoff())
