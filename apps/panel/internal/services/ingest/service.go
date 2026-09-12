@@ -37,6 +37,66 @@ type DBManager interface {
 	CreateAppDB(collectorName, appName string) (*dbmanager.DBHandle, error)
 }
 
+// ResourceConfigResolver resolves per-collector resource monitoring config,
+// falling back to panel-wide globals when the collector has no override.
+type ResourceConfigResolver struct {
+	dbManager DBManager
+	globals   ResourceConfig
+}
+
+// NewResourceConfigResolver creates a resolver that reads per-collector
+// config from the stored collector config and falls back to globals.
+func NewResourceConfigResolver(dbManager DBManager, globals ResourceConfig) *ResourceConfigResolver {
+	return &ResourceConfigResolver{dbManager: dbManager, globals: globals}
+}
+
+// ResolveResourceConfig returns the resource monitoring parameters for a
+// collector. Per-collector overrides from the stored config take precedence;
+// zero/nil values fall back to the panel-wide globals.
+func (r *ResourceConfigResolver) ResolveResourceConfig(collector string) ResourceConfig {
+	cfg := r.globals
+
+	handle, err := r.dbManager.GetCollectorDB(collector)
+	if err != nil {
+		return cfg
+	}
+
+	raw, err := db.New(handle.Read()).GetCollectorConfig(context.Background())
+	if err != nil || raw == "" {
+		return cfg
+	}
+
+	var cc types.CollectorConfig
+	if err := json.Unmarshal([]byte(raw), &cc); err != nil || cc.Stats == nil {
+		return cfg
+	}
+
+	s := cc.Stats
+	if s.CPUDeltaPercent != nil {
+		cfg.CPUDeltaPercent = *s.CPUDeltaPercent
+	}
+	if s.MemDeltaKB != nil {
+		cfg.MemDeltaKB = *s.MemDeltaKB
+	}
+	if s.DiskDeltaKB != nil {
+		cfg.DiskDeltaKB = *s.DiskDeltaKB
+	}
+	if s.CPUThresholdPercent != nil {
+		cfg.CPUThresholdPercent = *s.CPUThresholdPercent
+	}
+	if s.MemThresholdPercent != nil {
+		cfg.MemThresholdPercent = *s.MemThresholdPercent
+	}
+	if s.DiskThresholdPercent != nil {
+		cfg.DiskThresholdPercent = *s.DiskThresholdPercent
+	}
+	if s.ResourceNotifyMinutes != nil {
+		cfg.ResourceNotifyMinutes = *s.ResourceNotifyMinutes
+	}
+
+	return cfg
+}
+
 // Service manages ingest operations using dbmanager for all DB access.
 // IngestConfig provides runtime access to ingest-related config values.
 type IngestConfig interface {
@@ -50,11 +110,30 @@ type IngestConfig interface {
 	GetResourceNotifyMinutes() int
 }
 
+// CollectorConfigResolver resolves per-collector resource monitoring config,
+// falling back to panel-wide globals when the collector has no override.
+type CollectorConfigResolver interface {
+	ResolveResourceConfig(collector string) ResourceConfig
+}
+
+// ResourceConfig holds the resolved resource monitoring parameters for a
+// collector: per-collector overrides applied, globals used as defaults.
+type ResourceConfig struct {
+	CPUDeltaPercent       float64
+	MemDeltaKB            int
+	DiskDeltaKB           int
+	CPUThresholdPercent   float64
+	MemThresholdPercent   float64
+	DiskThresholdPercent  float64
+	ResourceNotifyMinutes int
+}
+
 type Service struct {
 	dbManager      DBManager
 	notifyChan     chan<- notify.Notification
 	alertFormatter func(collectorName, appName string, logID int64) string
 	cfg            IngestConfig
+	resolver       CollectorConfigResolver
 
 	mu           sync.Mutex
 	lastNotified map[string]int64 // collector/resource -> last notify unix time
@@ -63,7 +142,7 @@ type Service struct {
 
 // New creates a new ingest service. A nil notifyChan or alertFormatter is
 // replaced with a safe no-op so notifications can always be attempted.
-func New(dbManager DBManager, notifyChan chan<- notify.Notification, alertFormatter func(collectorName, appName string, logID int64) string, cfg IngestConfig) *Service {
+func New(dbManager DBManager, notifyChan chan<- notify.Notification, alertFormatter func(collectorName, appName string, logID int64) string, cfg IngestConfig, resolver CollectorConfigResolver) *Service {
 	if notifyChan == nil {
 		notifyChan = make(chan notify.Notification)
 	}
@@ -75,8 +154,27 @@ func New(dbManager DBManager, notifyChan chan<- notify.Notification, alertFormat
 		notifyChan:     notifyChan,
 		alertFormatter: alertFormatter,
 		cfg:            cfg,
+		resolver:       resolver,
 		lastNotified:   make(map[string]int64),
 		lastStatsAt:    make(map[string]int64),
+	}
+}
+
+// resolveResourceConfig returns the resource monitoring parameters for a
+// collector. If a per-collector resolver is configured and has overrides,
+// those are used; otherwise the panel-wide globals apply.
+func (s *Service) resolveResourceConfig(collector string) ResourceConfig {
+	if s.resolver != nil {
+		return s.resolver.ResolveResourceConfig(collector)
+	}
+	return ResourceConfig{
+		CPUDeltaPercent:       s.cfg.GetCPUDeltaPercent(),
+		MemDeltaKB:            s.cfg.GetMemDeltaKB(),
+		DiskDeltaKB:           s.cfg.GetDiskDeltaKB(),
+		CPUThresholdPercent:   s.cfg.GetCPUThresholdPercent(),
+		MemThresholdPercent:   s.cfg.GetMemThresholdPercent(),
+		DiskThresholdPercent:  s.cfg.GetDiskThresholdPercent(),
+		ResourceNotifyMinutes: s.cfg.GetResourceNotifyMinutes(),
 	}
 }
 
@@ -132,21 +230,23 @@ func (s *Service) SaveSystemStats(ctx context.Context, req SaveSystemStatsReques
 	}
 	nowUnix := req.Stats.Timestamp.Unix()
 
+	rcfg := s.resolveResourceConfig(req.CollectorName)
+
 	err = handle.Write(ctx, func(tx db.DBTX) error {
 		q := db.New(tx)
 
 		// --- CPU ---
-		if err := s.saveCPUPeriod(ctx, q, req.CollectorName, req.Stats.CPUUsagePercent, nowUnix); err != nil {
+		if err := s.saveCPUPeriod(ctx, q, req.CollectorName, req.Stats.CPUUsagePercent, nowUnix, rcfg.CPUDeltaPercent); err != nil {
 			return err
 		}
 
 		// --- Memory ---
-		if err := s.saveMemPeriod(ctx, q, req.CollectorName, req.Stats.MemTotalMB, req.Stats.MemUsedMB, req.Stats.MemAvailableMB, nowUnix); err != nil {
+		if err := s.saveMemPeriod(ctx, q, req.CollectorName, req.Stats.MemTotalMB, req.Stats.MemUsedMB, req.Stats.MemAvailableMB, nowUnix, rcfg.MemDeltaKB); err != nil {
 			return err
 		}
 
 		// --- Disk ---
-		if err := s.saveDiskPeriod(ctx, q, req.CollectorName, req.Stats.DiskTotalGB, req.Stats.DiskUsedGB, req.Stats.DiskAvailGB, nowUnix); err != nil {
+		if err := s.saveDiskPeriod(ctx, q, req.CollectorName, req.Stats.DiskTotalGB, req.Stats.DiskUsedGB, req.Stats.DiskAvailGB, nowUnix, rcfg.DiskDeltaKB); err != nil {
 			return err
 		}
 
@@ -160,11 +260,11 @@ func (s *Service) SaveSystemStats(ctx context.Context, req SaveSystemStatsReques
 	s.lastStatsAt[req.CollectorName] = nowUnix
 	s.mu.Unlock()
 
-	s.checkResourceThresholds(req.CollectorName, req.Stats, nowUnix)
+	s.checkResourceThresholds(req.CollectorName, req.Stats, nowUnix, rcfg)
 	return nil
 }
 
-func (s *Service) saveCPUPeriod(ctx context.Context, q *db.Queries, collectorName string, usagePercent float64, nowUnix int64) error {
+func (s *Service) saveCPUPeriod(ctx context.Context, q *db.Queries, collectorName string, usagePercent float64, nowUnix int64, deltaPercent float64) error {
 	current, err := q.GetOpenCPUPeriod(ctx)
 	switch {
 	case err == nil:
@@ -172,7 +272,7 @@ func (s *Service) saveCPUPeriod(ctx context.Context, q *db.Queries, collectorNam
 		if delta < 0 {
 			delta = -delta
 		}
-		if delta < s.cfg.GetCPUDeltaPercent() {
+		if delta < deltaPercent {
 			return nil // change below threshold, keep period open
 		}
 		if err := q.CloseCPUPeriod(ctx, db.CloseCPUPeriodParams{
@@ -194,7 +294,7 @@ func (s *Service) saveCPUPeriod(ctx context.Context, q *db.Queries, collectorNam
 	return err
 }
 
-func (s *Service) saveMemPeriod(ctx context.Context, q *db.Queries, collectorName string, totalMB, usedMB, availableMB int64, nowUnix int64) error {
+func (s *Service) saveMemPeriod(ctx context.Context, q *db.Queries, collectorName string, totalMB, usedMB, availableMB int64, nowUnix int64, deltaKB int) error {
 	current, err := q.GetOpenMemPeriod(ctx)
 	switch {
 	case err == nil:
@@ -217,7 +317,7 @@ func (s *Service) saveMemPeriod(ctx context.Context, q *db.Queries, collectorNam
 		if dAvail < 0 {
 			dAvail = -dAvail
 		}
-		if dTotal < int64(s.cfg.GetMemDeltaKB()) && dUsed < int64(s.cfg.GetMemDeltaKB()) && dAvail < int64(s.cfg.GetMemDeltaKB()) {
+		if dTotal < int64(deltaKB) && dUsed < int64(deltaKB) && dAvail < int64(deltaKB) {
 			return nil // all changes below threshold, keep period open
 		}
 		if err := q.CloseMemPeriod(ctx, db.CloseMemPeriodParams{
@@ -241,7 +341,7 @@ func (s *Service) saveMemPeriod(ctx context.Context, q *db.Queries, collectorNam
 	return err
 }
 
-func (s *Service) saveDiskPeriod(ctx context.Context, q *db.Queries, collectorName string, totalGB, usedGB, availGB int64, nowUnix int64) error {
+func (s *Service) saveDiskPeriod(ctx context.Context, q *db.Queries, collectorName string, totalGB, usedGB, availGB int64, nowUnix int64, deltaKB int) error {
 	current, err := q.GetOpenDiskPeriod(ctx)
 	switch {
 	case err == nil:
@@ -264,7 +364,7 @@ func (s *Service) saveDiskPeriod(ctx context.Context, q *db.Queries, collectorNa
 		if dAvail < 0 {
 			dAvail = -dAvail
 		}
-		if dTotal < int64(s.cfg.GetDiskDeltaKB()) && dUsed < int64(s.cfg.GetDiskDeltaKB()) && dAvail < int64(s.cfg.GetDiskDeltaKB()) {
+		if dTotal < int64(deltaKB) && dUsed < int64(deltaKB) && dAvail < int64(deltaKB) {
 			return nil // all changes below threshold, keep period open
 		}
 		if err := q.CloseDiskPeriod(ctx, db.CloseDiskPeriodParams{
@@ -290,7 +390,7 @@ func (s *Service) saveDiskPeriod(ctx context.Context, q *db.Queries, collectorNa
 
 // checkResourceThresholds evaluates CPU, memory, and disk usage against
 // configured thresholds and sends a notification for each breach.
-func (s *Service) checkResourceThresholds(collectorName string, stats types.Stats, nowUnix int64) {
+func (s *Service) checkResourceThresholds(collectorName string, stats types.Stats, nowUnix int64, rcfg ResourceConfig) {
 	var breached []string
 
 	memUsedPct := 0.0
@@ -302,17 +402,17 @@ func (s *Service) checkResourceThresholds(collectorName string, stats types.Stat
 		diskUsedPct = float64(stats.DiskUsedGB) / float64(stats.DiskTotalGB) * 100
 	}
 
-	if cpuThreshold := s.cfg.GetCPUThresholdPercent(); cpuThreshold > 0 && stats.CPUUsagePercent >= cpuThreshold {
+	if cpuThreshold := rcfg.CPUThresholdPercent; cpuThreshold > 0 && stats.CPUUsagePercent >= cpuThreshold {
 		breached = append(breached, "cpu")
 	}
-	if memThreshold := s.cfg.GetMemThresholdPercent(); memThreshold > 0 && memUsedPct >= memThreshold {
+	if memThreshold := rcfg.MemThresholdPercent; memThreshold > 0 && memUsedPct >= memThreshold {
 		breached = append(breached, "mem")
 	}
-	if diskThreshold := s.cfg.GetDiskThresholdPercent(); diskThreshold > 0 && diskUsedPct >= diskThreshold {
+	if diskThreshold := rcfg.DiskThresholdPercent; diskThreshold > 0 && diskUsedPct >= diskThreshold {
 		breached = append(breached, "disk")
 	}
 
-	if s.suppressResourceNotify(collectorName, breached, nowUnix) {
+	if s.suppressResourceNotify(collectorName, breached, nowUnix, rcfg.ResourceNotifyMinutes) {
 		return
 	}
 
@@ -345,7 +445,7 @@ func (s *Service) checkResourceThresholds(collectorName string, stats types.Stat
 // skipped for a collector: true when nothing is breached, or when every
 // breached resource is still within its cooldown. Resources no longer in
 // breach are re-armed so their next breach notifies immediately.
-func (s *Service) suppressResourceNotify(collectorName string, breached []string, nowUnix int64) bool {
+func (s *Service) suppressResourceNotify(collectorName string, breached []string, nowUnix int64, notifyMinutes int) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -359,7 +459,7 @@ func (s *Service) suppressResourceNotify(collectorName string, breached []string
 		return true
 	}
 
-	cooldown := int64(s.cfg.GetResourceNotifyMinutes()) * 60
+	cooldown := int64(notifyMinutes) * 60
 	for _, res := range breached {
 		last, ok := s.lastNotified[collectorName+"/"+res]
 		if !ok || cooldown <= 0 || nowUnix-last >= cooldown {

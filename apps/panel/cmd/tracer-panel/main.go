@@ -296,7 +296,16 @@ func serve(ctx context.Context, cfg *config.Config, noAuth bool) error {
 	alertFormatter := func(collectorName, appName string, logID int64) string {
 		return fmt.Sprintf("%s/panel/collectors/%s/apps/%s/logs/%d", cfg.GetHost(), collectorName, appName, logID)
 	}
-	ingestService := ingest.New(dbManager, notifyChan, alertFormatter, cfg)
+	resourceResolver := ingest.NewResourceConfigResolver(dbManager, ingest.ResourceConfig{
+		CPUDeltaPercent:       cfg.GetCPUDeltaPercent(),
+		MemDeltaKB:            cfg.GetMemDeltaKB(),
+		DiskDeltaKB:           cfg.GetDiskDeltaKB(),
+		CPUThresholdPercent:   cfg.GetCPUThresholdPercent(),
+		MemThresholdPercent:   cfg.GetMemThresholdPercent(),
+		DiskThresholdPercent:  cfg.GetDiskThresholdPercent(),
+		ResourceNotifyMinutes: cfg.GetResourceNotifyMinutes(),
+	})
+	ingestService := ingest.New(dbManager, notifyChan, alertFormatter, cfg, resourceResolver)
 
 	// Initialize retention service
 	retentionService := retention.New(dbManager, ingestService, cfg)

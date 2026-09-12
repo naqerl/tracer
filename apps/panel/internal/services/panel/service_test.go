@@ -90,7 +90,7 @@ func setupTestService(t *testing.T) (*Service, *dbmanager.DBHandle, int64, strin
 		cpuDeltaPercent: 1.0,
 		memDeltaKB:      64,
 		diskDeltaKB:     1024,
-	})
+	}, nil)
 	if err := ingestSvc.RegisterCollector(ctx, ingestsvc.RegisterCollectorRequest{
 		CollectorName: "test-collector",
 		Apps:          []string{"test-app"},
@@ -121,7 +121,7 @@ func setupTestServiceNoAccess(t *testing.T) (*Service, int64) {
 		cpuDeltaPercent: 1.0,
 		memDeltaKB:      64,
 		diskDeltaKB:     1024,
-	})
+	}, nil)
 	if err := ingestSvc.RegisterCollector(ctx, ingestsvc.RegisterCollectorRequest{
 		CollectorName: "other-collector",
 		Apps:          []string{"other-app"},
@@ -2680,7 +2680,7 @@ func TestSaveCollectorConfigPushesToConnectedCollectors(t *testing.T) {
 		cpuDeltaPercent: 1.0,
 		memDeltaKB:      64,
 		diskDeltaKB:     1024,
-	})
+	}, nil)
 	if err := ingestSvc.RegisterCollector(ctx, ingestsvc.RegisterCollectorRequest{
 		CollectorName: "push-collector",
 		Apps:          []string{"a"},
@@ -2717,7 +2717,7 @@ func TestDeleteCollectorApp(t *testing.T) {
 		cpuDeltaPercent: 1.0,
 		memDeltaKB:      64,
 		diskDeltaKB:     1024,
-	})
+	}, nil)
 	if err := ingestSvc.RegisterCollector(ctx, ingestsvc.RegisterCollectorRequest{
 		CollectorName: "del-collector",
 		Apps:          []string{"keep", "remove"},

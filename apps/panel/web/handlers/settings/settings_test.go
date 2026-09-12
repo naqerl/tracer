@@ -84,7 +84,7 @@ func newAuthedHandlerWithFactoriesAndManager(t *testing.T, isAdmin bool, factori
 		RetentionDays: 90,
 	}, t.TempDir()+"/config.yaml")
 
-	ingestService := ingestsvc.New(dbMgr, make(chan notifysvc.Notification, 10), func(_, _ string, _ int64) string { return "" }, cfg)
+	ingestService := ingestsvc.New(dbMgr, make(chan notifysvc.Notification, 10), func(_, _ string, _ int64) string { return "" }, cfg, nil)
 	notifyService := notifysvc.New(db, userService, dbMgr, factories)
 
 	mux := http.NewServeMux()

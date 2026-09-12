@@ -2,6 +2,7 @@ package ingest
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -116,7 +117,7 @@ func TestResourceThresholdNotification(t *testing.T) {
 		cpuDeltaPercent:     1.0,
 		cpuThresholdPercent: 90.0,
 	}
-	svc := New(mgr, ch, nil, cfg)
+	svc := New(mgr, ch, nil, cfg, nil)
 
 	if err := svc.RegisterCollector(t.Context(), RegisterCollectorRequest{
 		CollectorName: "test-collector",
@@ -174,7 +175,7 @@ func TestStoreLogErrorAlerts(t *testing.T) {
 	mgr := testutil.NewTestDBManager(t)
 	ch := make(chan notify.Notification, 32)
 	cfg := &testIngestConfig{sampleRate: 1.0}
-	svc := New(mgr, ch, nil, cfg)
+	svc := New(mgr, ch, nil, cfg, nil)
 
 	if err := svc.RegisterCollector(t.Context(), RegisterCollectorRequest{
 		CollectorName: "test-collector",
@@ -208,7 +209,7 @@ func TestStoreLogAfterRetentionPruneDoesNotReannounceGroup(t *testing.T) {
 	mgr := testutil.NewTestDBManager(t)
 	ch := make(chan notify.Notification, 32)
 	cfg := &testIngestConfig{sampleRate: 1.0}
-	svc := New(mgr, ch, nil, cfg)
+	svc := New(mgr, ch, nil, cfg, nil)
 
 	if err := svc.RegisterCollector(t.Context(), RegisterCollectorRequest{
 		CollectorName: "test-collector",
@@ -267,7 +268,7 @@ func TestStoreLogNotificationPayloadMapping(t *testing.T) {
 	mgr := testutil.NewTestDBManager(t)
 	ch := make(chan notify.Notification, 32)
 	cfg := &testIngestConfig{sampleRate: 1.0}
-	svc := New(mgr, ch, nil, cfg)
+	svc := New(mgr, ch, nil, cfg, nil)
 
 	if err := svc.RegisterCollector(t.Context(), RegisterCollectorRequest{
 		CollectorName: "test-collector",
@@ -354,7 +355,7 @@ func TestRuntimeConfigDeltaChange(t *testing.T) {
 		diskDeltaKB:     100000,
 	}
 
-	svc := New(mgr, nil, nil, cfg)
+	svc := New(mgr, nil, nil, cfg, nil)
 
 	if err := svc.RegisterCollector(ctx, RegisterCollectorRequest{
 		CollectorName: "test-collector",
@@ -449,5 +450,216 @@ func TestRuntimeConfigDeltaChange(t *testing.T) {
 	}
 	if len(history.DiskPeriods) != 2 {
 		t.Fatalf("after config change: expected 2 Disk periods, got %d", len(history.DiskPeriods))
+	}
+}
+
+func TestResourceConfigResolverFallsBackToGlobals(t *testing.T) {
+	mgr := testutil.NewTestDBManager(t)
+	globals := ResourceConfig{
+		CPUDeltaPercent:       5.0,
+		MemDeltaKB:            256,
+		DiskDeltaKB:           4096,
+		CPUThresholdPercent:   80.0,
+		MemThresholdPercent:   70.0,
+		DiskThresholdPercent:  90.0,
+		ResourceNotifyMinutes: 30,
+	}
+	resolver := NewResourceConfigResolver(mgr, globals)
+
+	handle, err := mgr.CreateCollectorDB("res-collector")
+	if err != nil {
+		t.Fatalf("create collector db: %v", err)
+	}
+	_ = handle // only existence matters
+
+	got := resolver.ResolveResourceConfig("res-collector")
+	if got.CPUDeltaPercent != globals.CPUDeltaPercent {
+		t.Fatalf("CPUDeltaPercent: got %v, want %v", got.CPUDeltaPercent, globals.CPUDeltaPercent)
+	}
+	if got.MemDeltaKB != globals.MemDeltaKB {
+		t.Fatalf("MemDeltaKB: got %v, want %v", got.MemDeltaKB, globals.MemDeltaKB)
+	}
+	if got.ResourceNotifyMinutes != globals.ResourceNotifyMinutes {
+		t.Fatalf("ResourceNotifyMinutes: got %v, want %v", got.ResourceNotifyMinutes, globals.ResourceNotifyMinutes)
+	}
+}
+
+func TestResourceConfigResolverAppliesOverrides(t *testing.T) {
+	mgr := testutil.NewTestDBManager(t)
+	globals := ResourceConfig{
+		CPUDeltaPercent:       5.0,
+		MemDeltaKB:            256,
+		DiskDeltaKB:           4096,
+		CPUThresholdPercent:   80.0,
+		MemThresholdPercent:   70.0,
+		DiskThresholdPercent:  90.0,
+		ResourceNotifyMinutes: 30,
+	}
+	resolver := NewResourceConfigResolver(mgr, globals)
+
+	handle, err := mgr.CreateCollectorDB("override-collector")
+	if err != nil {
+		t.Fatalf("create collector db: %v", err)
+	}
+
+	cpuDelta := 0.5
+	memDelta := 32
+	notifyMin := 5
+	cfg := types.CollectorConfig{
+		Stats: &types.StatsConfig{
+			CPUDeltaPercent:       &cpuDelta,
+			MemDeltaKB:            &memDelta,
+			ResourceNotifyMinutes: &notifyMin,
+		},
+	}
+	cfgJSON, err := json.Marshal(cfg)
+	if err != nil {
+		t.Fatalf("marshal config: %v", err)
+	}
+	if err := handle.Write(context.Background(), func(tx db.DBTX) error {
+		return db.New(tx).UpsertCollectorConfig(context.Background(), db.UpsertCollectorConfigParams{
+			ConfigJson: string(cfgJSON),
+			UpdatedAt:  time.Now().Unix(),
+		})
+	}); err != nil {
+		t.Fatalf("upsert config: %v", err)
+	}
+
+	got := resolver.ResolveResourceConfig("override-collector")
+	if got.CPUDeltaPercent != cpuDelta {
+		t.Fatalf("CPUDeltaPercent: got %v, want %v", got.CPUDeltaPercent, cpuDelta)
+	}
+	if got.MemDeltaKB != memDelta {
+		t.Fatalf("MemDeltaKB: got %v, want %v", got.MemDeltaKB, memDelta)
+	}
+	if got.ResourceNotifyMinutes != notifyMin {
+		t.Fatalf("ResourceNotifyMinutes: got %v, want %v", got.ResourceNotifyMinutes, notifyMin)
+	}
+	// Non-overridden fields stay at globals.
+	if got.DiskDeltaKB != globals.DiskDeltaKB {
+		t.Fatalf("DiskDeltaKB: got %v, want %v", got.DiskDeltaKB, globals.DiskDeltaKB)
+	}
+	if got.CPUThresholdPercent != globals.CPUThresholdPercent {
+		t.Fatalf("CPUThresholdPercent: got %v, want %v", got.CPUThresholdPercent, globals.CPUThresholdPercent)
+	}
+}
+
+func TestPerCollectorOverridesAffectDeltaAndThresholds(t *testing.T) {
+	mgr := testutil.NewTestDBManager(t)
+	ch := make(chan notify.Notification, 32)
+	// High globals: change of 0.5 CPU, 4KB mem, 1GB disk won't create periods.
+	cfg := &testIngestConfig{
+		sampleRate:          1.0,
+		cpuDeltaPercent:     5.0,
+		memDeltaKB:          100000,
+		diskDeltaKB:         100000,
+		cpuThresholdPercent: 95.0,
+	}
+
+	// Resolver globals match the ingest config defaults, so the baseline
+	// collector (no per-collector override) gets the same high thresholds.
+	targetResolver := NewResourceConfigResolver(mgr, ResourceConfig{
+		CPUDeltaPercent:       cfg.cpuDeltaPercent,
+		MemDeltaKB:            cfg.memDeltaKB,
+		DiskDeltaKB:           cfg.diskDeltaKB,
+		CPUThresholdPercent:   cfg.cpuThresholdPercent,
+		MemThresholdPercent:   cfg.memThresholdPercent,
+		DiskThresholdPercent:  cfg.diskThresholdPercent,
+		ResourceNotifyMinutes: cfg.resourceNotifyMinutes,
+	})
+	svc := New(mgr, ch, nil, cfg, targetResolver)
+
+	if err := svc.RegisterCollector(t.Context(), RegisterCollectorRequest{
+		CollectorName: "target",
+		Apps:          []string{"app"},
+	}); err != nil {
+		t.Fatalf("register target: %v", err)
+	}
+
+	// Write a per-collector config with low deltas into the target's collector DB.
+	targetHandle, err := mgr.GetCollectorDB("target")
+	if err != nil {
+		t.Fatalf("get target db: %v", err)
+	}
+	cpuDelta := 0.1
+	memDelta := 1
+	diskDelta := 1
+	targetCfg := types.CollectorConfig{
+		Stats: &types.StatsConfig{
+			CPUDeltaPercent: &cpuDelta,
+			MemDeltaKB:      &memDelta,
+			DiskDeltaKB:     &diskDelta,
+		},
+	}
+	cfgJSON, _ := json.Marshal(targetCfg)
+	if err := targetHandle.Write(t.Context(), func(tx db.DBTX) error {
+		return db.New(tx).UpsertCollectorConfig(t.Context(), db.UpsertCollectorConfigParams{
+			ConfigJson: string(cfgJSON),
+			UpdatedAt:  time.Now().Unix(),
+		})
+	}); err != nil {
+		t.Fatalf("upsert target config: %v", err)
+	}
+	if err := svc.RegisterCollector(t.Context(), RegisterCollectorRequest{
+		CollectorName: "baseline",
+		Apps:          []string{"app"},
+	}); err != nil {
+		t.Fatalf("register baseline: %v", err)
+	}
+
+	now := time.Now().Truncate(time.Second)
+
+	// Seed both collectors with identical initial stats.
+	for _, collector := range []string{"target", "baseline"} {
+		if err := svc.SaveSystemStats(t.Context(), SaveSystemStatsRequest{
+			CollectorName: collector,
+			Stats: types.Stats{
+				CPUUsagePercent: 50.0,
+				MemTotalMB:      8192,
+				MemUsedMB:       2048,
+				MemAvailableMB:  6144,
+				DiskTotalGB:     250,
+				DiskUsedGB:      100,
+				DiskAvailGB:     150,
+				Timestamp:       now,
+			},
+		}); err != nil {
+			t.Fatalf("seed stats %s: %v", collector, err)
+		}
+	}
+
+	// Apply a small change that exceeds the target's overrides but not the baseline's globals.
+	for _, collector := range []string{"target", "baseline"} {
+		if err := svc.SaveSystemStats(t.Context(), SaveSystemStatsRequest{
+			CollectorName: collector,
+			Stats: types.Stats{
+				CPUUsagePercent: 50.5,
+				MemTotalMB:      8192,
+				MemUsedMB:       2050,
+				MemAvailableMB:  6142,
+				DiskTotalGB:     250,
+				DiskUsedGB:      100,
+				DiskAvailGB:     150,
+				Timestamp:       now.Add(time.Second),
+			},
+		}); err != nil {
+			t.Fatalf("second save %s: %v", collector, err)
+		}
+	}
+
+	history, err := svc.GetStatsHistory(t.Context(), "target", now.Add(-time.Hour))
+	if err != nil {
+		t.Fatalf("GetStatsHistory target: %v", err)
+	}
+	if len(history.CPUPeriods) != 2 {
+		t.Fatalf("target: expected 2 CPU periods (override delta), got %d", len(history.CPUPeriods))
+	}
+
+	history, err = svc.GetStatsHistory(t.Context(), "baseline", now.Add(-time.Hour))
+	if err != nil {
+		t.Fatalf("GetStatsHistory baseline: %v", err)
+	}
+	if len(history.CPUPeriods) != 1 {
+		t.Fatalf("baseline: expected 1 CPU period (global delta), got %d", len(history.CPUPeriods))
 	}
 }

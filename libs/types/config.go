@@ -17,11 +17,28 @@ type CollectorConfig struct {
 // StatsConfig configures the collector's system resource (CPU, memory, disk)
 // sampling. Interval is a Go duration string (e.g. "30s"). It is pushed to
 // collectors as part of the panel-driven config.
+//
+// Threshold fields override the panel-wide globals when non-zero (or non-nil
+// for durations). Zero values mean "use the global default".
 type StatsConfig struct {
 	Interval string `json:"interval"`
 	CPU      bool   `json:"cpu"`
 	Mem      bool   `json:"mem"`
 	Disk     bool   `json:"disk"`
+
+	// Period deltas: minimum change to open a new period.
+	CPUDeltaPercent *float64 `json:"cpu_delta_percent,omitempty"`
+	MemDeltaKB      *int     `json:"mem_delta_kb,omitempty"`
+	DiskDeltaKB     *int     `json:"disk_delta_kb,omitempty"`
+
+	// Alert thresholds: usage percentage above which a notification fires.
+	// 0 or nil means disabled.
+	CPUThresholdPercent  *float64 `json:"cpu_threshold_percent,omitempty"`
+	MemThresholdPercent  *float64 `json:"mem_threshold_percent,omitempty"`
+	DiskThresholdPercent *float64 `json:"disk_threshold_percent,omitempty"`
+
+	// Cooldown between resource notifications per collector+resource.
+	ResourceNotifyMinutes *int `json:"resource_notify_minutes,omitempty"`
 }
 
 // DefaultStatsConfig returns the sampling settings used when a collector has

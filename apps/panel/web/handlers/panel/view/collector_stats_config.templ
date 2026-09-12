@@ -1,6 +1,10 @@
 package view
 
-import "tracer/apps/panel/web/templates"
+import (
+	"fmt"
+	"strconv"
+	"tracer/apps/panel/web/templates"
+)
 
 // StatsConfigProps carries the state for the metrics collection
 // configuration form.
@@ -11,8 +15,19 @@ type StatsConfigProps struct {
 	CPU       bool
 	Mem       bool
 	Disk      bool
-	Status    string
-	StatusOK  bool
+
+	// Per-collector resource monitoring overrides. A nil pointer means
+	// "use global default"; the form shows the global value as placeholder.
+	CPUDeltaPercent       *float64
+	MemDeltaKB            *int
+	DiskDeltaKB           *int
+	CPUThresholdPercent   *float64
+	MemThresholdPercent   *float64
+	DiskThresholdPercent  *float64
+	ResourceNotifyMinutes *int
+
+	Status   string
+	StatusOK bool
 }
 
 // StatsConfigPage renders the full-page metrics configuration form.
@@ -32,7 +47,6 @@ templ StatsConfigPage(p StatsConfigProps) {
 					hx-target="#stats-config-container"
 					hx-swap="innerHTML"
 					class="space-y-6">
-
 					<div class="border border-bg-secondary/70 p-4">
 						<h3 class="text-fg font-medium mb-3">Collect interval</h3>
 						<select name="interval" style="color-scheme: dark" class="w-full bg-bg text-fg border border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base">
@@ -44,7 +58,6 @@ templ StatsConfigPage(p StatsConfigProps) {
 						</select>
 						<p class="text-xs text-fg-secondary mt-1">How often the collector samples resource usage.</p>
 					</div>
-
 					<div class="border border-bg-secondary/70 p-4">
 						<h3 class="text-fg font-medium mb-3">Metrics to collect</h3>
 						<p class="text-xs text-fg-secondary mb-3">Enable or disable individual resource metrics. Disabled metrics are not sampled or reported.</p>
@@ -54,7 +67,57 @@ templ StatsConfigPage(p StatsConfigProps) {
 							@templates.MarkdownCheckbox("disk", "disk", "Disk usage", "on", p.Disk, 0)
 						</div>
 					</div>
-
+					<div class="border border-bg-secondary/70 p-4">
+						<h3 class="text-fg font-medium mb-3">Period deltas</h3>
+						<p class="text-xs text-fg-secondary mb-3">Minimum change to close the current period and open a new one. Leave empty to use the panel-wide default.</p>
+						<div class="grid grid-cols-3 gap-4">
+							<div>
+								<label class="block text-sm text-fg-secondary mb-1">CPU Delta (%)</label>
+								<input type="number" name="cpu_delta_percent" step="0.1" min="0" value={ floatPtrStr(p.CPUDeltaPercent) } placeholder={ globalPlaceholder("1.0") }
+								       class="w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg"/>
+							</div>
+							<div>
+								<label class="block text-sm text-fg-secondary mb-1">Memory Delta (KB)</label>
+								<input type="number" name="mem_delta_kb" min="0" value={ intPtrStr(p.MemDeltaKB) } placeholder={ globalPlaceholder("64") }
+								       class="w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg"/>
+							</div>
+							<div>
+								<label class="block text-sm text-fg-secondary mb-1">Disk Delta (KB)</label>
+								<input type="number" name="disk_delta_kb" min="0" value={ intPtrStr(p.DiskDeltaKB) } placeholder={ globalPlaceholder("1024") }
+								       class="w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg"/>
+							</div>
+						</div>
+					</div>
+					<div class="border border-bg-secondary/70 p-4">
+						<h3 class="text-fg font-medium mb-3">Alert thresholds</h3>
+						<p class="text-xs text-fg-secondary mb-3">Usage percentage above which a notification fires. 0 or empty disables. Leave empty to use the panel-wide default.</p>
+						<div class="grid grid-cols-3 gap-4">
+							<div>
+								<label class="block text-sm text-fg-secondary mb-1">CPU Threshold (%)</label>
+								<input type="number" name="cpu_threshold_percent" step="1" min="0" max="100" value={ floatPtrStr(p.CPUThresholdPercent) } placeholder={ globalPlaceholder("0") }
+								       class="w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg"/>
+							</div>
+							<div>
+								<label class="block text-sm text-fg-secondary mb-1">Memory Threshold (%)</label>
+								<input type="number" name="mem_threshold_percent" step="1" min="0" max="100" value={ floatPtrStr(p.MemThresholdPercent) } placeholder={ globalPlaceholder("0") }
+								       class="w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg"/>
+							</div>
+							<div>
+								<label class="block text-sm text-fg-secondary mb-1">Disk Threshold (%)</label>
+								<input type="number" name="disk_threshold_percent" step="1" min="0" max="100" value={ floatPtrStr(p.DiskThresholdPercent) } placeholder={ globalPlaceholder("0") }
+								       class="w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg"/>
+							</div>
+						</div>
+					</div>
+					<div class="border border-bg-secondary/70 p-4">
+						<h3 class="text-fg font-medium mb-3">Notification cooldown</h3>
+						<p class="text-xs text-fg-secondary mb-3">Minimum minutes between resource notifications per collector+resource while a breach persists. Leave empty to use the panel-wide default.</p>
+						<div>
+							<label class="block text-sm text-fg-secondary mb-1">Once per (minutes)</label>
+							<input type="number" name="resource_notify_minutes" min="0" value={ intPtrStr(p.ResourceNotifyMinutes) } placeholder={ globalPlaceholder("10") }
+							       class="w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg"/>
+						</div>
+					</div>
 					<div class="flex gap-2">
 						<button type="submit" class="text-sm text-fg border border-fg px-4 py-2 hover:bg-fg hover:text-bg transition-colors">Save metrics config</button>
 						<a href={ "/panel/collectors/" + p.Collector + "/resources" } onclick="if (window.history.length > 1) { window.history.back(); return false; }" class="text-sm text-fg-secondary border border-bg-secondary px-4 py-2 hover:text-fg transition-colors inline-block">Cancel</a>
@@ -64,6 +127,24 @@ templ StatsConfigPage(p StatsConfigProps) {
 		</div>
 		@templates.MarkdownCheckboxScript()
 	}
+}
+
+func floatPtrStr(v *float64) string {
+	if v == nil {
+		return ""
+	}
+	return fmt.Sprintf("%.1f", *v)
+}
+
+func intPtrStr(v *int) string {
+	if v == nil {
+		return ""
+	}
+	return strconv.Itoa(*v)
+}
+
+func globalPlaceholder(val string) string {
+	return "global: " + val
 }
 
 // StatsConfigSavedProps carries the state for the metrics config success

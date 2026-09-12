@@ -225,12 +225,19 @@ func (h *handler) getCollectorStatsConfig(w http.ResponseWriter, r *http.Request
 	stats := cfg.GetStats()
 
 	view.StatsConfigPage(view.StatsConfigProps{
-		Title:     "Metrics config - " + collectorName,
-		Collector: collectorName,
-		Interval:  stats.Interval,
-		CPU:       stats.CPU,
-		Mem:       stats.Mem,
-		Disk:      stats.Disk,
+		Title:                 "Metrics config - " + collectorName,
+		Collector:             collectorName,
+		Interval:              stats.Interval,
+		CPU:                   stats.CPU,
+		Mem:                   stats.Mem,
+		Disk:                  stats.Disk,
+		CPUDeltaPercent:       stats.CPUDeltaPercent,
+		MemDeltaKB:            stats.MemDeltaKB,
+		DiskDeltaKB:           stats.DiskDeltaKB,
+		CPUThresholdPercent:   stats.CPUThresholdPercent,
+		MemThresholdPercent:   stats.MemThresholdPercent,
+		DiskThresholdPercent:  stats.DiskThresholdPercent,
+		ResourceNotifyMinutes: stats.ResourceNotifyMinutes,
 	}).Render(r.Context(), w)
 }
 
@@ -249,22 +256,46 @@ func (h *handler) saveCollectorStatsConfig(w http.ResponseWriter, r *http.Reques
 	if interval == "" {
 		interval = "30s"
 	}
+
+	// Read optional per-collector overrides; nil means "use global default".
+	cpuDelta := parseFloatPtr(r.FormValue("cpu_delta_percent"))
+	memDelta := parseIntPtr(r.FormValue("mem_delta_kb"))
+	diskDelta := parseIntPtr(r.FormValue("disk_delta_kb"))
+	cpuThreshold := parseFloatPtr(r.FormValue("cpu_threshold_percent"))
+	memThreshold := parseFloatPtr(r.FormValue("mem_threshold_percent"))
+	diskThreshold := parseFloatPtr(r.FormValue("disk_threshold_percent"))
+	notifyMin := parseIntPtr(r.FormValue("resource_notify_minutes"))
+
 	stats := types.StatsConfig{
-		Interval: interval,
-		CPU:      r.FormValue("cpu") == "on",
-		Mem:      r.FormValue("mem") == "on",
-		Disk:     r.FormValue("disk") == "on",
+		Interval:              interval,
+		CPU:                   r.FormValue("cpu") == "on",
+		Mem:                   r.FormValue("mem") == "on",
+		Disk:                  r.FormValue("disk") == "on",
+		CPUDeltaPercent:       cpuDelta,
+		MemDeltaKB:            memDelta,
+		DiskDeltaKB:           diskDelta,
+		CPUThresholdPercent:   cpuThreshold,
+		MemThresholdPercent:   memThreshold,
+		DiskThresholdPercent:  diskThreshold,
+		ResourceNotifyMinutes: notifyMin,
 	}
 	if _, err := time.ParseDuration(interval); err != nil {
 		view.StatsConfigPage(view.StatsConfigProps{
-			Title:     "Metrics config - " + collectorName,
-			Collector: collectorName,
-			Interval:  interval,
-			CPU:       stats.CPU,
-			Mem:       stats.Mem,
-			Disk:      stats.Disk,
-			Status:    "Invalid interval: " + err.Error(),
-			StatusOK:  false,
+			Title:                 "Metrics config - " + collectorName,
+			Collector:             collectorName,
+			Interval:              interval,
+			CPU:                   stats.CPU,
+			Mem:                   stats.Mem,
+			Disk:                  stats.Disk,
+			CPUDeltaPercent:       cpuDelta,
+			MemDeltaKB:            memDelta,
+			DiskDeltaKB:           diskDelta,
+			CPUThresholdPercent:   cpuThreshold,
+			MemThresholdPercent:   memThreshold,
+			DiskThresholdPercent:  diskThreshold,
+			ResourceNotifyMinutes: notifyMin,
+			Status:                "Invalid interval: " + err.Error(),
+			StatusOK:              false,
 		}).Render(r.Context(), w)
 		return
 	}
@@ -1864,4 +1895,32 @@ func parseKeyValuePairs(raw string) map[string]string {
 		}
 	}
 	return m
+}
+
+// parseFloatPtr parses a form value into a *float64. Empty or invalid
+// strings return nil ("use global default").
+func parseFloatPtr(s string) *float64 {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return nil
+	}
+	v, err := strconv.ParseFloat(s, 64)
+	if err != nil {
+		return nil
+	}
+	return &v
+}
+
+// parseIntPtr parses a form value into a *int. Empty or invalid
+// strings return nil ("use global default").
+func parseIntPtr(s string) *int {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return nil
+	}
+	v, err := strconv.Atoi(s)
+	if err != nil {
+		return nil
+	}
+	return &v
 }
