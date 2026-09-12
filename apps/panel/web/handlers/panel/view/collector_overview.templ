@@ -17,9 +17,9 @@ templ CollectorOverview(props CollectorOverviewProps) {
 	@templates.Layout(props.Title, templates.NavData{Since: props.Since}) {
 		<div class="max-w-5xl mx-auto p-2 md:p-6">
 			@CollectorSection(CollectorSectionProps{
-				Name:             props.CollectorName,
-				ShowNameBrackets: true,
-				Stats:            props.Stats,
+				Name:               props.CollectorName,
+				HeaderHref:         "/panel/collectors/" + props.CollectorName,
+				Stats:              props.Stats,
 				AccessibleAppCount: props.AccessibleAppCount,
 			})
 		</div>

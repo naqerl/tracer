@@ -86,7 +86,6 @@ func diskClass(percent float64) string {
 type CollectorSectionProps struct {
 	Name               string
 	HeaderHref         string
-	ShowNameBrackets   bool
 	Stats              *CollectorStatsView
 	AccessibleAppCount int
 }
@@ -96,18 +95,12 @@ templ CollectorSection(props CollectorSectionProps) {
 	<div class="mb-10">
 		<!-- Collector Header -->
 		<div class="flex items-center mb-2">
-			if props.ShowNameBrackets {
-				<span class="text-fg-secondary text-xl mr-1">[</span>
-			}
 			if props.HeaderHref != "" {
 				<a href={ props.HeaderHref } class="text-xl font-semibold hover:opacity-80 transition-opacity">
 					{ props.Name }
 				</a>
 			} else {
 				<h2 class="text-xl font-semibold">{ props.Name }</h2>
-			}
-			if props.ShowNameBrackets {
-				<span class="text-fg-secondary text-xl ml-1">]</span>
 			}
 			<div
 				class="ml-2 mr-4"
