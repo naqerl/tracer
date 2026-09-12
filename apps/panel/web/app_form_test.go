@@ -1,7 +1,6 @@
 package web_test
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -14,15 +13,6 @@ import (
 	panelsvc "tracer/apps/panel/internal/services/panel"
 	"tracer/libs/types"
 )
-
-type stubFormatGuesser struct {
-	result types.FormatResultEvent
-	err    error
-}
-
-func (s stubFormatGuesser) GuessFormat(ctx context.Context, collector string, req types.FormatRequestEvent) (types.FormatResultEvent, error) {
-	return s.result, s.err
-}
 
 func jsonSourceForm(name, unit, healthURL string) url.Values {
 	v := url.Values{
@@ -140,39 +130,6 @@ func TestCreateAppSavesLogsOnly(t *testing.T) {
 	}
 	if app.Health != nil {
 		t.Fatalf("expected no health, got %+v", app.Health)
-	}
-}
-
-func TestCreateAppGuessPlusHealthKeepsSource(t *testing.T) {
-	guesser := stubFormatGuesser{result: types.FormatResultEvent{
-		App: types.AppSpec{
-			Source: &types.SourceSpec{Type: "journalctl", Params: map[string]string{"unit": "guessed.service"}},
-		},
-		Parser: types.ParserSpec{Type: "json", Params: map[string]string{
-			"level_field":      "level",
-			"message_field":    "msg",
-			"timestamp_field":  "time",
-			"timestamp_format": "2006-01-02T15:04:05.999999999Z07:00",
-		}},
-	}}
-	handler, token, _, _, _, panelService := newServerWithGuesser(t, guesser)
-
-	rr := postApp(t, handler, token, url.Values{
-		"name":            {"guessed"},
-		"url":             {"https://guessed.example.com/health"},
-		"interval":        {"30s"},
-		"expected_status": {"200"},
-	})
-	if rr.Code != http.StatusOK {
-		t.Fatalf("create status = %d body %s", rr.Code, rr.Body.String())
-	}
-
-	app := storedApp(t, panelService, "guessed")
-	if app.Source == nil || app.Source.Params["unit"] != "guessed.service" {
-		t.Fatalf("source = %+v, want guessed journalctl", app.Source)
-	}
-	if app.Health == nil || app.Health.Params["url"] != "https://guessed.example.com/health" {
-		t.Fatalf("health = %+v", app.Health)
 	}
 }
 

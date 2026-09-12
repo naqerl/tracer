@@ -1559,81 +1559,6 @@ func (h *handler) updateApp(w http.ResponseWriter, r *http.Request) {
 	h.renderAppSaved(w, r, collectorName, appName, true)
 }
 
-// renderAppSaved renders the post-save fragment for both create and edit flows.
-// HTMX clients will follow the fragment's hx-get to load the updated content.
-func (h *handler) renderAppSaved(w http.ResponseWriter, r *http.Request, collector, appName string, isEdit bool) {
-	view.AppSaved(view.AppSavedProps{
-		Collector: collector,
-		AppName:   appName,
-		IsEdit:    isEdit,
-	}).Render(r.Context(), w)
-}
-
-// loadCollectorConfig loads and decodes the stored collector config.
-func (h *handler) loadCollectorConfig(ctx context.Context, collectorName string) (types.CollectorConfig, error) {
-	existing, err := h.svc.FetchCollectorConfig(ctx, collectorName)
-	if err != nil {
-		return types.CollectorConfig{}, fmt.Errorf("could not load config: %w", err)
-	}
-	var cfg types.CollectorConfig
-	if existing != "" {
-		if jErr := json.Unmarshal([]byte(existing), &cfg); jErr != nil {
-			return types.CollectorConfig{}, fmt.Errorf("invalid stored config: %w", jErr)
-		}
-	}
-	return cfg, nil
-}
-
-// saveCollectorConfig marshals and persists the collector config.
-func (h *handler) saveCollectorConfig(ctx context.Context, collectorName string, cfg types.CollectorConfig) error {
-	updated, err := json.Marshal(&cfg)
-	if err != nil {
-		return fmt.Errorf("could not marshal config: %w", err)
-	}
-	if err := h.svc.SaveCollectorConfig(ctx, collectorName, string(updated)); err != nil {
-		return fmt.Errorf("could not save config: %w", err)
-	}
-	return nil
-}
-
-// paramsToString renders a params map as "key: value" lines for form prefill.
-func paramsToString(params map[string]string) string {
-	if len(params) == 0 {
-		return ""
-	}
-	out := make([]string, 0, len(params))
-	for k, v := range params {
-		out = append(out, k+": "+v)
-	}
-	sort.Strings(out)
-	return strings.Join(out, "\n")
-}
-
-func (h *handler) deleteApp(w http.ResponseWriter, r *http.Request) {
-	user, err := auth.RequireUser(w, r)
-	if err != nil {
-		return
-	}
-
-	collectorName := r.PathValue("collector")
-	if !h.canModifyCollector(r.Context(), user, collectorName) {
-		http.Error(w, "Forbidden", http.StatusForbidden)
-		return
-	}
-
-	appName := r.PathValue("app")
-
-	if err := h.svc.DeleteCollectorApp(r.Context(), collectorName, appName); err != nil {
-		slog.Error("Failed to delete app", "error", err, "collector", collectorName, "app", appName)
-		http.Error(w, "Failed to delete app", http.StatusInternalServerError)
-		return
-	}
-
-	// Redirect back to the collector page after deletion.
-	w.Header().Set("HX-Redirect", fmt.Sprintf("/panel/collectors/%s", collectorName))
-	w.WriteHeader(http.StatusNoContent)
-}
-
 func (h *handler) createApp(w http.ResponseWriter, r *http.Request) {
 	user, err := auth.RequireUser(w, r)
 	if err != nil {
@@ -1737,6 +1662,81 @@ func (h *handler) createApp(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.renderAppSaved(w, r, collectorName, appName, false)
+}
+
+// renderAppSaved renders the post-save fragment for both create and edit flows.
+// HTMX clients will follow the fragment's hx-get to load the updated content.
+func (h *handler) renderAppSaved(w http.ResponseWriter, r *http.Request, collector, appName string, isEdit bool) {
+	view.AppSaved(view.AppSavedProps{
+		Collector: collector,
+		AppName:   appName,
+		IsEdit:    isEdit,
+	}).Render(r.Context(), w)
+}
+
+// loadCollectorConfig loads and decodes the stored collector config.
+func (h *handler) loadCollectorConfig(ctx context.Context, collectorName string) (types.CollectorConfig, error) {
+	existing, err := h.svc.FetchCollectorConfig(ctx, collectorName)
+	if err != nil {
+		return types.CollectorConfig{}, fmt.Errorf("could not load config: %w", err)
+	}
+	var cfg types.CollectorConfig
+	if existing != "" {
+		if jErr := json.Unmarshal([]byte(existing), &cfg); jErr != nil {
+			return types.CollectorConfig{}, fmt.Errorf("invalid stored config: %w", jErr)
+		}
+	}
+	return cfg, nil
+}
+
+// saveCollectorConfig marshals and persists the collector config.
+func (h *handler) saveCollectorConfig(ctx context.Context, collectorName string, cfg types.CollectorConfig) error {
+	updated, err := json.Marshal(&cfg)
+	if err != nil {
+		return fmt.Errorf("could not marshal config: %w", err)
+	}
+	if err := h.svc.SaveCollectorConfig(ctx, collectorName, string(updated)); err != nil {
+		return fmt.Errorf("could not save config: %w", err)
+	}
+	return nil
+}
+
+// paramsToString renders a params map as "key: value" lines for form prefill.
+func paramsToString(params map[string]string) string {
+	if len(params) == 0 {
+		return ""
+	}
+	out := make([]string, 0, len(params))
+	for k, v := range params {
+		out = append(out, k+": "+v)
+	}
+	sort.Strings(out)
+	return strings.Join(out, "\n")
+}
+
+func (h *handler) deleteApp(w http.ResponseWriter, r *http.Request) {
+	user, err := auth.RequireUser(w, r)
+	if err != nil {
+		return
+	}
+
+	collectorName := r.PathValue("collector")
+	if !h.canModifyCollector(r.Context(), user, collectorName) {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+
+	appName := r.PathValue("app")
+
+	if err := h.svc.DeleteCollectorApp(r.Context(), collectorName, appName); err != nil {
+		slog.Error("Failed to delete app", "error", err, "collector", collectorName, "app", appName)
+		http.Error(w, "Failed to delete app", http.StatusInternalServerError)
+		return
+	}
+
+	// Redirect back to the collector page after deletion.
+	w.Header().Set("HX-Redirect", fmt.Sprintf("/panel/collectors/%s", collectorName))
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h *handler) getInstallScript(w http.ResponseWriter, r *http.Request) {
