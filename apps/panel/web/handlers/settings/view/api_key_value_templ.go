@@ -103,7 +103,7 @@ func APIKeyValue(props APIKeyValueProps) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "\" hx-swap=\"outerHTML\" class=\"icon-btn text-fg-secondary transition-colors inline-flex items-center\" title=\"Hide API key\" aria-label=\"Hide API key\"><img src=\"/static/img/eye-off.svg\" alt=\"Hide API key\" width=\"14\" height=\"14\" class=\"w-3.5 h-3.5\"></button>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "\" hx-swap=\"outerHTML\" class=\"icon-btn text-fg-secondary transition-colors inline-flex items-center\" title=\"Hide API key\" aria-label=\"Hide API key\"><img src=\"/static/img/eye-off.svg\" alt=\"Hide API key\" width=\"14\" height=\"14\" class=\"w-3.5 h-3.5\"></button> <button type=\"button\" onclick=\"navigator.clipboard.writeText(this.previousElementSibling.previousElementSibling.textContent.trim()).then(function(btn){btn.textContent='Copied!';setTimeout(function(){btn.textContent=''},1500)}.bind(null,this))\" class=\"icon-btn text-fg-secondary transition-colors inline-flex items-center\" title=\"Copy API key\" aria-label=\"Copy API key\"><img src=\"/static/img/copy.svg\" alt=\"Copy API key\" width=\"14\" height=\"14\" class=\"w-3.5 h-3.5\"></button>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -120,7 +120,7 @@ func APIKeyValue(props APIKeyValueProps) templ.Component {
 				var templ_7745c5c3_Var6 string
 				templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.JoinStringErrs(props.RevealError)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/api_key_value.templ`, Line: 37, Col: 58}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/api_key_value.templ`, Line: 44, Col: 58}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var6))
 				if templ_7745c5c3_Err != nil {
@@ -143,7 +143,7 @@ func APIKeyValue(props APIKeyValueProps) templ.Component {
 				var templ_7745c5c3_Var7 string
 				templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.ResolveAttributeValue(props.RevealURL)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/api_key_value.templ`, Line: 42, Col: 31}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/api_key_value.templ`, Line: 49, Col: 31}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var7)
 				if templ_7745c5c3_Err != nil {
@@ -156,7 +156,7 @@ func APIKeyValue(props APIKeyValueProps) templ.Component {
 				var templ_7745c5c3_Var8 string
 				templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.ResolveAttributeValue("#" + props.TargetID)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/api_key_value.templ`, Line: 44, Col: 38}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/api_key_value.templ`, Line: 51, Col: 38}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var8)
 				if templ_7745c5c3_Err != nil {

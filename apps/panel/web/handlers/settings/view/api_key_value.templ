@@ -31,6 +31,13 @@ templ APIKeyValue(props APIKeyValueProps) {
 					aria-label="Hide API key">
 				<img src="/static/img/eye-off.svg" alt="Hide API key" width="14" height="14" class="w-3.5 h-3.5"/>
 			</button>
+			<button type="button"
+					onclick="navigator.clipboard.writeText(this.previousElementSibling.previousElementSibling.textContent.trim()).then(function(btn){btn.textContent='Copied!';setTimeout(function(){btn.textContent=''},1500)}.bind(null,this))"
+					class="icon-btn text-fg-secondary transition-colors inline-flex items-center"
+					title="Copy API key"
+					aria-label="Copy API key">
+				<img src="/static/img/copy.svg" alt="Copy API key" width="14" height="14" class="w-3.5 h-3.5"/>
+			</button>
 		} else {
 			<code class="text-sm font-mono">••••••••••••</code>
 			if props.RevealError != "" {
