@@ -18,6 +18,16 @@ else
     tracer-panel install
 fi
 
+# Run the panel in no-auth mode: the public demo should be free to browse
+# without logging in. Write blocking is enforced by the nginx readonly gate.
+mkdir -p /etc/systemd/system/tracer-panel.service.d
+cat > /etc/systemd/system/tracer-panel.service.d/noauth.conf <<'OVERRIDE'
+[Service]
+ExecStart=
+ExecStart=/usr/local/bin/tracer-panel -config /etc/tracer/panel.yaml --no-auth
+OVERRIDE
+systemctl daemon-reload
+
 tracer-collector set name demo
 tracer-collector set panel-host http://localhost:8080
 
