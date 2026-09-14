@@ -16,6 +16,7 @@ type AppView struct {
 	ErrorCount      string
 	ErrorTrend      string
 	ErrorTrendClass string
+	ErrorTrendUp    bool
 	LastUpdate      LastUpdateView
 }
 
@@ -38,7 +39,11 @@ templ AppCard(collectorName string, app AppView, loading bool) {
 						<div class="font-medium truncate">{ app.Name }</div>
 						if app.ErrorCount != "N/A" && app.ErrorTrend != "" {
 							<span class={ "text-xs whitespace-nowrap value-breath " + app.ErrorTrendClass }>
-								{ "errors: " } <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="inline-block align-middle"><path d="M19 13V19H13"/><path d="M5 5L19 19"/></svg> { " " + app.ErrorTrend }
+								{ "errors: " + app.ErrorTrend + " " } if app.ErrorTrendUp {
+<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="inline-block align-middle"><path d="M13 5H19V11"/><path d="M19 5L5 19"/></svg>
+} else {
+<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="inline-block align-middle"><path d="M19 13V19H13"/><path d="M5 5L19 19"/></svg>
+}
 							</span>
 						} else if app.ErrorCount != "" {
 							<span class="text-xs text-fg-secondary whitespace-nowrap">errors: <span class="value-breath">{ app.ErrorCount }</span></span>

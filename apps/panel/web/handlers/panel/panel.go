@@ -361,9 +361,10 @@ func (h *handler) getCollectorApps(w http.ResponseWriter, r *http.Request) {
 			Name:            a.Name,
 			HasUptime:       a.HasUptime,
 			Bars:            uptimeBarsToView(a.Bars),
-			ErrorCount:      errorCountText(a.HasLogs, a.ErrorCount, a.TotalLogs),
+			ErrorCount:      errorCountText(a.HasLogs, a.ErrorCount),
 			ErrorTrend:      errorTrendText(a.ErrorTrendValid, a.ErrorTrendPct),
 			ErrorTrendClass: errorTrendClass(a.ErrorTrendValid, a.ErrorTrendPct),
+			ErrorTrendUp:    a.ErrorTrendValid && a.ErrorTrendPct > 0,
 			LastUpdate:      lastUpdate,
 		}
 	}
@@ -752,17 +753,13 @@ func uptimePercentClass(v float64, periodCount int) string {
 	return "text-fg-secondary"
 }
 
-// errorCountText renders the app-grid error percentage, or "N/A" when the app
+// errorCountText renders the app-grid error count, or "N/A" when the app
 // never received logs.
-func errorCountText(hasLogs bool, errorCount, totalLogs int64) string {
+func errorCountText(hasLogs bool, errorCount int64) string {
 	if !hasLogs {
 		return "N/A"
 	}
-	if totalLogs == 0 {
-		return "0%"
-	}
-	pct := (float64(errorCount) / float64(totalLogs)) * 100
-	return fmt.Sprintf("%.1f%%", pct)
+	return strconv.FormatInt(errorCount, 10)
 }
 
 // errorTrendText renders the error trend percentage.
@@ -803,11 +800,11 @@ func errorCountClass(hasLogs bool, v int64) string {
 func uptimeBarClass(status string) string {
 	switch status {
 	case "up":
-		return "bg-green-500 border border-transparent"
+		return "bg-green-500 border border-transparent uptime-bar"
 	case "down":
-		return "bg-red-500 border border-transparent"
+		return "bg-red-500 border border-transparent uptime-bar"
 	case "mixed":
-		return "bg-yellow-500 border border-transparent"
+		return "bg-yellow-500 border border-transparent uptime-bar"
 	default:
 		return "bg-fg/10 border border-fg/5"
 	}

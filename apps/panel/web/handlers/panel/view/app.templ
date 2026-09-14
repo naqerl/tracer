@@ -1,6 +1,8 @@
 package view
 
 import (
+	"fmt"
+
 	"tracer/apps/panel/web/templates"
 )
 
@@ -74,21 +76,25 @@ templ UptimePanel(uptime AppHealthView) {
 	</div>
 }
 
-// UptimeBars renders uptime bar visualizations.
+// UptimeBars renders uptime bar visualizations. Bars carrying the uptime-bar
+// class animate their wave with a per-bar inline delay so one sweep crosses
+// the whole row; bars without health data stay static.
 templ UptimeBars(bars []UptimeBarView, size string) {
 	if len(bars) > 0 {
 		if size == "sm" {
 			<div class="flex items-end gap-1">
-				for _, bar := range bars {
+				for i, bar := range bars {
 					<div class={ bar.Class + " box-border rounded-sm h-6 w-2" }
+						 style={ fmt.Sprintf("animation-delay: %.3fs", uptimeBarDelay(i, len(bars))) }
 						 title={ bar.Title }
 						 aria-label={ bar.Title }></div>
 				}
 			</div>
 		} else {
 			<div class="flex items-end gap-px sm:gap-1">
-				for _, bar := range bars {
+				for i, bar := range bars {
 					<div class={ bar.Class + " box-border rounded-sm h-8 sm:h-12 flex-1 min-w-1 sm:min-w-2" }
+						 style={ fmt.Sprintf("animation-delay: %.3fs", uptimeBarDelay(i, len(bars))) }
 						 title={ bar.Title }
 						 aria-label={ bar.Title }></div>
 				}

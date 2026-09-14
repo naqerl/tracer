@@ -56,11 +56,11 @@ reload_panel() {
   make -C "${ROOT_DIR}" build-panel
 
   log "Copying binary into ${DEMO_CONTAINER}"
-  docker cp "${ROOT_DIR}/bin/tracer-panel" "${DEMO_CONTAINER}:/tmp/tracer-panel.new"
+  docker cp "${ROOT_DIR}/bin/tracer-panel" "${DEMO_CONTAINER}:/usr/local/bin/tracer-panel"
 
   log "Replacing binary and restarting tracer-panel.service"
   if ! docker exec "${DEMO_CONTAINER}" bash -lc \
-    'install -m 0755 /tmp/tracer-panel.new /usr/local/bin/tracer-panel && rm -f /tmp/tracer-panel.new && systemctl restart tracer-panel.service && systemctl is-active --quiet tracer-panel.service'; then
+    'chown root:root /usr/local/bin/tracer-panel && chmod 0755 /usr/local/bin/tracer-panel && systemctl restart tracer-panel.service && systemctl is-active --quiet tracer-panel.service'; then
     printf 'Failed to restart tracer-panel.service. Inspect with `make -C e2e logs` or `docker exec %s systemctl status tracer-panel.service`.\n' "${DEMO_CONTAINER}" >&2
     exit 1
   fi

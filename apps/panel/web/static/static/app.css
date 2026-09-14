@@ -54,10 +54,22 @@
 .value-breath {
 	animation: value-breath 1.2s ease-in-out;
 }
-@media (prefers-reduced-motion: reduce) {
-	.value-breath {
-		animation: none;
+
+/* Uptime bars wave animation - brightens the bar's own color and sweeps left
+   to right. Bars without a health status carry no .uptime-bar class and stay
+   static; the stagger delay comes from each bar's inline animation-delay so
+   one sweep crosses the whole bar row regardless of its length. */
+@keyframes uptime-bar-wave {
+	0%, 100% {
+		filter: brightness(1);
 	}
+	10%, 45% {
+		filter: brightness(1.5);
+	}
+}
+
+.uptime-bar {
+	animation: uptime-bar-wave 0.84s ease-in-out;
 }
 
 /* uPlot chart container styles */

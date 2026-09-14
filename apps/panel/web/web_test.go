@@ -232,8 +232,8 @@ func TestAutoRefreshAppsGridBakesStats(t *testing.T) {
 	if !strings.Contains(body, "errors:") {
 		t.Fatalf("expected baked errors in grid, got %q", body)
 	}
-	if !strings.Contains(body, "100.0%") {
-		t.Fatalf("expected baked error percentage of 100.0%%, got %q", body)
+	if !strings.Contains(body, `errors: <span class="value-breath">1</span>`) {
+		t.Fatalf("expected baked absolute error count of 1, got %q", body)
 	}
 	// The seeded error count must carry the breath animation (it refreshes
 	// every 15s).
