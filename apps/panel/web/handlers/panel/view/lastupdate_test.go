@@ -10,13 +10,13 @@ func TestFormatAgo(t *testing.T) {
 		age  time.Duration
 		want string
 	}{
-		{0, "last update 0s ago"},
-		{30 * time.Second, "last update 30s ago"},
-		{59 * time.Second, "last update 59s ago"},
-		{2 * time.Minute, "last update 2m ago"},
-		{1*time.Hour + 53*time.Minute, "last update 1h 53m ago"},
-		{24 * time.Hour, "last update 1d 0h ago"},
-		{2*24*time.Hour + 5*time.Hour, "last update 2d 5h ago"},
+		{0, "0s ago"},
+		{30 * time.Second, "30s ago"},
+		{59 * time.Second, "59s ago"},
+		{2 * time.Minute, "2m ago"},
+		{1*time.Hour + 53*time.Minute, "1h 53m ago"},
+		{24 * time.Hour, "1d 0h ago"},
+		{2*24*time.Hour + 5*time.Hour, "2d 5h ago"},
 	}
 	for _, tt := range tests {
 		if got := FormatAgo(tt.age); got != tt.want {
@@ -26,7 +26,7 @@ func TestFormatAgo(t *testing.T) {
 }
 
 func TestFormatAgo_NegativeIsZero(t *testing.T) {
-	if got := FormatAgo(-time.Minute); got != "last update 0s ago" {
+	if got := FormatAgo(-time.Minute); got != "0s ago" {
 		t.Fatalf("FormatAgo(-1m) = %q, want zero-ago", got)
 	}
 }

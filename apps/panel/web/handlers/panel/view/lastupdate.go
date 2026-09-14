@@ -20,13 +20,13 @@ func FormatAgo(age time.Duration) string {
 	secs := int(age.Round(time.Second) / time.Second)
 	switch {
 	case secs < 60:
-		return "last update " + strconv.Itoa(secs) + "s ago"
+		return strconv.Itoa(secs) + "s ago"
 	case secs < 3600:
-		return "last update " + strconv.Itoa(secs/60) + "m ago"
+		return strconv.Itoa(secs/60) + "m ago"
 	case secs < 86400:
-		return "last update " + strconv.Itoa(secs/3600) + "h " + strconv.Itoa((secs%3600)/60) + "m ago"
+		return strconv.Itoa(secs/3600) + "h " + strconv.Itoa((secs%3600)/60) + "m ago"
 	default:
-		return "last update " + strconv.Itoa(secs/86400) + "d " + strconv.Itoa((secs%86400)/3600) + "h ago"
+		return strconv.Itoa(secs/86400) + "d " + strconv.Itoa((secs%86400)/3600) + "h ago"
 	}
 }
 

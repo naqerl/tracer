@@ -103,12 +103,14 @@ templ CollectorSection(props CollectorSectionProps) {
 				<h2 class="text-xl font-semibold">{ props.Name }</h2>
 			}
 			<div
-				class="ml-2 mr-4"
+				class="ml-2"
 				hx-get={ "/panel/collectors/" + props.Name + "/last-update" }
 				hx-trigger="load, every 15s"
 				hx-swap="innerHTML"
 			></div>
-
+			<a href={ "/panel/collectors/" + props.Name + "/apps/new" } class="ml-auto text-fg-secondary hover:text-fg transition-colors" aria-label="Add app" title="Add app">
+				<img src="/static/img/plus.svg" alt="" class="w-5 h-5"/>
+			</a>
 		</div>
 		<!-- Stats Row -->
 		<div

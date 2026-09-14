@@ -26,78 +26,82 @@ type AppView struct {
 // bars match the real card's line boxes so the swap does not change the grid
 // height.
 templ AppCard(collectorName string, app AppView, loading bool) {
-	<div class="block bg-bg-secondary p-4">
-		if loading {
-			<div class="animate-pulse" aria-hidden="true">
-				<div class="h-6 w-2/3 rounded bg-fg/10"></div>
-				<div class="mt-2 h-4 w-1/2 rounded bg-fg/10"></div>
+	if loading {
+		<div class="block bg-bg-secondary p-4 relative animate-pulse" aria-hidden="true">
+			<div class="flex flex-col gap-2">
+				<div class="flex items-center justify-between">
+					<div class="h-6 w-24 rounded bg-fg/10"></div>
+					<div class="h-4 w-16 rounded bg-fg/10"></div>
+				</div>
+				<div class="flex items-end gap-1">
+					for j := 0; j < 12; j++ {
+						<div class="box-border rounded-sm h-6 w-2 bg-fg/10"></div>
+					}
+				</div>
 			</div>
-		} else {
-			<a href={ "/panel/collectors/" + collectorName + "/apps/" + app.Name } class="block hover:bg-bg-secondary/80 transition-all hover:-translate-y-0.5">
-				<div class="flex items-center justify-between gap-2">
-					<div class="flex items-center gap-2 min-w-0">
-						<div class="font-medium truncate">{ app.Name }</div>
-						if app.ErrorCount != "N/A" && app.ErrorTrend != "" {
-							<span class={ "text-xs whitespace-nowrap value-breath " + app.ErrorTrendClass }>
-								{ "errors: " + app.ErrorTrend + " " } if app.ErrorTrendUp {
+		</div>
+	} else {
+		<a href={ "/panel/collectors/" + collectorName + "/apps/" + app.Name } class="block bg-bg-secondary p-4 flex flex-col gap-2 hover:bg-bg-secondary/80 transition-all hover:-translate-y-0.5 relative">
+			<div class="flex items-center justify-between gap-2">
+				<div class="flex items-center gap-2 min-w-0">
+					<div class="font-medium truncate">{ app.Name }</div>
+				</div>
+				<div class="flex items-center gap-2 shrink-0">
+					if app.ErrorCount != "N/A" && app.ErrorTrend != "" {
+						<span class="text-xs whitespace-nowrap text-fg value-breath">
+							errors { app.ErrorTrend } if app.ErrorTrendUp {
 <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="inline-block align-middle"><path d="M13 5H19V11"/><path d="M19 5L5 19"/></svg>
 } else {
 <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="inline-block align-middle"><path d="M19 13V19H13"/><path d="M5 5L19 19"/></svg>
 }
-							</span>
-						} else if app.ErrorCount != "" {
-							<span class="text-xs text-fg-secondary whitespace-nowrap">errors: <span class="value-breath">{ app.ErrorCount }</span></span>
-						}
-					</div>
-					@LastUpdateBadge(app.LastUpdate)
-				</div>
-				<div class="mt-2 relative">
-					if app.HasUptime {
-						@UptimeBars(app.Bars, "sm")
-					} else {
-						<div class="relative">
-							<div class="blur-sm pointer-events-none">
-								@UptimeBars(app.Bars, "sm")
-							</div>
-							<div class="absolute inset-0 flex items-center justify-center">
-								<span class="text-xs text-fg-secondary">uptime is not configured</span>
-							</div>
-						</div>
+						</span>
+					} else if app.ErrorCount != "" {
+						<span class="text-xs text-fg whitespace-nowrap value-breath">errors { app.ErrorCount }</span>
 					}
 				</div>
-			</a>
-		}
-	</div>
+			</div>
+			<div class="relative">
+				if app.HasUptime {
+					@UptimeBars(app.Bars, "sm")
+				} else {
+					<div class="relative">
+						<div class="blur-sm pointer-events-none">
+							@UptimeBars(app.Bars, "sm")
+						</div>
+						<div class="absolute inset-0 flex items-center justify-center">
+							<span class="text-xs text-fg-secondary">uptime is not configured</span>
+						</div>
+					</div>
+				}
+			</div>
+			if app.LastUpdate.Class == "text-red-400" {
+				<span class="absolute top-1 right-1 text-xs whitespace-nowrap text-red-400 value-breath">last log { app.LastUpdate.Text }</span>
+			}
+		</a>
+	}
 }
 
-// CollectorAppsSkeleton renders placeholder app cards matching the apps grid,
-// including the trailing "Add app" entry so the swap does not resize the grid.
+// CollectorAppsSkeleton renders placeholder app cards matching the apps grid.
 // When no apps are accessible a single bar matching the empty-state line
 // height is shown.
 templ CollectorAppsSkeleton(count int) {
 	if count > 0 {
 		<div class="apps-grid" aria-hidden="true">
 			for i := 0; i < count; i++ {
-				<div class="block bg-bg-secondary p-4">
-					<div class="animate-pulse">
+				<div class="block bg-bg-secondary p-4 relative animate-pulse">
+					<div class="flex flex-col gap-2">
 						<div class="flex items-center justify-between">
-							<div class="flex items-center gap-2">
-								<div class="h-5 w-24 rounded bg-fg/10"></div>
-								<div class="h-4 w-16 rounded bg-fg/10"></div>
-							</div>
-							<div class="h-4 w-10 rounded bg-fg/10"></div>
+							<div class="h-6 w-24 rounded bg-fg/10"></div>
+							<div class="h-4 w-16 rounded bg-fg/10"></div>
 						</div>
-						<div class="mt-2 flex items-end gap-1">
+						<div class="flex items-end gap-1">
 							for j := 0; j < 12; j++ {
-								<div class="h-6 w-2 rounded bg-fg/10"></div>
+								<div class="box-border rounded-sm h-6 w-2 bg-fg/10"></div>
 							}
 						</div>
 					</div>
 				</div>
 			}
-			<div class="block bg-bg-secondary p-4 flex items-center justify-center">
-				<div class="w-6 h-6 rounded bg-fg/10 animate-pulse"></div>
-			</div>
 		</div>
 	} else {
 		<div class="h-5 w-40 rounded bg-fg/10 animate-pulse" aria-hidden="true"></div>
@@ -105,14 +109,11 @@ templ CollectorAppsSkeleton(count int) {
 }
 
 // CollectorApps renders the apps grid for a collector with uptime and
-// error-count stats. The "Add app" card is always present.
+// error-count stats.
 templ CollectorApps(props CollectorAppsProps) {
 	<div class="apps-grid">
 		for _, app := range props.Apps {
 			@AppCard(props.CollectorName, app, false)
 		}
-		<a href={ "/panel/collectors/" + props.CollectorName + "/apps/new" } class="block bg-bg-secondary p-4 flex items-center justify-center hover:bg-bg-secondary/80 transition-all hover:-translate-y-0.5" aria-label="Add app">
-			<img src="/static/img/plus.svg" alt="Add app" class="w-6 h-6"/>
-		</a>
 	</div>
 }
