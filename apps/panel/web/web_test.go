@@ -229,16 +229,20 @@ func TestAutoRefreshAppsGridBakesStats(t *testing.T) {
 	if !strings.Contains(body, "myapp") {
 		t.Fatalf("expected seeded app in grid, got %q", body)
 	}
-	if !strings.Contains(body, "uptime:") || !strings.Contains(body, "errors:") {
-		t.Fatalf("expected baked uptime + errors in grid, got %q", body)
+	if !strings.Contains(body, "errors:") {
+		t.Fatalf("expected baked errors in grid, got %q", body)
 	}
-	if !strings.Contains(body, ">1</span>") {
-		t.Fatalf("expected baked error count of 1, got %q", body)
+	if !strings.Contains(body, "100.0%") {
+		t.Fatalf("expected baked error percentage of 100.0%%, got %q", body)
 	}
-	// The seeded error count must be color-coded red and carry the breath
-	// animation (it refreshes every 15s).
-	if !strings.Contains(body, "errors: <span class=\"inline-block w-[3ch] tabular-nums text-left whitespace-nowrap value-breath text-red-400\">1</span>") {
-		t.Fatalf("expected red breathing error count in grid, got %q", body)
+	// The seeded error count must carry the breath animation (it refreshes
+	// every 15s).
+	if !strings.Contains(body, "value-breath") {
+		t.Fatalf("expected breathing error count in grid, got %q", body)
+	}
+	// The grid must render uptime bars instead of a raw number.
+	if !strings.Contains(body, "aria-label=") {
+		t.Fatalf("expected uptime bar labels in grid, got %q", body)
 	}
 
 	if strings.Contains(body, "uptime/percentage") || strings.Contains(body, "errors/count") {

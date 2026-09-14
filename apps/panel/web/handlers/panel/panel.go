@@ -358,12 +358,13 @@ func (h *handler) getCollectorApps(w http.ResponseWriter, r *http.Request) {
 			lastUpdate = view.LastUpdateView{Text: view.FormatAgo(age), Class: view.LastUpdateClass(age, a.Interval)}
 		}
 		viewApps[i] = view.AppView{
-			Name:        a.Name,
-			UptimeText:  uptimePercentText(a.UptimePercent, a.UptimePeriods),
-			UptimeClass: uptimePercentClass(a.UptimePercent, a.UptimePeriods),
-			ErrorText:   errorCountText(a.HasLogs, a.ErrorCount),
-			ErrorClass:  errorCountClass(a.HasLogs, a.ErrorCount),
-			LastUpdate:  lastUpdate,
+			Name:            a.Name,
+			HasUptime:       a.HasUptime,
+			Bars:            uptimeBarsToView(a.Bars),
+			ErrorCount:      errorCountText(a.HasLogs, a.ErrorCount, a.TotalLogs),
+			ErrorTrend:      errorTrendText(a.ErrorTrendValid, a.ErrorTrendPct),
+			ErrorTrendClass: errorTrendClass(a.ErrorTrendValid, a.ErrorTrendPct),
+			LastUpdate:      lastUpdate,
 		}
 	}
 	view.CollectorApps(view.CollectorAppsProps{
@@ -751,13 +752,40 @@ func uptimePercentClass(v float64, periodCount int) string {
 	return "text-fg-secondary"
 }
 
-// errorCountText renders the app-grid error count, or "N/A" when the app
+// errorCountText renders the app-grid error percentage, or "N/A" when the app
 // never received logs.
-func errorCountText(hasLogs bool, v int64) string {
+func errorCountText(hasLogs bool, errorCount, totalLogs int64) string {
 	if !hasLogs {
 		return "N/A"
 	}
-	return strconv.FormatInt(v, 10)
+	if totalLogs == 0 {
+		return "0%"
+	}
+	pct := (float64(errorCount) / float64(totalLogs)) * 100
+	return fmt.Sprintf("%.1f%%", pct)
+}
+
+// errorTrendText renders the error trend percentage.
+func errorTrendText(valid bool, pct float64) string {
+	if !valid {
+		return ""
+	}
+	return fmt.Sprintf("%.0f%%", math.Abs(pct))
+}
+
+// errorTrendClass colors the error trend: green for down, red for up, neutral
+// for flat or unavailable.
+func errorTrendClass(valid bool, pct float64) string {
+	if !valid {
+		return "text-fg-secondary"
+	}
+	if pct > 0 {
+		return "text-red-400"
+	}
+	if pct < 0 {
+		return "text-green-400"
+	}
+	return "text-fg-secondary"
 }
 
 // errorCountClass colors the app-grid error count red when errors exist and
@@ -781,7 +809,7 @@ func uptimeBarClass(status string) string {
 	case "mixed":
 		return "bg-yellow-500 border border-transparent"
 	default:
-		return "bg-bg-secondary border border-bg-secondary"
+		return "bg-fg/10 border border-fg/5"
 	}
 }
 

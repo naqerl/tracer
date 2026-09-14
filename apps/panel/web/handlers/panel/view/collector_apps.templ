@@ -6,23 +6,24 @@ type CollectorAppsProps struct {
 	Apps          []AppView
 }
 
-// AppView is an app card in the apps grid; UptimeClass/ErrorClass carry the
-// health color-coding. ErrorText carries the formatted error count or "N/A"
-// when the app never received logs.
+// AppView is an app card in the apps grid; Bars carry the uptime bar
+// visualization. ErrorCount/ErrorTrend/ErrorTrendClass carry the error
+// stats and trend indicator.
 type AppView struct {
-	Name        string
-	UptimeText  string
-	UptimeClass string
-	ErrorText   string
-	ErrorClass  string
-	LastUpdate  LastUpdateView
+	Name            string
+	HasUptime       bool
+	Bars            []UptimeBarView
+	ErrorCount      string
+	ErrorTrend      string
+	ErrorTrendClass string
+	LastUpdate      LastUpdateView
 }
 
 // AppCard renders a single app card in the apps grid. When loading it renders
 // the card shell with placeholder bars and a breath animation; otherwise it
-// renders the app link with its uptime and error stats. The placeholder bars
-// match the real card's line boxes (font-medium = 24px, text-xs = 16px) so
-// the swap does not change the grid height.
+// renders the app link with its uptime bars and error trend. The placeholder
+// bars match the real card's line boxes so the swap does not change the grid
+// height.
 templ AppCard(collectorName string, app AppView, loading bool) {
 	<div class="block bg-bg-secondary p-4">
 		if loading {
@@ -33,13 +34,31 @@ templ AppCard(collectorName string, app AppView, loading bool) {
 		} else {
 			<a href={ "/panel/collectors/" + collectorName + "/apps/" + app.Name } class="block hover:bg-bg-secondary/80 transition-all hover:-translate-y-0.5">
 				<div class="flex items-center justify-between gap-2">
-					<div class="font-medium truncate">{ app.Name }</div>
+					<div class="flex items-center gap-2 min-w-0">
+						<div class="font-medium truncate">{ app.Name }</div>
+						if app.ErrorCount != "N/A" && app.ErrorTrend != "" {
+							<span class={ "text-xs whitespace-nowrap value-breath " + app.ErrorTrendClass }>
+								{ "errors: " } <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="inline-block align-middle"><path d="M19 13V19H13"/><path d="M5 5L19 19"/></svg> { " " + app.ErrorTrend }
+							</span>
+						} else if app.ErrorCount != "" {
+							<span class="text-xs text-fg-secondary whitespace-nowrap">errors: <span class="value-breath">{ app.ErrorCount }</span></span>
+						}
+					</div>
 					@LastUpdateBadge(app.LastUpdate)
 				</div>
-				<div class="mt-2 text-xs text-fg-secondary">
-					<span>uptime: <span class={ "inline-block w-[3ch] tabular-nums text-right whitespace-nowrap value-breath " + app.UptimeClass }>{ app.UptimeText }</span></span>
-					<span class="text-fg-secondary"> | </span>
-					<span>errors: <span class={ "inline-block w-[3ch] tabular-nums text-left whitespace-nowrap value-breath " + app.ErrorClass }>{ app.ErrorText }</span></span>
+				<div class="mt-2 relative">
+					if app.HasUptime {
+						@UptimeBars(app.Bars, "sm")
+					} else {
+						<div class="relative">
+							<div class="blur-sm pointer-events-none">
+								@UptimeBars(app.Bars, "sm")
+							</div>
+							<div class="absolute inset-0 flex items-center justify-center">
+								<span class="text-xs text-fg-secondary">uptime is not configured</span>
+							</div>
+						</div>
+					}
 				</div>
 			</a>
 		}
@@ -54,7 +73,22 @@ templ CollectorAppsSkeleton(count int) {
 	if count > 0 {
 		<div class="apps-grid" aria-hidden="true">
 			for i := 0; i < count; i++ {
-				@AppCard("", AppView{}, true)
+				<div class="block bg-bg-secondary p-4">
+					<div class="animate-pulse">
+						<div class="flex items-center justify-between">
+							<div class="flex items-center gap-2">
+								<div class="h-5 w-24 rounded bg-fg/10"></div>
+								<div class="h-4 w-16 rounded bg-fg/10"></div>
+							</div>
+							<div class="h-4 w-10 rounded bg-fg/10"></div>
+						</div>
+						<div class="mt-2 flex items-end gap-1">
+							for j := 0; j < 12; j++ {
+								<div class="h-6 w-2 rounded bg-fg/10"></div>
+							}
+						</div>
+					</div>
+				</div>
 			}
 			<div class="block bg-bg-secondary p-4 flex items-center justify-center">
 				<div class="w-6 h-6 rounded bg-fg/10 animate-pulse"></div>

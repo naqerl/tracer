@@ -604,13 +604,18 @@ func (r ListCollectorAppsRequest) Validate() error {
 // CollectorApp is an app in the apps grid with its uptime and error-count
 // stats.
 type CollectorApp struct {
-	Name          string
-	UptimePercent float64
-	UptimePeriods int
-	ErrorCount    int64
-	HasLogs       bool
-	LastUpdateAt  time.Time
-	Interval      time.Duration
+	Name            string
+	HasUptime       bool
+	UptimePercent   float64
+	UptimePeriods   int
+	ErrorCount      int64
+	TotalLogs       int64
+	ErrorTrendPct   float64
+	ErrorTrendValid bool
+	HasLogs         bool
+	Bars            []HealthBucket
+	LastUpdateAt    time.Time
+	Interval        time.Duration
 }
 
 // Activity describes the last time a collector or app reported data and the
@@ -663,10 +668,11 @@ func (s *Service) ListCollectorAppsWithStats(ctx context.Context, req ListCollec
 
 	results := make(chan indexedApp, len(apps))
 	intervals := s.appHealthIntervals(ctx, req.CollectorName, apps)
+	hasHealth := s.appHasHealthCheck(ctx, req.CollectorName, apps)
 	var wg sync.WaitGroup
 	for i, app := range apps {
 		wg.Go(func() {
-			results <- indexedApp{idx: i, app: s.appStats(ctx, req.CollectorName, app, req.Since, intervals[app])}
+			results <- indexedApp{idx: i, app: s.appStats(ctx, req.CollectorName, app, req.Since, intervals[app], hasHealth[app])}
 		})
 	}
 	go func() {
@@ -723,8 +729,8 @@ func filterAccessibleApps(access user.AccessPolicy, collectorName string, apps [
 }
 
 // appStats reads the uptime percentage and error count for a single app.
-func (s *Service) appStats(ctx context.Context, collectorName, appName string, since time.Time, interval time.Duration) CollectorApp {
-	app := CollectorApp{Name: appName, Interval: interval}
+func (s *Service) appStats(ctx context.Context, collectorName, appName string, since time.Time, interval time.Duration, hasHealth bool) CollectorApp {
+	app := CollectorApp{Name: appName, Interval: interval, HasUptime: hasHealth}
 
 	queries, err := s.queriesForApp(collectorName, appName)
 	if errors.Is(err, ErrAppNotFound) {
@@ -735,12 +741,13 @@ func (s *Service) appStats(ctx context.Context, collectorName, appName string, s
 		return app
 	}
 
-	health, err := s.readAppHealth(ctx, queries, since)
+	health, err := s.readAppHealthWithBars(ctx, queries, since)
 	if err != nil {
 		slog.Error("could not read app health for grid stats", "collector", collectorName, "app", appName, "error", err)
 	} else {
 		app.UptimePercent = health.UptimePercent
 		app.UptimePeriods = health.PeriodCount
+		app.Bars = health.Buckets
 	}
 
 	counts, err := queries.GetPercentiles(ctx, since.Unix())
@@ -748,6 +755,7 @@ func (s *Service) appStats(ctx context.Context, collectorName, appName string, s
 		slog.Error("could not read app stats for grid", "collector", collectorName, "app", appName, "error", err)
 	} else {
 		app.ErrorCount = counts.Errors
+		app.TotalLogs = counts.Total
 		hasLogs, err := queries.HasLog(ctx)
 		if err != nil {
 			slog.Error("could not read app log presence for grid", "collector", collectorName, "app", appName, "error", err)
@@ -757,6 +765,7 @@ func (s *Service) appStats(ctx context.Context, collectorName, appName string, s
 	}
 
 	app.LastUpdateAt = s.appLastUpdate(ctx, queries)
+	app.ErrorTrendPct, app.ErrorTrendValid = s.errorTrend(ctx, queries, since)
 	return app
 }
 
@@ -787,6 +796,44 @@ func (s *Service) appLastUpdate(ctx context.Context, queries *db.Queries) time.T
 		return time.Time{}
 	}
 	return time.Unix(latest, 0)
+}
+
+// errorTrend computes the percentage change in error count between the
+// previous period [since-2*window : since) and the current period [since : now).
+// It returns the trend percentage and whether the result is valid (both periods
+// must be within the query window and the denominator must be non-zero).
+func (s *Service) errorTrend(ctx context.Context, queries *db.Queries, since time.Time) (float64, bool) {
+	now := time.Now()
+	window := now.Sub(since)
+	currentStart := since.Unix()
+	currentEnd := now.Unix()
+	previousStart := since.Add(-window).Unix()
+	previousEnd := since.Unix()
+
+	currentErrors, err := queries.CountErrorsInRange(ctx, db.CountErrorsInRangeParams{
+		From: currentStart,
+		To:   currentEnd,
+	})
+	if err != nil {
+		slog.Error("could not count current errors for trend", "error", err)
+		return 0, false
+	}
+
+	previousErrors, err := queries.CountErrorsInRange(ctx, db.CountErrorsInRangeParams{
+		From: previousStart,
+		To:   previousEnd,
+	})
+	if err != nil {
+		slog.Error("could not count previous errors for trend", "error", err)
+		return 0, false
+	}
+
+	if previousErrors == 0 {
+		return 0, false
+	}
+
+	pct := (float64(currentErrors-previousErrors) / float64(previousErrors)) * 100
+	return math.Round(pct*10) / 10, true
 }
 
 // appHealthIntervals returns the health-check interval per app, falling back
@@ -836,6 +883,30 @@ func parseIntervalParam(raw string, fallback time.Duration) (time.Duration, bool
 		return fallback, false
 	}
 	return d, true
+}
+
+// appHasHealthCheck returns a map indicating whether each app has a
+// configured HTTP health check in the collector config.
+func (s *Service) appHasHealthCheck(ctx context.Context, collectorName string, apps []string) map[string]bool {
+	hasHealth := make(map[string]bool, len(apps))
+
+	var cfg sharedtypes.CollectorConfig
+	raw, err := s.FetchCollectorConfig(ctx, collectorName)
+	if err != nil {
+		return hasHealth
+	}
+	if raw == "" {
+		return hasHealth
+	}
+	if err := json.Unmarshal([]byte(raw), &cfg); err != nil {
+		return hasHealth
+	}
+
+	for _, spec := range cfg.Apps {
+		_, ok := spec.HealthSpec()
+		hasHealth[spec.Name] = ok
+	}
+	return hasHealth
 }
 
 type AppHealth struct {
@@ -1454,14 +1525,8 @@ func formatCollectorStats(stats ingest.SystemStat, now time.Time) *CollectorStat
 	}
 }
 
-// readAppHealth reads uptime stats for an app in the given window.
-func (s *Service) readAppHealth(ctx context.Context, queries *db.Queries, since time.Time) (AppHealth, error) {
-	health, _, err := s.readHealthAndPeriods(ctx, queries, since)
-	return health, err
-}
-
-// readAppHealthWithBars is readAppHealth plus per-period bucket bars for the
-// uptime visualization.
+// readAppHealthWithBars reads uptime stats for an app in the given window plus
+// per-period bucket bars for the uptime visualization.
 func (s *Service) readAppHealthWithBars(ctx context.Context, queries *db.Queries, since time.Time) (AppHealth, error) {
 	health, periods, err := s.readHealthAndPeriods(ctx, queries, since)
 	if err != nil {

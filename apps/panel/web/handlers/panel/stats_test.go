@@ -3,14 +3,20 @@ package panel
 import "testing"
 
 func TestErrorCountText(t *testing.T) {
-	if got := errorCountText(false, 3); got != "N/A" {
-		t.Fatalf("errorCountText(false, 3) = %q, want \"N/A\"", got)
+	if got := errorCountText(false, 3, 100); got != "N/A" {
+		t.Fatalf("errorCountText(false, 3, 100) = %q, want N/A", got)
 	}
-	if got := errorCountText(true, 0); got != "0" {
-		t.Fatalf("errorCountText(true, 0) = %q, want \"0\"", got)
+	if got := errorCountText(true, 0, 100); got != "0.0%" {
+		t.Fatalf("errorCountText(true, 0, 100) = %q, want 0.0%%", got)
 	}
-	if got := errorCountText(true, 12); got != "12" {
-		t.Fatalf("errorCountText(true, 12) = %q, want \"12\"", got)
+	if got := errorCountText(true, 12, 100); got != "12.0%" {
+		t.Fatalf("errorCountText(true, 12, 100) = %q, want 12.0%%", got)
+	}
+	if got := errorCountText(true, 1, 10); got != "10.0%" {
+		t.Fatalf("errorCountText(true, 1, 10) = %q, want 10.0%%", got)
+	}
+	if got := errorCountText(true, 0, 0); got != "0%" {
+		t.Fatalf("errorCountText(true, 0, 0) = %q, want 0%%", got)
 	}
 }
 

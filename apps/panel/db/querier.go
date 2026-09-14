@@ -15,6 +15,8 @@ type Querier interface {
 	CloseDiskPeriod(ctx context.Context, arg CloseDiskPeriodParams) error
 	CloseHealthPeriod(ctx context.Context, arg CloseHealthPeriodParams) error
 	CloseMemPeriod(ctx context.Context, arg CloseMemPeriodParams) error
+	// Error count in a specific time range [from, to)
+	CountErrorsInRange(ctx context.Context, arg CountErrorsInRangeParams) (int64, error)
 	// Count total logs in a group
 	CountLogsByGroupID(ctx context.Context, groupID sql.NullInt64) (int64, error)
 	// Count logs in a group created after a timestamp (for the "+N new records"

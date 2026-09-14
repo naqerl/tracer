@@ -10,6 +10,27 @@ import (
 	"database/sql"
 )
 
+const countErrorsInRange = `-- name: CountErrorsInRange :one
+SELECT COUNT(*) as total
+FROM log
+WHERE LOWER(level) = 'error'
+  AND created_at >= ?1
+  AND created_at < ?2
+`
+
+type CountErrorsInRangeParams struct {
+	From int64
+	To   int64
+}
+
+// Error count in a specific time range [from, to)
+func (q *Queries) CountErrorsInRange(ctx context.Context, arg CountErrorsInRangeParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countErrorsInRange, arg.From, arg.To)
+	var total int64
+	err := row.Scan(&total)
+	return total, err
+}
+
 const countLogsByGroupID = `-- name: CountLogsByGroupID :one
 SELECT COUNT(*) as total
 FROM log

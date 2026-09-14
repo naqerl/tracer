@@ -127,6 +127,14 @@ SELECT COUNT(*) as total
 FROM log
 WHERE created_at >= sqlc.arg(since);
 
+-- name: CountErrorsInRange :one
+-- Error count in a specific time range [from, to)
+SELECT COUNT(*) as total
+FROM log
+WHERE LOWER(level) = 'error'
+  AND created_at >= sqlc.arg(from)
+  AND created_at < sqlc.arg(to);
+
 -- name: DeleteLogGroup :execrows
 -- Delete a log group by ID
 DELETE FROM log_group WHERE id = ?;
