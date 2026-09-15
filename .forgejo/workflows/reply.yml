@@ -27,4 +27,4 @@ jobs:
           agent-api-key: ${{ secrets.AGENT_API_KEY }}
           agent-model: ${{ vars.AGENT_MODEL }}
           agent-provider-url: ${{ vars.AGENT_PROVIDER_URL }}
-          pat: ${{ secrets.AGENT_PAT }}
+          agent_pat: ${{ secrets.AGENT_PAT }}
