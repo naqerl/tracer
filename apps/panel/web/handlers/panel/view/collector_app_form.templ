@@ -133,19 +133,21 @@ templ AppForm(p AppFormProps) {
 			hx-target="#app-form-container" hx-swap="innerHTML"
 			class="space-y-6">
 
-			if !p.IsEdit {
-				<div class="border border-bg-secondary/70 p-4">
-					<h3 class="text-fg font-medium mb-3">
-						Name
-						@templates.Required()
-						@templates.FieldStatus("app-name-status", p.Error, false, false)
-					</h3>
-					<input type="text" name="name" value={ p.ServiceName } required placeholder="e.g. nginx, grafana-server"
-						   id="app-name-input"
-						   class="w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg placeholder:text-fg-secondary/50"/>
+			<div class="border border-bg-secondary/70 p-4">
+				<h3 class="text-fg font-medium mb-3">
+					Name
+					@templates.Required()
+					@templates.FieldStatus("app-name-status", p.Error, false, false)
+				</h3>
+				<input type="text" name="name" value={ p.ServiceName } required placeholder="e.g. nginx, grafana-server"
+					   id="app-name-input"
+					   class="w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg placeholder:text-fg-secondary/50"/>
+				if p.IsEdit {
+					<p class="text-xs text-fg-secondary mt-1">Renaming an app changes its URL and moves its database; existing logs are kept.</p>
+				} else {
 					<p class="text-xs text-fg-secondary mt-1">Letters, digits, and . - _ only, no spaces.</p>
-				</div>
-			}
+				}
+			</div>
 
 			<div class="border border-bg-secondary/70 p-4">
 				<h3 class="text-fg font-medium mb-3">Log source</h3>

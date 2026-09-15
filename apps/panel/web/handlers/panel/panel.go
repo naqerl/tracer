@@ -360,6 +360,7 @@ func (h *handler) getCollectorApps(w http.ResponseWriter, r *http.Request) {
 		viewApps[i] = view.AppView{
 			Name:            a.Name,
 			HasUptime:       a.HasUptime,
+			HasLogSource:    a.HasLogSource,
 			Bars:            uptimeBarsToView(a.Bars),
 			ErrorCount:      errorCountText(a.HasLogs, a.ErrorCount),
 			ErrorTrend:      errorTrendText(a.ErrorTrendValid, a.ErrorTrendPct),
@@ -1578,6 +1579,25 @@ func (h *handler) updateApp(w http.ResponseWriter, r *http.Request) {
 
 	if err := h.saveCollectorConfig(r.Context(), collectorName, cfg); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	newName := strings.TrimSpace(r.FormValue("name"))
+	if newName != "" && newName != appName {
+		if err := h.svc.RenameApp(r.Context(), collectorName, appName, newName); err != nil {
+			switch {
+			case errors.Is(err, panelsvc.ErrAppNameTaken):
+				http.Error(w, "app name already in use", http.StatusConflict)
+			case errors.Is(err, panelsvc.ErrAppNotFound):
+				http.Error(w, "app not found", http.StatusNotFound)
+			case errors.Is(err, panelsvc.ErrCollectorNotFound):
+				http.Error(w, "collector not found", http.StatusNotFound)
+			default:
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+			}
+			return
+		}
+		w.Header().Set("HX-Redirect", "/panel/collectors/"+collectorName+"/apps/"+newName)
 		return
 	}
 

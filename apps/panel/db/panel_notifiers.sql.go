@@ -283,3 +283,20 @@ func (q *Queries) RemoveAllNotifierSubscriptions(ctx context.Context, notifierID
 	_, err := q.db.ExecContext(ctx, removeAllNotifierSubscriptions, notifierID)
 	return err
 }
+
+const renameNotifierSubscription = `-- name: RenameNotifierSubscription :exec
+UPDATE notifier_subscription
+SET app_name = ?1
+WHERE collector_name = ?2 AND app_name = ?3
+`
+
+type RenameNotifierSubscriptionParams struct {
+	NewName       string
+	CollectorName string
+	OldName       string
+}
+
+func (q *Queries) RenameNotifierSubscription(ctx context.Context, arg RenameNotifierSubscriptionParams) error {
+	_, err := q.db.ExecContext(ctx, renameNotifierSubscription, arg.NewName, arg.CollectorName, arg.OldName)
+	return err
+}

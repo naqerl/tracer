@@ -5,10 +5,12 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -539,10 +541,79 @@ func TestListCollectorAppsWithStats_EmptyApp(t *testing.T) {
 			if app.ErrorCount != 0 || app.UptimePeriods != 0 || app.HasLogs {
 				t.Fatalf("expected empty app to degrade to N/A / 0, got errors=%d periods=%d hasLogs=%v", app.ErrorCount, app.UptimePeriods, app.HasLogs)
 			}
+			if app.HasLogSource {
+				t.Fatal("expected empty-app without a configured log source")
+			}
 			return
 		}
 	}
 	t.Fatal("expected empty-app in results")
+}
+
+func TestListCollectorAppsWithStats_LogSource(t *testing.T) {
+	svc, _, userID, collectorName, _ := setupTestService(t)
+	ctx := t.Context()
+
+	cfg := types.CollectorConfig{
+		Parsers: map[string]types.ParserSpec{
+			"json-parser": {
+				Type: "json",
+				Params: map[string]string{
+					"level_field":      "level",
+					"message_field":    "msg",
+					"timestamp_field":  "time",
+					"timestamp_format": "2006-01-02T15:04:05.999999999Z07:00",
+				},
+			},
+		},
+		Apps: []types.AppSpec{
+			{Name: "log-app", ParserID: "json-parser", Source: &types.SourceSpec{Type: "journalctl", Params: map[string]string{}}},
+			{Name: "health-app", Health: &types.HealthCheckSpec{Type: "http", Params: map[string]string{"url": "http://example.com", "interval": "30s"}}},
+		},
+	}
+	cfgJSON, err := json.Marshal(&cfg)
+	if err != nil {
+		t.Fatalf("marshal config: %v", err)
+	}
+	if err := svc.SaveCollectorConfig(ctx, collectorName, string(cfgJSON)); err != nil {
+		t.Fatalf("SaveCollectorConfig: %v", err)
+	}
+	for _, name := range []string{"log-app", "health-app"} {
+		if _, err := svc.ingestSvc.StoreLog(ctx, ingestsvc.StoreLogRequest{
+			CollectorName: collectorName,
+			AppName:       name,
+			Entry:         types.LogEntry{Level: types.LevelInfo, Message: "seed", Timestamp: time.Now()},
+		}); err != nil {
+			t.Fatalf("seed log for %s: %v", name, err)
+		}
+	}
+	if err := svc.userSvc.GrantAccess(ctx, userID, usersvc.AppAccess{CollectorName: collectorName, AppName: "log-app"}); err != nil {
+		t.Fatalf("grant access to log-app: %v", err)
+	}
+	if err := svc.userSvc.GrantAccess(ctx, userID, usersvc.AppAccess{CollectorName: collectorName, AppName: "health-app"}); err != nil {
+		t.Fatalf("grant access to health-app: %v", err)
+	}
+
+	apps, err := svc.ListCollectorAppsWithStats(ctx, ListCollectorAppsWithStatsRequest{
+		UserID:        userID,
+		CollectorName: collectorName,
+		Since:         time.Now().Add(-time.Hour),
+	})
+	if err != nil {
+		t.Fatalf("ListCollectorAppsWithStats: %v", err)
+	}
+	for _, app := range apps {
+		switch app.Name {
+		case "log-app":
+			if !app.HasLogSource {
+				t.Fatal("expected log-app to have HasLogSource=true")
+			}
+		case "health-app":
+			if app.HasLogSource {
+				t.Fatal("expected health-only app to have HasLogSource=false")
+			}
+		}
+	}
 }
 
 func TestCollectorActivity_NoStats(t *testing.T) {
@@ -2040,6 +2111,301 @@ func TestDBManager_DeleteAppDB(t *testing.T) {
 
 	if err := mgr.DeleteAppDB("my-collector", "missing-app"); err != nil {
 		t.Fatalf("deleting a never-created app db should be idempotent: %v", err)
+	}
+}
+
+func TestManager_RenameAppDB(t *testing.T) {
+	svc, _, userID, collectorName, appName := setupTestService(t)
+	ctx := t.Context()
+
+	if _, err := svc.ingestSvc.StoreLog(ctx, ingestsvc.StoreLogRequest{
+		CollectorName: collectorName,
+		AppName:       appName,
+		Entry:         types.LogEntry{Level: types.LevelError, Message: "before-rename", Timestamp: time.Now()},
+	}); err != nil {
+		t.Fatalf("seed via StoreLog: %v", err)
+	}
+
+	renamed, err := svc.dbManager.RenameAppDB(collectorName, appName, "renamed")
+	if err != nil {
+		t.Fatalf("RenameAppDB: %v", err)
+	}
+
+	apps, err := svc.dbManager.ListApps(collectorName)
+	if err != nil {
+		t.Fatalf("list apps: %v", err)
+	}
+	if len(apps) != 1 || apps[0] != "renamed" {
+		t.Fatalf("apps = %v, want [renamed]", apps)
+	}
+
+	// Data preserved under new name.
+	if err := svc.userSvc.GrantAccess(ctx, userID, usersvc.AppAccess{
+		CollectorName: collectorName,
+		AppName:       "renamed",
+	}); err != nil {
+		t.Fatalf("grant access: %v", err)
+	}
+	stats, err := svc.GetAppStats(ctx, GetAppStatsRequest{
+		UserID:        userID,
+		CollectorName: collectorName,
+		AppName:       "renamed",
+		Since:         time.Now().Add(-time.Hour),
+	})
+	if err != nil {
+		t.Fatalf("GetAppStats: %v", err)
+	}
+	if stats.Total != 1 {
+		t.Fatalf("total logs = %d, want 1", stats.Total)
+	}
+
+	// Old name routes to the renamed handle via alias.
+	aliasHandle, err := svc.dbManager.GetAppDB(collectorName, appName)
+	if err != nil {
+		t.Fatalf("alias GetAppDB: %v", err)
+	}
+	if aliasHandle != renamed {
+		t.Fatal("alias should return the same handle as the renamed app")
+	}
+}
+
+func TestManager_RenameAppDBConcurrentInFlight(t *testing.T) {
+	svc, _, userID, collectorName, appName := setupTestService(t)
+	ctx := t.Context()
+
+	// Writes racing the rename either commit (reported success) or are
+	// rejected cleanly when the queue closes; a committed write is never left
+	// in a stale file. Every successful write must be visible in the renamed
+	// DB.
+	const writes = 10
+	var failed int32
+	var wg sync.WaitGroup
+	for i := range writes {
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+			if _, err := svc.ingestSvc.StoreLog(ctx, ingestsvc.StoreLogRequest{
+				CollectorName: collectorName,
+				AppName:       appName,
+				Entry:         types.LogEntry{Level: types.LevelInfo, Message: fmt.Sprintf("write-%d", id), Timestamp: time.Now()},
+			}); err != nil {
+				atomic.AddInt32(&failed, 1)
+			}
+		}(i)
+	}
+
+	if _, err := svc.dbManager.RenameAppDB(collectorName, appName, "renamed"); err != nil {
+		t.Fatalf("RenameAppDB during writes: %v", err)
+	}
+	wg.Wait()
+
+	if err := svc.userSvc.GrantAccess(ctx, userID, usersvc.AppAccess{
+		CollectorName: collectorName,
+		AppName:       "renamed",
+	}); err != nil {
+		t.Fatalf("grant access: %v", err)
+	}
+	successes := int64(writes) - int64(atomic.LoadInt32(&failed))
+	stats, err := svc.GetAppStats(ctx, GetAppStatsRequest{
+		UserID:        userID,
+		CollectorName: collectorName,
+		AppName:       "renamed",
+		Since:         time.Now().Add(-time.Hour),
+	})
+	if err != nil {
+		t.Fatalf("GetAppStats: %v", err)
+	}
+	if stats.Total != successes {
+		t.Fatalf("total logs = %d, want %d (only successful writes)", stats.Total, successes)
+	}
+
+	// The alias keeps routing old-name writes into the renamed DB afterwards.
+	if _, err := svc.ingestSvc.StoreLog(ctx, ingestsvc.StoreLogRequest{
+		CollectorName: collectorName,
+		AppName:       appName,
+		Entry:         types.LogEntry{Level: types.LevelInfo, Message: "post-rename", Timestamp: time.Now()},
+	}); err != nil {
+		t.Fatalf("post-rename store via alias: %v", err)
+	}
+	stats2, err := svc.GetAppStats(ctx, GetAppStatsRequest{
+		UserID:        userID,
+		CollectorName: collectorName,
+		AppName:       "renamed",
+		Since:         time.Now().Add(-time.Hour),
+	})
+	if err != nil {
+		t.Fatalf("GetAppStats after alias write: %v", err)
+	}
+	if stats2.Total != successes+1 {
+		t.Fatalf("total logs after alias write = %d, want %d", stats2.Total, successes+1)
+	}
+}
+
+func TestRenameApp(t *testing.T) {
+	svc, _, userID, collectorName, appName := setupTestService(t)
+	ctx := t.Context()
+
+	cfg := types.CollectorConfig{}
+	if err := cfg.AddApp(appName, types.SourceSpec{
+		Type:   "journalctl",
+		Params: map[string]string{"unit": "test-app.service"},
+	}, types.ParserSpec{
+		Type:   "json",
+		Params: map[string]string{"level_field": "level", "message_field": "msg", "timestamp_field": "time", "timestamp_format": "2006-01-02T15:04:05"},
+	}); err != nil {
+		t.Fatalf("add app: %v", err)
+	}
+	raw, err := json.Marshal(&cfg)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if err := svc.SaveCollectorConfig(ctx, collectorName, string(raw)); err != nil {
+		t.Fatalf("save config: %v", err)
+	}
+
+	if _, err := svc.ingestSvc.StoreLog(ctx, ingestsvc.StoreLogRequest{
+		CollectorName: collectorName,
+		AppName:       appName,
+		Entry:         types.LogEntry{Level: types.LevelError, Message: "before rename", Timestamp: time.Now()},
+	}); err != nil {
+		t.Fatalf("store log: %v", err)
+	}
+
+	if err := svc.RenameApp(ctx, collectorName, appName, "renamed-app"); err != nil {
+		t.Fatalf("RenameApp: %v", err)
+	}
+
+	// Config updated.
+	stored, err := svc.FetchCollectorConfig(ctx, collectorName)
+	if err != nil {
+		t.Fatalf("fetch config: %v", err)
+	}
+	var storedCfg types.CollectorConfig
+	if err := json.Unmarshal([]byte(stored), &storedCfg); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if !collectorConfigHasApp(storedCfg, "renamed-app") || collectorConfigHasApp(storedCfg, appName) {
+		t.Fatalf("config apps = %v, want renamed-app only", storedCfg.Apps)
+	}
+
+	// Data preserved under new name.
+	stats, err := svc.GetAppStats(ctx, GetAppStatsRequest{
+		UserID:        userID,
+		CollectorName: collectorName,
+		AppName:       "renamed-app",
+		Since:         time.Now().Add(-time.Hour),
+	})
+	if err != nil {
+		t.Fatalf("GetAppStats: %v", err)
+	}
+	if stats.Total != 1 {
+		t.Fatalf("total logs = %d, want 1", stats.Total)
+	}
+
+	// Access policy updated.
+	access, err := svc.userSvc.FindAccessPolicy(ctx, userID)
+	if err != nil {
+		t.Fatalf("FindAccessPolicy: %v", err)
+	}
+	if !access.AllowedTo(collectorName, "renamed-app") {
+		t.Fatal("expected access for renamed-app")
+	}
+	if access.AllowedTo(collectorName, appName) {
+		t.Fatal("expected no access for old app name")
+	}
+
+	// DB file moved.
+	apps, err := svc.dbManager.ListApps(collectorName)
+	if err != nil {
+		t.Fatalf("list apps: %v", err)
+	}
+	if len(apps) != 1 || apps[0] != "renamed-app" {
+		t.Fatalf("apps = %v, want [renamed-app]", apps)
+	}
+
+	// In-flight write under old name lands in renamed DB.
+	if _, err := svc.ingestSvc.StoreLog(ctx, ingestsvc.StoreLogRequest{
+		CollectorName: collectorName,
+		AppName:       appName,
+		Entry:         types.LogEntry{Level: types.LevelError, Message: "after rename", Timestamp: time.Now()},
+	}); err != nil {
+		t.Fatalf("store in-flight log: %v", err)
+	}
+	stats2, err := svc.GetAppStats(ctx, GetAppStatsRequest{
+		UserID:        userID,
+		CollectorName: collectorName,
+		AppName:       "renamed-app",
+		Since:         time.Now().Add(-time.Hour),
+	})
+	if err != nil {
+		t.Fatalf("GetAppStats after in-flight: %v", err)
+	}
+	if stats2.Total != 2 {
+		t.Fatalf("total logs after in-flight = %d, want 2", stats2.Total)
+	}
+}
+
+func TestRenameAppNameTaken(t *testing.T) {
+	svc, _, _, collectorName, _ := setupTestService(t)
+	ctx := t.Context()
+
+	cfg := types.CollectorConfig{}
+	if err := cfg.AddApp("alpha", types.SourceSpec{
+		Type:   "journalctl",
+		Params: map[string]string{"unit": "alpha.service"},
+	}, types.ParserSpec{
+		Type:   "json",
+		Params: map[string]string{"level_field": "level", "message_field": "msg", "timestamp_field": "time", "timestamp_format": "2006-01-02T15:04:05"},
+	}); err != nil {
+		t.Fatalf("add alpha: %v", err)
+	}
+	if err := cfg.AddApp("beta", types.SourceSpec{
+		Type:   "journalctl",
+		Params: map[string]string{"unit": "beta.service"},
+	}, types.ParserSpec{
+		Type:   "json",
+		Params: map[string]string{"level_field": "level", "message_field": "msg", "timestamp_field": "time", "timestamp_format": "2006-01-02T15:04:05"},
+	}); err != nil {
+		t.Fatalf("add beta: %v", err)
+	}
+	raw, err := json.Marshal(&cfg)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if err := svc.SaveCollectorConfig(ctx, collectorName, string(raw)); err != nil {
+		t.Fatalf("save config: %v", err)
+	}
+
+	err = svc.RenameApp(ctx, collectorName, "alpha", "beta")
+	if !errors.Is(err, ErrAppNameTaken) {
+		t.Fatalf("expected ErrAppNameTaken, got %v", err)
+	}
+}
+
+func TestRenameAppNotFound(t *testing.T) {
+	svc, _, _, collectorName, _ := setupTestService(t)
+	ctx := t.Context()
+
+	cfg := types.CollectorConfig{}
+	raw, err := json.Marshal(&cfg)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if err := svc.SaveCollectorConfig(ctx, collectorName, string(raw)); err != nil {
+		t.Fatalf("save config: %v", err)
+	}
+
+	err = svc.RenameApp(ctx, collectorName, "ghost", "new-ghost")
+	if !errors.Is(err, ErrAppNotFound) {
+		t.Fatalf("expected ErrAppNotFound, got %v", err)
+	}
+}
+
+func TestRenameAppCollectorNotFound(t *testing.T) {
+	svc, _, _, _, _ := setupTestService(t)
+	err := svc.RenameApp(t.Context(), "no-such", "old", "new")
+	if !errors.Is(err, ErrCollectorNotFound) {
+		t.Fatalf("expected ErrCollectorNotFound, got %v", err)
 	}
 }
 

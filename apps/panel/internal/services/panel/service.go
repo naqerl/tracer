@@ -29,6 +29,7 @@ var (
 	ErrLogNotFound       = errors.New("log not found")
 	ErrAccessDenied      = errors.New("access denied")
 	ErrAppNoSource       = errors.New("app has no log source or uptime check: nothing to do")
+	ErrAppNameTaken      = errors.New("app name already in use")
 )
 
 const (
@@ -340,6 +341,70 @@ func (s *Service) DeleteCollectorApp(ctx context.Context, collectorName, appName
 	return nil
 }
 
+// RenameApp renames an app within a collector: the collector config, the app
+// database file, and all panel-DB references are updated. The collector is
+// notified of the new config so it starts writing under the new name; the
+// browser receives a redirect to the updated URL.
+func (s *Service) RenameApp(ctx context.Context, collectorName, oldName, newName string) error {
+	if err := domain.ValidateCollectorName(collectorName); err != nil {
+		return fmt.Errorf("invalid collector name: %w", err)
+	}
+	if err := domain.ValidateAppName(oldName); err != nil {
+		return fmt.Errorf("invalid app name: %w", err)
+	}
+	if err := domain.ValidateAppName(newName); err != nil {
+		return fmt.Errorf("invalid app name: %w", err)
+	}
+
+	existing, err := s.FetchCollectorConfig(ctx, collectorName)
+	if err != nil {
+		return fmt.Errorf("could not load config: %w", err)
+	}
+	if existing == "" {
+		return ErrCollectorNotFound
+	}
+
+	var cfg sharedtypes.CollectorConfig
+	if err := json.Unmarshal([]byte(existing), &cfg); err != nil {
+		return fmt.Errorf("invalid stored config: %w", err)
+	}
+
+	oldFound, newTaken := false, false
+	for _, app := range cfg.Apps {
+		if app.Name == oldName {
+			oldFound = true
+		}
+		if app.Name == newName {
+			newTaken = true
+		}
+	}
+	if !oldFound {
+		return ErrAppNotFound
+	}
+	if newTaken {
+		return ErrAppNameTaken
+	}
+
+	if err := cfg.RenameApp(oldName, newName); err != nil {
+		return fmt.Errorf("could not rename app in config: %w", err)
+	}
+	renamed, err := json.Marshal(&cfg)
+	if err != nil {
+		return fmt.Errorf("could not marshal renamed config: %w", err)
+	}
+
+	if _, err := s.dbManager.RenameAppDB(collectorName, oldName, newName); err != nil {
+		return fmt.Errorf("could not rename app database: %w", err)
+	}
+	if err := s.SaveCollectorConfig(ctx, collectorName, string(renamed)); err != nil {
+		return fmt.Errorf("could not save renamed config: %w", err)
+	}
+	if err := s.userSvc.RenameAppInPanelDB(ctx, collectorName, oldName, newName); err != nil {
+		return fmt.Errorf("could not update panel references: %w", err)
+	}
+	return nil
+}
+
 // GuessFormatAndSave sends a format guess request to the collector via
 // WebSocket, builds an app config from the result, saves it, and pushes
 // the updated config to the collector. Returns an error on failure.
@@ -606,6 +671,7 @@ func (r ListCollectorAppsRequest) Validate() error {
 type CollectorApp struct {
 	Name            string
 	HasUptime       bool
+	HasLogSource    bool
 	UptimePercent   float64
 	UptimePeriods   int
 	ErrorCount      int64
@@ -669,10 +735,11 @@ func (s *Service) ListCollectorAppsWithStats(ctx context.Context, req ListCollec
 	results := make(chan indexedApp, len(apps))
 	intervals := s.appHealthIntervals(ctx, req.CollectorName, apps)
 	hasHealth := s.appHasHealthCheck(ctx, req.CollectorName, apps)
+	hasLogSource := s.appHasLogSource(ctx, req.CollectorName, apps)
 	var wg sync.WaitGroup
 	for i, app := range apps {
 		wg.Go(func() {
-			results <- indexedApp{idx: i, app: s.appStats(ctx, req.CollectorName, app, req.Since, intervals[app], hasHealth[app])}
+			results <- indexedApp{idx: i, app: s.appStats(ctx, req.CollectorName, app, req.Since, intervals[app], hasHealth[app], hasLogSource[app])}
 		})
 	}
 	go func() {
@@ -729,8 +796,8 @@ func filterAccessibleApps(access user.AccessPolicy, collectorName string, apps [
 }
 
 // appStats reads the uptime percentage and error count for a single app.
-func (s *Service) appStats(ctx context.Context, collectorName, appName string, since time.Time, interval time.Duration, hasHealth bool) CollectorApp {
-	app := CollectorApp{Name: appName, Interval: interval, HasUptime: hasHealth}
+func (s *Service) appStats(ctx context.Context, collectorName, appName string, since time.Time, interval time.Duration, hasHealth, hasLogSource bool) CollectorApp {
+	app := CollectorApp{Name: appName, Interval: interval, HasUptime: hasHealth, HasLogSource: hasLogSource}
 
 	queries, err := s.queriesForApp(collectorName, appName)
 	if errors.Is(err, ErrAppNotFound) {
@@ -907,6 +974,29 @@ func (s *Service) appHasHealthCheck(ctx context.Context, collectorName string, a
 		hasHealth[spec.Name] = ok
 	}
 	return hasHealth
+}
+
+// appHasLogSource reports whether each app has a log source configured.
+func (s *Service) appHasLogSource(ctx context.Context, collectorName string, apps []string) map[string]bool {
+	hasLogSource := make(map[string]bool, len(apps))
+
+	var cfg sharedtypes.CollectorConfig
+	raw, err := s.FetchCollectorConfig(ctx, collectorName)
+	if err != nil {
+		return hasLogSource
+	}
+	if raw == "" {
+		return hasLogSource
+	}
+	if err := json.Unmarshal([]byte(raw), &cfg); err != nil {
+		return hasLogSource
+	}
+
+	for _, spec := range cfg.Apps {
+		_, ok := spec.SourceSpec()
+		hasLogSource[spec.Name] = ok
+	}
+	return hasLogSource
 }
 
 type AppHealth struct {

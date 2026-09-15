@@ -116,6 +116,42 @@ func TestCreateAppSavesHealthOnly(t *testing.T) {
 	}
 }
 
+func TestAppsGridShowsLogsNotConfiguredForHealthOnlyApp(t *testing.T) {
+	handler, token, _, _, _, _ := newServerWithGuesser(t, nil)
+
+	rr := postApp(t, handler, token, url.Values{
+		"name":            {"uptime-only"},
+		"url":             {"https://status.example.com"},
+		"interval":        {"60s"},
+		"expected_status": {"200"},
+	})
+	if rr.Code != http.StatusOK {
+		t.Fatalf("create status = %d body %s", rr.Code, rr.Body.String())
+	}
+
+	grid := httptest.NewRequest(http.MethodGet, "/panel/collectors/demo/apps", nil)
+	grid.AddCookie(&http.Cookie{Name: "tracer_session", Value: token})
+	gridRR := httptest.NewRecorder()
+	handler.ServeHTTP(gridRR, grid)
+	if gridRR.Code != http.StatusOK {
+		t.Fatalf("expected 200 for apps grid, got %d", gridRR.Code)
+	}
+	body := gridRR.Body.String()
+
+	if !strings.Contains(body, "uptime-only") {
+		t.Fatalf("expected health-only app card in grid, got %q", body)
+	}
+	if !strings.Contains(body, "logs are not configured") {
+		t.Fatalf("expected 'logs are not configured' on health-only card, got %q", body)
+	}
+
+	// The seeded myapp with a log must keep its error count instead of the
+	// not-configured hint.
+	if !strings.Contains(body, `<span class="text-fg-secondary">errors</span> <span class="text-fg">1</span>`) {
+		t.Fatalf("expected logged app to show its error count, got %q", body)
+	}
+}
+
 func TestCreateAppSavesLogsOnly(t *testing.T) {
 	handler, token, _, _, _, panelService := newServerWithGuesser(t, nil)
 
@@ -205,6 +241,54 @@ func TestUpdateAppURLOnlyDoesNotDropExistingSource(t *testing.T) {
 	}
 	if app.Health == nil || app.Health.Params["url"] != "https://url-only.example.com/health" {
 		t.Fatalf("health = %+v", app.Health)
+	}
+}
+
+func TestRenameAppRedirectsAndMigratesData(t *testing.T) {
+	handler, token, _, ingestService, _, panelService := newServerWithGuesser(t, nil)
+
+	create := postApp(t, handler, token, jsonSourceForm("renameme", "renameme.service", ""))
+	if create.Code != http.StatusOK {
+		t.Fatalf("create status = %d body %s", create.Code, create.Body.String())
+	}
+
+	if _, err := ingestService.StoreLog(t.Context(), ingestsvc.StoreLogRequest{
+		CollectorName: "demo",
+		AppName:       "renameme",
+		Entry:         types.LogEntry{Level: types.LevelError, Message: "pre-rename", Timestamp: time.Now()},
+	}); err != nil {
+		t.Fatalf("seed log: %v", err)
+	}
+
+	form := jsonSourceForm("renamednew", "renamednew.service", "https://new.example.com/health")
+	rr := putApp(t, handler, token, "renameme", form)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("rename status = %d body %s", rr.Code, rr.Body.String())
+	}
+	if got := rr.Header().Get("HX-Redirect"); got != "/panel/collectors/demo/apps/renamednew" {
+		t.Fatalf("HX-Redirect = %q, want /panel/collectors/demo/apps/renamednew", got)
+	}
+
+	raw, err := panelService.FetchCollectorConfig(t.Context(), "demo")
+	if err != nil {
+		t.Fatalf("fetch config: %v", err)
+	}
+	var cfg types.CollectorConfig
+	if err := json.Unmarshal([]byte(raw), &cfg); err != nil {
+		t.Fatalf("unmarshal config: %v", err)
+	}
+	if _, ok := cfg.GetApp("renameme"); ok {
+		t.Fatal("old app name must not remain in config")
+	}
+	newApp, ok := cfg.GetApp("renamednew")
+	if !ok {
+		t.Fatal("new app name must exist in config")
+	}
+	if newApp.Source == nil || newApp.Source.Params["unit"] != "renamednew.service" {
+		t.Fatalf("source not migrated: %+v", newApp.Source)
+	}
+	if newApp.Health == nil || newApp.Health.Params["url"] != "https://new.example.com/health" {
+		t.Fatalf("health not migrated: %+v", newApp.Health)
 	}
 }
 

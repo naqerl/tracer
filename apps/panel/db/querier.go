@@ -116,6 +116,8 @@ type Querier interface {
 	RecalculateLogGroupCounters(ctx context.Context) error
 	RefreshSession(ctx context.Context, arg RefreshSessionParams) error
 	RemoveAllNotifierSubscriptions(ctx context.Context, notifierID int64) error
+	RenameAppAccess(ctx context.Context, arg RenameAppAccessParams) error
+	RenameNotifierSubscription(ctx context.Context, arg RenameNotifierSubscriptionParams) error
 	RevokeAppAccess(ctx context.Context, arg RevokeAppAccessParams) error
 	SaveHealthCheck(ctx context.Context, arg SaveHealthCheckParams) error
 	SaveHealthPeriod(ctx context.Context, arg SaveHealthPeriodParams) error

@@ -43,6 +43,11 @@ VALUES (?, ?, ?);
 DELETE FROM notifier_subscription
 WHERE notifier_id = ?;
 
+-- name: RenameNotifierSubscription :exec
+UPDATE notifier_subscription
+SET app_name = sqlc.arg(new_name)
+WHERE collector_name = sqlc.arg(collector_name) AND app_name = sqlc.arg(old_name);
+
 -- name: GetMatchingNotifiers :many
 -- Returns all enabled notifiers that match the given collector and app.
 -- Handles four levels of matching:

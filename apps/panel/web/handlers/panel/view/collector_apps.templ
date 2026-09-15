@@ -12,6 +12,7 @@ type CollectorAppsProps struct {
 type AppView struct {
 	Name            string
 	HasUptime       bool
+	HasLogSource    bool
 	Bars            []UptimeBarView
 	ErrorCount      string
 	ErrorTrend      string
@@ -60,6 +61,8 @@ templ AppCard(collectorName string, app AppView, loading bool) {
 						<span class="whitespace-nowrap value-breath">
 							<span class="text-fg-secondary">errors</span> <span class="text-fg">{ app.ErrorCount }</span>
 						</span>
+					} else if !app.HasLogSource {
+						<span class="whitespace-nowrap text-xs text-fg-secondary">logs are not configured</span>
 					}
 					if app.LastUpdate.Class == "text-red-400" {
 						<span class="whitespace-nowrap value-breath">

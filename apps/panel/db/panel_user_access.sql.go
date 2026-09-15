@@ -61,6 +61,23 @@ func (q *Queries) GrantAppAccess(ctx context.Context, arg GrantAppAccessParams) 
 	return err
 }
 
+const renameAppAccess = `-- name: RenameAppAccess :exec
+UPDATE access_policy
+SET app_name = ?1
+WHERE collector_name = ?2 AND app_name = ?3
+`
+
+type RenameAppAccessParams struct {
+	NewName       string
+	CollectorName string
+	OldName       string
+}
+
+func (q *Queries) RenameAppAccess(ctx context.Context, arg RenameAppAccessParams) error {
+	_, err := q.db.ExecContext(ctx, renameAppAccess, arg.NewName, arg.CollectorName, arg.OldName)
+	return err
+}
+
 const revokeAppAccess = `-- name: RevokeAppAccess :exec
 DELETE FROM access_policy
 WHERE user_id = ? AND collector_name = ? AND app_name = ?

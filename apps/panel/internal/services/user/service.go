@@ -133,6 +133,29 @@ func (s *Service) RevokeAccess(ctx context.Context, userID int64, access AppAcce
 	})
 }
 
+// RenameAppInPanelDB rewrites an app's references in access policies and
+// notifier subscriptions after the app is renamed.
+func (s *Service) RenameAppInPanelDB(ctx context.Context, collectorName, oldName, newName string) error {
+	return s.handle.Write(ctx, func(tx db.DBTX) error {
+		queries := db.New(tx)
+		if err := queries.RenameAppAccess(ctx, db.RenameAppAccessParams{
+			NewName:       newName,
+			CollectorName: collectorName,
+			OldName:       oldName,
+		}); err != nil {
+			return fmt.Errorf("could not rename app access: %w", err)
+		}
+		if err := queries.RenameNotifierSubscription(ctx, db.RenameNotifierSubscriptionParams{
+			NewName:       newName,
+			CollectorName: collectorName,
+			OldName:       oldName,
+		}); err != nil {
+			return fmt.Errorf("could not rename notifier subscription: %w", err)
+		}
+		return nil
+	})
+}
+
 // Create creates a new user (used by auth package)
 func (s *Service) Create(ctx context.Context, username, passwordHash string, isAdmin bool) (domain.User, error) {
 	var adminInt int64

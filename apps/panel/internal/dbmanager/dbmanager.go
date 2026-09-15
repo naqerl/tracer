@@ -28,6 +28,7 @@ type Manager struct {
 	mu            sync.RWMutex
 	collectorsDir string
 	appDBs        map[string]*DBHandle // key: collector\x00app
+	appAliases    map[string]*DBHandle // renamed old key -> new handle
 	collectorDBs  map[string]*DBHandle // key: collector (for stats)
 
 	// dsnBuilder builds the DSN for a database path. Production uses
@@ -45,6 +46,7 @@ func New(baseDir string) (*Manager, error) {
 	return &Manager{
 		collectorsDir: collectorsDir,
 		appDBs:        make(map[string]*DBHandle),
+		appAliases:    make(map[string]*DBHandle),
 		collectorDBs:  make(map[string]*DBHandle),
 		dsnBuilder:    buildDSN,
 	}, nil
@@ -120,6 +122,10 @@ func (m *Manager) GetAppDB(collectorName, appName string) (*DBHandle, error) {
 		m.mu.RUnlock()
 		return h, nil
 	}
+	if h, ok := m.appAliases[key]; ok {
+		m.mu.RUnlock()
+		return h, nil
+	}
 	m.mu.RUnlock()
 
 	// Check if DB file exists on disk
@@ -150,6 +156,8 @@ func (m *Manager) CreateAppDB(collectorName, appName string) (*DBHandle, error) 
 	if h, ok := m.appDBs[key]; ok {
 		return h, nil
 	}
+	// A fresh app with this name supersedes any rename alias.
+	delete(m.appAliases, key)
 
 	appsDir := filepath.Join(m.collectorsDir, collectorName, "apps")
 	if err := os.MkdirAll(appsDir, 0755); err != nil {
@@ -198,6 +206,31 @@ func (m *Manager) openAppDB(collectorName, appName string) (*DBHandle, error) {
 	return h, nil
 }
 
+// openUnlockedAppDB opens an existing app database without taking the manager
+// lock; the caller must have already acquired it.
+func (m *Manager) openUnlockedAppDB(collectorName, appName string) (*DBHandle, error) {
+	dbPath := m.appDBPath(collectorName, appName)
+	sqlDB, err := openSQLiteDB(m.dsnBuilder(dbPath))
+	if err != nil {
+		return nil, fmt.Errorf("open database for app %s/%s: %w", collectorName, appName, err)
+	}
+	return NewDBHandle(sqlDB, collectorName+"/"+appName), nil
+}
+
+// openRenamedAppDB opens the freshly renamed app database and applies
+// migrations. The caller must hold the manager lock.
+func (m *Manager) openRenamedAppDB(collectorName, appName string) (*DBHandle, error) {
+	h, err := m.openUnlockedAppDB(collectorName, appName)
+	if err != nil {
+		return nil, err
+	}
+	if err := m.runAppMigrations(h.pool); err != nil {
+		h.Close()
+		return nil, fmt.Errorf("run migrations for app %s/%s: %w", collectorName, appName, err)
+	}
+	return h, nil
+}
+
 // DeleteAppDB closes and removes the database for a collector's app,
 // including WAL and shared-memory sidecars.
 func (m *Manager) DeleteAppDB(collectorName, appName string) error {
@@ -218,6 +251,9 @@ func (m *Manager) DeleteAppDB(collectorName, appName string) error {
 		}
 		delete(m.appDBs, key)
 	}
+	// An alias for a renamed app shares the new app's handle; only the
+	// mapping is removed, never the handle.
+	delete(m.appAliases, key)
 	m.mu.Unlock()
 
 	dbPath := m.appDBPath(collectorName, appName)
@@ -228,6 +264,70 @@ func (m *Manager) DeleteAppDB(collectorName, appName string) error {
 	}
 	slog.Info("Deleted database for app", "collector_name", collectorName, "app_name", appName, "path", dbPath)
 	return nil
+}
+
+// RenameAppDB renames a collector's app database from oldName to newName. All
+// writes queued before the call complete before any file is moved, so no
+// in-flight log is lost or stranded in the old database. Logs that later
+// arrive under the old name are routed to the renamed database through an
+// alias until the name is reused or the app is deleted.
+func (m *Manager) RenameAppDB(collectorName, oldName, newName string) (*DBHandle, error) {
+	if err := domain.ValidateCollectorName(collectorName); err != nil {
+		return nil, fmt.Errorf("invalid collector name: %w", err)
+	}
+	if err := domain.ValidateAppName(oldName); err != nil {
+		return nil, fmt.Errorf("invalid app name: %w", err)
+	}
+	if err := domain.ValidateAppName(newName); err != nil {
+		return nil, fmt.Errorf("invalid app name: %w", err)
+	}
+
+	oldKey := appDBKey(collectorName, oldName)
+	newKey := appDBKey(collectorName, newName)
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if _, ok := m.appDBs[newKey]; ok {
+		return nil, fmt.Errorf("app %s/%s already exists", collectorName, newName)
+	}
+	newDBPath := m.appDBPath(collectorName, newName)
+	if _, err := os.Stat(newDBPath); err == nil {
+		return nil, fmt.Errorf("app database %s/%s already exists", collectorName, newName)
+	}
+
+	h, ok := m.appDBs[oldKey]
+	if !ok {
+		if _, err := os.Stat(m.appDBPath(collectorName, oldName)); errors.Is(err, os.ErrNotExist) {
+			return nil, ErrDBNotFound
+		}
+		var err error
+		h, err = m.openUnlockedAppDB(collectorName, oldName)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if err := h.DrainAndClose(); err != nil {
+		return nil, fmt.Errorf("could not drain app database %s/%s: %w", collectorName, oldName, err)
+	}
+	delete(m.appDBs, oldKey)
+
+	oldDBPath := m.appDBPath(collectorName, oldName)
+	for _, ext := range []string{"", "-wal", "-shm"} {
+		if err := os.Rename(oldDBPath+ext, newDBPath+ext); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return nil, fmt.Errorf("could not rename app database %s/%s: %w", collectorName, oldName, err)
+		}
+	}
+
+	newHandle, err := m.openRenamedAppDB(collectorName, newName)
+	if err != nil {
+		return nil, err
+	}
+	m.appDBs[newKey] = newHandle
+	m.appAliases[oldKey] = newHandle
+	slog.Info("Renamed database for app", "collector_name", collectorName, "old_app_name", oldName, "new_app_name", newName, "path", newDBPath)
+	return newHandle, nil
 }
 
 // GetCollectorDB returns the stats DBHandle for a collector.

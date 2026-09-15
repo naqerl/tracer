@@ -129,6 +129,8 @@ func (h *DBHandle) submit(ctx context.Context, fn func(db.DBTX) error) error {
 
 	select {
 	case h.wch <- writeRequest{fn: fn, done: done}:
+	case <-h.closed:
+		return errWriteQueueClosed
 	case <-ctx.Done():
 		return ctx.Err()
 	}
@@ -136,6 +138,8 @@ func (h *DBHandle) submit(ctx context.Context, fn func(db.DBTX) error) error {
 	select {
 	case err := <-done:
 		return err
+	case <-h.closed:
+		return errWriteQueueClosed
 	case <-ctx.Done():
 		return ctx.Err()
 	}
@@ -214,6 +218,38 @@ func (h *DBHandle) processRequest(req writeRequest) {
 	case req.done <- nil:
 	default:
 	}
+}
+
+// DrainAndClose waits for all writes already submitted to the queue to
+// complete, then shuts down the worker and closes the pool. Unlike Close, it
+// drops no in-flight write: every request queued before the call is committed
+// before the pool is closed. Writes submitted after the call fail with
+// errWriteQueueClosed.
+func (h *DBHandle) DrainAndClose() error {
+	h.mu.Lock()
+	workerGID := h.workerGID
+	closed := h.isClosed()
+	h.mu.Unlock()
+
+	if workerGID != 0 && goroutineID() == workerGID {
+		return fmt.Errorf("db %s: %w", h.name, ErrWriteDeadlock)
+	}
+	if !closed {
+		h.once.Do(func() {
+			h.wg.Go(h.workerLoop)
+		})
+
+		done := make(chan error, 1)
+		select {
+		case h.wch <- writeRequest{fn: func(db.DBTX) error { return nil }, done: done}:
+		case <-h.closed:
+		}
+		select {
+		case <-done:
+		case <-h.closed:
+		}
+	}
+	return h.Close()
 }
 
 // Close shuts down the write worker and closes the pool.

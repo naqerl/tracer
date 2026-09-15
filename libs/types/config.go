@@ -299,6 +299,34 @@ func (c *CollectorConfig) ClearAppHealth(name string) error {
 	return fmt.Errorf("app %s not found", name)
 }
 
+// RenameApp renames an app from oldName to newName, updating the app spec
+// name and its associated parser ID to match.
+func (c *CollectorConfig) RenameApp(oldName, newName string) error {
+	for i := range c.Apps {
+		if c.Apps[i].Name != oldName {
+			continue
+		}
+		for _, other := range c.Apps {
+			if other.Name == newName {
+				return fmt.Errorf("app name %q already exists", newName)
+			}
+		}
+		c.Apps[i].Name = newName
+		if c.Apps[i].ParserID != "" {
+			oldPID := c.Apps[i].ParserID
+			parserSpec, ok := c.Parsers[oldPID]
+			if ok {
+				newPID := parserSpec.Type + "-" + strings.ReplaceAll(newName, " ", "-")
+				c.Parsers[newPID] = parserSpec
+				delete(c.Parsers, oldPID)
+				c.Apps[i].ParserID = newPID
+			}
+		}
+		return nil
+	}
+	return fmt.Errorf("app %s not found", oldName)
+}
+
 // ClearAppSource removes the log source and parser from an existing app.
 func (c *CollectorConfig) ClearAppSource(name string) error {
 	for i := range c.Apps {
