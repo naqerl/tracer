@@ -3,8 +3,8 @@ package panel
 import "testing"
 
 func TestErrorCountText(t *testing.T) {
-	if got := errorCountText(false, 3); got != "N/A" {
-		t.Fatalf("errorCountText(false, 3) = %q, want N/A", got)
+	if got := errorCountText(false, 3); got != "" {
+		t.Fatalf("errorCountText(false, 3) = %q, want empty", got)
 	}
 	if got := errorCountText(true, 0); got != "0" {
 		t.Fatalf("errorCountText(true, 0) = %q, want 0", got)

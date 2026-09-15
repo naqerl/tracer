@@ -753,11 +753,11 @@ func uptimePercentClass(v float64, periodCount int) string {
 	return "text-fg-secondary"
 }
 
-// errorCountText renders the app-grid error count, or "N/A" when the app
-// never received logs.
+// errorCountText renders the app-grid error count, or "" when the app
+// never received logs and the count must not be shown.
 func errorCountText(hasLogs bool, errorCount int64) string {
 	if !hasLogs {
-		return "N/A"
+		return ""
 	}
 	return strconv.FormatInt(errorCount, 10)
 }

@@ -159,14 +159,14 @@ func StatsRow(stats *CollectorStatsView, collectorName string) templ.Component {
 					}()
 				}
 				ctx = templ.InitializeContext(ctx)
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "more")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "More")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				return nil
 			})
 			templ_7745c5c3_Err = templates.ForwardAnchor("/panel/collectors/"+collectorName+"/resources",
-				"text-fg-secondary hover:text-fg cursor-pointer ml-auto",
+				"text-fg hover:text-fg cursor-pointer",
 				"View metrics history").Render(templ.WithChildren(ctx, templ_7745c5c3_Var11), templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
@@ -192,14 +192,14 @@ func StatsRow(stats *CollectorStatsView, collectorName string) templ.Component {
 					}()
 				}
 				ctx = templ.InitializeContext(ctx)
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "more")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "More")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				return nil
 			})
 			templ_7745c5c3_Err = templates.ForwardAnchor("/panel/collectors/"+collectorName+"/resources",
-				"text-xs text-fg-secondary hover:text-fg cursor-pointer",
+				"text-xs text-fg hover:text-fg cursor-pointer",
 				"View metrics history").Render(templ.WithChildren(ctx, templ_7745c5c3_Var12), templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err

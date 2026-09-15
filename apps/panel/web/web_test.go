@@ -232,7 +232,7 @@ func TestAutoRefreshAppsGridBakesStats(t *testing.T) {
 	if !strings.Contains(body, "errors") {
 		t.Fatalf("expected baked errors in grid, got %q", body)
 	}
-	if !strings.Contains(body, `<span class="text-xs text-fg whitespace-nowrap value-breath">errors 1</span>`) {
+	if !strings.Contains(body, `<span class="text-fg-secondary">errors</span> <span class="text-fg">1</span>`) {
 		t.Fatalf("expected baked absolute error count of 1, got %q", body)
 	}
 	// The seeded error count must carry the breath animation (it refreshes
@@ -722,7 +722,7 @@ func TestMarkdownAcceptDashboard(t *testing.T) {
 	}
 	// The Metrics link carries its href natively, so the markdown keeps it
 	// as a link. Its arrow is markdown-exclude, so the label stays clean.
-	if !strings.Contains(body, `[more](/panel/collectors/demo/resources)`) {
+	if !strings.Contains(body, `[More](/panel/collectors/demo/resources)`) {
 		t.Fatalf("expected more link in converted markdown, got:\n%s", body)
 	}
 	if rr.Header().Get("Content-Length") != "" {
@@ -796,7 +796,7 @@ func TestMarkdownAcceptCollectorPage(t *testing.T) {
 	}
 	// The stats area renders its empty state (the seeded collector has no
 	// stats) plus the Metrics link; both must survive conversion.
-	if !strings.Contains(body, "No stats available") || !strings.Contains(body, "more") {
+	if !strings.Contains(body, "No stats available") || !strings.Contains(body, "More") {
 		t.Fatalf("expected stats labels in converted markdown, got:\n%s", body)
 	}
 	// The apps grid is hx-get loaded; the anchor conversion turns the

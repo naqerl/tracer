@@ -93,32 +93,35 @@ type CollectorSectionProps struct {
 // CollectorSection renders a collector's header, stats row, and apps grid.
 templ CollectorSection(props CollectorSectionProps) {
 	<div class="mb-10">
-		<!-- Collector Header -->
-		<div class="flex items-center mb-2">
-			if props.HeaderHref != "" {
-				<a href={ props.HeaderHref } class="text-xl font-semibold hover:opacity-80 transition-opacity">
-					{ props.Name }
-				</a>
-			} else {
-				<h2 class="text-xl font-semibold">{ props.Name }</h2>
-			}
-			<div
-				class="ml-2"
-				hx-get={ "/panel/collectors/" + props.Name + "/last-update" }
-				hx-trigger="load, every 15s"
-				hx-swap="innerHTML"
-			></div>
-			<a href={ "/panel/collectors/" + props.Name + "/apps/new" } class="ml-auto text-fg-secondary hover:text-fg transition-colors" aria-label="Add app" title="Add app">
+		<div class="flex items-center">
+			<div class="flex-1 min-w-0">
+				<div class="flex items-center">
+					if props.HeaderHref != "" {
+						<a href={ props.HeaderHref } class="text-xl font-semibold hover:opacity-80 transition-opacity">
+							{ props.Name }
+						</a>
+					} else {
+						<h2 class="text-xl font-semibold">{ props.Name }</h2>
+					}
+					<div
+						class="ml-2"
+						hx-get={ "/panel/collectors/" + props.Name + "/last-update" }
+						hx-trigger="load, every 15s"
+						hx-swap="innerHTML"
+					></div>
+				</div>
+				<!-- Stats Row -->
+				<div
+					hx-get={ "/panel/collectors/" + props.Name + "/stats" }
+					hx-trigger="every 15s"
+					hx-swap="innerHTML"
+				>
+					@StatsRow(props.Stats, props.Name)
+				</div>
+			</div>
+			<a href={ "/panel/collectors/" + props.Name + "/apps/new" } class="ml-4 shrink-0 text-fg-secondary hover:text-fg transition-colors" aria-label="Add an app" title="Add an app">
 				<img src="/static/img/plus.svg" alt="" class="w-5 h-5"/>
 			</a>
-		</div>
-		<!-- Stats Row -->
-		<div
-			hx-get={ "/panel/collectors/" + props.Name + "/stats" }
-			hx-trigger="every 15s"
-			hx-swap="innerHTML"
-		>
-			@StatsRow(props.Stats, props.Name)
 		</div>
 		<!-- Apps Grid -->
 		<div
