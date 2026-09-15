@@ -49,9 +49,7 @@ templ LogGroupEntries(props LogGroupEntriesProps) {
 					<!-- Card Body with Context -->
 					<div class="p-3 overflow-x-auto">
 						if entry.Context.Valid {
-							<div class="min-w-max">
-								@templates.JSONViewer(entry.Context.String, entry.Context.Valid)
-							</div>
+							@templates.JSONViewer(entry.Context.String, entry.Context.Valid)
 						} else {
 							<span class="text-sm text-fg-secondary/60 italic">No context data</span>
 						}

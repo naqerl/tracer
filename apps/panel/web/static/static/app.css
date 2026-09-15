@@ -146,3 +146,19 @@
 		font-size: 0.75rem;
 	}
 }
+
+/* Prevent page-level overflow from long content on small screens. */
+main {
+	overflow-x: hidden;
+}
+
+/* Log group table message truncation */
+#logs-table td:first-of-type {
+	min-width: 0;
+}
+
+/* Log entry cards: constrain width and allow horizontal scroll for
+   wide JSON payloads without breaking the page layout. */
+#log-entries-container > a > div {
+	max-width: 100%;
+}

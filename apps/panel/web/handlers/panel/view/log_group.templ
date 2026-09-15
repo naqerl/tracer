@@ -90,9 +90,9 @@ func levelDotClass(level string) string {
 
 // LogMessage renders a log message as the page heading with a level dot.
 templ LogMessage(message string, level string) {
-	<div class="mb-2 flex">
+	<div class="mb-2 flex min-w-0">
 		<span class={ "inline-block w-2 h-2 rounded-full mr-3 mt-2 shrink-0 " + levelDotClass(level) }></span>
-		<h1 class="text-xl font-medium">{ message }</h1>
+		<h1 class="text-xl font-medium truncate text-ellipsis overflow-hidden min-w-0 flex-1">{ message }</h1>
 	</div>
 }
 
