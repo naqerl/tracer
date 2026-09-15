@@ -72,16 +72,27 @@ templ App(props AppProps) {
 templ UptimePanel(uptime AppHealthView) {
 	<h2 class="text-lg font-medium mb-4">Uptime <span class="value-breath">{ uptime.UptimeText }</span></h2>
 	<div class="mb-6">
-		@UptimeBars(uptime.Bars, "lg")
+		@UptimeBars(uptime.Bars, "lg", "bars")
 	</div>
 }
 
-// UptimeBars renders uptime bar visualizations. Bars carrying the uptime-bar
-// class animate their wave with a per-bar inline delay so one sweep crosses
-// the whole row; bars without health data stay static.
-templ UptimeBars(bars []UptimeBarView, size string) {
+// UptimeBars renders uptime visualizations. Units carrying the uptime-bar
+// class animate their wave with a per-unit inline delay so one sweep crosses
+// the whole row; units without health data stay static. The variant selects
+// the shape: "bars" renders vertical columns sized by the size prop, "dots"
+// renders fixed-size circles.
+templ UptimeBars(bars []UptimeBarView, size string, variant string) {
 	if len(bars) > 0 {
-		if size == "sm" {
+if variant == "dots" {
+			<div class="flex items-center gap-0.5">
+				for i, bar := range bars {
+					<div class={ bar.Class + " box-border rounded-full aspect-square flex-1 min-w-0" }
+						 style={ fmt.Sprintf("animation-delay: %.3fs", uptimeBarDelay(i, len(bars))) }
+						 title={ bar.Title }
+						 aria-label={ bar.Title }></div>
+				}
+			</div>
+		} else if size == "sm" {
 			<div class="flex items-end gap-1">
 				for i, bar := range bars {
 					<div class={ bar.Class + " box-border rounded-sm h-6 w-2" }

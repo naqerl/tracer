@@ -27,51 +27,54 @@ type AppView struct {
 // height.
 templ AppCard(collectorName string, app AppView, loading bool) {
 	if loading {
-		<div class="block bg-bg-secondary p-4 relative animate-pulse" aria-hidden="true">
+		<div class="block bg-bg-secondary p-3 relative animate-pulse" aria-hidden="true">
 			<div class="flex flex-col gap-2">
-				<div class="flex items-center justify-between">
+				<div class="flex flex-col gap-1">
 					<div class="h-6 w-24 rounded bg-fg/10"></div>
-					<div class="h-4 w-16 rounded bg-fg/10"></div>
+					<div class="h-3 w-16 rounded bg-fg/10"></div>
 				</div>
-				<div class="flex items-end gap-1 overflow-hidden">
-					for j := 0; j < 37; j++ {
-						<div class="box-border rounded-sm h-6 w-2 bg-fg/10"></div>
+				<div class="flex items-center gap-0.5 overflow-hidden">
+					for j := 0; j < 30; j++ {
+						<div class="box-border rounded-full aspect-square flex-1 min-w-0 bg-fg/10"></div>
 					}
 				</div>
 			</div>
 		</div>
 	} else {
-		<a href={ "/panel/collectors/" + collectorName + "/apps/" + app.Name } class="block bg-bg-secondary p-4 flex flex-col gap-2 hover:bg-bg-secondary/80 transition-all hover:-translate-y-0.5 relative">
-			<div class="flex items-center justify-between gap-2">
-				<div class="flex items-center gap-2 min-w-0">
-					<div class="font-medium truncate">{ app.Name }</div>
-				</div>
-				<div class="flex items-center gap-2 shrink-0">
+		<a href={ "/panel/collectors/" + collectorName + "/apps/" + app.Name } class="block bg-bg-secondary p-3 flex flex-col gap-2 hover:bg-bg-secondary/80 transition-all hover:-translate-y-0.5 relative">
+			<div class="flex flex-col min-w-0">
+				<div class="font-medium truncate">{ app.Name }</div>
+				<div class="flex items-center gap-2 text-xs min-w-0">
 					if app.ErrorTrend != "" {
-						<span class="text-xs whitespace-nowrap value-breath">
+						<span class="whitespace-nowrap value-breath">
 							<span class="text-fg-secondary">errors</span>
 							<span class={ app.ErrorTrendClass }>{ app.ErrorTrend }
 								if app.ErrorTrendUp {
-<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="inline-block align-middle"><path d="M13 5H19V11"/><path d="M19 5L5 19"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="inline-block align-middle"><path d="M13 5H19V11"/><path d="M19 5L5 19"/></svg>
 } else {
-<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="inline-block align-middle"><path d="M19 13V19H13"/><path d="M5 5L19 19"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="inline-block align-middle"><path d="M19 13V19H13"/><path d="M5 5L19 19"/></svg>
 }
 							</span>
 						</span>
 					} else if app.ErrorCount != "" {
-						<span class="text-xs whitespace-nowrap value-breath">
+						<span class="whitespace-nowrap value-breath">
 							<span class="text-fg-secondary">errors</span> <span class="text-fg">{ app.ErrorCount }</span>
+						</span>
+					}
+					if app.LastUpdate.Class == "text-red-400" {
+						<span class="whitespace-nowrap value-breath">
+							<span class="text-xs text-fg-secondary">last log</span> <span class="text-xs text-red-400/80">{ app.LastUpdate.Text }</span>
 						</span>
 					}
 				</div>
 			</div>
 			<div class="relative">
 				if app.HasUptime {
-					@UptimeBars(app.Bars, "sm")
+					@UptimeBars(app.Bars, "sm", "dots")
 				} else {
 					<div class="relative">
 						<div class="blur-sm pointer-events-none">
-							@UptimeBars(app.Bars, "sm")
+							@UptimeBars(app.Bars, "sm", "dots")
 						</div>
 						<div class="absolute inset-0 flex items-center justify-center">
 							<span class="text-xs text-fg-secondary">uptime is not configured</span>
@@ -79,9 +82,6 @@ templ AppCard(collectorName string, app AppView, loading bool) {
 					</div>
 				}
 			</div>
-			if app.LastUpdate.Class == "text-red-400" {
-				<span class="absolute top-1 right-4 text-xs whitespace-nowrap text-red-400 value-breath">last log { app.LastUpdate.Text }</span>
-			}
 		</a>
 	}
 }
@@ -93,15 +93,15 @@ templ CollectorAppsSkeleton(count int) {
 	if count > 0 {
 		<div class="apps-grid" aria-hidden="true">
 			for i := 0; i < count; i++ {
-				<div class="block bg-bg-secondary p-4 relative animate-pulse">
+				<div class="block bg-bg-secondary p-3 relative animate-pulse">
 					<div class="flex flex-col gap-2">
-						<div class="flex items-center justify-between">
+						<div class="flex flex-col gap-1">
 							<div class="h-6 w-24 rounded bg-fg/10"></div>
-							<div class="h-4 w-16 rounded bg-fg/10"></div>
+							<div class="h-3 w-16 rounded bg-fg/10"></div>
 						</div>
-						<div class="flex items-end gap-1 overflow-hidden">
-							for j := 0; j < 37; j++ {
-								<div class="box-border rounded-sm h-6 w-2 bg-fg/10"></div>
+						<div class="flex items-center gap-0.5 overflow-hidden">
+							for j := 0; j < 30; j++ {
+								<div class="box-border rounded-full aspect-square flex-1 min-w-0 bg-fg/10"></div>
 							}
 						</div>
 					</div>
