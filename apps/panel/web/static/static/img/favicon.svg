@@ -1,45 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="-560 -560 1120 1120">
-  <defs><style>.bg{fill:#1E1E1E}.central{fill:#0A0A0A;stroke:#808080;stroke-width:4.0}.outer{fill:#0A0A0A;stroke:#808080;stroke-width:3.0;stroke-opacity:0.60}.curve{fill:none;stroke:#808080;stroke-width:2.0;stroke-opacity:0.55}.label{fill:#EEEEEE;font-family:sans-serif;text-anchor:middle;dominant-baseline:middle}.app{fill:#808080;font-family:sans-serif;text-anchor:middle;dominant-baseline:middle;font-size:20px;font-weight:400;opacity:0.90}</style></defs>
-
-  <rect class="bg" x="-520" y="-520" width="1040" height="1040" rx="120"/>
-
-  <!-- bezier edges from the panel to each leaf -->
-  <path class="curve" d="M -65.0 -37.5 Q -163.8 -131.3 -294.4 -170.0"/>
-  <path class="curve" d="M -37.5 -65.0 Q -76.2 -195.6 -170.0 -294.4"/>
-  <path class="curve" d="M 0.0 -75.0 Q 31.8 -207.5 0.0 -340.0"/>
-  <path class="curve" d="M 37.5 -65.0 Q 131.3 -163.8 170.0 -294.4"/>
-  <path class="curve" d="M 65.0 -37.5 Q 195.6 -76.2 294.4 -170.0"/>
-  <path class="curve" d="M 0.0 75.0 Q -31.8 207.5 0.0 340.0"/>
-
-  <!-- central collector node -->
-  <g>
-    <circle class="central" r="75"/>
-    <text class="label" style="font-size:30;font-weight:700">collector</text>
-  </g>
-
-  <!-- surrounding app leaves -->
-  <g>
-    <circle class="outer" cx="-346.4" cy="-200.0" r="60"/>
-    <text class="app" x="-346.4" y="-200.0">app</text>
-  </g>
-  <g>
-    <circle class="outer" cx="-200.0" cy="-346.4" r="60"/>
-    <text class="app" x="-200.0" y="-346.4">app</text>
-  </g>
-  <g>
-    <circle class="outer" cx="0.0" cy="-400.0" r="60"/>
-    <text class="app" x="0.0" y="-400.0">app</text>
-  </g>
-  <g>
-    <circle class="outer" cx="200.0" cy="-346.4" r="60"/>
-    <text class="app" x="200.0" y="-346.4">app</text>
-  </g>
-  <g>
-    <circle class="outer" cx="346.4" cy="-200.0" r="60"/>
-    <text class="app" x="346.4" y="-200.0">app</text>
-  </g>
-  <g>
-    <circle class="outer" cx="0.0" cy="400.0" r="60"/>
-    <text class="app" x="0.0" y="400.0">panel</text>
-  </g>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" shape-rendering="crispEdges" role="img" aria-label="tracer">
+  <rect width="16" height="16" fill="#0a0a0a"/>
+  <rect x="2" y="2" width="10" height="3" fill="#ffffff"/>
+  <rect x="6" y="2" width="3" height="12" fill="#ffffff"/>
+  <rect x="13" y="11" width="3" height="3" fill="#2563eb"/>
 </svg>

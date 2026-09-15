@@ -1,157 +1,72 @@
-// Command gen-favicon renders the panel's favicon SVG from the topology graph
-// motif. The committed asset is regenerated output, not hand-edited SVG: change
-// the geometry constants in this program, run `make favicon`, and commit the
-// regenerated files. The apple-touch-icon PNG is rasterized from the SVG with
-// librsvg by the Makefile pipeline.
-//
-// Every coordinate in the output is derived from the constants below plus the
-// leaf angles: leaf centers sit on a shared reference circle so they line up
-// perfectly, and each bezier edge connects a leaf's perimeter to the panel's.
+// Command gen-favicon writes the panel favicon SVG and apple-touch PNG: a 16×16
+// crisp-edge letter T on a dark field with a blue accent square.
 package main
 
 import (
-	"bytes"
-	"fmt"
+	"image"
+	"image/color"
+	"image/png"
 	"log"
-	"math"
 	"os"
 )
 
 const (
-	// canvas
-	boxSize  = 1120.0
-	bgSize   = 1040.0
-	bgRadius = 120.0
-
-	// node geometry
-	refRadius   = 400.0 // circle the leaf centers sit on
-	panelRadius = 75.0
-	leafRadius  = 60.0
-
-	// stroke widths
-	strokePanel = 4.0
-	strokeLeaf  = 3.0
-	strokeCurve = 2.0
-
-	// styling
-	curveOpacity    = 0.55
-	leafStrokeAlpha = 0.60
-	leafTextOpacity = 0.90
-	collectorSize   = 30.0
-	leafSize        = 20.0
-
-	// bezier bend, shared with the live topology graph
-	bendFrac = 0.12
-	bendMax  = 40.0
+	grid    = 16
+	pngSize = 180
+	svgPath = "apps/panel/web/static/static/img/favicon.svg"
+	pngPath = "apps/panel/web/static/static/img/favicon.png"
 )
 
-// leaf is one of the surrounding nodes: its angle in degrees from +x with y-down
-// (matching SVG) and the label rendered on it.
-type leaf struct {
-	angle float64
-	label string
-}
+var (
+	bg    = color.RGBA{0x0A, 0x0A, 0x0A, 0xFF}
+	white = color.RGBA{0xFF, 0xFF, 0xFF, 0xFF}
+	blue  = color.RGBA{0x25, 0x63, 0xEB, 0xFF}
+)
 
-// leaves returns the six leaf nodes. The top five are fanned evenly across a
-// 120° arc centred on +y so they are symmetric and uniformly spaced; a sixth sits
-// directly below the panel and is labelled "panel".
-func leaves() []leaf {
-	const topArc, topLeaves = 120.0, 5
-	out := make([]leaf, 0, 6)
-	for i := 0; i < topLeaves; i++ {
-		angle := 90.0 + topArc/2 - float64(i)*topArc/float64(topLeaves-1)
-		out = append(out, leaf{angle: angle, label: "app"})
+const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" shape-rendering="crispEdges" role="img" aria-label="tracer">
+  <rect width="16" height="16" fill="#0a0a0a"/>
+  <rect x="2" y="2" width="10" height="3" fill="#ffffff"/>
+  <rect x="6" y="2" width="3" height="12" fill="#ffffff"/>
+  <rect x="13" y="11" width="3" height="3" fill="#2563eb"/>
+</svg>
+`
+
+func fill(img *image.RGBA, x, y, w, h int, c color.RGBA) {
+	for yy := y; yy < y+h; yy++ {
+		for xx := x; xx < x+w; xx++ {
+			img.SetRGBA(xx, yy, c)
+		}
 	}
-	return append(out, leaf{angle: 270.0, label: "panel"})
 }
 
-// pt is a point in the SVG coordinate space.
-type pt struct{ x, y float64 }
+func render(size int) *image.RGBA {
+	src := image.NewRGBA(image.Rect(0, 0, grid, grid))
+	fill(src, 0, 0, grid, grid, bg)
+	fill(src, 2, 2, 10, 3, white) // top bar
+	fill(src, 6, 2, 3, 12, white) // stem
+	fill(src, 13, 11, 3, 3, blue) // accent
 
-// polar places a point at radius on the circle at angle degrees from +x, y-down.
-func polar(angle, radius float64) pt {
-	r := angle * math.Pi / 180
-	return pt{radius * math.Cos(r), -radius * math.Sin(r)}
-}
-
-// fmtCoord renders a coordinate to one decimal, folding a negative zero to 0.0.
-func fmtCoord(v float64) string {
-	if math.Abs(v) < 0.05 {
-		return "0.0"
+	dst := image.NewRGBA(image.Rect(0, 0, size, size))
+	for y := 0; y < size; y++ {
+		for x := 0; x < size; x++ {
+			dst.SetRGBA(x, y, src.RGBAAt(x*grid/size, y*grid/size))
+		}
 	}
-	return fmt.Sprintf("%.1f", v)
-}
-
-// edge is a quadratic bezier from the panel perimeter to a leaf perimeter,
-// offset perpendicular to the segment midpoint (the topology graph's curve).
-type edge struct {
-	start, control, end pt
-}
-
-// bezierEdge builds the curved edge that joins a leaf to the central panel.
-func bezierEdge(leafAngle float64) edge {
-	dir := polar(leafAngle, 1) // unit vector pointing at the leaf
-	start := pt{dir.x * panelRadius, dir.y * panelRadius}
-	leaf := polar(leafAngle, refRadius)
-	end := pt{leaf.x - dir.x*leafRadius, leaf.y - dir.y*leafRadius}
-
-	mid := pt{(start.x + end.x) / 2, (start.y + end.y) / 2}
-	vx, vy := end.x-start.x, end.y-start.y
-	norm := math.Hypot(vx, vy)
-	bend := math.Min(bendMax, norm*bendFrac)
-	const direction = -1.0
-	control := pt{mid.x + direction*(vy/norm)*bend, mid.y - direction*(vx/norm)*bend}
-	return edge{start: start, control: control, end: end}
+	return dst
 }
 
 func main() {
-	leafNodes := leaves()
-	var edges []edge
-	var centers []pt
-	labels := make([]string, 0, len(leafNodes))
-	for _, l := range leafNodes {
-		edges = append(edges, bezierEdge(l.angle))
-		centers = append(centers, polar(l.angle, refRadius))
-		labels = append(labels, l.label)
-	}
-
-	var b bytes.Buffer
-	fmt.Fprintf(&b, `<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="%d %d %d %d">`+"\n",
-		int(-boxSize/2), int(-boxSize/2), int(boxSize), int(boxSize))
-	fmt.Fprint(&b, `  <defs><style>`)
-	fmt.Fprint(&b, `.bg{fill:#1E1E1E}`)
-	fmt.Fprintf(&b, `.central{fill:#0A0A0A;stroke:#808080;stroke-width:%.1f}`, strokePanel)
-	fmt.Fprintf(&b, `.outer{fill:#0A0A0A;stroke:#808080;stroke-width:%.1f;stroke-opacity:%.2f}`, strokeLeaf, leafStrokeAlpha)
-	fmt.Fprintf(&b, `.curve{fill:none;stroke:#808080;stroke-width:%.1f;stroke-opacity:%.2f}`, strokeCurve, curveOpacity)
-	fmt.Fprint(&b, `.label{fill:#EEEEEE;font-family:sans-serif;text-anchor:middle;dominant-baseline:middle}`)
-	fmt.Fprintf(&b, `.app{fill:#808080;font-family:sans-serif;text-anchor:middle;dominant-baseline:middle;font-size:%.0fpx;font-weight:400;opacity:%.2f}`, leafSize, leafTextOpacity)
-	fmt.Fprint(&b, `</style></defs>`+"\n\n")
-	fmt.Fprintf(&b, `  <rect class="bg" x="%d" y="%d" width="%d" height="%d" rx="%d"/>`+"\n\n",
-		int(-bgSize/2), int(-bgSize/2), int(bgSize), int(bgSize), int(bgRadius))
-
-	fmt.Fprint(&b, "  <!-- bezier edges from the panel to each leaf -->\n")
-	for _, e := range edges {
-		fmt.Fprintf(&b, `  <path class="curve" d="M %s %s Q %s %s %s %s"/>`+"\n",
-			fmtCoord(e.start.x), fmtCoord(e.start.y),
-			fmtCoord(e.control.x), fmtCoord(e.control.y),
-			fmtCoord(e.end.x), fmtCoord(e.end.y))
-	}
-
-	fmt.Fprint(&b, "\n  <!-- central collector node -->\n")
-	fmt.Fprintf(&b, "  <g>\n    <circle class=\"central\" r=\"%d\"/>\n", int(panelRadius))
-	fmt.Fprintf(&b, `    <text class="label" style="font-size:%d;font-weight:700">collector</text>`+"\n", int(collectorSize))
-	fmt.Fprint(&b, "  </g>\n\n")
-
-	fmt.Fprint(&b, "  <!-- surrounding app leaves -->\n")
-	for i, c := range centers {
-		fmt.Fprintf(&b, "  <g>\n    <circle class=\"outer\" cx=\"%s\" cy=\"%s\" r=\"%d\"/>\n",
-			fmtCoord(c.x), fmtCoord(c.y), int(leafRadius))
-		fmt.Fprintf(&b, `    <text class="app" x="%s" y="%s">%s</text>`+"\n", fmtCoord(c.x), fmtCoord(c.y), labels[i])
-		fmt.Fprint(&b, "  </g>\n")
-	}
-	fmt.Fprint(&b, "</svg>\n")
-
-	if err := os.WriteFile("apps/panel/web/static/static/img/favicon.svg", b.Bytes(), 0o644); err != nil {
+	if err := os.WriteFile(svgPath, []byte(svg), 0o644); err != nil {
 		log.Fatalf("could not write favicon.svg: %v", err)
+	}
+
+	f, err := os.Create(pngPath)
+	if err != nil {
+		log.Fatalf("could not create favicon.png: %v", err)
+	}
+	defer f.Close()
+	enc := png.Encoder{CompressionLevel: png.BestCompression}
+	if err := enc.Encode(f, render(pngSize)); err != nil {
+		log.Fatalf("could not encode favicon.png: %v", err)
 	}
 }

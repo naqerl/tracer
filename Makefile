@@ -63,13 +63,9 @@ dev-setup:
 generate:
 	go tool templ generate
 
-# Regenerate the panel favicon assets from ./scripts/gen-favicon. The favicon.svg
-# is produced by the generator (it is not hand-edited); the apple-touch-icon PNG
-# is rasterized from it with librsvg. Run after changing the geometry in
-# scripts/gen-favicon/main.go.
+# Regenerate the panel favicon SVG and apple-touch PNG from ./scripts/gen-favicon.
 favicon:
 	go run ./scripts/gen-favicon
-	rsvg-convert -w 180 -h 180 -o apps/panel/web/static/static/img/favicon.png apps/panel/web/static/static/img/favicon.svg
 
 sqlc:
 	cd apps/panel && sqlc generate
