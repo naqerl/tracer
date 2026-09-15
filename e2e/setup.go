@@ -11,18 +11,17 @@ import (
 
 // SetupConfig represents the collector configuration sent to the panel.
 type SetupConfig struct {
-	Parsers map[string]ParserSpec `json:"parsers"`
-	Apps    []AppSpec             `json:"apps"`
+	Apps []AppSpec `json:"apps"`
 }
 
 type ParserSpec struct {
-	Type    string `json:"type"`
-	Pattern string `json:"pattern,omitempty"`
+	Type   string            `json:"type"`
+	Params map[string]string `json:"params,omitempty"`
 }
 
 type AppSpec struct {
 	Name      string         `json:"name"`
-	ParserID  string         `json:"parser_id,omitempty"`
+	Parser    *ParserSpec    `json:"parser,omitempty"`
 	Source    *SourceSpec    `json:"source,omitempty"`
 	Lifecycle *LifecycleSpec `json:"lifecycle,omitempty"`
 	Health    *HealthSpec    `json:"health,omitempty"`

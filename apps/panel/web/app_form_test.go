@@ -89,8 +89,8 @@ func TestCreateAppSavesLogsAndHealth(t *testing.T) {
 	if app.Health == nil || app.Health.Params["url"] != "https://example.com/health" {
 		t.Fatalf("health = %+v, want example.com/health", app.Health)
 	}
-	if app.ParserID == "" {
-		t.Fatal("expected parser id")
+	if app.Parser == nil {
+		t.Fatal("expected inline parser")
 	}
 }
 
@@ -324,5 +324,115 @@ func TestEditFormPrefillsSourceAndHealth(t *testing.T) {
 	}
 	if !strings.Contains(body, `value="https://prefill.example.com"`) {
 		t.Fatalf("expected health URL on edit form, got %s", body)
+	}
+}
+
+// TestEditFormPreviewKeepsEditMode verifies that a format guess on the edit
+// page re-renders the form as an edit form (PUT to the app URL) and not a
+// create form (POST to the apps collection). The guess response replaces the
+// form in place, and losing IsEdit there would silently switch the save
+// button to create mode.
+func TestEditFormPreviewKeepsEditMode(t *testing.T) {
+	handler, token, _, _, _, _ := newServerWithGuesser(t, nil)
+
+	create := postApp(t, handler, token, jsonSourceForm("editkeep", "editkeep.service", ""))
+	if create.Code != http.StatusOK {
+		t.Fatalf("create status = %d body %s", create.Code, create.Body.String())
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/panel/collectors/demo/apps/preview", strings.NewReader(url.Values{
+		"name":        {"editkeep"},
+		"service":     {"editkeep.service"},
+		"edit_app":    {"editkeep"},
+		"source_type": {"journalctl"},
+		"parser_type": {"json"},
+	}.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: "tracer_session", Value: token})
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("preview status = %d body %s", rr.Code, rr.Body.String())
+	}
+
+	body := rr.Body.String()
+	if !strings.Contains(body, `hx-put="/panel/collectors/demo/apps/editkeep"`) {
+		t.Fatalf("expected edit form to keep hx-put to the app URL, got %s", body)
+	}
+	if strings.Contains(body, `hx-post="/panel/collectors/demo/apps"`) {
+		t.Fatalf("expected preview not to turn edit form into a create form, got %s", body)
+	}
+	if strings.Contains(body, `hx-put="/panel/collectors/demo/apps/editkeep.service"`) {
+		t.Fatalf("edit form must target the app name, not the service name: %s", body)
+	}
+}
+
+// TestUpdateAppShowsErrorOnRenameConflict verifies that a rejected rename (a
+// 4xx-style failure) surfaces as an error message on the page: the response
+// re-renders the edit form with the message inline so the HTMX swap keeps the
+// form visible and the failed rename is not applied.
+func TestUpdateAppShowsErrorOnRenameConflict(t *testing.T) {
+	handler, token, _, _, _, panelService := newServerWithGuesser(t, nil)
+
+	if rr := postApp(t, handler, token, jsonSourceForm("alpha", "alpha.service", "")); rr.Code != http.StatusOK {
+		t.Fatalf("create alpha: %d %s", rr.Code, rr.Body.String())
+	}
+	if rr := postApp(t, handler, token, jsonSourceForm("beta", "beta.service", "")); rr.Code != http.StatusOK {
+		t.Fatalf("create beta: %d %s", rr.Code, rr.Body.String())
+	}
+
+	rr := putApp(t, handler, token, "alpha", jsonSourceForm("beta", "beta.service", ""))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200 with rendered error, got %d", rr.Code)
+	}
+	body := rr.Body.String()
+	if !strings.Contains(body, "app name already in use") {
+		t.Fatalf("expected conflict message on the page, got %s", body)
+	}
+	if !strings.Contains(body, `hx-put="/panel/collectors/demo/apps/alpha"`) {
+		t.Fatalf("expected the edit form to remain, got %s", body)
+	}
+
+	app := storedApp(t, panelService, "alpha")
+	if app.Name != "alpha" {
+		t.Fatalf("failed rename must not change the app name, got %q", app.Name)
+	}
+	beta := storedApp(t, panelService, "beta")
+	if beta.Name != "beta" {
+		t.Fatalf("beta must still exist untouched, got %q", beta.Name)
+	}
+}
+
+// TestUpdateAppShowsErrorOnSaveFailure verifies that a rejected save (a
+// 5xx-style failure) surfaces as an error message on the page: clearing both
+// the log source and the health check of an uptime-only app leaves nothing to
+// do, the stored-config validation rejects it, and the edit form re-renders
+// with the failure inline.
+func TestUpdateAppShowsErrorOnSaveFailure(t *testing.T) {
+	handler, token, _, _, _, _ := newServerWithGuesser(t, nil)
+
+	if rr := postApp(t, handler, token, url.Values{
+		"name":            {"uptime-only"},
+		"url":             {"https://status.example.com"},
+		"interval":        {"60s"},
+		"expected_status": {"200"},
+	}); rr.Code != http.StatusOK {
+		t.Fatalf("create uptime-only: %d %s", rr.Code, rr.Body.String())
+	}
+
+	rr := putApp(t, handler, token, "uptime-only", url.Values{
+		"url":             {""},
+		"interval":        {""},
+		"expected_status": {""},
+	})
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200 with rendered error, got %d", rr.Code)
+	}
+	body := rr.Body.String()
+	if !strings.Contains(body, "Failed to save config") {
+		t.Fatalf("expected failure message on the page, got %s", body)
+	}
+	if !strings.Contains(body, `hx-put="/panel/collectors/demo/apps/uptime-only"`) {
+		t.Fatalf("expected the edit form to remain, got %s", body)
 	}
 }

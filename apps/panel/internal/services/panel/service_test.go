@@ -555,19 +555,13 @@ func TestListCollectorAppsWithStats_LogSource(t *testing.T) {
 	ctx := t.Context()
 
 	cfg := types.CollectorConfig{
-		Parsers: map[string]types.ParserSpec{
-			"json-parser": {
-				Type: "json",
-				Params: map[string]string{
-					"level_field":      "level",
-					"message_field":    "msg",
-					"timestamp_field":  "time",
-					"timestamp_format": "2006-01-02T15:04:05.999999999Z07:00",
-				},
-			},
-		},
 		Apps: []types.AppSpec{
-			{Name: "log-app", ParserID: "json-parser", Source: &types.SourceSpec{Type: "journalctl", Params: map[string]string{}}},
+			{Name: "log-app", Parser: &types.ParserSpec{Type: "json", Params: map[string]string{
+				"level_field":      "level",
+				"message_field":    "msg",
+				"timestamp_field":  "time",
+				"timestamp_format": "2006-01-02T15:04:05.999999999Z07:00",
+			}}, Source: &types.SourceSpec{Type: "journalctl", Params: map[string]string{}}},
 			{Name: "health-app", Health: &types.HealthCheckSpec{Type: "http", Params: map[string]string{"url": "http://example.com", "interval": "30s"}}},
 		},
 	}
@@ -2964,7 +2958,7 @@ func TestCollectorConfigStorage(t *testing.T) {
 		t.Fatalf("expected empty config, got %q", got)
 	}
 
-	cfgJSON := `{"parsers":{"p1":{"type":"json","params":{"level_field":"level","message_field":"msg","timestamp_field":"time","timestamp_format":"2006-01-02T15:04:05.999999999Z07:00"}}},"apps":[{"name":"nginx","parser_id":"p1","source":{"type":"journalctl","params":{}}}]}`
+	cfgJSON := `{"apps":[{"name":"nginx","parser":{"type":"json","params":{"level_field":"level","message_field":"msg","timestamp_field":"time","timestamp_format":"2006-01-02T15:04:05.999999999Z07:00"}},"source":{"type":"journalctl","params":{}}}]}`
 	if err := svc.SaveCollectorConfig(ctx, collector, cfgJSON); err != nil {
 		t.Fatalf("save config: %v", err)
 	}
@@ -2973,13 +2967,13 @@ func TestCollectorConfigStorage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get config: %v", err)
 	}
-	statsDefaulted := `{"parsers":{"p1":{"type":"json","params":{"level_field":"level","message_field":"msg","timestamp_field":"time","timestamp_format":"2006-01-02T15:04:05.999999999Z07:00"}}},"apps":[{"name":"nginx","parser_id":"p1","source":{"type":"journalctl","params":{}}}],"stats":{"interval":"30s","cpu":true,"mem":true,"disk":true}}`
+	statsDefaulted := `{"apps":[{"name":"nginx","parser":{"type":"json","params":{"level_field":"level","message_field":"msg","timestamp_field":"time","timestamp_format":"2006-01-02T15:04:05.999999999Z07:00"}},"source":{"type":"journalctl","params":{}}}],"stats":{"interval":"30s","cpu":true,"mem":true,"disk":true}}`
 	if got != statsDefaulted {
 		t.Fatalf("config mismatch:\n got: %q\nwant: %q", got, statsDefaulted)
 	}
 
 	// Upsert overwrites.
-	updatedJSON := `{"parsers":{"p2":{"type":"json","params":{"level_field":"level","message_field":"msg","timestamp_field":"time","timestamp_format":"2006-01-02T15:04:05.999999999Z07:00"}}},"apps":[{"name":"redis","parser_id":"p2","source":{"type":"journalctl","params":{}}}]}`
+	updatedJSON := `{"apps":[{"name":"redis","parser":{"type":"json","params":{"level_field":"level","message_field":"msg","timestamp_field":"time","timestamp_format":"2006-01-02T15:04:05.999999999Z07:00"}},"source":{"type":"journalctl","params":{}}}]}`
 	if err := svc.SaveCollectorConfig(ctx, collector, updatedJSON); err != nil {
 		t.Fatalf("update config: %v", err)
 	}
@@ -2987,7 +2981,7 @@ func TestCollectorConfigStorage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get updated config: %v", err)
 	}
-	updatedDefaulted := `{"parsers":{"p2":{"type":"json","params":{"level_field":"level","message_field":"msg","timestamp_field":"time","timestamp_format":"2006-01-02T15:04:05.999999999Z07:00"}}},"apps":[{"name":"redis","parser_id":"p2","source":{"type":"journalctl","params":{}}}],"stats":{"interval":"30s","cpu":true,"mem":true,"disk":true}}`
+	updatedDefaulted := `{"apps":[{"name":"redis","parser":{"type":"json","params":{"level_field":"level","message_field":"msg","timestamp_field":"time","timestamp_format":"2006-01-02T15:04:05.999999999Z07:00"}},"source":{"type":"journalctl","params":{}}}],"stats":{"interval":"30s","cpu":true,"mem":true,"disk":true}}`
 	if got != updatedDefaulted {
 		t.Fatalf("updated config mismatch:\n got: %q\nwant: %q", got, updatedDefaulted)
 	}
@@ -2995,7 +2989,7 @@ func TestCollectorConfigStorage(t *testing.T) {
 
 func TestSaveCollectorConfigCreatesAppDB(t *testing.T) {
 	svc, _, _, collector, _ := setupTestService(t)
-	cfgJSON := `{"parsers":{"p1":{"type":"json","params":{"level_field":"level","message_field":"msg","timestamp_field":"time","timestamp_format":"2006-01-02T15:04:05.999999999Z07:00"}}},"apps":[{"name":"new-from-config","parser_id":"p1","source":{"type":"journalctl","params":{}}}]}`
+	cfgJSON := `{"apps":[{"name":"new-from-config","parser":{"type":"json","params":{"level_field":"level","message_field":"msg","timestamp_field":"time","timestamp_format":"2006-01-02T15:04:05.999999999Z07:00"}},"source":{"type":"journalctl","params":{}}}]}`
 	if err := svc.SaveCollectorConfig(t.Context(), collector, cfgJSON); err != nil {
 		t.Fatalf("save config: %v", err)
 	}
@@ -3057,7 +3051,7 @@ func TestSaveCollectorConfigPushesToConnectedCollectors(t *testing.T) {
 	pusher := &fakeConfigPusher{}
 	svc := New(mgr, ingestSvc, tracker, userSvc, pusher, nil)
 
-	cfgJSON := `{"parsers":{"p":{"type":"json","params":{"level_field":"level","message_field":"msg","timestamp_field":"time","timestamp_format":"2006-01-02T15:04:05.999999999Z07:00"}}},"apps":[{"name":"a","parser_id":"p","source":{"type":"journalctl","params":{}}}]}`
+	cfgJSON := `{"apps":[{"name":"a","parser":{"type":"json","params":{"level_field":"level","message_field":"msg","timestamp_field":"time","timestamp_format":"2006-01-02T15:04:05.999999999Z07:00"}},"source":{"type":"journalctl","params":{}}}]}`
 	if err := svc.SaveCollectorConfig(ctx, "push-collector", cfgJSON); err != nil {
 		t.Fatalf("save config: %v", err)
 	}
@@ -3067,7 +3061,7 @@ func TestSaveCollectorConfigPushesToConnectedCollectors(t *testing.T) {
 	if pusher.pushedTo != "push-collector" {
 		t.Fatalf("push target = %q, want push-collector", pusher.pushedTo)
 	}
-	want := `{"parsers":{"p":{"type":"json","params":{"level_field":"level","message_field":"msg","timestamp_field":"time","timestamp_format":"2006-01-02T15:04:05.999999999Z07:00"}}},"apps":[{"name":"a","parser_id":"p","source":{"type":"journalctl","params":{}}}],"stats":{"interval":"30s","cpu":true,"mem":true,"disk":true}}`
+	want := `{"apps":[{"name":"a","parser":{"type":"json","params":{"level_field":"level","message_field":"msg","timestamp_field":"time","timestamp_format":"2006-01-02T15:04:05.999999999Z07:00"}},"source":{"type":"journalctl","params":{}}}],"stats":{"interval":"30s","cpu":true,"mem":true,"disk":true}}`
 	if pusher.pushedJSON != want {
 		t.Fatalf("pushed JSON mismatch:\n got: %q\nwant: %q", pusher.pushedJSON, want)
 	}
@@ -3094,7 +3088,7 @@ func TestDeleteCollectorApp(t *testing.T) {
 	pusher := &fakeConfigPusher{}
 	svc := New(mgr, ingestSvc, tracker, userSvc, pusher, nil)
 
-	cfgJSON := `{"parsers":{"p-keep":{"type":"json","params":{"level_field":"level","message_field":"msg","timestamp_field":"time","timestamp_format":"2006-01-02T15:04:05.999999999Z07:00"}},"p-remove":{"type":"json","params":{"level_field":"level","message_field":"msg","timestamp_field":"time","timestamp_format":"2006-01-02T15:04:05.999999999Z07:00"}}},"apps":[{"name":"keep","parser_id":"p-keep","source":{"type":"journalctl","params":{}}},{"name":"remove","parser_id":"p-remove","source":{"type":"journalctl","params":{}}}]}`
+	cfgJSON := `{"apps":[{"name":"keep","parser":{"type":"json","params":{"level_field":"level","message_field":"msg","timestamp_field":"time","timestamp_format":"2006-01-02T15:04:05.999999999Z07:00"}},"source":{"type":"journalctl","params":{}}},{"name":"remove","parser":{"type":"json","params":{"level_field":"level","message_field":"msg","timestamp_field":"time","timestamp_format":"2006-01-02T15:04:05.999999999Z07:00"}},"source":{"type":"journalctl","params":{}}}]}`
 	if err := svc.SaveCollectorConfig(ctx, "del-collector", cfgJSON); err != nil {
 		t.Fatalf("save config: %v", err)
 	}
@@ -3114,11 +3108,9 @@ func TestDeleteCollectorApp(t *testing.T) {
 	if len(cfg.Apps) != 1 || cfg.Apps[0].Name != "keep" {
 		t.Fatalf("config apps = %v, want only keep", cfg.Apps)
 	}
-	if _, ok := cfg.Parsers["p-keep"]; !ok {
-		t.Fatalf("parser p-keep must survive removal of the other app, parsers = %v", cfg.Parsers)
-	}
-	if _, ok := cfg.Parsers["p-remove"]; ok {
-		t.Fatalf("parser p-remove should be dropped, parsers = %v", cfg.Parsers)
+	keep, ok := cfg.GetApp("keep")
+	if !ok || keep.Parser == nil {
+		t.Fatalf("kept app inline parser must survive removal of the other app, apps = %v", cfg.Apps)
 	}
 
 	apps, err := mgr.ListApps("del-collector")

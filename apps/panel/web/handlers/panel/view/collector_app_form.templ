@@ -72,11 +72,13 @@ templ SampleLogRow(s string) {
 
 // AppFormProps carries the state for creating a new app or editing an
 // existing one. ServiceName is empty for a new app and is the app name for
-// an edit.
+// an edit. EditApp is the app the form targets when editing, decoupled from
+// ServiceName so a rename keeps the form pointed at the original app.
 type AppFormProps struct {
 	Title          string
 	Collector      string
 	ServiceName    string
+	EditApp        string
 	IsEdit         bool
 	URL            string
 	Interval       string
@@ -97,12 +99,12 @@ templ AppFormPage(p AppFormProps) {
 				}
 			</h1>
 			<a href={ "/panel/collectors/" + p.Collector } onclick="if (window.history.length > 1) { window.history.back(); return false; }" class="text-fg-secondary hover:text-fg text-sm mb-6 inline-block">&lt; back</a>
-			@AppForm(p)
-			if p.IsEdit {
-				<div class="mt-8 pt-6 border-t border-bg-secondary/70">
-					<button
-						hx-delete={ "/panel/collectors/" + p.Collector + "/apps/" + p.ServiceName }
-						hx-confirm={ "Delete app '" + p.ServiceName + "'?" }
+@AppForm(p)
+ 			if p.IsEdit {
+ 				<div class="mt-8 pt-6 border-t border-bg-secondary/70">
+ 					<button
+ 						hx-delete={ "/panel/collectors/" + p.Collector + "/apps/" + p.EditApp }
+ 						hx-confirm={ "Delete app '" + p.EditApp + "'?" }
 						class="text-sm text-red-500 hover:text-red-400 transition-colors"
 						title="Delete app"
 					>
@@ -126,12 +128,15 @@ templ AppForm(p AppFormProps) {
 	<div id="app-form-container" class="space-y-6">
 		<form
 			if p.IsEdit {
-				hx-put={ "/panel/collectors/" + p.Collector + "/apps/" + p.ServiceName }
+				hx-put={ "/panel/collectors/" + p.Collector + "/apps/" + p.EditApp }
 			} else {
 				hx-post={ "/panel/collectors/" + p.Collector + "/apps" }
 			}
 			hx-target="#app-form-container" hx-swap="innerHTML"
 			class="space-y-6">
+			if p.IsEdit {
+				<input type="hidden" name="edit_app" value={ p.EditApp }/>
+			}
 
 			<div class="border border-bg-secondary/70 p-4">
 				<h3 class="text-fg font-medium mb-3">
@@ -152,27 +157,32 @@ templ AppForm(p AppFormProps) {
 			<div class="border border-bg-secondary/70 p-4">
 				<h3 class="text-fg font-medium mb-3">Log source</h3>
 				<div class="space-y-4">
-					<div>
-						<label class="block text-sm text-fg-secondary mb-1">
-							if p.Guess.NotFound {
-								<span class="text-red-500 font-medium mr-1">not found</span>
-							}
-							Log source
-							@templates.FieldStatus("app-format-status", tern(p.Guess.NotFound, "", p.Guess.Status), p.Guess.StatusOK, false)
-							@templates.Indicator("app-format-indicator", "Guessing format…")
-						</label>
-					<input type="text" name="service" value={ p.Guess.Service } placeholder={ tern(p.ServiceName == "", "e.g. nginx.service, pod/nginx-1", p.ServiceName) }
-						   hx-post={ "/panel/collectors/" + p.Collector + "/apps/preview" }
-						   hx-trigger="input changed delay:500ms"
-						   hx-include="closest form"
-						   hx-target="#app-form-container"
-						   hx-swap="innerHTML"
-						   hx-indicator="#app-format-indicator"
-						   id="app-service-input"
-						   hx-on:focus="if (!this.value) { var n = document.getElementById('app-name-input'); if (n) { this.value = n.value; htmx.trigger(this, 'input'); } }"
-						   class="w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg placeholder:text-fg-secondary/50"/>
-						<p class="text-xs text-fg-secondary mt-1">Systemd unit name, kubectl resource, or custom source. Defaults to the app name.</p>
+<div>
+					<label class="block text-sm text-fg-secondary mb-1">
+						if p.Guess.NotFound {
+							<span class="text-red-500 font-medium mr-1">not found</span>
+						}
+						Log source
+						@templates.FieldStatus("app-format-status", tern(p.Guess.NotFound, "", p.Guess.Status), p.Guess.StatusOK, false)
+						@templates.Indicator("app-format-indicator", "Guessing format…")
+					</label>
+					<div class="flex gap-2 items-end">
+					<button type="button"
+							onclick="var s = document.getElementById('app-service-input'); var n = document.getElementById('app-name-input'); if (s && n) { s.value = n.value; htmx.trigger(s, 'input'); }"
+							class="shrink-0 text-base text-fg-secondary border border-fg/20 px-2 py-2 hover:text-fg hover:border-fg/60 transition-colors"
+							title="Use the app name as the log source">use app name</button>
+						<input type="text" name="service" value={ p.Guess.Service } placeholder={ tern(p.ServiceName == "", "e.g. nginx.service, pod/nginx-1", p.ServiceName) }
+							   hx-post={ "/panel/collectors/" + p.Collector + "/apps/preview" }
+							   hx-trigger="input changed delay:500ms"
+							   hx-include="closest form"
+							   hx-target="#app-form-container"
+							   hx-swap="innerHTML"
+							   hx-indicator="#app-format-indicator"
+							   id="app-service-input"
+							   class="flex-1 min-w-0 w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg placeholder:text-fg-secondary/50"/>
 					</div>
+					<p class="text-xs text-fg-secondary mt-1">Systemd unit name, kubectl resource, or custom source. Defaults to the app name.</p>
+				</div>
 					@AppFormatFeedback(p.Guess)
 					if p.Guess.Detected && len(p.Guess.Samples) > 0 {
 						<div>

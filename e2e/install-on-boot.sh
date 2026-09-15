@@ -81,27 +81,23 @@ systemctl restart tracer-collector
 # WebSocket; the collector hot-reloads and starts ingesting the demo apps.
 cat > /tmp/demo-config.json <<'CONFIG'
 {
-  "parsers": {
-    "json": {"type": "json", "params": {"level_field": "level", "message_field": "msg", "timestamp_field": "time", "timestamp_format": "2006-01-02T15:04:05.999999999Z07:00"}},
-    "text": {"type": "slogtext", "params": {"level_field": "level", "message_field": "msg", "timestamp_field": "time", "timestamp_format": "2006-01-02T15:04:05.999999999Z07:00"}}
-  },
   "apps": [
     {
       "name": "demo-api",
-      "parser_id": "json",
+      "parser": {"type": "json", "params": {"level_field": "level", "message_field": "msg", "timestamp_field": "time", "timestamp_format": "2006-01-02T15:04:05.999999999Z07:00"}},
       "source": {"type": "journalctl", "params": {"unit": "demo-api.service"}},
       "lifecycle": {"type": "systemd"},
       "health": {"type": "http", "params": {"url": "http://localhost:8080/healthz", "interval": "5s"}}
     },
     {
       "name": "demo-worker",
-      "parser_id": "text",
+      "parser": {"type": "slogtext", "params": {"level_field": "level", "message_field": "msg", "timestamp_field": "time", "timestamp_format": "2006-01-02T15:04:05.999999999Z07:00"}},
       "source": {"type": "journalctl", "params": {"unit": "demo-worker.service"}},
       "lifecycle": {"type": "systemd"}
     },
     {
       "name": "demo-cron",
-      "parser_id": "json",
+      "parser": {"type": "json", "params": {"level_field": "level", "message_field": "msg", "timestamp_field": "time", "timestamp_format": "2006-01-02T15:04:05.999999999Z07:00"}},
       "source": {"type": "journalctl", "params": {"unit": "demo-cron.service"}},
       "lifecycle": {"type": "systemd"}
     },
@@ -141,7 +137,7 @@ CONFIG
     curl -fsS -X PUT \
         -H "X-API-Key: ${api_key}" \
         -H "Content-Type: application/json" \
-        --data-binary '{"parsers": {}, "stats": {"interval": "10s", "cpu": true, "mem": true, "disk": true}, "apps": []}' \
+        --data-binary '{"stats": {"interval": "10s", "cpu": true, "mem": true, "disk": true}, "apps": []}' \
         http://localhost:8080/ingest/config/demo-idle
     systemctl start tracer-collector-idle
 else

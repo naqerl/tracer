@@ -14,36 +14,20 @@ import (
 	"tracer/libs/types"
 )
 
-// Config drives supervision: the apps to run and the parsers they use.
-// It is decoded from the panel's pushed CollectorConfig and adapted to
-// collector-internal spec types.
-type Config struct {
-	Apps    []types.AppSpec
-	Parsers map[string]parser.Spec
-}
-
-// Apply reconciles the running components against cfg and applies them to sup,
-// hot-reloading only what changed.
-func Apply(ctx context.Context, sup *supervisor.Supervisor, mpsc chan<- types.Event, cfg Config) error {
-	// Validation is handled by CollectorConfig.Validate() before reaching here.
-
-	// Build internal parser instances from the shared parser specs.
-	parsers := make(map[string]parser.Parser, len(cfg.Parsers))
-	for id, spec := range cfg.Parsers {
-		spec.ID = id
-		parsers[id] = parser.New(spec)
-	}
-
+// Apply reconciles the running components against the configured apps and
+// applies them to sup, hot-reloading only what changed. Validation is handled
+// by CollectorConfig.Validate() before reaching here.
+func Apply(ctx context.Context, sup *supervisor.Supervisor, mpsc chan<- types.Event, apps []types.AppSpec) error {
 	// Build supervisor components. Capacity is len*2 because most apps
 	// produce both a log component and a health component; health-only
 	// apps contribute just one.
-	components := make([]supervisor.Component, 0, len(cfg.Apps)*2)
-	for _, spec := range cfg.Apps {
+	components := make([]supervisor.Component, 0, len(apps)*2)
+	for _, spec := range apps {
 		if !spec.IsHealthOnly() {
-			p, ok := parsers[spec.ParserID]
-			if !ok {
-				return fmt.Errorf("parser with id=%s not found", spec.ParserID)
+			if spec.Parser == nil {
+				return fmt.Errorf("app %s has no parser", spec.Name)
 			}
+			p := parser.New(parser.Spec{ID: spec.Name, Type: spec.Parser.Type, Params: spec.Parser.Params})
 			s, err := source.New(source.Spec{Type: spec.Source.Type, Params: spec.Source.Params})
 			if err != nil {
 				return fmt.Errorf("invalid source config for app %s: %w", spec.Name, err)
@@ -58,7 +42,7 @@ func Apply(ctx context.Context, sup *supervisor.Supervisor, mpsc chan<- types.Ev
 
 			components = append(components, appComponent{
 				id:   "app:" + spec.Name,
-				sig:  componentSignature(spec, cfg.Parsers[spec.ParserID]),
+				sig:  componentSignature(spec),
 				app:  app.New(s, p, lfc, spec.Name),
 				mpsc: mpsc,
 			})
@@ -69,7 +53,7 @@ func Apply(ctx context.Context, sup *supervisor.Supervisor, mpsc chan<- types.Ev
 			if err != nil {
 				return fmt.Errorf("invalid health config for app %s: %w", spec.Name, err)
 			}
-			sig := componentSignature(spec, parser.Spec{})
+			sig := componentSignature(spec)
 			if spec.IsHealthOnly() {
 				sig = "health-only:" + spec.Name + ":" + sig
 			}
@@ -88,22 +72,19 @@ func Apply(ctx context.Context, sup *supervisor.Supervisor, mpsc chan<- types.Ev
 }
 
 // Names returns the configured app names in a stable order.
-func Names(cfg Config) []string {
-	names := make([]string, 0, len(cfg.Apps))
-	for _, a := range cfg.Apps {
+func Names(apps []types.AppSpec) []string {
+	names := make([]string, 0, len(apps))
+	for _, a := range apps {
 		names = append(names, a.Name)
 	}
 	return names
 }
 
 // componentSignature produces an opaque string that changes when any
-// config-relevant field of the app or its parser changes. The supervisor
-// uses it to decide whether a component needs restarting.
-func componentSignature(appSpec types.AppSpec, parserSpec parser.Spec) string {
-	b, err := json.Marshal(struct {
-		App    types.AppSpec `json:"app"`
-		Parser parser.Spec   `json:"parser"`
-	}{appSpec, parserSpec})
+// config-relevant field of the app changes. The supervisor uses it to
+// decide whether a component needs restarting.
+func componentSignature(appSpec types.AppSpec) string {
+	b, err := json.Marshal(appSpec)
 	if err != nil {
 		return appSpec.Name
 	}

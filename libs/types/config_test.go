@@ -1,6 +1,7 @@
 package types
 
 import (
+	"encoding/json"
 	"testing"
 )
 
@@ -39,8 +40,7 @@ func TestValidateStatsInterval(t *testing.T) {
 
 func TestValidateRejectsUnknownParserType(t *testing.T) {
 	cfg := CollectorConfig{
-		Parsers: map[string]ParserSpec{"p": {Type: "yaml"}},
-		Apps:    []AppSpec{{Name: "a", ParserID: "p", Source: &SourceSpec{Type: "journalctl"}}},
+		Apps: []AppSpec{{Name: "a", Parser: &ParserSpec{Type: "yaml"}, Source: &SourceSpec{Type: "journalctl"}}},
 	}
 	if err := cfg.Validate(); err == nil {
 		t.Fatal("expected error for unknown parser type")
@@ -49,8 +49,7 @@ func TestValidateRejectsUnknownParserType(t *testing.T) {
 
 func TestValidateRejectsMissingParserParam(t *testing.T) {
 	cfg := CollectorConfig{
-		Parsers: map[string]ParserSpec{"p": {Type: "json", Params: map[string]string{"level_field": "level"}}},
-		Apps:    []AppSpec{{Name: "a", ParserID: "p", Source: &SourceSpec{Type: "journalctl"}}},
+		Apps: []AppSpec{{Name: "a", Parser: &ParserSpec{Type: "json", Params: map[string]string{"level_field": "level"}}, Source: &SourceSpec{Type: "journalctl"}}},
 	}
 	if err := cfg.Validate(); err == nil {
 		t.Fatal("expected error for missing parser param")
@@ -59,31 +58,74 @@ func TestValidateRejectsMissingParserParam(t *testing.T) {
 
 func TestValidateAcceptsCompleteParser(t *testing.T) {
 	cfg := CollectorConfig{
-		Parsers: map[string]ParserSpec{"p": {Type: "json", Params: map[string]string{
+		Apps: []AppSpec{{Name: "a", Source: &SourceSpec{Type: "journalctl"}, Parser: &ParserSpec{Type: "json", Params: map[string]string{
 			"level_field":      "level",
 			"message_field":    "msg",
 			"timestamp_field":  "time",
 			"timestamp_format": "2006-01-02T15:04:05",
-		}}},
-		Apps: []AppSpec{{Name: "a", ParserID: "p", Source: &SourceSpec{Type: "journalctl"}}},
+		}}}},
 	}
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("Validate() with complete parser: %v", err)
 	}
 }
 
-func TestRemoveAppKeepsSharedParser(t *testing.T) {
-	parser := ParserSpec{Type: "json", Params: map[string]string{
-		"level_field":      "level",
-		"message_field":    "msg",
-		"timestamp_field":  "time",
-		"timestamp_format": "2006-01-02T15:04:05",
-	}}
+func TestValidateRejectsSourceWithoutParser(t *testing.T) {
 	cfg := CollectorConfig{
-		Parsers: map[string]ParserSpec{"shared": parser},
+		Apps: []AppSpec{{Name: "a", Source: &SourceSpec{Type: "journalctl"}}},
+	}
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected error for source without parser")
+	}
+}
+
+func TestUnmarshalJSONMigratesLegacyParserRefs(t *testing.T) {
+	raw := `{"parsers":{"json":{"type":"json","params":{"level_field":"level","message_field":"msg","timestamp_field":"time","timestamp_format":"2006-01-02T15:04:05"}}},"apps":[{"name":"a","parser_id":"json","source":{"type":"journalctl","params":{}}},{"name":"b","health":{"type":"http","params":{"url":"http://example.com"}}}]}`
+	var cfg CollectorConfig
+	if err := json.Unmarshal([]byte(raw), &cfg); err != nil {
+		t.Fatalf("UnmarshalJSON: %v", err)
+	}
+
+	app, ok := cfg.GetApp("a")
+	if !ok {
+		t.Fatal("expected app a to exist")
+	}
+	if app.Parser == nil || app.Parser.Type != "json" || app.Parser.Params["level_field"] != "level" {
+		t.Fatalf("app a parser = %+v, want resolved legacy parser", app.Parser)
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("migrated config must be valid: %v", err)
+	}
+
+	healthOnly, ok := cfg.GetApp("b")
+	if !ok || !healthOnly.IsHealthOnly() {
+		t.Fatalf("app b = %+v, want health-only", healthOnly)
+	}
+}
+
+func TestMarshalJSONWritesInlineParser(t *testing.T) {
+	cfg := CollectorConfig{
+		Apps: []AppSpec{{Name: "a", Parser: &ParserSpec{Type: "json", Params: map[string]string{"level_field": "level"}}, Source: &SourceSpec{Type: "journalctl"}}},
+	}
+	got, err := json.Marshal(&cfg)
+	if err != nil {
+		t.Fatalf("MarshalJSON: %v", err)
+	}
+	var round CollectorConfig
+	if err := json.Unmarshal(got, &round); err != nil {
+		t.Fatalf("round trip: %v", err)
+	}
+	app, ok := round.GetApp("a")
+	if !ok || app.Parser == nil || app.Parser.Type != "json" {
+		t.Fatalf("round-tripped app = %+v, want inline parser", app)
+	}
+}
+
+func TestRemoveApp(t *testing.T) {
+	cfg := CollectorConfig{
 		Apps: []AppSpec{
-			{Name: "nginx", ParserID: "shared", Source: &SourceSpec{Type: "journalctl"}},
-			{Name: "redis", ParserID: "shared", Source: &SourceSpec{Type: "journalctl"}},
+			{Name: "nginx", Parser: &ParserSpec{Type: "json"}, Source: &SourceSpec{Type: "journalctl"}},
+			{Name: "redis", Parser: &ParserSpec{Type: "json"}, Source: &SourceSpec{Type: "journalctl"}},
 		},
 	}
 
@@ -91,13 +133,10 @@ func TestRemoveAppKeepsSharedParser(t *testing.T) {
 	if len(cfg.Apps) != 1 || cfg.Apps[0].Name != "nginx" {
 		t.Fatalf("apps = %v, want only nginx", cfg.Apps)
 	}
-	if _, ok := cfg.Parsers["shared"]; !ok {
-		t.Fatalf("shared parser must survive removal of one referencing app, parsers = %v", cfg.Parsers)
-	}
 
 	cfg.RemoveApp("nginx")
-	if len(cfg.Parsers) != 0 {
-		t.Fatalf("parsers = %v, want none after removing last referencing app", cfg.Parsers)
+	if len(cfg.Apps) != 0 {
+		t.Fatalf("apps = %v, want none", cfg.Apps)
 	}
 }
 
@@ -114,9 +153,22 @@ func TestGetApp(t *testing.T) {
 	if app.Source.Type != "journalctl" {
 		t.Fatalf("app source type = %q, want journalctl", app.Source.Type)
 	}
+	if app.Parser == nil || app.Parser.Type != "json" {
+		t.Fatalf("app parser = %+v, want inline json parser", app.Parser)
+	}
 
 	if _, ok := cfg.GetApp("missing"); ok {
 		t.Fatal("expected missing app to not exist")
+	}
+}
+
+func TestAddAppRejectsDuplicateName(t *testing.T) {
+	var cfg CollectorConfig
+	if err := cfg.AddApp("nginx", SourceSpec{Type: "journalctl"}, ParserSpec{Type: "json"}); err != nil {
+		t.Fatalf("AddApp: %v", err)
+	}
+	if err := cfg.AddApp("nginx", SourceSpec{Type: "journalctl"}, ParserSpec{Type: "slogtext"}); err == nil {
+		t.Fatal("expected duplicate app name error")
 	}
 }
 
@@ -127,7 +179,12 @@ func TestSetAppSource(t *testing.T) {
 	}
 
 	src := SourceSpec{Type: "file", Params: map[string]string{"path": "/var/log/nginx.log"}}
-	parser := ParserSpec{Type: "slogtext", Params: map[string]string{"level_field": "level"}}
+	parser := ParserSpec{Type: "slogtext", Params: map[string]string{
+		"level_field":      "level",
+		"message_field":    "msg",
+		"timestamp_field":  "time",
+		"timestamp_format": "2006-01-02T15:04:05",
+	}}
 	if err := cfg.SetAppSource("nginx", src, parser); err != nil {
 		t.Fatalf("SetAppSource: %v", err)
 	}
@@ -142,12 +199,11 @@ func TestSetAppSource(t *testing.T) {
 	if app.Source.Type != "file" {
 		t.Fatalf("app source type = %q, want file", app.Source.Type)
 	}
-	stored := cfg.Parsers[app.ParserID]
-	if stored.Type != "slogtext" {
-		t.Fatalf("stored parser type = %q, want slogtext", stored.Type)
+	if app.Parser == nil || app.Parser.Type != "slogtext" || app.Parser.Params["level_field"] != "level" || app.Parser.Params["message_field"] != "msg" {
+		t.Fatalf("app parser = %+v, want inline slogtext parser", app.Parser)
 	}
-	if stored.Params["level_field"] != "level" {
-		t.Fatalf("stored parser params = %v", stored.Params)
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("config must stay valid after SetAppSource: %v", err)
 	}
 
 	if err := cfg.SetAppSource("missing", src, parser); err == nil {
@@ -172,7 +228,7 @@ func TestSetAppHealthKeepsSource(t *testing.T) {
 	if app.Source == nil || app.Source.Type != "journalctl" {
 		t.Fatalf("source = %+v, want journalctl", app.Source)
 	}
-	if _, ok := cfg.Parsers[app.ParserID]; !ok {
+	if app.Parser == nil {
 		t.Fatal("expected parser to survive SetAppHealth")
 	}
 	if app.Health.Params["url"] != "https://example.com" || app.Health.Params["interval"] != "60s" || app.Health.Params["expected_status"] != "204" {
@@ -228,8 +284,11 @@ func TestClearAppSource(t *testing.T) {
 	if app.Source != nil {
 		t.Fatal("expected source to be cleared")
 	}
-	if len(cfg.Parsers) != 0 {
-		t.Fatalf("parsers = %v, want none after clearing the only source", cfg.Parsers)
+	if app.Parser != nil {
+		t.Fatal("expected parser to be cleared")
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("config must stay valid after ClearAppSource: %v", err)
 	}
 
 	if err := cfg.ClearAppSource("missing"); err == nil {
@@ -237,25 +296,38 @@ func TestClearAppSource(t *testing.T) {
 	}
 }
 
-func TestClearAppSourceKeepsSharedParser(t *testing.T) {
-	parser := ParserSpec{Type: "json", Params: map[string]string{
+func TestRenameApp(t *testing.T) {
+	var cfg CollectorConfig
+	if err := cfg.AddApp("nginx", SourceSpec{Type: "journalctl"}, ParserSpec{Type: "json", Params: map[string]string{
 		"level_field":      "level",
 		"message_field":    "msg",
 		"timestamp_field":  "time",
 		"timestamp_format": "2006-01-02T15:04:05",
-	}}
-	cfg := CollectorConfig{
-		Parsers: map[string]ParserSpec{"shared": parser},
-		Apps: []AppSpec{
-			{Name: "nginx", ParserID: "shared", Source: &SourceSpec{Type: "journalctl"}, Health: httpHealthSpec("https://example.com", "30s", "200")},
-			{Name: "redis", ParserID: "shared", Source: &SourceSpec{Type: "journalctl"}},
-		},
+	}}); err != nil {
+		t.Fatalf("AddApp: %v", err)
 	}
 
-	if err := cfg.ClearAppSource("nginx"); err != nil {
-		t.Fatalf("ClearAppSource: %v", err)
+	if err := cfg.RenameApp("nginx", "nginx-new"); err != nil {
+		t.Fatalf("RenameApp: %v", err)
 	}
-	if _, ok := cfg.Parsers["shared"]; !ok {
-		t.Fatal("shared parser must survive clearing one referencing app")
+	app, ok := cfg.GetApp("nginx-new")
+	if !ok {
+		t.Fatal("expected renamed app to exist")
+	}
+	if app.Parser == nil || app.Parser.Type != "json" {
+		t.Fatalf("renamed app parser = %+v, want inline parser kept", app.Parser)
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("config must stay valid after rename: %v", err)
+	}
+
+	if err := cfg.RenameApp("nginx-new", "nginx"); err != nil {
+		t.Fatalf("RenameApp back: %v", err)
+	}
+	if err := cfg.RenameApp("nginx-new", "nginx"); err == nil {
+		t.Fatal("expected duplicate name error")
+	}
+	if err := cfg.RenameApp("missing", "x"); err == nil {
+		t.Fatal("expected error for missing app")
 	}
 }

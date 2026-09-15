@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"maps"
 	"reflect"
 	"slices"
 	"strconv"
@@ -37,10 +36,6 @@ func Add(ctx context.Context, cfg *types.CollectorConfig, name string, spec sour
 	result := &AddResult{}
 	var app types.AppSpec
 	existingIdx := -1
-
-	if cfg.Parsers == nil {
-		cfg.Parsers = map[string]types.ParserSpec{}
-	}
 
 	appNames := make([]string, 0, len(cfg.Apps))
 	for i, v := range cfg.Apps {
@@ -86,15 +81,7 @@ func Add(ctx context.Context, cfg *types.CollectorConfig, name string, spec sour
 		}
 	}
 
-	parserID := generateName(slices.Collect(maps.Keys(cfg.Parsers)), buildResult.Spec.Type, name)
-	for id, s := range cfg.Parsers {
-		if s.Type == buildResult.Spec.Type && reflect.DeepEqual(s.Params, buildResult.Spec.Params) {
-			parserID = id
-			break
-		}
-	}
-	cfg.Parsers[parserID] = types.ParserSpec{Type: buildResult.Spec.Type, Params: buildResult.Spec.Params}
-	app.ParserID = parserID
+	app.Parser = &types.ParserSpec{Type: buildResult.Spec.Type, Params: buildResult.Spec.Params}
 
 	if existingIdx >= 0 {
 		cfg.Apps[existingIdx] = app

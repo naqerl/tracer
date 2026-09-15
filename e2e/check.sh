@@ -82,13 +82,15 @@ wait_for_logs() {
 
 wait_for_panel_health() {
   local collector="$1"
-  local attempt grid
-  # Probe the apps grid fragment for a rendered uptime value.
+  local attempt grid overlays
+  # Probe the apps grid fragment for rendered uptime bars. A health-configured
+  # app renders its dots directly, while every other app shows a blurred
+  # placeholder with an "uptime is not configured" overlay, so fewer overlays
+  # than apps means the baked uptime card rendered.
   for attempt in $(seq 1 30); do
     grid="$(curl -fsS "${DEMO_URL}/panel/collectors/${collector}/apps" -H "Cookie: ${COOKIE}")"
-    # The value span sits right after the "uptime:" label; require an actual
-    # N/A or numeric value rather than just the label.
-    if grep -Eq 'uptime: <span[^>]*>(N/A|[0-9]+)<' <<<"${grid}"; then
+    overlays="$(grep -oFc 'uptime is not configured' <<<"${grid}" || true)"
+    if grep -Eq 'uptime-bar' <<<"${grid}" && [ "${overlays:-0}" -lt "${#app_names[@]}" ]; then
       return 0
     fi
     sleep 1
@@ -201,13 +203,13 @@ wait_for_panel_health "${collector_name}"
 wait_for_logs "${collector_name}"
 
 log "checking app edit form"
-# The edit form must show the app name in a disabled input (names are immutable)
-# and a working log-source input that can be updated via PUT.
+# The edit form must show the app name pre-filled (editable so the app can be
+# renamed) and a working log-source input that can be updated via PUT.
 edit_page="$(curl -fsS "${DEMO_URL}/panel/collectors/${collector_name}/apps/demo-api/settings" -H "Cookie: ${COOKIE}")"
 
-# Name input must be disabled and pre-filled with the app name.
-if ! grep -Eq 'name="name".*value="demo-api".*disabled' <<<"${edit_page}"; then
-  fail "edit form name input must be disabled and pre-filled with demo-api"
+# Name input must be pre-filled with the app name and editable for rename.
+if ! grep -Eq 'name="name".*value="demo-api"' <<<"${edit_page}"; then
+  fail "edit form name input must be pre-filled with demo-api"
 fi
 
 # Log source input must be present and editable (not disabled).
@@ -348,10 +350,10 @@ wait_for_app_settings "demo-cron"
 
 log "checking collector self-registration"
 # The collector must have connected and registered its apps. Verify the apps
-# page shows the demo apps with uptime values.
+# page shows the demo apps with uptime bars rendered.
 collector_card="$(curl -fsS "${DEMO_URL}/panel/collectors/${collector_name}/apps" -H "Cookie: ${COOKIE}")"
-if ! grep -Eq 'uptime: <span[^>]*>([0-9]+|N/A)<' <<<"${collector_card}"; then
-  fail "apps page did not render uptime values"
+if ! grep -Eq 'uptime-bar' <<<"${collector_card}"; then
+  fail "apps page did not render uptime bars"
 fi
 
 log "crawling panel UI"
@@ -409,7 +411,9 @@ wait_for_idle_stats() {
 docker exec "${DEMO_CONTAINER}" systemctl start "${idle_unit}"
 wait_for_idle_stats
 docker exec "${DEMO_CONTAINER}" systemctl stop "${idle_unit}" >/dev/null 2>&1 || true
-wait_for_last_update "turn stale after its service stopped" 'text-(yellow-400|red-400)[^>]*>[^<]*last update'
+# The badge renders relative staleness ("1m ago") in yellow/red once data age
+# passes five sampling intervals and renders nothing while fresh.
+wait_for_last_update "turn stale after its service stopped" 'text-(yellow-400|red-400)[^>]*>[^<]* ago'
 
 docker exec "${DEMO_CONTAINER}" systemctl start "${idle_unit}"
 wait_for_last_update "hide once fresh after its service restarted" '^[[:space:]]*$'
@@ -435,7 +439,7 @@ if docker exec "${DEMO_CONTAINER}" grep -q 'return 405' /etc/nginx/conf.d/tracer
   probe_code="$(curl -sS -o /dev/null -w '%{http_code}' -X PUT \
     -H "X-API-Key: ${api_key}" \
     -H "Content-Type: application/json" \
-    --data-binary '{"parsers": {}, "apps": []}' \
+    --data-binary '{"apps": []}' \
     "${DEMO_URL}/ingest/config/${collector_name}")"
   if [ "${probe_code}" != "405" ] && [ "${probe_code}" != "403" ]; then
     fail "read-only proxy accepted a state-changing request (code ${probe_code})"
@@ -455,7 +459,6 @@ else
       -H "Content-Type: application/json" \
       --data-binary "$(cat <<EOF
 {
-  "parsers": { "json": {"type": "json", "params": {"level_field": "level", "message_field": "msg", "timestamp_field": "time", "timestamp_format": "2006-01-02T15:04:05.999999999Z07:00"}} },
   "apps": ${names_json}
 }
 EOF
@@ -463,13 +466,14 @@ EOF
   }
 
   hot_app="hot-reload-demo"
+  json_parser='{"type": "json", "params": {"level_field": "level", "message_field": "msg", "timestamp_field": "time", "timestamp_format": "2006-01-02T15:04:05.999999999Z07:00"}}'
   base_apps="[\
-    {\"name\": \"demo-api\", \"parser_id\": \"json\", \"source\": {\"type\": \"journalctl\", \"params\": {\"unit\": \"demo-api.service\"}}, \"lifecycle\": {\"type\": \"systemd\"}},\
-    {\"name\": \"demo-worker\", \"parser_id\": \"json\", \"source\": {\"type\": \"journalctl\", \"params\": {\"unit\": \"demo-worker.service\"}}, \"lifecycle\": {\"type\": \"systemd\"}},\
-    {\"name\": \"demo-cron\", \"parser_id\": \"json\", \"source\": {\"type\": \"journalctl\", \"params\": {\"unit\": \"demo-cron.service\"}}, \"lifecycle\": {\"type\": \"systemd\"}},\
+    {\"name\": \"demo-api\", \"parser\": ${json_parser}, \"source\": {\"type\": \"journalctl\", \"params\": {\"unit\": \"demo-api.service\"}}, \"lifecycle\": {\"type\": \"systemd\"}},\
+    {\"name\": \"demo-worker\", \"parser\": ${json_parser}, \"source\": {\"type\": \"journalctl\", \"params\": {\"unit\": \"demo-worker.service\"}}, \"lifecycle\": {\"type\": \"systemd\"}},\
+    {\"name\": \"demo-cron\", \"parser\": ${json_parser}, \"source\": {\"type\": \"journalctl\", \"params\": {\"unit\": \"demo-cron.service\"}}, \"lifecycle\": {\"type\": \"systemd\"}},\
     {\"name\": \"naqerl.com\", \"health\": {\"type\": \"http\", \"params\": {\"url\": \"https://naqerl.com\", \"interval\": \"30s\", \"expected_status\": \"200\"}}}\
   ]"
-  full_apps="${base_apps%]*}, {\"name\": \"${hot_app}\", \"parser_id\": \"json\", \"source\": {\"type\": \"journalctl\", \"params\": {\"unit\": \"${hot_app}.service\"}}, \"lifecycle\": {\"type\": \"systemd\"}}]"
+  full_apps="${base_apps%]*}, {\"name\": \"${hot_app}\", \"parser\": ${json_parser}, \"source\": {\"type\": \"journalctl\", \"params\": {\"unit\": \"${hot_app}.service\"}}, \"lifecycle\": {\"type\": \"systemd\"}}]"
 
   put_apps_config "${full_apps}"
   attempt=0

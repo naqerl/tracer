@@ -28,13 +28,10 @@ func TestSetupClient_PutCollectorConfig(t *testing.T) {
 	client := NewSetupClient(server.URL, "test-api-key")
 
 	config := SetupConfig{
-		Parsers: map[string]ParserSpec{
-			"json-parser": {Type: "json"},
-		},
 		Apps: []AppSpec{
 			{
 				Name:      "demo-api",
-				ParserID:  "json-parser",
+				Parser:    &ParserSpec{Type: "json"},
 				Source:    &SourceSpec{Type: "journalctl", Params: map[string]string{"unit": "demo-api.service"}},
 				Lifecycle: &LifecycleSpec{Type: "systemd"},
 			},

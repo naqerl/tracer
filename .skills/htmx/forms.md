@@ -113,28 +113,30 @@ Inline failure messages inside swapped fragments use
 ## Detection on input with debounce
 
 For "type a name, guess while typing" flows (collector app form), the first
-field is a free-form app **name**. On blur the same name is set into the **log
-source** field; the log source field then guesses the format against the
-collector **on input** with a debounce (`input changed delay:500ms`, mirroring
-the forgejo `input changed delay:1s` pattern). The copy-and-trigger happens
-client-side so the log source is visibly populated before the request
-round-trip; editing the log source afterwards re-guesses while typing:
+field is a free-form app **name**. A **use app name** button next to the **log
+source** field copies the name into it and triggers the guess; the log source
+field also guesses the format against the collector **on input** with a
+debounce (`input changed delay:500ms`, mirroring the forgejo
+`input changed delay:1s` pattern). The copy-and-trigger happens client-side so
+the log source is visibly populated before the request round-trip; editing the
+log source afterwards re-guesses while typing:
 
 ```templ
-<input type="text" name="name" id="app-name-input"
-	   hx-on:blur="document.getElementById('app-service-input').value=this.value;htmx.trigger('#app-service-input','input')"/>
+<input type="text" name="name" id="app-name-input"/>
+
+<button type="button"
+		onclick="var s=document.getElementById('app-service-input');var n=document.getElementById('app-name-input');if(s&&n){s.value=n.value;htmx.trigger(s,'input');}">use app name</button>
 
 <input type="text" name="service" id="app-service-input" value={ p.Guess.Service }
 	   hx-post={ previewurl }
 	   hx-trigger="input changed delay:500ms"
-	   hx-include="#app-name-input"
+	   hx-include="closest form"
 	   hx-target="#app-form-container"
 	   hx-swap="innerHTML"
 	   hx-indicator="#app-format-indicator"/>
 ```
 
-(`hx-on:blur` needs htmx 1.9+/2.x; `htmx.trigger` fires the target's existing
-`hx-trigger` handler.)
+(`htmx.trigger` fires the target's existing `hx-trigger` handler.)
 
 The endpoint re-renders the same fragment carrying the outcome. The outcome
 renders **right under the log source field** (via `AppFormatFeedback`):

@@ -1281,13 +1281,13 @@ func (h *handler) getEditAppPage(w http.ResponseWriter, r *http.Request) {
 		Title:       "Edit app - " + appName,
 		Collector:   collectorName,
 		ServiceName: appName,
+		EditApp:     appName,
 		IsEdit:      true,
 	}
 	if cfg, err := h.loadCollectorConfig(r.Context(), collectorName); err == nil {
 		if app, ok := cfg.GetApp(appName); ok {
 			guess := view.FormatGuessView{Collector: collectorName}
-			if app.ParserID != "" {
-				parser := cfg.Parsers[app.ParserID]
+			if parser, ok := app.ParserSpec(); ok {
 				guess.ParserType = parser.Type
 				guess.ParserParams = parser.Params
 			}
@@ -1328,11 +1328,14 @@ func (h *handler) previewAppFormat(w http.ResponseWriter, r *http.Request) {
 	if service == "" {
 		service = name
 	}
+	isEdit := strings.TrimSpace(r.FormValue("edit_app")) != ""
 
 	render := func(guess view.FormatGuessView) {
 		view.AppForm(view.AppFormProps{
 			Collector:      collectorName,
 			ServiceName:    name,
+			EditApp:        strings.TrimSpace(r.FormValue("edit_app")),
+			IsEdit:         isEdit,
 			URL:            strings.TrimSpace(r.FormValue("url")),
 			Interval:       r.FormValue("interval"),
 			ExpectedStatus: r.FormValue("expected_status"),
@@ -1533,15 +1536,32 @@ func (h *handler) updateApp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	newName := strings.TrimSpace(r.FormValue("name"))
+	// Errors re-render the edit form with the message inline. HTMX swaps a
+	// 2xx response even when the underlying operation failed, so the user
+	// keeps the form and sees why the save was rejected.
+	renderError := func(msg string) {
+		view.AppForm(view.AppFormProps{
+			Collector:      collectorName,
+			ServiceName:    newName,
+			EditApp:        appName,
+			IsEdit:         true,
+			URL:            strings.TrimSpace(r.FormValue("url")),
+			Interval:       r.FormValue("interval"),
+			ExpectedStatus: r.FormValue("expected_status"),
+			Error:          msg,
+		}).Render(r.Context(), w)
+	}
+
 	cfg, err := h.loadCollectorConfig(r.Context(), collectorName)
 	if err != nil {
-		http.Error(w, "Failed to load config", http.StatusInternalServerError)
+		renderError("Failed to load config")
 		return
 	}
 
 	sourceType, src, parser, hasSource, srcErr := sourceFromForm(r)
 	if srcErr != nil {
-		http.Error(w, "invalid source parameters", http.StatusBadRequest)
+		renderError("invalid source parameters")
 		return
 	}
 	health := healthFromForm(r)
@@ -1558,7 +1578,7 @@ func (h *handler) updateApp(w http.ResponseWriter, r *http.Request) {
 		err = cfg.ClearAppSource(appName)
 	}
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		renderError(err.Error())
 		return
 	}
 	_, exists = cfg.GetApp(appName)
@@ -1573,27 +1593,26 @@ func (h *handler) updateApp(w http.ResponseWriter, r *http.Request) {
 		err = cfg.ClearAppHealth(appName)
 	}
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		renderError(err.Error())
 		return
 	}
 
 	if err := h.saveCollectorConfig(r.Context(), collectorName, cfg); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		renderError("Failed to save config: " + err.Error())
 		return
 	}
 
-	newName := strings.TrimSpace(r.FormValue("name"))
 	if newName != "" && newName != appName {
 		if err := h.svc.RenameApp(r.Context(), collectorName, appName, newName); err != nil {
 			switch {
 			case errors.Is(err, panelsvc.ErrAppNameTaken):
-				http.Error(w, "app name already in use", http.StatusConflict)
+				renderError("app name already in use")
 			case errors.Is(err, panelsvc.ErrAppNotFound):
-				http.Error(w, "app not found", http.StatusNotFound)
+				renderError("app not found")
 			case errors.Is(err, panelsvc.ErrCollectorNotFound):
-				http.Error(w, "collector not found", http.StatusNotFound)
+				renderError("collector not found")
 			default:
-				http.Error(w, err.Error(), http.StatusInternalServerError)
+				renderError(err.Error())
 			}
 			return
 		}

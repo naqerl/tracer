@@ -1,6 +1,7 @@
 package types
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -9,9 +10,49 @@ import (
 // CollectorConfig is the panel-driven configuration pushed to collectors over
 // WebSocket. Both the panel and collector decode this type.
 type CollectorConfig struct {
-	Parsers map[string]ParserSpec `json:"parsers"`
-	Apps    []AppSpec             `json:"apps"`
-	Stats   *StatsConfig          `json:"stats,omitempty"`
+	Apps  []AppSpec    `json:"apps"`
+	Stats *StatsConfig `json:"stats,omitempty"`
+}
+
+// UnmarshalJSON decodes the config, resolving the legacy format (a shared
+// parsers map referenced by parser_id) into each app's inline parser.
+func (c *CollectorConfig) UnmarshalJSON(data []byte) error {
+	type rawApp struct {
+		Name      string           `json:"name"`
+		ParserID  string           `json:"parser_id,omitempty"`
+		Parser    *ParserSpec      `json:"parser,omitempty"`
+		Source    *SourceSpec      `json:"source,omitempty"`
+		Lifecycle *LifecycleSpec   `json:"lifecycle,omitempty"`
+		Health    *HealthCheckSpec `json:"health,omitempty"`
+	}
+	type rawConfig struct {
+		Parsers map[string]ParserSpec `json:"parsers,omitempty"`
+		Apps    []rawApp              `json:"apps"`
+		Stats   *StatsConfig          `json:"stats,omitempty"`
+	}
+	var raw rawConfig
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	config := CollectorConfig{Stats: raw.Stats}
+	for _, app := range raw.Apps {
+		spec := AppSpec{
+			Name:      app.Name,
+			Parser:    app.Parser,
+			Source:    app.Source,
+			Lifecycle: app.Lifecycle,
+			Health:    app.Health,
+		}
+		if spec.Parser == nil && app.ParserID != "" {
+			if parser, ok := raw.Parsers[app.ParserID]; ok {
+				parser := parser
+				spec.Parser = &parser
+			}
+		}
+		config.Apps = append(config.Apps, spec)
+	}
+	*c = config
+	return nil
 }
 
 // StatsConfig configures the collector's system resource (CPU, memory, disk)
@@ -60,18 +101,18 @@ func (c *CollectorConfig) GetStats() StatsConfig {
 	return *c.Stats
 }
 
-// ParserSpec describes a log parser.
+// ParserSpec describes a log parser owned by a single app.
 type ParserSpec struct {
 	Type   string            `json:"type"`
 	Params map[string]string `json:"params"`
 }
 
 // AppSpec describes a single application the collector should run.
-// An app with only Health set (and empty Source/ParserID) is an uptime-only
+// An app with only Health set (and no Source/Parser) is an uptime-only
 // monitor — the collector polls the health endpoint but collects no logs.
 type AppSpec struct {
 	Name      string           `json:"name"`
-	ParserID  string           `json:"parser_id,omitempty"`
+	Parser    *ParserSpec      `json:"parser,omitempty"`
 	Source    *SourceSpec      `json:"source,omitempty"`
 	Lifecycle *LifecycleSpec   `json:"lifecycle,omitempty"`
 	Health    *HealthCheckSpec `json:"health,omitempty"`
@@ -96,15 +137,15 @@ type HealthCheckSpec struct {
 	Params map[string]string `json:"params"`
 }
 
-// Source returns the source spec if set. The second return value reports
+// SourceSpec returns the source spec if set. The second return value reports
 // whether a source was configured.
 func (a AppSpec) SourceSpec() (*SourceSpec, bool) {
 	return a.Source, a.Source != nil
 }
 
-// ParserIDValue returns the parser ID and whether one was configured.
-func (a AppSpec) ParserIDValue() (string, bool) {
-	return a.ParserID, a.ParserID != ""
+// ParserSpec returns the parser spec if set.
+func (a AppSpec) ParserSpec() (*ParserSpec, bool) {
+	return a.Parser, a.Parser != nil
 }
 
 // LifecycleDetectorSpec returns the lifecycle spec if set.
@@ -120,7 +161,7 @@ func (a AppSpec) HealthSpec() (*HealthCheckSpec, bool) {
 // IsHealthOnly reports whether this app only performs health checks with no
 // log collection.
 func (a AppSpec) IsHealthOnly() bool {
-	return a.Source == nil && a.ParserID == ""
+	return a.Source == nil && a.Parser == nil
 }
 
 // parserRequiredParams lists the params every parser of a given type must
@@ -134,25 +175,9 @@ var parserRequiredParams = map[string][]string{
 }
 
 // Validate checks the config for structural errors: duplicate app names,
-// duplicate parser IDs, references to missing parsers, incomplete parsers,
-// and apps with neither source nor health check.
+// apps with neither source nor health check, sources without parsers, and
+// incomplete parsers.
 func (c *CollectorConfig) Validate() error {
-	if c.Parsers == nil {
-		c.Parsers = map[string]ParserSpec{}
-	}
-
-	for id, p := range c.Parsers {
-		required, ok := parserRequiredParams[p.Type]
-		if !ok {
-			return fmt.Errorf("parser id=%s: unknown parser type %q", id, p.Type)
-		}
-		for _, k := range required {
-			if strings.TrimSpace(p.Params[k]) == "" {
-				return fmt.Errorf("parser id=%s: missing required param %s", id, k)
-			}
-		}
-	}
-
 	seenApps := make(map[string]bool, len(c.Apps))
 	for _, app := range c.Apps {
 		if seenApps[app.Name] {
@@ -160,12 +185,21 @@ func (c *CollectorConfig) Validate() error {
 		}
 		seenApps[app.Name] = true
 
-		if app.IsHealthOnly() && app.Health == nil {
+		if app.Source == nil && app.Health == nil {
 			return fmt.Errorf("app %s has no source and no health check: nothing to do", app.Name)
 		}
-		if !app.IsHealthOnly() {
-			if _, ok := c.Parsers[app.ParserID]; !ok {
-				return fmt.Errorf("parser with id=%s not found", app.ParserID)
+		if app.Source != nil && app.Parser == nil {
+			return fmt.Errorf("app %s has no parser", app.Name)
+		}
+		if app.Parser != nil {
+			required, ok := parserRequiredParams[app.Parser.Type]
+			if !ok {
+				return fmt.Errorf("app %s: unknown parser type %q", app.Name, app.Parser.Type)
+			}
+			for _, k := range required {
+				if strings.TrimSpace(app.Parser.Params[k]) == "" {
+					return fmt.Errorf("app %s: missing required parser param %s", app.Name, k)
+				}
 			}
 		}
 	}
@@ -180,25 +214,19 @@ func (c *CollectorConfig) Validate() error {
 }
 
 // AddApp appends an app with a log source and parser to the config.
-// It derives the parser ID from the parser type and app name.
 func (c *CollectorConfig) AddApp(appName string, src SourceSpec, parser ParserSpec) error {
-	if c.Parsers == nil {
-		c.Parsers = map[string]ParserSpec{}
-	}
 	if c.Apps == nil {
 		c.Apps = []AppSpec{}
 	}
-
-	parserID := parser.Type + "-" + strings.ReplaceAll(appName, " ", "-")
-	if _, exists := c.Parsers[parserID]; exists {
-		return fmt.Errorf("parser id %q already exists; app names must be unique per parser type", parserID)
+	for _, app := range c.Apps {
+		if app.Name == appName {
+			return fmt.Errorf("app name %q already exists", appName)
+		}
 	}
-	c.Parsers[parserID] = parser
-
 	c.Apps = append(c.Apps, AppSpec{
-		Name:     appName,
-		ParserID: parserID,
-		Source:   &src,
+		Name:   appName,
+		Parser: &parser,
+		Source: &src,
 	})
 	return nil
 }
@@ -216,8 +244,7 @@ func (c *CollectorConfig) AddUptimeApp(appName, url, interval, expectedStatus st
 	return nil
 }
 
-// RemoveApp removes an app by name and drops any parsers it no longer
-// references.
+// RemoveApp removes an app by name.
 func (c *CollectorConfig) RemoveApp(appName string) {
 	var kept []AppSpec
 	for _, app := range c.Apps {
@@ -227,18 +254,6 @@ func (c *CollectorConfig) RemoveApp(appName string) {
 		kept = append(kept, app)
 	}
 	c.Apps = kept
-
-	used := make(map[string]bool, len(c.Apps))
-	for _, app := range c.Apps {
-		if app.ParserID != "" {
-			used[app.ParserID] = true
-		}
-	}
-	for pid := range c.Parsers {
-		if !used[pid] {
-			delete(c.Parsers, pid)
-		}
-	}
 }
 
 // GetApp returns the spec of an app by name and whether it exists.
@@ -251,24 +266,15 @@ func (c *CollectorConfig) GetApp(name string) (AppSpec, bool) {
 	return AppSpec{}, false
 }
 
-// SetAppSource replaces the log source and parser of an existing app, changing
-// it from an uptime-only monitor into a log-collecting app.
+// SetAppSource replaces the log source and parser of an existing app, turning
+// an uptime-only monitor into a log-collecting app.
 func (c *CollectorConfig) SetAppSource(name string, src SourceSpec, parser ParserSpec) error {
 	for i := range c.Apps {
 		if c.Apps[i].Name != name {
 			continue
 		}
-		if c.Parsers == nil {
-			c.Parsers = map[string]ParserSpec{}
-		}
-		oldParserID := c.Apps[i].ParserID
-		newParserID := parser.Type + "-" + strings.ReplaceAll(name, " ", "-")
-		c.Parsers[newParserID] = parser
-		c.Apps[i].ParserID = newParserID
+		c.Apps[i].Parser = &parser
 		c.Apps[i].Source = &src
-		if oldParserID != "" && oldParserID != newParserID {
-			delete(c.Parsers, oldParserID)
-		}
 		return nil
 	}
 	return fmt.Errorf("app %s not found", name)
@@ -299,8 +305,7 @@ func (c *CollectorConfig) ClearAppHealth(name string) error {
 	return fmt.Errorf("app %s not found", name)
 }
 
-// RenameApp renames an app from oldName to newName, updating the app spec
-// name and its associated parser ID to match.
+// RenameApp renames an app from oldName to newName.
 func (c *CollectorConfig) RenameApp(oldName, newName string) error {
 	for i := range c.Apps {
 		if c.Apps[i].Name != oldName {
@@ -312,16 +317,6 @@ func (c *CollectorConfig) RenameApp(oldName, newName string) error {
 			}
 		}
 		c.Apps[i].Name = newName
-		if c.Apps[i].ParserID != "" {
-			oldPID := c.Apps[i].ParserID
-			parserSpec, ok := c.Parsers[oldPID]
-			if ok {
-				newPID := parserSpec.Type + "-" + strings.ReplaceAll(newName, " ", "-")
-				c.Parsers[newPID] = parserSpec
-				delete(c.Parsers, oldPID)
-				c.Apps[i].ParserID = newPID
-			}
-		}
 		return nil
 	}
 	return fmt.Errorf("app %s not found", oldName)
@@ -333,12 +328,8 @@ func (c *CollectorConfig) ClearAppSource(name string) error {
 		if c.Apps[i].Name != name {
 			continue
 		}
-		oldParserID := c.Apps[i].ParserID
-		c.Apps[i].ParserID = ""
+		c.Apps[i].Parser = nil
 		c.Apps[i].Source = nil
-		if oldParserID != "" && !parserInUse(c.Apps, oldParserID) && c.Parsers != nil {
-			delete(c.Parsers, oldParserID)
-		}
 		return nil
 	}
 	return fmt.Errorf("app %s not found", name)
@@ -353,13 +344,4 @@ func httpHealthSpec(url, interval, expectedStatus string) *HealthCheckSpec {
 			"expected_status": expectedStatus,
 		},
 	}
-}
-
-func parserInUse(apps []AppSpec, parserID string) bool {
-	for _, app := range apps {
-		if app.ParserID == parserID {
-			return true
-		}
-	}
-	return false
 }

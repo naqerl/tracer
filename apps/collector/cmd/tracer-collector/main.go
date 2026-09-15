@@ -191,7 +191,7 @@ func serve(ctx context.Context, cfg config.Config) error {
 		senderSvc.Start(ctx)
 	}()
 
-	var current reconcile.Config
+	var current []types.AppSpec
 	lastAppSet := ""
 	for {
 		select {
@@ -217,15 +217,12 @@ func serve(ctx context.Context, cfg config.Config) error {
 					continue
 				}
 				applyStats(cc.GetStats())
-				current = reconcile.Config{
-					Apps:    cc.Apps,
-					Parsers: adapterParsers(cc.Parsers),
-				}
+				current = cc.Apps
 				if err := reconcile.Apply(ctx, sup, mpsc, current); err != nil {
 					slog.Error("could not apply pushed config, keeping current", "error", err)
 					continue
 				}
-				slog.Info("applied panel-pushed config", "apps", len(current.Apps))
+				slog.Info("applied panel-pushed config", "apps", len(current))
 
 				names := reconcile.Names(current)
 				set := strings.Join(names, "\x00")
@@ -325,15 +322,7 @@ func conflictFrom(err error) *types.FormatConflict {
 	}
 }
 
-// adapterParsers converts shared ParserSpecs to collector-internal parser.Specs.
-func adapterParsers(shared map[string]types.ParserSpec) map[string]parser.Spec {
-	out := make(map[string]parser.Spec, len(shared))
-	for id, s := range shared {
-		out[id] = parser.Spec{ID: id, Type: s.Type, Params: s.Params}
-	}
-	return out
-}
-
+// wantsHelp checks whether an argument list requests help output.
 func wantsHelp(args []string, fs *flag.FlagSet, reorder bool) bool {
 	for i := 0; i < len(args); i++ {
 		a := args[i]
