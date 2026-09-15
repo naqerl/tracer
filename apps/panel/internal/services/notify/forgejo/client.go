@@ -318,61 +318,41 @@ func (c *Client) ListMilestones(ctx context.Context, owner, repo string) ([]Mile
 	return milestones, nil
 }
 
-// SearchIssue looks for an issue in owner/repo (any state) whose title
-// contains query. It returns the first match, or ok=false when none exists.
-// The search endpoint is global, so matches are additionally filtered
-// client-side to the configured repo and to issues whose title actually
-// contains the query.
-func (c *Client) SearchIssue(ctx context.Context, owner, repo, query string) (Issue, bool, error) {
-	// The first-line query is quoted so multi-word titles match as a single
-	// term instead of an implicit AND of words; the limit is generous so the
-	// client-side repo/title filter sees the full result set.
-	u := c.baseURL + "/api/v1/repos/issues/search?" + url.Values{
-		"q":     {fmt.Sprintf("repo:%s/%s \"%s\"", owner, repo, query)},
-		"limit": {"100"},
-	}.Encode()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
-	if err != nil {
-		return Issue{}, false, fmt.Errorf("could not build forgejo issue search request: %w", err)
-	}
-	c.authorize(req)
+// FindIssueByTitle looks for an issue in owner/repo (any state) whose title
+// exactly matches query. It uses the repo's issues list endpoint which is a
+// direct database query and more reliable than the full-text search endpoint.
+func (c *Client) FindIssueByTitle(ctx context.Context, owner, repo, query string) (Issue, bool, error) {
+	var found Issue
+	only := true
 
-	resp, err := c.http.Do(req)
-	if err != nil {
-		return Issue{}, false, fmt.Errorf("could not search forgejo issues: %w", err)
-	}
-	body, err := readBody(resp)
-	if err != nil {
-		return Issue{}, false, err
-	}
-	if resp.StatusCode != http.StatusOK {
-		return Issue{}, false, responseError("forgejo issue search", resp, body)
-	}
-
-	var results []struct {
-		Number     int64  `json:"number"`
-		HTMLURL    string `json:"html_url"`
-		Title      string `json:"title"`
-		State      string `json:"state"`
-		Repository struct {
-			FullName string `json:"full_name"`
-		} `json:"repository"`
-	}
-	if err := json.Unmarshal(body, &results); err != nil {
-		return Issue{}, false, fmt.Errorf("could not decode forgejo issue search response: %w", err)
-	}
-
-	full := owner + "/" + repo
-	for _, r := range results {
-		if r.Repository.FullName != full {
-			continue
+	_, err := c.listPages(ctx, func(page int) string {
+		return fmt.Sprintf("/api/v1/repos/%s/%s/issues?state=all&page=%d&limit=%d", owner, repo, page, listLimit)
+	}, func(body []byte) (int, error) {
+		var issues []struct {
+			Number  int64  `json:"number"`
+			HTMLURL string `json:"html_url"`
+			Title   string `json:"title"`
+			State   string `json:"state"`
 		}
-		if !strings.Contains(r.Title, query) {
-			continue
+		if err := json.Unmarshal(body, &issues); err != nil {
+			return 0, fmt.Errorf("could not parse forgejo issues list: %w", err)
 		}
-		return Issue{Number: r.Number, HTMLURL: r.HTMLURL, State: r.State}, true, nil
+		for _, i := range issues {
+			if i.Title == query {
+				found = Issue{Number: i.Number, HTMLURL: i.HTMLURL, State: i.State}
+				only = false
+				return 0, nil // stop pagination
+			}
+		}
+		return len(issues), nil
+	})
+	if err != nil {
+		return Issue{}, false, fmt.Errorf("could not list forgejo issues: %w", err)
 	}
-	return Issue{}, false, nil
+	if only {
+		return Issue{}, false, nil
+	}
+	return found, true, nil
 }
 
 // CreateComment adds a comment to an issue, used to note that a reported error

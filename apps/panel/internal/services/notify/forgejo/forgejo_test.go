@@ -16,8 +16,8 @@ import (
 )
 
 // newTestNotifier builds a notifier against a fake server whose handler must
-// answer the issue search (GET /api/v1/repos/issues/search) and, when no
-// match is returned, the create request (POST /api/v1/repos/x/barse/issues).
+// answer the issue list (GET /api/v1/repos/x/barse/issues?state=all) and,
+// when no match is returned, the create request (POST /api/v1/repos/x/barse/issues).
 func newTestNotifier(t *testing.T, handler http.HandlerFunc) *Notifier {
 	t.Helper()
 	srv := httptest.NewServer(handler)
@@ -48,17 +48,23 @@ func alertNotification() notify.Notification {
 	}
 }
 
-func TestNotifySearchesThenCreatesIssue(t *testing.T) {
-	var searchQuery, createBody string
-	var searchCalls, createCalls int
+// isIssueListRequest reports whether r is a GET to the issues endpoint with
+// state=all, i.e. the FindIssueByTitle list call.
+func isIssueListRequest(r *http.Request) bool {
+	return r.Method == http.MethodGet &&
+		r.URL.Query().Get("state") == "all"
+}
+
+func TestNotifyListsThenCreatesIssue(t *testing.T) {
+	var listCalls, createCalls int
+	var createBody string
 	n := newTestNotifier(t, func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/api/v1/repos/issues/search":
-			searchCalls++
-			searchQuery = r.URL.RawQuery
+		switch {
+		case r.URL.Path == "/api/v1/repos/x/barse/issues" && isIssueListRequest(r):
+			listCalls++
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(`[]`))
-		case "/api/v1/repos/x/barse/issues":
+		case r.URL.Path == "/api/v1/repos/x/barse/issues" && r.Method == http.MethodPost:
 			createCalls++
 			buf, _ := io.ReadAll(io.LimitReader(r.Body, 1<<20))
 			createBody = string(buf)
@@ -74,21 +80,8 @@ func TestNotifySearchesThenCreatesIssue(t *testing.T) {
 		t.Fatalf("Notify: %v", err)
 	}
 
-	if searchCalls != 1 || createCalls != 1 {
-		t.Fatalf("expected 1 search and 1 create, got search=%d create=%d", searchCalls, createCalls)
-	}
-	if !strings.Contains(searchQuery, "repo%3Ax%2Fbarse") && !strings.Contains(searchQuery, "repo:x/barse") {
-		t.Errorf("expected repo-scoped search query, got %q", searchQuery)
-	}
-
-	first := firstLine("connection refused\nsecond line")
-	if !strings.Contains(searchQuery, "connection+refused") {
-		t.Errorf("expected first line %q in search query, got %q", first, searchQuery)
-	}
-	// The first line is quoted so multi-word titles match as one term.
-	if !strings.Contains(searchQuery, "%22connection+refused%22") &&
-		!strings.Contains(searchQuery, `"connection+refused"`) {
-		t.Errorf("expected quoted first line in search query, got %q", searchQuery)
+	if listCalls != 1 || createCalls != 1 {
+		t.Fatalf("expected 1 list and 1 create, got list=%d create=%d", listCalls, createCalls)
 	}
 
 	var body struct {
@@ -109,11 +102,11 @@ func TestNotifySearchesThenCreatesIssue(t *testing.T) {
 func TestNotifySkipsExistingIssue(t *testing.T) {
 	var createCalls int
 	n := newTestNotifier(t, func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/api/v1/repos/issues/search":
+		switch {
+		case r.URL.Path == "/api/v1/repos/x/barse/issues" && isIssueListRequest(r):
 			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`[{"number":5,"html_url":"https://git.naqerl.com/x/barse/issues/5","title":"connection refused","state":"open","repository":{"full_name":"x/barse"}}]`))
-		case "/api/v1/repos/x/barse/issues":
+			_, _ = w.Write([]byte(`[{"number":5,"html_url":"https://git.naqerl.com/x/barse/issues/5","title":"connection refused","state":"open"}]`))
+		case r.URL.Path == "/api/v1/repos/x/barse/issues" && r.Method == http.MethodPost:
 			createCalls++
 			w.WriteHeader(http.StatusCreated)
 		default:
@@ -133,11 +126,11 @@ func TestNotifyCommentsOnClosedIssue(t *testing.T) {
 	var createCalls, commentCalls int
 	var commentPath, commentBody string
 	n := newTestNotifier(t, func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/api/v1/repos/issues/search":
+		switch {
+		case r.URL.Path == "/api/v1/repos/x/barse/issues" && isIssueListRequest(r):
 			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`[{"number":5,"html_url":"https://git.naqerl.com/x/barse/issues/5","title":"connection refused","state":"closed","repository":{"full_name":"x/barse"}}]`))
-		case "/api/v1/repos/x/barse/issues/5/comments":
+			_, _ = w.Write([]byte(`[{"number":5,"html_url":"https://git.naqerl.com/x/barse/issues/5","title":"connection refused","state":"closed"}]`))
+		case r.URL.Path == "/api/v1/repos/x/barse/issues/5/comments" && r.Method == http.MethodPost:
 			commentCalls++
 			commentPath = r.URL.Path
 			var req struct {
@@ -149,7 +142,7 @@ func TestNotifyCommentsOnClosedIssue(t *testing.T) {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusCreated)
 			_, _ = w.Write([]byte(`{"id":1}`))
-		case "/api/v1/repos/x/barse/issues":
+		case r.URL.Path == "/api/v1/repos/x/barse/issues" && r.Method == http.MethodPost:
 			createCalls++
 			w.WriteHeader(http.StatusCreated)
 		default:
@@ -183,14 +176,15 @@ func TestNotifyCommentsOnClosedIssue(t *testing.T) {
 
 func TestNotifyIgnoresIssueFromOtherRepo(t *testing.T) {
 	var createCalls int
-	// Search returns a match in a different repo; the notifier must not treat
-	// it as the same error and still creates an issue.
+	// The list-issues endpoint returns issues from this repo only; a match
+	// from another repo would not appear here. This test verifies that a
+	// non-matching title in the same repo does not prevent issue creation.
 	n := newTestNotifier(t, func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/api/v1/repos/issues/search":
+		switch {
+		case r.URL.Path == "/api/v1/repos/x/barse/issues" && isIssueListRequest(r):
 			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`[{"number":9,"html_url":"https://git.naqerl.com/y/other/issues/9","title":"boom [deadbeef0]","state":"open","repository":{"full_name":"y/other"}}]`))
-		case "/api/v1/repos/x/barse/issues":
+			_, _ = w.Write([]byte(`[{"number":9,"html_url":"https://git.naqerl.com/x/barse/issues/9","title":"boom [deadbeef0]","state":"open"}]`))
+		case r.URL.Path == "/api/v1/repos/x/barse/issues" && r.Method == http.MethodPost:
 			createCalls++
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusCreated)
@@ -204,19 +198,18 @@ func TestNotifyIgnoresIssueFromOtherRepo(t *testing.T) {
 		t.Fatalf("Notify: %v", err)
 	}
 	if createCalls != 1 {
-		t.Fatalf("expected a create when the search match is in another repo, got %d", createCalls)
+		t.Fatalf("expected a create when no matching title exists, got %d", createCalls)
 	}
 }
 
 func TestNotifyTruncatesLongTitle(t *testing.T) {
-	var gotTitle, gotSearch string
+	var gotTitle string
 	n := newTestNotifier(t, func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/api/v1/repos/issues/search":
-			gotSearch = r.URL.Query().Get("q")
+		switch {
+		case r.URL.Path == "/api/v1/repos/x/barse/issues" && isIssueListRequest(r):
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(`[]`))
-		case "/api/v1/repos/x/barse/issues":
+		case r.URL.Path == "/api/v1/repos/x/barse/issues" && r.Method == http.MethodPost:
 			var body struct {
 				Title string `json:"title"`
 			}
@@ -251,12 +244,6 @@ func TestNotifyTruncatesLongTitle(t *testing.T) {
 	if !utf8.ValidString(gotTitle) {
 		t.Errorf("title splits a UTF-8 sequence: %q", gotTitle)
 	}
-
-	// The search keys on the same truncated value used for the title, so a
-	// repeat of the same message finds the existing (truncated) issue.
-	if !strings.Contains(gotSearch, gotTitle) {
-		t.Errorf("search key %q does not contain the truncated title %q", gotSearch, gotTitle)
-	}
 }
 
 func TestNotifyIgnoresOtherTypes(t *testing.T) {
@@ -272,16 +259,16 @@ func TestNotifyIgnoresOtherTypes(t *testing.T) {
 }
 
 // TestNotifySkipsRecentlyReported covers the index-lag window: after a create,
-// an identical alert must not hit the search or create endpoints again.
+// an identical alert must not hit the list or create endpoints again.
 func TestNotifySkipsRecentlyReported(t *testing.T) {
-	var searchCalls, createCalls int
+	var listCalls, createCalls int
 	n := newTestNotifier(t, func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/api/v1/repos/issues/search":
-			searchCalls++
+		switch {
+		case r.URL.Path == "/api/v1/repos/x/barse/issues" && isIssueListRequest(r):
+			listCalls++
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(`[]`))
-		case "/api/v1/repos/x/barse/issues":
+		case r.URL.Path == "/api/v1/repos/x/barse/issues" && r.Method == http.MethodPost:
 			createCalls++
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusCreated)
@@ -294,16 +281,16 @@ func TestNotifySkipsRecentlyReported(t *testing.T) {
 	if err := n.Notify(alertNotification()); err != nil {
 		t.Fatalf("first alert: %v", err)
 	}
-	if searchCalls != 1 || createCalls != 1 {
-		t.Fatalf("expected 1 search + 1 create, got search=%d create=%d", searchCalls, createCalls)
+	if listCalls != 1 || createCalls != 1 {
+		t.Fatalf("expected 1 list + 1 create, got list=%d create=%d", listCalls, createCalls)
 	}
 
 	// Immediate repeat: cache hit, no network at all.
 	if err := n.Notify(alertNotification()); err != nil {
 		t.Fatalf("second alert: %v", err)
 	}
-	if searchCalls != 1 || createCalls != 1 {
-		t.Fatalf("repeat alert must be served from cache, got search=%d create=%d", searchCalls, createCalls)
+	if listCalls != 1 || createCalls != 1 {
+		t.Fatalf("repeat alert must be served from cache, got list=%d create=%d", listCalls, createCalls)
 	}
 }
 
@@ -312,11 +299,11 @@ func TestNotifySkipsRecentlyReported(t *testing.T) {
 func TestNotifyRetriesAfterCreateFailure(t *testing.T) {
 	var createCalls int
 	n := newTestNotifier(t, func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/api/v1/repos/issues/search":
+		switch {
+		case r.URL.Path == "/api/v1/repos/x/barse/issues" && isIssueListRequest(r):
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(`[]`))
-		case "/api/v1/repos/x/barse/issues":
+		case r.URL.Path == "/api/v1/repos/x/barse/issues" && r.Method == http.MethodPost:
 			createCalls++
 			http.Error(w, "boom", http.StatusInternalServerError)
 		default:
@@ -373,7 +360,7 @@ func TestWelcomeRejectsUnreachableRepo(t *testing.T) {
 
 func TestNotifyNon2xxReturnsError(t *testing.T) {
 	n := newTestNotifier(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/api/v1/repos/issues/search" {
+		if r.URL.Path == "/api/v1/repos/x/barse/issues" && isIssueListRequest(r) {
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(`[]`))
 			return
@@ -390,7 +377,7 @@ func TestNotifyNon2xxReturnsError(t *testing.T) {
 func TestNotifySendsConfiguredLabelsAndMilestone(t *testing.T) {
 	var gotBody string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/api/v1/repos/issues/search" {
+		if r.URL.Path == "/api/v1/repos/x/barse/issues" && isIssueListRequest(r) {
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(`[]`))
 			return

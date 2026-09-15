@@ -416,22 +416,20 @@ func TestReadBodyRejectsOversizedBody(t *testing.T) {
 	}
 }
 
-func TestSearchIssueFindsMatchingOpenIssue(t *testing.T) {
-	var gotQuery string
+func TestFindIssueByTitleFindsMatchingOpenIssue(t *testing.T) {
+	var gotPath, gotQuery string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/v1/repos/issues/search" {
-			t.Errorf("unexpected path %q", r.URL.Path)
-		}
-		gotQuery = r.URL.Query().Get("q")
+		gotPath = r.URL.Path
+		gotQuery = r.URL.RawQuery
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`[{"number":42,"html_url":"https://git.naqerl.com/x/barse/issues/42","title":"boom [deadbeef0]","state":"open","repository":{"full_name":"x/barse"}}]`))
+		_, _ = w.Write([]byte(`[{"number":42,"html_url":"https://git.naqerl.com/x/barse/issues/42","title":"boom [deadbeef0]","state":"open"}]`))
 	}))
 	defer srv.Close()
 
 	c := NewClient(srv.URL, "sekret")
-	issue, found, err := c.SearchIssue(t.Context(), "x", "barse", "deadbeef0")
+	issue, found, err := c.FindIssueByTitle(t.Context(), "x", "barse", "boom [deadbeef0]")
 	if err != nil {
-		t.Fatalf("SearchIssue: %v", err)
+		t.Fatalf("FindIssueByTitle: %v", err)
 	}
 	if !found {
 		t.Fatal("expected a match")
@@ -439,30 +437,32 @@ func TestSearchIssueFindsMatchingOpenIssue(t *testing.T) {
 	if issue.Number != 42 || issue.HTMLURL != "https://git.naqerl.com/x/barse/issues/42" {
 		t.Errorf("unexpected issue: %+v", issue)
 	}
-	if !strings.Contains(gotQuery, "repo:x/barse") || !strings.Contains(gotQuery, "deadbeef0") {
-		t.Errorf("unexpected search query %q", gotQuery)
+	if gotPath != "/api/v1/repos/x/barse/issues" {
+		t.Errorf("expected issues list path, got %q", gotPath)
+	}
+	if !strings.Contains(gotQuery, "state=all") {
+		t.Errorf("expected state=all in query, got %q", gotQuery)
 	}
 }
 
-func TestSearchIssueFiltersOtherRepoAndTitleMismatch(t *testing.T) {
+func TestFindIssueByTitleIgnoresUnrelatedTitle(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`[
-			{"number":1,"html_url":"https://git.naqerl.com/y/other/issues/1","title":"boom [deadbeef0]","state":"open","repository":{"full_name":"y/other"}},
-			{"number":2,"html_url":"https://git.naqerl.com/x/barse/issues/2","title":"unrelated title","state":"open","repository":{"full_name":"x/barse"}}
+			{"number":2,"html_url":"https://git.naqerl.com/x/barse/issues/2","title":"unrelated title","state":"open"}
 		]`))
 	}))
 	defer srv.Close()
 
 	c := NewClient(srv.URL, "sekret")
-	if _, found, err := c.SearchIssue(t.Context(), "x", "barse", "deadbeef0"); err != nil {
-		t.Fatalf("SearchIssue: %v", err)
+	if _, found, err := c.FindIssueByTitle(t.Context(), "x", "barse", "boom [deadbeef0]"); err != nil {
+		t.Fatalf("FindIssueByTitle: %v", err)
 	} else if found {
-		t.Fatal("expected no match when the repo or title does not match")
+		t.Fatal("expected no match when the title does not match")
 	}
 }
 
-func TestSearchIssueEmptyResults(t *testing.T) {
+func TestFindIssueByTitleEmptyResults(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`[]`))
@@ -470,42 +470,42 @@ func TestSearchIssueEmptyResults(t *testing.T) {
 	defer srv.Close()
 
 	c := NewClient(srv.URL, "sekret")
-	if _, found, err := c.SearchIssue(t.Context(), "x", "barse", "deadbeef0"); err != nil {
-		t.Fatalf("SearchIssue: %v", err)
+	if _, found, err := c.FindIssueByTitle(t.Context(), "x", "barse", "deadbeef0"); err != nil {
+		t.Fatalf("FindIssueByTitle: %v", err)
 	} else if found {
 		t.Fatal("expected no match for empty results")
 	}
 }
 
-func TestSearchIssueSearchesAllStates(t *testing.T) {
-	var gotState string
+func TestFindIssueByTitleSearchesAllStates(t *testing.T) {
+	var gotQuery string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		gotState = r.URL.Query().Get("state")
+		gotQuery = r.URL.RawQuery
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`[]`))
 	}))
 	defer srv.Close()
 
 	c := NewClient(srv.URL, "sekret")
-	if _, _, err := c.SearchIssue(t.Context(), "x", "barse", "deadbeef0"); err != nil {
-		t.Fatalf("SearchIssue: %v", err)
+	if _, _, err := c.FindIssueByTitle(t.Context(), "x", "barse", "deadbeef0"); err != nil {
+		t.Fatalf("FindIssueByTitle: %v", err)
 	}
-	if gotState != "" {
-		t.Errorf("expected no state filter so closed issues are found too, got %q", gotState)
+	if !strings.Contains(gotQuery, "state=all") {
+		t.Errorf("expected state=all so closed issues are found too, got %q", gotQuery)
 	}
 }
 
-func TestSearchIssueReturnsClosedState(t *testing.T) {
+func TestFindIssueByTitleReturnsClosedState(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`[{"number":7,"html_url":"https://git.naqerl.com/x/barse/issues/7","title":"boom [deadbeef0]","state":"closed","repository":{"full_name":"x/barse"}}]`))
+		_, _ = w.Write([]byte(`[{"number":7,"html_url":"https://git.naqerl.com/x/barse/issues/7","title":"boom [deadbeef0]","state":"closed"}]`))
 	}))
 	defer srv.Close()
 
 	c := NewClient(srv.URL, "sekret")
-	issue, found, err := c.SearchIssue(t.Context(), "x", "barse", "deadbeef0")
+	issue, found, err := c.FindIssueByTitle(t.Context(), "x", "barse", "boom [deadbeef0]")
 	if err != nil {
-		t.Fatalf("SearchIssue: %v", err)
+		t.Fatalf("FindIssueByTitle: %v", err)
 	}
 	if !found {
 		t.Fatal("expected a match for a closed issue")

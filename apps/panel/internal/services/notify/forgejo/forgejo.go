@@ -206,7 +206,7 @@ func (n *Notifier) createIssue(notification notify.Notification) error {
 	// this first line already exists, the error was already reported. A closed
 	// issue gets a re-occurrence comment on the original report instead of a
 	// duplicate issue.
-	issue, found, err := n.client.SearchIssue(ctx, n.cfg.Owner, n.cfg.Repo, first)
+	issue, found, err := n.client.FindIssueByTitle(ctx, n.cfg.Owner, n.cfg.Repo, first)
 	if err != nil {
 		n.cache.Forget(n.cfg.BaseURL, n.cfg.Owner, n.cfg.Repo, first)
 		return err
