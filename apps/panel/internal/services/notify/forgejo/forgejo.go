@@ -198,12 +198,17 @@ func (n *Notifier) createIssue(notification notify.Notification) error {
 		return nil
 	}
 
+	// Reserve the first line before the network calls so concurrent identical
+	// alerts during the search/create round-trip do not both create an issue.
+	n.cache.Remember(n.cfg.BaseURL, n.cfg.Owner, n.cfg.Repo, first)
+
 	// Forgejo is the source of truth for the first report: when an issue with
 	// this first line already exists, the error was already reported. A closed
 	// issue gets a re-occurrence comment on the original report instead of a
 	// duplicate issue.
 	issue, found, err := n.client.SearchIssue(ctx, n.cfg.Owner, n.cfg.Repo, first)
 	if err != nil {
+		n.cache.Forget(n.cfg.BaseURL, n.cfg.Owner, n.cfg.Repo, first)
 		return err
 	}
 	if found {
@@ -216,13 +221,8 @@ func (n *Notifier) createIssue(notification notify.Notification) error {
 				return err
 			}
 		}
-		n.cache.Remember(n.cfg.BaseURL, n.cfg.Owner, n.cfg.Repo, first)
 		return nil
 	}
-
-	// Reserve the first line before the network call so concurrent identical
-	// alerts during the create round-trip do not both create an issue.
-	n.cache.Remember(n.cfg.BaseURL, n.cfg.Owner, n.cfg.Repo, first)
 
 	if _, err := n.client.CreateIssue(ctx, n.cfg.Owner, n.cfg.Repo, title, body, n.cfg.Labels, n.cfg.Milestone); err != nil {
 		// Nothing was created; drop the reservation so the next alert retries.
