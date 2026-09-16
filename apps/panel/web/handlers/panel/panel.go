@@ -1620,7 +1620,7 @@ func (h *handler) updateApp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.renderAppSaved(w, r, collectorName, appName, true)
+	w.Header().Set("HX-Redirect", "/panel/collectors/"+collectorName+"/apps/"+appName)
 }
 
 func (h *handler) createApp(w http.ResponseWriter, r *http.Request) {
