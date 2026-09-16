@@ -362,7 +362,7 @@ func (h *handler) getCollectorApps(w http.ResponseWriter, r *http.Request) {
 			HasUptime:       a.HasUptime,
 			HasLogSource:    a.HasLogSource,
 			Bars:            uptimeBarsToView(a.Bars),
-			ErrorCount:      errorCountText(a.HasLogs, a.ErrorCount),
+			ErrorCount:      errorCountText(a.HasLogSource, a.HasLogs, a.ErrorCount),
 			ErrorTrend:      errorTrendText(a.ErrorTrendValid, a.ErrorTrendPct),
 			ErrorTrendClass: errorTrendClass(a.ErrorTrendValid, a.ErrorTrendPct),
 			ErrorTrendUp:    a.ErrorTrendValid && a.ErrorTrendPct > 0,
@@ -754,11 +754,16 @@ func uptimePercentClass(v float64, periodCount int) string {
 	return "text-fg-secondary"
 }
 
-// errorCountText renders the app-grid error count, or "" when the app
-// never received logs and the count must not be shown.
-func errorCountText(hasLogs bool, errorCount int64) string {
+// errorCountText renders the app-grid error count. When a log source is
+// configured the count always shows (at minimum "0"); when no source is
+// configured and no logs have been received the count is hidden so the
+// templ fallback can display "logs are not configured".
+func errorCountText(hasLogSource, hasLogs bool, errorCount int64) string {
 	if !hasLogs {
-		return ""
+		if !hasLogSource {
+			return ""
+		}
+		return "0"
 	}
 	return strconv.FormatInt(errorCount, 10)
 }
