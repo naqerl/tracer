@@ -147,8 +147,8 @@
 	}
 }
 
-/* Log group table message truncation */
-#logs-table td:first-of-type {
+/* Log group table: ensure message column can shrink for truncation */
+#logs-table td:nth-of-type(2) {
 	min-width: 0;
 }
 

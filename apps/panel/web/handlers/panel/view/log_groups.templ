@@ -92,7 +92,6 @@ func levelFilterDotClass(color string, active bool) string {
 
 // LogGroupsTable renders the log groups table.
 templ LogGroupsTable(props LogGroupsProps) {
-	<div class="overflow-hidden">
 	<table id="logs-table" class="w-full table-fixed">
 		<thead class="border-b border-bg-secondary">
 			<tr class="text-left text-fg text-sm">
@@ -126,5 +125,4 @@ templ LogGroupsTable(props LogGroupsProps) {
 			}
 		</tbody>
 	</table>
-	</div>
 }
