@@ -147,11 +147,6 @@
 	}
 }
 
-/* Prevent page-level overflow from long content on small screens. */
-main {
-	overflow-x: hidden;
-}
-
 /* Log group table message truncation */
 #logs-table td:first-of-type {
 	min-width: 0;

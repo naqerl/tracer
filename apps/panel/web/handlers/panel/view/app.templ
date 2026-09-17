@@ -18,7 +18,7 @@ type AppProps struct {
 // App renders the app detail page.
 templ App(props AppProps) {
 	@templates.Layout(props.App+" Analytics", templates.NavData{Since: props.Since}) {
-		<div class="max-w-5xl mx-auto p-6">
+		<div class="max-w-5xl mx-auto p-4 sm:p-6">
 			<div class="flex items-center justify-between mb-6">
 				<a href={ "/panel/collectors/" + props.Collector } onclick="if (window.history.length > 1) { window.history.back(); return false; }" class="text-fg-secondary hover:text-fg text-sm">&lt; back</a>
 				<div class="flex items-center gap-3">
@@ -33,7 +33,7 @@ templ App(props AppProps) {
 			</div>
 
 			<div class="flex items-center gap-3 mb-6">
-				<h1 class="text-3xl font-semibold">{ props.App }</h1>
+				<h1 class="text-2xl sm:text-3xl font-semibold truncate min-w-0">{ props.App }</h1>
 				<div
 					hx-get={ "/panel/collectors/" + props.Collector + "/apps/" + props.App + "/last-update" }
 					hx-trigger="load, every 15s"
