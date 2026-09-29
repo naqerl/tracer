@@ -303,7 +303,7 @@ uptime_only="uptime-only-app"
 uptime_response="$(curl -fsS -X POST \
   -d "name=${uptime_only}" \
   -d 'url=http://localhost:8080/healthz' \
-  -d 'interval=5s' \
+  -d 'interval=300s' \
   -d 'expected_status=200' \
   -H "Cookie: ${COOKIE}" \
   "${DEMO_URL}/panel/collectors/${collector_name}/apps")"
@@ -326,6 +326,23 @@ wait_for_uptime_settings() {
   fail "${uptime_only} settings did not show health URL"
 }
 wait_for_uptime_settings
+
+# The 5m interval means the app can only report a value from the check the
+# collector runs right after the app is created, so a value other than N/A here
+# proves a new uptime-only app is not left without uptime data.
+log "checking uptime-only app reports uptime"
+wait_for_uptime_value() {
+  local attempt fragment
+  for attempt in $(seq 1 30); do
+    fragment="$(curl -sS "${DEMO_URL}/panel/collectors/${collector_name}/apps/${uptime_only}/uptime" -H "Cookie: ${COOKIE}" || true)"
+    if grep -Eq 'Uptime <span class="value-breath">[0-9]+</span>' <<<"${fragment}"; then
+      return 0
+    fi
+    sleep 1
+  done
+  fail "${uptime_only} still reports N/A uptime after creation"
+}
+wait_for_uptime_value
 
 # Add a health URL to a logs-only app (demo-cron) without dropping its source.
 cron_put="$(curl -fsS -X PUT \

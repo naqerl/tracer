@@ -47,6 +47,9 @@ func New(spec types.HealthCheckSpec) (Poller, error) {
 	}, nil
 }
 
+// Produce checks the endpoint immediately and then once per interval, so a
+// freshly created app reports its first result right away instead of after a
+// full interval.
 func (p Poller) Produce(ctx context.Context) <-chan Result {
 	out := make(chan Result, 8)
 	go func() {
@@ -65,13 +68,14 @@ func (p Poller) Produce(ctx context.Context) <-chan Result {
 		defer ticker.Stop()
 
 		for {
+			if !send(p.checker.Check(ctx)) {
+				return
+			}
+
 			select {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				if !send(p.checker.Check(ctx)) {
-					return
-				}
 			}
 		}
 	}()
