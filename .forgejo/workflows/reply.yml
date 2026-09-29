@@ -8,6 +8,11 @@ jobs:
   reply:
     runs-on: debian-agent
     steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
       - name: Install Go
         run: |
           echo "Installing Go 1.26.4..."
@@ -17,14 +22,9 @@ jobs:
           echo "/usr/local/go/bin" >> "$GITHUB_PATH"
           echo "${HOME}/go/bin" >> "$GITHUB_PATH"
 
-      - name: Install Docker CLI
-        run: |
-          curl -fsSL https://download.docker.com/linux/static/stable/x86_64/docker-27.0.3.tgz | tar -xz -C /usr/local/bin/
-          chmod 666 /var/run/docker.sock
-
       - uses: https://git.naqerl.com/actions/reply@main
         with:
           agent-api-key: ${{ secrets.AGENT_API_KEY }}
           agent-model: ${{ vars.AGENT_MODEL }}
           agent-provider-url: ${{ vars.AGENT_PROVIDER_URL }}
-          agent_pat: ${{ secrets.AGENT_PAT }}
+          agent-pat: ${{ secrets.AGENT_PAT }}

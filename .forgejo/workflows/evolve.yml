@@ -1,0 +1,39 @@
+name: Evolve
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
+    inputs:
+      workflow_name:
+        description: 'Name of workflow to analyze (default: all)'
+        required: false
+        default: ''
+
+jobs:
+  evolve:
+    runs-on: debian-agent
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Configure git
+        run: |
+          git config user.name "yao"
+          git config user.email "yao@naqerl.com"
+          remote_origin="${{ github.server_url }}/${{ github.repository }}.git"
+          bare_url="${remote_origin#https://}"
+          git remote set-url origin "https://cptr:${{ secrets.AGENT_PAT }}@${bare_url}"
+
+      - name: Evolve
+        uses: https://git.naqerl.com/actions/evolve@main
+        with:
+          agent-api-key: ${{ secrets.AGENT_API_KEY }}
+          agent-model: ${{ vars.AGENT_MODEL }}
+          agent-provider-url: ${{ vars.AGENT_PROVIDER_URL }}
+          agent-pat: ${{ secrets.AGENT_PAT }}
+          workflow-name: ${{ github.event.inputs.workflow_name || 'all' }}
