@@ -1,12 +1,8 @@
-name: Gatekeeper
-
-# Copy-paste setup: checkout + gatekeeper. CI is untouched; gatekeeper fetches
-# that workflow's logs for this commit via the Forgejo Actions API and waits
-# until it finishes.
+name: PR Review
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
+    types: [opened, synchronize]
   workflow_dispatch:
     inputs:
       pr-number:
@@ -15,46 +11,37 @@ on:
         type: number
 
 concurrency:
-  group: gatekeeper-${{ github.repository }}-${{ github.event.pull_request.number || inputs.pr-number }}
+  group: pr-review-${{ github.repository }}-${{ github.event.pull_request.number || inputs.pr-number }}
   cancel-in-progress: true
 
 jobs:
   review:
     runs-on: debian-agent
-    if: >-
-      github.event_name == 'workflow_dispatch'
-      || github.event.pull_request.head.repo.full_name == github.repository
-      || github.event.pull_request.head.repo.full_name == ''
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
           persist-credentials: false
+          token: ${{ secrets.GATEKEEPER_PAT }}
 
-      - id: review
-        name: Review
-        uses: https://git.naqerl.com/actions/gatekeeper@main
+      - name: Install Go
+        run: |
+          echo "Installing Go 1.26.4..."
+          curl -fsSL "https://go.dev/dl/go1.26.4.linux-amd64.tar.gz" -o /tmp/go.tar.gz
+          rm -rf /usr/local/go
+          tar -C /usr/local -xzf /tmp/go.tar.gz
+          echo "/usr/local/go/bin" >> "$GITHUB_PATH"
+          echo "${HOME}/go/bin" >> "$GITHUB_PATH"
+
+      - uses: https://git.naqerl.com/actions/gatekeeper@main
         with:
           agent-api-key: ${{ secrets.AGENT_API_KEY }}
           agent-model: ${{ vars.AGENT_MODEL }}
           agent-provider-url: ${{ vars.AGENT_PROVIDER_URL }}
-          pat: ${{ secrets.AGENT_PAT }}
-          post-comment: "true"
+          account-username: gatekeeper
+          account-email: gatekeeper@naqerl.com
+          account-pat: ${{ secrets.GATEKEEPER_PAT }}
+          mention: yao
           pr-number: ${{ inputs.pr-number || '' }}
-          ci-workflow: ci.yml
           gods: |
             - naqerl
-          bot: yao
-
-      - name: Enforce review result
-        if: always()
-        env:
-          R: ${{ steps.review.outputs.passed }}
-          F: ${{ steps.review.outputs.report }}
-        run: |
-          if [ "$R" = "true" ]; then
-            echo "Review passed."
-            exit 0
-          fi
-          echo "::error::PR review failed — ${F}. Manual attention required."
-          exit 1

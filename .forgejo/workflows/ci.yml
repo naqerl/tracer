@@ -1,9 +1,16 @@
 name: CI
 
 on:
+  # pull_request as well as push: a run must exist for the head commit of a PR
+  # even when nobody pushed to the branch again.
+  pull_request:
+    types: [opened, synchronize, reopened]
+  # Only the default branch. pull_request already covers every head commit that
+  # has a PR; push covers main alone, where there is no PR event at all.
   push:
     branches: [main]
-  pull_request:
+  workflow_dispatch:
+  workflow_call:
 
 jobs:
   test:

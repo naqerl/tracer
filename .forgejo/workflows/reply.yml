@@ -4,6 +4,9 @@ on:
   issue_comment:
     types: [created]
 
+# No concurrency cancel-in-progress: overlapping @yao replies on different
+# threads must not cancel each other (matches barse / Andrey preference).
+
 jobs:
   reply:
     runs-on: debian-agent
@@ -11,7 +14,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          persist-credentials: false
+          persist-credentials: true
+          token: ${{ secrets.REPLY_PAT }}
 
       - name: Install Go
         run: |
@@ -27,4 +31,6 @@ jobs:
           agent-api-key: ${{ secrets.AGENT_API_KEY }}
           agent-model: ${{ vars.AGENT_MODEL }}
           agent-provider-url: ${{ vars.AGENT_PROVIDER_URL }}
-          agent-pat: ${{ secrets.AGENT_PAT }}
+          account-username: yao
+          account-email: yao@naqerl.com
+          account-pat: ${{ secrets.REPLY_PAT }}
