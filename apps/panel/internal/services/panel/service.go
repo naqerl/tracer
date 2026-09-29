@@ -37,6 +37,10 @@ const (
 	sinceValidationSkew   = time.Second
 	defaultStatsInterval  = 30 * time.Second
 	defaultHealthInterval = 30 * time.Second
+
+	// healthBucketCount is the amount of uptime bars every app renders for a
+	// window, so bars stay comparable across apps.
+	healthBucketCount = 37
 )
 
 func New(dbManager *dbmanager.Manager, ingestSvc *ingest.Service, tracker *ingest.Tracker, userSvc *user.Service, pusher ConfigPusher, guesser FormatGuesser) *Service {
@@ -1626,7 +1630,7 @@ func (s *Service) readAppHealthWithBars(ctx context.Context, queries *db.Queries
 	now := time.Now()
 	var checkCounts []db.ListHealthCheckCountsBySlotRow
 	if now.After(since) {
-		bucketSize := healthBucketSize(now.Sub(since), healthWindowBucketCount(len(periods)))
+		bucketSize := healthBucketSize(now.Sub(since), healthBucketCount)
 		checkCounts, err = queries.ListHealthCheckCountsBySlot(ctx, db.ListHealthCheckCountsBySlotParams{
 			At:   since.Unix(),
 			At_2: int64(bucketSize / time.Second),
@@ -1689,15 +1693,6 @@ func (s *Service) readHealthAndPeriods(ctx context.Context, queries *db.Queries,
 	return health, periods, nil
 }
 
-// healthWindowBucketCount returns the number of uptime buckets shown for a
-// window; periods set a floor so sparse data still fills the visualization.
-func healthWindowBucketCount(periodCount int) int {
-	if periodCount < 37 {
-		return 37
-	}
-	return periodCount
-}
-
 // healthBucketSize divides the window into whole-second buckets.
 func healthBucketSize(window time.Duration, bucketCount int) time.Duration {
 	size := int64(window/time.Second) / int64(bucketCount)
@@ -1712,20 +1707,18 @@ func buildHealthBuckets(periods []db.AppHealthPeriod, checkCounts []db.ListHealt
 		now = since
 	}
 
-	bucketCount := healthWindowBucketCount(len(periods))
-
 	window := now.Sub(since)
 	if window <= 0 {
 		return []HealthBucket{{Start: since, End: now}}
 	}
 
-	bucketSize := healthBucketSize(window, bucketCount)
+	bucketSize := healthBucketSize(window, healthBucketCount)
 
-	buckets := make([]HealthBucket, 0, bucketCount)
+	buckets := make([]HealthBucket, 0, healthBucketCount)
 	current := since
-	for i := 0; i < bucketCount; i++ {
+	for i := 0; i < healthBucketCount; i++ {
 		next := current.Add(bucketSize)
-		if i == bucketCount-1 || next.After(now) {
+		if i == healthBucketCount-1 || next.After(now) {
 			next = now
 		}
 
@@ -1749,7 +1742,7 @@ func buildHealthBuckets(periods []db.AppHealthPeriod, checkCounts []db.ListHealt
 		current = next
 	}
 
-	lastSlot := int64(bucketCount - 1)
+	lastSlot := int64(healthBucketCount - 1)
 	for _, row := range checkCounts {
 		slot := row.Slot
 		if slot > lastSlot {

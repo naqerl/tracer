@@ -1781,8 +1781,8 @@ func TestBuildHealthBuckets(t *testing.T) {
 	}
 
 	buckets := buildHealthBuckets(periods, nil, since, now)
-	if len(buckets) < 37 {
-		t.Fatalf("expected at least 37 buckets, got %d", len(buckets))
+	if len(buckets) != healthBucketCount {
+		t.Fatalf("expected %d buckets, got %d", healthBucketCount, len(buckets))
 	}
 
 	// Verify bucket boundaries
@@ -1804,10 +1804,35 @@ func TestBuildHealthBuckets(t *testing.T) {
 	}
 }
 
+func TestBuildHealthBucketsCountIgnoresPeriodCount(t *testing.T) {
+	now := time.Date(2025, 1, 15, 12, 0, 0, 0, time.UTC)
+	since := now.Add(-3 * time.Hour)
+
+	sparse := []db.AppHealthPeriod{
+		{StartedAt: since.Unix(), EndedAt: sql.NullInt64{Int64: since.Add(time.Hour).Unix(), Valid: true}, Status: "up"},
+	}
+
+	flapping := make([]db.AppHealthPeriod, 0, 200)
+	for i := range 200 {
+		flapping = append(flapping, db.AppHealthPeriod{
+			StartedAt: since.Add(time.Duration(i) * 50 * time.Second).Unix(),
+			EndedAt:   sql.NullInt64{Int64: since.Add(time.Duration(i)*50*time.Second + 40*time.Second).Unix(), Valid: true},
+			Status:    "down",
+		})
+	}
+
+	for name, periods := range map[string][]db.AppHealthPeriod{"sparse": sparse, "flapping": flapping} {
+		buckets := buildHealthBuckets(periods, nil, since, now)
+		if len(buckets) != healthBucketCount {
+			t.Fatalf("%s app: expected %d bars, got %d", name, healthBucketCount, len(buckets))
+		}
+	}
+}
+
 func TestBuildHealthBucketsCheckCounts(t *testing.T) {
 	now := time.Date(2025, 1, 15, 12, 0, 0, 0, time.UTC)
 	since := now.Add(-3 * time.Hour)
-	bucketCount := 37
+	bucketCount := healthBucketCount
 	slotSize := int64(now.Sub(since)/time.Second) / int64(bucketCount)
 
 	checkCounts := []db.ListHealthCheckCountsBySlotRow{
