@@ -38,9 +38,9 @@ const (
 	defaultStatsInterval  = 30 * time.Second
 	defaultHealthInterval = 30 * time.Second
 
-	// healthBucketCount is the amount of uptime bars every app renders for a
+	// HealthBucketCount is the amount of uptime bars every app renders for a
 	// window, so bars stay comparable across apps.
-	healthBucketCount = 37
+	HealthBucketCount = 37
 )
 
 func New(dbManager *dbmanager.Manager, ingestSvc *ingest.Service, tracker *ingest.Tracker, userSvc *user.Service, pusher ConfigPusher, guesser FormatGuesser) *Service {
@@ -1630,7 +1630,7 @@ func (s *Service) readAppHealthWithBars(ctx context.Context, queries *db.Queries
 	now := time.Now()
 	var checkCounts []db.ListHealthCheckCountsBySlotRow
 	if now.After(since) {
-		bucketSize := healthBucketSize(now.Sub(since), healthBucketCount)
+		bucketSize := healthBucketSize(now.Sub(since), HealthBucketCount)
 		checkCounts, err = queries.ListHealthCheckCountsBySlot(ctx, db.ListHealthCheckCountsBySlotParams{
 			At:   since.Unix(),
 			At_2: int64(bucketSize / time.Second),
@@ -1712,13 +1712,13 @@ func buildHealthBuckets(periods []db.AppHealthPeriod, checkCounts []db.ListHealt
 		return []HealthBucket{{Start: since, End: now}}
 	}
 
-	bucketSize := healthBucketSize(window, healthBucketCount)
+	bucketSize := healthBucketSize(window, HealthBucketCount)
 
-	buckets := make([]HealthBucket, 0, healthBucketCount)
+	buckets := make([]HealthBucket, 0, HealthBucketCount)
 	current := since
-	for i := 0; i < healthBucketCount; i++ {
+	for i := 0; i < HealthBucketCount; i++ {
 		next := current.Add(bucketSize)
-		if i == healthBucketCount-1 || next.After(now) {
+		if i == HealthBucketCount-1 || next.After(now) {
 			next = now
 		}
 
@@ -1742,7 +1742,7 @@ func buildHealthBuckets(periods []db.AppHealthPeriod, checkCounts []db.ListHealt
 		current = next
 	}
 
-	lastSlot := int64(healthBucketCount - 1)
+	lastSlot := int64(HealthBucketCount - 1)
 	for _, row := range checkCounts {
 		slot := row.Slot
 		if slot > lastSlot {

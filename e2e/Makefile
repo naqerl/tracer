@@ -1,7 +1,7 @@
 -include ../.env
 export
 
-.PHONY: build build-release up up-release down logs shell reset check check-install live-reload mock-logs-high mock-logs-normal mock-logs-status
+.PHONY: build build-release up up-release down logs shell reset check check-install live-reload mock-logs-high mock-logs-normal mock-logs-status playwright-install playwright-test
 
 ROOT_DIR := $(abspath $(CURDIR)/..)
 DEMO_DIR := $(ROOT_DIR)/e2e
@@ -95,3 +95,11 @@ mock-logs-status:
 		profile=normal; \
 	fi; \
 	echo "Mock service logging profile: $$profile"
+
+# Browser tests for the panel UI. They drive an already running panel (the
+# demo by default) instead of starting one, so run `make -C e2e up` first.
+playwright-install:
+	cd playwright && npm install && npx playwright install --with-deps chromium
+
+playwright-test:
+	cd playwright && PANEL_URL=$(DEMO_PANEL_URL) npx playwright test

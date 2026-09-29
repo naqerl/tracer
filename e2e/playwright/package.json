@@ -1,0 +1,12 @@
+{
+  "name": "tracer-playwright",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Browser tests for the panel UI (pixel-perfect skeletons, layout stability)",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0"
+  }
+}

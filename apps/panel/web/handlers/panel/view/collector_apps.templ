@@ -1,5 +1,9 @@
 package view
 
+import (
+	"tracer/apps/panel/internal/services/panel"
+)
+
 // CollectorAppsProps holds data for the collector apps view (HTMX fragment).
 type CollectorAppsProps struct {
 	CollectorName string
@@ -21,70 +25,18 @@ type AppView struct {
 	LastUpdate      LastUpdateView
 }
 
-// AppCard renders a single app card in the apps grid. When loading it renders
-// the card shell with placeholder bars and a breath animation; otherwise it
-// renders the app link with its uptime bars and error trend. The placeholder
-// bars match the real card's line boxes so the swap does not change the grid
-// height.
+// AppCard renders a single app card in the apps grid. While loading it renders
+// the same box as the loaded card with placeholder rectangles standing in for
+// the name, the meta line and the uptime bars, so the swap neither resizes the
+// card nor moves the page around it.
 templ AppCard(collectorName string, app AppView, loading bool) {
 	if loading {
-		<div class="block bg-bg-secondary p-3 relative animate-pulse" aria-hidden="true">
-			<div class="flex flex-col gap-2">
-				<div class="flex flex-col gap-1">
-					<div class="h-6 w-24 rounded bg-fg/10"></div>
-					<div class="h-3 w-16 rounded bg-fg/10"></div>
-				</div>
-				<div class="flex items-center gap-0.5 overflow-hidden">
-					for j := 0; j < 30; j++ {
-						<div class="box-border rounded-full aspect-square flex-1 min-w-0 bg-fg/10"></div>
-					}
-				</div>
-			</div>
+		<div class="block bg-bg-secondary p-3 flex flex-col gap-2 relative animate-pulse" aria-hidden="true">
+			@appCardBody(app, true)
 		</div>
 	} else {
 		<a href={ "/panel/collectors/" + collectorName + "/apps/" + app.Name } class="block bg-bg-secondary p-3 flex flex-col gap-2 hover:bg-bg-secondary/80 transition-all hover:-translate-y-0.5 relative">
-			<div class="flex flex-col min-w-0">
-				<div class="font-medium truncate">{ app.Name }</div>
-				<div class="flex items-center gap-2 text-xs min-w-0">
-					if app.ErrorTrend != "" {
-						<span class="whitespace-nowrap value-breath">
-							<span class="text-fg-secondary">errors</span>
-							<span class={ app.ErrorTrendClass }>{ app.ErrorTrend }
-								if app.ErrorTrendUp {
-<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="inline-block align-middle"><path d="M13 5H19V11"/><path d="M19 5L5 19"/></svg>
-} else {
-<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="inline-block align-middle"><path d="M19 13V19H13"/><path d="M5 5L19 19"/></svg>
-}
-							</span>
-						</span>
-					} else if app.ErrorCount != "" {
-						<span class="whitespace-nowrap value-breath">
-							<span class="text-fg-secondary">errors</span> <span class="text-fg">{ app.ErrorCount }</span>
-						</span>
-					} else if !app.HasLogSource {
-						<span class="whitespace-nowrap text-xs text-fg-secondary">logs are not configured</span>
-					}
-					if app.LastUpdate.Class == "text-red-400" {
-						<span class="whitespace-nowrap value-breath">
-							<span class="text-xs text-fg-secondary">last log</span> <span class="text-xs text-red-400/80">{ app.LastUpdate.Text }</span>
-						</span>
-					}
-				</div>
-			</div>
-			<div class="relative">
-				if app.HasUptime {
-					@UptimeBars(app.Bars, "sm", "dots")
-				} else {
-					<div class="relative">
-						<div class="blur-sm pointer-events-none">
-							@UptimeBars(app.Bars, "sm", "dots")
-						</div>
-						<div class="absolute inset-0 flex items-center justify-center">
-							<span class="text-xs text-fg-secondary">uptime is not configured</span>
-						</div>
-					</div>
-				}
-			</div>
+			@appCardBody(app, false)
 		</a>
 	}
 }
@@ -96,19 +48,7 @@ templ CollectorAppsSkeleton(count int) {
 	if count > 0 {
 		<div class="apps-grid" aria-hidden="true">
 			for i := 0; i < count; i++ {
-				<div class="block bg-bg-secondary p-3 relative animate-pulse">
-					<div class="flex flex-col gap-2">
-						<div class="flex flex-col gap-1">
-							<div class="h-6 w-24 rounded bg-fg/10"></div>
-							<div class="h-3 w-16 rounded bg-fg/10"></div>
-						</div>
-						<div class="flex items-center gap-0.5 overflow-hidden">
-							for j := 0; j < 30; j++ {
-								<div class="box-border rounded-full aspect-square flex-1 min-w-0 bg-fg/10"></div>
-							}
-						</div>
-					</div>
-				</div>
+				@AppCard("", AppView{}, true)
 			}
 		</div>
 	} else {
@@ -124,4 +64,72 @@ templ CollectorApps(props CollectorAppsProps) {
 			@AppCard(props.CollectorName, app, false)
 		}
 	</div>
+}
+
+// appCardBody renders the lines and uptime bars shared by the loading and the
+// loaded app card. Every line keeps the box of the real one; only its content
+// turns into a placeholder rectangle while loading.
+templ appCardBody(app AppView, loading bool) {
+	<div class="flex flex-col min-w-0">
+		<div class="font-medium truncate">
+			if loading {
+				<div class="h-6 w-24 rounded bg-fg/10"></div>
+			} else {
+				{ app.Name }
+			}
+		</div>
+		<div class="flex items-center gap-2 text-xs min-w-0">
+			if loading {
+				<div class="h-4 w-16 rounded bg-fg/10"></div>
+			} else if app.ErrorTrend != "" {
+				<span class="whitespace-nowrap value-breath">
+					<span class="text-fg-secondary">errors</span>
+					<span class={ app.ErrorTrendClass }>{ app.ErrorTrend }
+						if app.ErrorTrendUp {
+							<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="inline-block align-middle"><path d="M13 5H19V11"/><path d="M19 5L5 19"/></svg>
+						} else {
+							<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="inline-block align-middle"><path d="M19 13V19H13"/><path d="M5 5L19 19"/></svg>
+						}
+					</span>
+				</span>
+			} else if app.ErrorCount != "" {
+				<span class="whitespace-nowrap value-breath">
+					<span class="text-fg-secondary">errors</span> <span class="text-fg">{ app.ErrorCount }</span>
+				</span>
+			} else if !app.HasLogSource {
+				<span class="whitespace-nowrap text-xs text-fg-secondary">logs are not configured</span>
+			}
+			if !loading && app.LastUpdate.Class == "text-red-400" {
+				<span class="whitespace-nowrap value-breath">
+					<span class="text-xs text-fg-secondary">last log</span> <span class="text-xs text-red-400/80">{ app.LastUpdate.Text }</span>
+				</span>
+			}
+		</div>
+	</div>
+	<div class="relative">
+		if loading {
+			@UptimeBars(placeholderUptimeBars(), "sm", "dots")
+		} else if app.HasUptime {
+			@UptimeBars(app.Bars, "sm", "dots")
+		} else {
+			<div class="relative">
+				<div class="blur-sm pointer-events-none">
+					@UptimeBars(app.Bars, "sm", "dots")
+				</div>
+				<div class="absolute inset-0 flex items-center justify-center">
+					<span class="text-xs text-fg-secondary">uptime is not configured</span>
+				</div>
+			</div>
+		}
+	</div>
+}
+
+// placeholderUptimeBars returns the bars a skeleton card renders: as many as a
+// loaded card does, so the dots of the card keep their size.
+func placeholderUptimeBars() []UptimeBarView {
+	bars := make([]UptimeBarView, panel.HealthBucketCount)
+	for i := range bars {
+		bars[i] = UptimeBarView{Class: "bg-fg/10"}
+	}
+	return bars
 }

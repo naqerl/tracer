@@ -79,6 +79,21 @@ red over time, demonstrating how the panel tracks registered collectors that
 are no longer reporting. The e2e checks (`make -C e2e check`) stop and restart
 the service to assert the indicator turns stale and fresh again.
 
+## Browser tests (Playwright)
+
+Layout behaviour that unit tests cannot see — skeleton size, page jumps — is
+covered by Playwright tests in `playwright/`:
+
+```bash
+make -C e2e up                 # start the demo the tests drive
+make -C e2e playwright-install # once: npm deps + chromium
+make -C e2e playwright-test    # run the suite against the demo
+```
+
+The suite points at `PANEL_URL` (the demo at `http://localhost:18081` by
+default) and logs in with `DEMO_USER`/`DEMO_PASSWORD` when the panel is not in
+no-auth mode.
+
 ## Live reload
 
 Rebuild the panel binary and hot-swap it into the running container on code changes:
