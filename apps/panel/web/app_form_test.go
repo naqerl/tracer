@@ -436,3 +436,117 @@ func TestUpdateAppShowsErrorOnSaveFailure(t *testing.T) {
 		t.Fatalf("expected the edit form to remain, got %s", body)
 	}
 }
+
+// TestAddAppFormLivesOnPanel verifies the add-app form is served by the panel
+// page itself: the collector's "+" link points at /panel?add=<collector> and
+// that page renders the create form, while the plain panel page does not.
+func TestAddAppFormLivesOnPanel(t *testing.T) {
+	handler, token, _, _, _, _ := newServerWithGuesser(t, nil)
+
+	plain := httptest.NewRequest(http.MethodGet, "/panel/", nil)
+	plain.AddCookie(&http.Cookie{Name: "tracer_session", Value: token})
+	plainRR := httptest.NewRecorder()
+	handler.ServeHTTP(plainRR, plain)
+	if strings.Contains(plainRR.Body.String(), `hx-post="/panel/collectors/demo/apps"`) {
+		t.Fatalf("expected no add form without the add parameter, got %s", plainRR.Body.String())
+	}
+	if !strings.Contains(plainRR.Body.String(), `href="/panel/?add=demo"`) {
+		t.Fatalf("expected the add link to point at the panel, got %s", plainRR.Body.String())
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/panel/?add=demo", nil)
+	req.AddCookie(&http.Cookie{Name: "tracer_session", Value: token})
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("panel status = %d body %s", rr.Code, rr.Body.String())
+	}
+	body := rr.Body.String()
+	if !strings.Contains(body, `hx-post="/panel/collectors/demo/apps"`) {
+		t.Fatalf("expected the add form on the panel page, got %s", body)
+	}
+	if !strings.Contains(body, "Add app to demo") {
+		t.Fatalf("expected the add form to name its collector, got %s", body)
+	}
+	assertCancelAnchor(t, body, "/panel")
+}
+
+// TestAppFormCancelHrefFollowsReRenders verifies the form's Cancel destination
+// survives every re-render that swaps the form in place. The log source input
+// and the save error both replace the whole form, so a Cancel that loses its
+// destination there leaves the user on a form they cannot leave.
+func TestAppFormCancelHrefFollowsReRenders(t *testing.T) {
+	handler, token, _, _, _, _ := newServerWithGuesser(t, nil)
+
+	preview := postForm(t, handler, token, "/panel/collectors/demo/apps/preview", url.Values{
+		"name":    {"cancelcheck"},
+		"service": {"cancelcheck.service"},
+	})
+	if preview.Code != http.StatusOK {
+		t.Fatalf("preview status = %d body %s", preview.Code, preview.Body.String())
+	}
+	assertCancelAnchor(t, preview.Body.String(), "/panel")
+
+	invalid := postApp(t, handler, token, url.Values{"name": {""}})
+	if invalid.Code != http.StatusOK {
+		t.Fatalf("invalid create status = %d body %s", invalid.Code, invalid.Body.String())
+	}
+	if !strings.Contains(invalid.Body.String(), "app name is required") {
+		t.Fatalf("expected the create error on the re-rendered form, got %s", invalid.Body.String())
+	}
+	assertCancelAnchor(t, invalid.Body.String(), "/panel")
+
+	if rr := postApp(t, handler, token, jsonSourceForm("cancelalpha", "cancelalpha.service", "")); rr.Code != http.StatusOK {
+		t.Fatalf("create cancelalpha: %d %s", rr.Code, rr.Body.String())
+	}
+	if rr := postApp(t, handler, token, jsonSourceForm("cancelbeta", "cancelbeta.service", "")); rr.Code != http.StatusOK {
+		t.Fatalf("create cancelbeta: %d %s", rr.Code, rr.Body.String())
+	}
+	conflict := putApp(t, handler, token, "cancelalpha", jsonSourceForm("cancelbeta", "cancelbeta.service", ""))
+	if conflict.Code != http.StatusOK {
+		t.Fatalf("conflicting rename status = %d body %s", conflict.Code, conflict.Body.String())
+	}
+	if !strings.Contains(conflict.Body.String(), "app name already in use") {
+		t.Fatalf("expected the rename error on the re-rendered form, got %s", conflict.Body.String())
+	}
+	assertCancelAnchor(t, conflict.Body.String(), "/panel/collectors/demo")
+}
+
+// TestNewAppPageIsGone verifies the old /panel/collectors/{collector}/apps/new
+// route no longer serves the add form: the path is now an ordinary app URL, so
+// it must not render a create form.
+func TestNewAppPageIsGone(t *testing.T) {
+	handler, token, _, _, _, _ := newServerWithGuesser(t, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/panel/collectors/demo/apps/new", nil)
+	req.AddCookie(&http.Cookie{Name: "tracer_session", Value: token})
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	if strings.Contains(rr.Body.String(), `hx-post="/panel/collectors/demo/apps"`) {
+		t.Fatalf("expected no add form on the removed route, got %s", rr.Body.String())
+	}
+	if strings.Contains(rr.Body.String(), "Add app") {
+		t.Fatalf("expected no add-app page, got %s", rr.Body.String())
+	}
+}
+
+func postForm(t *testing.T, handler http.Handler, token, path string, values url.Values) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(values.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: "tracer_session", Value: token})
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+	return rr
+}
+
+func assertCancelAnchor(t *testing.T, body, want string) {
+	t.Helper()
+	if !strings.Contains(body, `<a href="`+want+`" onclick=`) {
+		t.Fatalf("expected the Cancel anchor to point at %q, got %s", want, body)
+	}
+	if strings.Contains(body, `<a href=""`) {
+		t.Fatalf("Cancel anchor has no destination: %s", body)
+	}
+}

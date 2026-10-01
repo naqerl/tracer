@@ -74,9 +74,11 @@ templ SampleLogRow(s string) {
 // existing one. ServiceName is empty for a new app and is the app name for
 // an edit. EditApp is the app the form targets when editing, decoupled from
 // ServiceName so a rename keeps the form pointed at the original app.
+// CancelHref is where the Cancel action returns to.
 type AppFormProps struct {
 	Title          string
 	Collector      string
+	CancelHref     string
 	ServiceName    string
 	EditApp        string
 	IsEdit         bool
@@ -87,18 +89,14 @@ type AppFormProps struct {
 	Guess          FormatGuessView
 }
 
-// AppFormPage is the full-page wrapper for the app form.
+// AppFormPage is the full-page wrapper for the app edit form.
 templ AppFormPage(p AppFormProps) {
 	@templates.Layout(p.Title, templates.NavData{Since: "24h"}) {
 		<div class="max-w-4xl mx-auto p-2 md:p-6">
 			<h1 class="text-xl font-semibold mb-6">
-				if p.IsEdit {
-					Edit app - { p.ServiceName }
-				} else {
-					Add app
-				}
+				Edit app - { p.ServiceName }
 			</h1>
-			<a href={ "/panel/collectors/" + p.Collector } onclick="if (window.history.length > 1) { window.history.back(); return false; }" class="text-fg-secondary hover:text-fg text-sm mb-6 inline-block">&lt; back</a>
+			<a href={ p.CancelHref } onclick="if (window.history.length > 1) { window.history.back(); return false; }" class="text-fg-secondary hover:text-fg text-sm mb-6 inline-block">&lt; back</a>
 @AppForm(p)
  			if p.IsEdit {
  				<div class="mt-8 pt-6 border-t border-bg-secondary/70">
@@ -273,7 +271,7 @@ templ AppForm(p AppFormProps) {
 						Save app
 					}
 				</button>
-				<a href={ "/panel/collectors/" + p.Collector } onclick="if (window.history.length > 1) { window.history.back(); return false; }" class="text-sm text-fg-secondary border border-bg-secondary px-4 py-2 hover:text-fg transition-colors inline-block">
+				<a href={ p.CancelHref } onclick="if (window.history.length > 1) { window.history.back(); return false; }" class="text-sm text-fg-secondary border border-bg-secondary px-4 py-2 hover:text-fg transition-colors inline-block">
 					Cancel
 				</a>
 			</div>

@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"math"
 	"net/http"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -66,8 +67,7 @@ func InitMux(svc *panelsvc.Service, authService *authsvc.Service) *http.ServeMux
 	m.HandleFunc("GET /collectors/{collector}/resources", h.getCollectorResources)
 	m.HandleFunc("GET /collectors/{collector}/stats", h.getCollectorStats)
 
-	// Collector add app + config
-	m.HandleFunc("GET /collectors/{collector}/apps/new", h.getNewAppPage)
+	// App create, edit and config
 	m.HandleFunc("POST /collectors/{collector}/apps", h.createApp)
 	m.HandleFunc("POST /collectors/{collector}/apps/preview", h.previewAppFormat)
 	m.HandleFunc("POST /collectors/{collector}/apps/health-probe", h.probeAppHealth)
@@ -151,7 +151,29 @@ func (h *handler) getDashboard(w http.ResponseWriter, r *http.Request) {
 		Title:      "Panel",
 		Since:      sinceLabel,
 		Collectors: collectorViews,
+		AddApp:     h.addAppForm(r, user, collectors),
 	}).Render(r.Context(), w)
+}
+
+// addAppForm builds the new-app form for the collector named by the "add"
+// query parameter, or nil when the panel was opened without it or the
+// collector is not the user's to modify.
+func (h *handler) addAppForm(r *http.Request, user domain.User, collectors []panelsvc.Collector) *view.AppFormProps {
+	collectorName := strings.TrimSpace(r.URL.Query().Get("add"))
+	if collectorName == "" {
+		return nil
+	}
+	visible := slices.ContainsFunc(collectors, func(c panelsvc.Collector) bool { return c.Name == collectorName })
+	if !visible {
+		return nil
+	}
+	if !h.canModifyCollector(r.Context(), user, collectorName) {
+		return nil
+	}
+	return &view.AppFormProps{
+		Collector:  collectorName,
+		CancelHref: appFormCancelHref(collectorName, false),
+	}
 }
 
 // Collector handlers
@@ -1232,22 +1254,6 @@ func (h *handler) getLogByID(w http.ResponseWriter, r *http.Request) {
 
 // ── App form ────────────────────────────────────────────────────────────────
 
-func (h *handler) getNewAppPage(w http.ResponseWriter, r *http.Request) {
-	user, err := auth.RequireUser(w, r)
-	if err != nil {
-		return
-	}
-	collectorName := r.PathValue("collector")
-	if !h.canModifyCollector(r.Context(), user, collectorName) {
-		http.Error(w, "Forbidden", http.StatusForbidden)
-		return
-	}
-	view.AppFormPage(view.AppFormProps{
-		Title:     "Add app - " + collectorName,
-		Collector: collectorName,
-	}).Render(r.Context(), w)
-}
-
 func (h *handler) getEditAppPage(w http.ResponseWriter, r *http.Request) {
 	user, err := auth.RequireUser(w, r)
 	if err != nil {
@@ -1285,6 +1291,7 @@ func (h *handler) getEditAppPage(w http.ResponseWriter, r *http.Request) {
 	props := view.AppFormProps{
 		Title:       "Edit app - " + appName,
 		Collector:   collectorName,
+		CancelHref:  appFormCancelHref(collectorName, true),
 		ServiceName: appName,
 		EditApp:     appName,
 		IsEdit:      true,
@@ -1317,6 +1324,15 @@ func (h *handler) getEditAppPage(w http.ResponseWriter, r *http.Request) {
 	view.AppFormPage(props).Render(r.Context(), w)
 }
 
+// appFormCancelHref is where the app form's Cancel action returns to: the
+// collector overview when editing an app, the panel when adding one.
+func appFormCancelHref(collectorName string, isEdit bool) string {
+	if isEdit {
+		return "/panel/collectors/" + collectorName
+	}
+	return "/panel"
+}
+
 func (h *handler) previewAppFormat(w http.ResponseWriter, r *http.Request) {
 	user, err := auth.RequireUser(w, r)
 	if err != nil {
@@ -1334,10 +1350,12 @@ func (h *handler) previewAppFormat(w http.ResponseWriter, r *http.Request) {
 		service = name
 	}
 	isEdit := strings.TrimSpace(r.FormValue("edit_app")) != ""
+	cancelHref := appFormCancelHref(collectorName, isEdit)
 
 	render := func(guess view.FormatGuessView) {
 		view.AppForm(view.AppFormProps{
 			Collector:      collectorName,
+			CancelHref:     cancelHref,
 			ServiceName:    name,
 			EditApp:        strings.TrimSpace(r.FormValue("edit_app")),
 			IsEdit:         isEdit,
@@ -1548,6 +1566,7 @@ func (h *handler) updateApp(w http.ResponseWriter, r *http.Request) {
 	renderError := func(msg string) {
 		view.AppForm(view.AppFormProps{
 			Collector:      collectorName,
+			CancelHref:     appFormCancelHref(collectorName, true),
 			ServiceName:    newName,
 			EditApp:        appName,
 			IsEdit:         true,
@@ -1643,6 +1662,7 @@ func (h *handler) createApp(w http.ResponseWriter, r *http.Request) {
 	renderError := func(msg string) {
 		view.AppForm(view.AppFormProps{
 			Collector:      collectorName,
+			CancelHref:     appFormCancelHref(collectorName, false),
 			ServiceName:    appName,
 			URL:            strings.TrimSpace(r.FormValue("url")),
 			Interval:       r.FormValue("interval"),
@@ -1686,7 +1706,10 @@ func (h *handler) createApp(w http.ResponseWriter, r *http.Request) {
 			}
 			return
 		}
-		h.renderAppSaved(w, r, collectorName, appName, false)
+		view.AppSaved(view.AppSavedProps{
+			Collector: collectorName,
+			AppName:   appName,
+		}).Render(r.Context(), w)
 		return
 	}
 
@@ -1730,16 +1753,9 @@ func (h *handler) createApp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.renderAppSaved(w, r, collectorName, appName, false)
-}
-
-// renderAppSaved renders the post-save fragment for both create and edit flows.
-// HTMX clients will follow the fragment's hx-get to load the updated content.
-func (h *handler) renderAppSaved(w http.ResponseWriter, r *http.Request, collector, appName string, isEdit bool) {
 	view.AppSaved(view.AppSavedProps{
-		Collector: collector,
+		Collector: collectorName,
 		AppName:   appName,
-		IsEdit:    isEdit,
 	}).Render(r.Context(), w)
 }
 

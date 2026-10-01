@@ -28,11 +28,13 @@ type CollectorStatsView struct {
 	Staleness          string
 }
 
-// DashboardProps holds data for the dashboard page.
+// DashboardProps holds data for the dashboard page. AddApp carries the
+// new-app form when the panel was opened with an "add" collector.
 type DashboardProps struct {
 	Title      string
 	Since      string
 	Collectors []CollectorView
+	AddApp     *AppFormProps
 }
 
 // cpuClass returns a CSS class based on CPU usage.
@@ -119,7 +121,7 @@ templ CollectorSection(props CollectorSectionProps) {
 					@StatsRow(props.Stats, props.Name)
 				</div>
 			</div>
-			<a href={ "/panel/collectors/" + props.Name + "/apps/new" } class="ml-4 shrink-0 text-fg-secondary hover:text-fg transition-colors" aria-label="Add an app" title="Add an app">
+			<a href={ "/panel/?add=" + props.Name } class="ml-4 shrink-0 text-fg-secondary hover:text-fg transition-colors" aria-label="Add an app" title="Add an app">
 				<img src="/static/img/plus.svg" alt="" class="w-5 h-5"/>
 			</a>
 		</div>
@@ -139,6 +141,14 @@ templ Dashboard(p DashboardProps) {
 	@templates.Layout(p.Title, templates.NavData{Since: p.Since}) {
 		<div class="max-w-5xl mx-auto p-2 md:p-6">
 			<div>
+				if p.AddApp != nil {
+					<div class="mb-10 max-w-4xl">
+						<h1 class="text-xl font-semibold mb-6">
+							Add app to { p.AddApp.Collector }
+						</h1>
+						@AppForm(*p.AddApp)
+					</div>
+				}
 				if len(p.Collectors) == 0 {
 					<div class="text-center text-fg-secondary py-12">
 						<p>No collectors connected. Create a collector API key in <a href="/settings" class="text-fg underline">Settings</a> to get started.</p>
