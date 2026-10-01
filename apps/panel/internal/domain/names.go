@@ -28,6 +28,14 @@ func ValidateAPIKeyName(value string) error {
 	return validateName("name", value, maxAPIKeyNameLength)
 }
 
+// ValidateCollectorAPIKeyName holds a collector key name to the collector
+// identifier rules: the name becomes the collector segment of the install-script
+// URL the panel hands out, and that endpoint validates the segment as a
+// collector name.
+func ValidateCollectorAPIKeyName(value string) error {
+	return validateIdentifier("collector key name", value, maxAPIKeyNameLength)
+}
+
 func ValidateUserID(value int64) error {
 	if value <= 0 {
 		return fmt.Errorf("user ID is required")

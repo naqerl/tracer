@@ -122,11 +122,32 @@ func (ks *kubectlSource) Next(ctx context.Context) (string, error) {
 		// kubectl failed; stderr holds the reason.
 		ks.waited = true
 		if waitErr := ks.cmd.Wait(); waitErr != nil {
+			stderr := strings.TrimSpace(ks.stderr.String())
+			if isNoSuchResource(stderr) {
+				return "", NotFound(fmt.Errorf("kubectl logs (%s/%s): %s",
+					ks.namespace, ks.resource, stderr))
+			}
 			return "", fmt.Errorf("kubectl logs (%s/%s) exited: %w: %s",
-				ks.namespace, ks.resource, waitErr, strings.TrimSpace(ks.stderr.String()))
+				ks.namespace, ks.resource, waitErr, stderr)
 		}
 		return "", io.EOF
 	}
+}
+
+// isNoSuchResource reports whether kubectl failed because the resource does not
+// exist. A kubeconfig the service user cannot read, or a forbidden resource,
+// must not be reported as absent.
+func isNoSuchResource(stderr string) bool {
+	lower := strings.ToLower(stderr)
+	if strings.Contains(lower, "permission denied") ||
+		strings.Contains(lower, "error loading config file") ||
+		strings.Contains(lower, "is forbidden") {
+		return false
+	}
+	return strings.Contains(lower, "notfound") ||
+		strings.Contains(lower, "not found") ||
+		strings.Contains(lower, "doesn't have a resource type") ||
+		strings.Contains(lower, "the server doesn't have a resource type")
 }
 
 func (ks *kubectlSource) Close() error {

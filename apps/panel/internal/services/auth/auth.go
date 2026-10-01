@@ -80,7 +80,7 @@ type GenerateCollectorAPIKeyRequest struct {
 }
 
 func (r GenerateCollectorAPIKeyRequest) Validate() error {
-	return domain.ValidateAPIKeyName(r.Name)
+	return domain.ValidateCollectorAPIKeyName(r.Name)
 }
 
 type GenerateUserAPIKeyRequest struct {

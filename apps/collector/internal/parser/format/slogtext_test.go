@@ -716,6 +716,56 @@ func TestTokenize(t *testing.T) {
 				{key: "outer.inner.key", value: "value"},
 			},
 		},
+		{
+			name:  "quoted_key_with_spaces",
+			input: `"my key"=v`,
+			want: []token{
+				{key: "my key", value: "v"},
+			},
+		},
+		{
+			name:  "quoted_key_empty",
+			input: `""=v`,
+			want: []token{
+				{key: "", value: "v"},
+			},
+		},
+		{
+			name:  "quoted_key_then_pairs",
+			input: `time=now "my key"=v level=INFO`,
+			want: []token{
+				{key: "time", value: "now"},
+				{key: "my key", value: "v"},
+				{key: "level", value: "INFO"},
+			},
+		},
+		{
+			// Go's default slog handler prefixes a stdlib log timestamp,
+			// which cannot appear unquoted in a TextHandler key.
+			name:    "stdlib_log_prefix",
+			input:   `2026/10/01 07:40:22 INFO HTTP method=GET status=200`,
+			wantErr: true,
+		},
+		{
+			name:    "unquoted_space_in_key",
+			input:   `level=INFO bad key=value`,
+			wantErr: true,
+		},
+		{
+			name:    "no_pairs",
+			input:   `this is not a valid slog line`,
+			wantErr: true,
+		},
+		{
+			name:    "unterminated_quoted_key",
+			input:   `"my key=v`,
+			wantErr: true,
+		},
+		{
+			name:    "quoted_key_without_equals",
+			input:   `"my key" v`,
+			wantErr: true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -723,6 +773,10 @@ func TestTokenize(t *testing.T) {
 			got, err := tokenize(tt.input)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("tokenize() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+
+			if tt.wantErr {
 				return
 			}
 

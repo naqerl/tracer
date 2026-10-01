@@ -73,6 +73,7 @@ func InitMux(authService *auth.Service, userService *usersvc.Service, ingestServ
 	// Collector API keys
 	m.HandleFunc("POST /admin/collector-api-keys", h.createCollectorAPIKey)
 	m.HandleFunc("GET /admin/collector-api-keys/{id}", h.getCollectorAPIKey)
+	m.HandleFunc("POST /admin/collector-api-keys/{id}/install-command", h.collectorInstallCommand)
 	m.HandleFunc("POST /admin/collector-api-keys/{id}/reveal", h.revealCollectorAPIKey)
 	m.HandleFunc("DELETE /admin/collector-api-keys/{id}", h.deleteCollectorAPIKey)
 
@@ -577,7 +578,9 @@ func (h *handler) getCollectorAPIKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	view.CollectorAPIKeyDetail(view.CollectorAPIKeyDetailProps{
+	host := h.cfg.GetHost()
+	commandURL := fmt.Sprintf("/settings/admin/collector-api-keys/%d/install-command", key.ID)
+	props := view.CollectorAPIKeyDetailProps{
 		Title:         "Collector API Key - Tracer",
 		KeyID:         key.ID,
 		KeyName:       key.Name,
@@ -585,8 +588,89 @@ func (h *handler) getCollectorAPIKey(w http.ResponseWriter, r *http.Request) {
 		LastUsed:      key.LastUsedAt,
 		LastUsedValid: key.LastUsedSet,
 		CanReveal:     key.CanReveal,
-		Host:          h.cfg.GetHost(),
-	}).Render(r.Context(), w)
+		Host:          host,
+		CommandURL:    commandURL,
+		NotRevealable: !key.CanReveal,
+	}
+	// The command points at the install-script endpoint, which serves only
+	// collector names, so a key name that cannot be one offers no command.
+	if err := domain.ValidateCollectorName(key.Name); err != nil {
+		slog.Warn("Collector API key name cannot be used in an install command", "id", key.ID, "name", key.Name, "error", err)
+		props.NotInstallable = true
+	} else {
+		props.MaskedCommand = view.MaskedInstallCommand(host, key.Name)
+	}
+	view.CollectorAPIKeyDetail(props).Render(r.Context(), w)
+}
+
+// collectorInstallCommand returns the copy-paste install command with the API
+// key inlined. It is a POST so the plaintext is fetched on demand rather than
+// sitting in the detail page HTML, which also keeps it out of the read-only
+// proxy's allowlist.
+//
+// An htmx request renders the command as a fragment; a plain fetch gets the raw
+// command as text for the clipboard.
+func (h *handler) collectorInstallCommand(w http.ResponseWriter, r *http.Request) {
+	user, err := authmw.RequireUser(w, r)
+	if err != nil {
+		return
+	}
+
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		http.Error(w, "Invalid collector API key id", http.StatusBadRequest)
+		return
+	}
+
+	key, err := h.authService.GetCollectorAPIKeyByID(r.Context(), user, id)
+	switch {
+	case errors.Is(err, auth.ErrAccessDenied), errors.Is(err, sql.ErrNoRows):
+		http.Error(w, "Collector API key not found", http.StatusNotFound)
+		return
+	case err != nil:
+		slog.Error("Failed to get collector API key", "id", id, "error", err)
+		http.Error(w, "Failed to get collector API key", http.StatusInternalServerError)
+		return
+	}
+
+	// The install-script URL carries the key name as its collector segment, and
+	// the endpoint serving it takes only collector names. A key stored before
+	// the name rules tightened must not produce a command that endpoint rejects.
+	if err := domain.ValidateCollectorName(key.Name); err != nil {
+		slog.Warn("Collector API key name cannot be used in an install command", "id", key.ID, "name", key.Name, "error", err)
+		http.Error(w, "This key's name cannot be used in an install command. Create a collector key named with letters, digits, dot, dash or underscore.", http.StatusBadRequest)
+		return
+	}
+
+	plaintext, err := h.authService.RevealCollectorAPIKey(r.Context(), user, key.ID)
+	switch {
+	case errors.Is(err, auth.ErrAccessDenied):
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	case errors.Is(err, auth.ErrKeyNotRevealable):
+		http.Error(w, "This key cannot be shown again. Create a new collector API key to install a collector.", http.StatusGone)
+		return
+	case errors.Is(err, auth.ErrKeyDecryptFailed):
+		http.Error(w, "Could not decrypt the key. Check that the key secret is unchanged.", http.StatusInternalServerError)
+		return
+	case err != nil:
+		slog.Error("Failed to reveal collector API key", "id", id, "error", err)
+		http.Error(w, "Failed to build the install command", http.StatusInternalServerError)
+		return
+	}
+
+	command := buildCollectorInstallCommand(h.cfg.GetHost(), key.Name, plaintext)
+	url := fmt.Sprintf("/settings/admin/collector-api-keys/%d/install-command", id)
+
+	// Never let a browser or proxy cache a response carrying the plaintext.
+	w.Header().Set("Cache-Control", "no-store")
+
+	if r.Header.Get("HX-Request") == "true" {
+		view.InstallCommand(view.InstallCommandProps{Command: command, URL: url}).Render(r.Context(), w)
+		return
+	}
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	fmt.Fprint(w, command)
 }
 
 // revealCollectorAPIKey toggles the plaintext visibility of a collector API key.

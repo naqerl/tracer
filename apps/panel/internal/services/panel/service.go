@@ -428,6 +428,11 @@ func (s *Service) GuessFormatAndSave(ctx context.Context, collectorName, appName
 		return fmt.Errorf("could not detect format: %w", err)
 	}
 	if result.NotFound {
+		// Keep the collector's reason when it sent one, so a missing service is
+		// distinguishable from a collector that cannot read its logs.
+		if result.Error != "" {
+			return fmt.Errorf("no log source found for %s: %s: %w", appName, result.Error, ErrAppNoSource)
+		}
 		return fmt.Errorf("no log source found for %s: %w", appName, ErrAppNoSource)
 	}
 	if result.Error != "" {

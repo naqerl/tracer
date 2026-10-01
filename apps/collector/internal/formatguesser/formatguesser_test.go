@@ -625,6 +625,19 @@ func TestGuessFormat(t *testing.T) {
 			wantErr: true,
 		},
 		{
+			// slog's default handler prefixes a stdlib log timestamp, which is
+			// not slog text: the guesser must reject it instead of treating the
+			// prefix up to the first '=' as a field name.
+			name:    "slog default handler with stdlib log timestamp",
+			line:    "2026/10/01 07:40:22 INFO HTTP method=GET status=200 path=/env.js req_id=b03c7cc3",
+			wantErr: true,
+		},
+		{
+			name:    "slog default handler startup line",
+			line:    "2026/09/30 21:33:48 INFO starting barse version=v0.0.32 addr=0.0.0.0:8092",
+			wantErr: true,
+		},
+		{
 			name:    "Logfmt without timestamp",
 			line:    `level=INFO msg="Message without timestamp"`,
 			wantErr: true,

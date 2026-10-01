@@ -60,6 +60,41 @@ func TestValidateAPIKeyName(t *testing.T) {
 	}
 }
 
+func TestValidateCollectorAPIKeyName(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		value   string
+		wantErr bool
+	}{
+		{name: "valid", value: "prod-a"},
+		{name: "valid with dots and underscores", value: "prod_a.1"},
+		{name: "required", value: "  ", wantErr: true},
+		{name: "surrounding whitespace", value: " prod-a ", wantErr: true},
+		{name: "too long", value: string(make([]byte, maxAPIKeyNameLength+1)), wantErr: true},
+		// A key name reaches the install-script URL, which serves only
+		// collector names, so the loose display-name rule does not apply.
+		{name: "space", value: "prod key", wantErr: true},
+		{name: "path separator", value: "prod/key", wantErr: true},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			err := ValidateCollectorAPIKeyName(tt.value)
+			if tt.wantErr && err == nil {
+				t.Fatalf("expected error for %q", tt.value)
+			}
+			if !tt.wantErr && err != nil {
+				t.Fatalf("unexpected error for %q: %v", tt.value, err)
+			}
+		})
+	}
+}
+
 func TestValidateUserID(t *testing.T) {
 	t.Parallel()
 

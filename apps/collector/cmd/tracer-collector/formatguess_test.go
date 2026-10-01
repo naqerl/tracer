@@ -2,10 +2,12 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 
 	"tracer/apps/collector/internal/formatguesser"
 	"tracer/apps/collector/internal/parser"
+	"tracer/apps/collector/internal/source"
 )
 
 func TestSourceNotFound(t *testing.T) {
@@ -14,12 +16,24 @@ func TestSourceNotFound(t *testing.T) {
 		err  error
 		want bool
 	}{
-		{name: "nil", err: nil, want: true},
-		{name: "plain open error", err: errors.New("journalctl -u x.service exited: could not be found"), want: true},
-		{name: "no logs", err: errors.New("no logs found in the source"), want: true},
+		{name: "nil", err: nil, want: false},
+		{name: "typed not found", err: source.NotFound(errors.New("no such unit")), want: true},
+		{name: "no logs", err: formatguesser.ErrNoLogs, want: true},
 		{name: "guess error", err: formatguesser.GuessError{Line: "line", Err: errors.New("format not recognized")}, want: false},
 		{name: "consistency error", err: formatguesser.ConsistencyError{Field: "level_field", Err: errors.New("inconsistent level_field")}, want: false},
 		{name: "missing fields", err: &formatguesser.MissingFieldsError{Fields: []string{"level_field"}}, want: false},
+		// A source that exists but cannot be read must keep its own error, so
+		// the user sees the real reason instead of "not found".
+		{
+			name: "unreadable kubeconfig",
+			err:  fmt.Errorf("could not read from source: %w", errors.New(`kubectl logs (default/deploy/barse) exited: exit status 1: error loading config file "/etc/rancher/k3s/k3s.yaml": permission denied`)),
+			want: false,
+		},
+		{
+			name: "permission denied reading logs",
+			err:  errors.New(`kubectl logs (default/deploy/barse) exited: exit status 1: pods "barse" is forbidden`),
+			want: false,
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

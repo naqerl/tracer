@@ -105,11 +105,28 @@ func (js *journalctlSource) Next(ctx context.Context) (string, error) {
 		// journalctl failed; stderr holds the reason.
 		js.waited = true
 		if waitErr := js.cmd.Wait(); waitErr != nil {
+			stderr := strings.TrimSpace(js.stderr.String())
+			if isNoSuchUnit(stderr) {
+				return "", NotFound(fmt.Errorf("journalctl -u %s: %s", js.unit, stderr))
+			}
 			return "", fmt.Errorf("journalctl -u %s exited: %w: %s",
-				js.unit, waitErr, strings.TrimSpace(js.stderr.String()))
+				js.unit, waitErr, stderr)
 		}
 		return "", io.EOF
 	}
+}
+
+// isNoSuchUnit reports whether journalctl failed because the unit does not
+// exist, as opposed to a permission or configuration problem. An empty journal
+// is not an absent unit, so it keeps its own error.
+func isNoSuchUnit(stderr string) bool {
+	lower := strings.ToLower(stderr)
+	if strings.Contains(lower, "permission denied") {
+		return false
+	}
+	return strings.Contains(lower, "no such unit") ||
+		strings.Contains(lower, "unit") && strings.Contains(lower, "not found") ||
+		strings.Contains(lower, "no entries")
 }
 
 func (js *journalctlSource) Close() error {

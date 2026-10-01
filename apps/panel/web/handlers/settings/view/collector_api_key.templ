@@ -2,27 +2,39 @@ package view
 
 import (
 	"fmt"
+	"net/url"
 	"strconv"
+	"strings"
 
 	"tracer/apps/panel/web/templates"
 )
 
-// collectorInstallCmdTmpl returns the install command with a placeholder
-// for the API key that gets replaced at copy time.
-func collectorInstallCmdTmpl(name, host string) string {
-	return fmt.Sprintf(`curl -fsSL %s/panel/collectors/%s/install-script -H "X-API-Key: <API_KEY>" | sudo bash`, host, name)
+// MaskedInstallCommand is what the Install block shows until the command is
+// revealed: the shape of the command with the credential replaced by a
+// placeholder, so it reads as a command without carrying the secret.
+func MaskedInstallCommand(host, name string) string {
+	installURL := fmt.Sprintf(
+		"%s/panel/collectors/%s/install-script",
+		strings.TrimRight(strings.TrimSpace(host), "/"),
+		url.PathEscape(strings.TrimSpace(name)),
+	)
+	return fmt.Sprintf("curl -fsSL '%s' -H %s | sudo bash", installURL, "'X-API-Key: …'")
 }
 
 // CollectorAPIKeyDetailProps holds data for the collector API key detail page.
 type CollectorAPIKeyDetailProps struct {
-	Title         string
-	KeyID         int64
-	KeyName       string
-	CreatedAt     int64
-	LastUsed      int64
-	LastUsedValid bool
-	CanReveal     bool
-	Host          string
+	Title          string
+	KeyID          int64
+	KeyName        string
+	CreatedAt      int64
+	LastUsed       int64
+	LastUsedValid  bool
+	CanReveal      bool
+	Host           string
+	CommandURL     string
+	MaskedCommand  string
+	NotRevealable  bool
+	NotInstallable bool
 }
 
 // CollectorAPIKeyDetail renders the collector API key detail page.
@@ -44,7 +56,7 @@ templ CollectorAPIKeyDetail(props CollectorAPIKeyDetailProps) {
 					<span class="text-fg-secondary">Name:</span>
 					<span>{ props.KeyName }</span>
 
-					<span class="text-fg-secondary">Key Suffix:</span>
+					<span class="text-fg-secondary">API key:</span>
 					@APIKeyValue(APIKeyValueProps{
 						RevealURL: "/settings/admin/collector-api-keys/" + strconv.FormatInt(props.KeyID, 10) + "/reveal",
 						TargetID:  "collector-api-key-value",
@@ -67,41 +79,102 @@ templ CollectorAPIKeyDetail(props CollectorAPIKeyDetailProps) {
 
 			<div class="mb-8">
 				<h3 class="text-lg font-medium mb-3">Install</h3>
-				<p class="text-sm text-fg-secondary mb-3">Reveal the key, then copy and paste this command on the collector host:</p>
-				<div class="relative">
-					<pre id="collector-onboarding" class="bg-bg-secondary p-4 pr-20 overflow-x-auto text-sm"
-						data-install-tmpl={ collectorInstallCmdTmpl(props.KeyName, props.Host) }><code>{ collectorInstallCmdTmpl(props.KeyName, props.Host) }</code></pre>
-					<button type="button"
-							onclick="copyCollectorOnboarding(this)"
-							class="absolute top-2 right-2 text-xs px-2 py-1 bg-bg text-fg-secondary hover:text-fg transition-colors"
-							title="Copy command">Copy</button>
-				</div>
+				if props.NotInstallable {
+					<p class="text-sm text-fg-secondary">
+						This key's name cannot be used in an install command. Create a collector key named with letters, digits, dot, dash or underscore.
+					</p>
+				} else {
+					<p class="text-sm text-fg-secondary mb-3">
+						Paste this on the collector host. It installs the collector, or upgrades it in place if one is already there, then starts it.
+					</p>
+					<div id="collector-install-command" class="relative">
+						<pre id="collector-onboarding" class="bg-bg-secondary p-4 pr-28 overflow-x-auto text-sm"
+							data-command-url={ props.CommandURL }><code>{ props.MaskedCommand }</code></pre>
+						<div class="absolute top-2 right-2 flex gap-1">
+							if !props.NotRevealable {
+								<button type="button"
+									hx-post={ props.CommandURL }
+									hx-target="#collector-install-command"
+									hx-swap="outerHTML"
+									class="text-xs px-2 py-1 bg-bg text-fg-secondary hover:text-fg transition-colors"
+									title="Show the command with the API key">Show</button>
+								<button type="button"
+									onclick="copyCollectorOnboarding(this)"
+									class="text-xs px-2 py-1 bg-bg text-fg-secondary hover:text-fg transition-colors"
+									title="Copy the command">Copy</button>
+							}
+						</div>
+					</div>
+					if props.NotRevealable {
+						<p class="text-xs text-fg-secondary/60 mt-2">
+							This key cannot be shown again because it was created before keys were stored reversibly. Copy a newly created key to install a collector.
+						</p>
+					}
+				}
 			</div>
 			<script>
 				function copyCollectorOnboarding(btn) {
-					var keyEl = document.querySelector('#collector-api-key-value code');
-					var key = keyEl ? keyEl.textContent.trim() : '';
-					if (!key) {
-						alert('Reveal the API key first.');
+					var el = document.getElementById('collector-onboarding');
+					var url = el.getAttribute('data-command-url');
+					if (!url) {
 						return;
 					}
-					var cmd = document.getElementById('collector-onboarding').getAttribute('data-install-tmpl').replace('<API_KEY>', key);
-					navigator.clipboard.writeText(cmd).then(function() {
-						btn.textContent = 'Copied!';
-						setTimeout(function() { btn.textContent = 'Copy'; }, 1500);
-					});
+					// Fetch the real command instead of reading it from the page, so
+					// the plaintext is never in the DOM unless it was revealed.
+					// HX-Request must stay unset: it asks for the reveal fragment,
+					// and the clipboard would get markup instead of the command.
+					btn.textContent = '...';
+					fetch(url, { method: 'POST' })
+						.then(function(res) {
+							if (!res.ok) { throw new Error('request failed'); }
+							return res.text();
+						})
+						.then(function(cmd) {
+							return navigator.clipboard.writeText(cmd);
+						})
+						.then(function() {
+							btn.textContent = 'Copied!';
+						})
+						.catch(function() {
+							btn.textContent = 'Failed';
+						})
+						.then(function() {
+							setTimeout(function() { btn.textContent = 'Copy'; }, 1500);
+						});
 				}
 			</script>
 
 			<div>
 				<button hx-delete={ "/settings/admin/collector-api-keys/" + strconv.FormatInt(props.KeyID, 10) }
-						hx-confirm={ "Delete collector API key " + props.KeyName + "?" }
-						hx-target="body"
-						hx-swap="outerHTML"
-						class="text-sm text-fg-secondary hover:text-red-500 underline transition-colors">
+					hx-confirm={ "Delete collector API key " + props.KeyName + "?" }
+					hx-target="body"
+					hx-swap="outerHTML"
+					class="text-sm text-fg-secondary hover:text-red-500 underline transition-colors">
 					Delete collector API key
 				</button>
 			</div>
 		</div>
 	}
+}
+
+// InstallCommandProps holds data for the install command fragment. The reveal
+// endpoint renders it with the plaintext command so htmx can swap it in.
+type InstallCommandProps struct {
+	Command string
+	URL     string
+}
+
+// InstallCommand renders the install command block after a reveal, so the
+// plaintext is on screen only once the user asks for it.
+templ InstallCommand(props InstallCommandProps) {
+	<div id="collector-install-command" class="relative">
+		<pre id="collector-onboarding" class="bg-bg-secondary p-4 pr-28 overflow-x-auto text-sm"
+			data-command-url={ props.URL }><code>{ props.Command }</code></pre>
+		<div class="absolute top-2 right-2 flex gap-1">
+			<button type="button"
+				onclick="copyCollectorOnboarding(this)"
+				class="text-xs px-2 py-1 bg-bg text-fg-secondary hover:text-fg transition-colors"
+				title="Copy the command">Copy</button>
+		</div>
+	</div>
 }

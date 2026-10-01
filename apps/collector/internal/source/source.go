@@ -3,10 +3,26 @@ package source
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
 )
+
+// ErrNotFound reports that the source itself does not exist: no such systemd
+// unit, no such container, or an unreadable path. It is distinct from a source
+// that exists but could not be read, so a missing permission or a broken
+// kubeconfig is never reported as an absent service.
+var ErrNotFound = errors.New("source not found")
+
+// NotFound marks err as ErrNotFound so callers can tell an absent source from
+// a source that failed to produce logs for another reason.
+func NotFound(err error) error {
+	if err == nil {
+		return nil
+	}
+	return fmt.Errorf("%w: %w", ErrNotFound, err)
+}
 
 type Spec struct {
 	Type   string            `yaml:"type"`

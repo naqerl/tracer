@@ -161,7 +161,7 @@ templ AppForm(p AppFormProps) {
 							<span class="text-red-500 font-medium mr-1">not found</span>
 						}
 						Log source
-						@templates.FieldStatus("app-format-status", tern(p.Guess.NotFound, "", p.Guess.Status), p.Guess.StatusOK, false)
+						@templates.FieldStatus("app-format-status", p.Guess.Status, p.Guess.StatusOK, false)
 						@templates.Indicator("app-format-indicator", "Guessing format…")
 					</label>
 					<div class="flex gap-2 items-end">

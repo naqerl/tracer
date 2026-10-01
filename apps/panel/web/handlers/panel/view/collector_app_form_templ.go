@@ -443,7 +443,7 @@ func AppForm(p AppFormProps) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templates.FieldStatus("app-format-status", tern(p.Guess.NotFound, "", p.Guess.Status), p.Guess.StatusOK, false).Render(ctx, templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = templates.FieldStatus("app-format-status", p.Guess.Status, p.Guess.StatusOK, false).Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

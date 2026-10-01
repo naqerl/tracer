@@ -32,6 +32,10 @@ type AddResult struct {
 	SampleData  map[string]string
 }
 
+// ErrNoLogs reports that the source exists but produced no log lines, so
+// nothing could be guessed from it.
+var ErrNoLogs = errors.New("no logs found in the source")
+
 func Add(ctx context.Context, cfg *types.CollectorConfig, name string, spec source.Spec, req AddRequest) (*AddResult, error) {
 	result := &AddResult{}
 	var app types.AppSpec
@@ -114,14 +118,24 @@ func buildParserSpec(ctx context.Context, ss source.SourceSeeker, favour parser.
 	// Seek toward the end of the log. The first line read from a byte-addressed
 	// file source may be a partial tail, so it is primed and discarded; the
 	// lines that follow are complete.
+	//
+	// Only an exhausted source justifies shrinking the window and retrying. Any
+	// other error means the source could not be read at all, and retrying hides
+	// the reason behind a bare "no logs found".
 	logSize := 100
 	foundLine := false
+	var readErr error
 	for !foundLine && logSize > 1 {
 		if _, logErr := ss.Seek(int64(-logSize), io.SeekEnd); logErr != nil {
+			readErr = logErr
 			logSize = logSize / 2
 			continue
 		}
 		if _, logErr := ss.Next(ctx); logErr != nil {
+			if !errors.Is(logErr, io.EOF) {
+				return result, fmt.Errorf("could not read from source: %w", logErr)
+			}
+			readErr = logErr
 			logSize = logSize / 2
 			continue
 		}
@@ -135,12 +149,15 @@ func buildParserSpec(ctx context.Context, ss source.SourceSeeker, favour parser.
 			return result, fmt.Errorf("could not seek in the source: %w", err)
 		}
 		if _, err := ss.Next(ctx); err != nil {
-			return result, errors.New("no logs found in the source")
+			if readErr != nil && !errors.Is(err, readErr) {
+				return result, fmt.Errorf("could not read from source: %w", err)
+			}
+			return result, ErrNoLogs
 		}
 		foundLine = true
 	}
 	if !foundLine {
-		return result, errors.New("no logs found in the source")
+		return result, ErrNoLogs
 	}
 
 	var prev parser.Spec

@@ -129,7 +129,7 @@ func main() {
 				return
 			}
 			setupKubectlCmd.Parse(flag.Args()[1:])
-			handleKubectlSetup(cfgPath, *setupKubectlKubeconfig)
+			handleKubectlSetup(*setupKubectlKubeconfig)
 			return
 		default:
 			log.Fatalf("Unknown command: %s\n", flag.Arg(0))
@@ -251,17 +251,20 @@ func handleFormatRequest(ctx context.Context, senderSvc *sender.Service, req typ
 	// systemd unit. A found-but-failed guess (conflict, missing fields) is
 	// reported as-is instead of masking it with the other source type.
 	guessed, err := guessService(ctx, req, "journalctl", map[string]string{"unit": req.Service})
-	if err != nil {
-		if sourceNotFound(err) {
-			guessed, err = guessService(ctx, req, "kubectl", map[string]string{"resource": req.Service})
-		}
+	notFound := sourceNotFound(err)
+	if notFound {
+		guessed, err = guessService(ctx, req, "kubectl", map[string]string{"resource": req.Service})
+		// "Not found" describes the source that was actually tried. Carrying
+		// the journalctl verdict over would relabel a kubectl failure — an
+		// unreadable kubeconfig, a forbidden resource — as a missing service.
+		notFound = sourceNotFound(err)
 	}
 	if err != nil {
 		if c := conflictFrom(err); c != nil {
 			result.Conflict = c
 		} else {
 			result.Error = err.Error()
-			result.NotFound = sourceNotFound(err)
+			result.NotFound = notFound
 		}
 		if sendErr := senderSvc.Send(result); sendErr != nil {
 			slog.Error("could not send format result", "error", sendErr)
@@ -289,14 +292,23 @@ func guessService(ctx context.Context, req types.FormatRequestEvent, srcType str
 	return formatguesser.Add(ctx, &types.CollectorConfig{}, req.App, spec, favour)
 }
 
-// sourceNotFound reports whether the guess failed before reading any log
-// line. Typed guess errors (unknown format, missing fields, inconsistency)
-// imply the source was found and produced input.
+// sourceNotFound reports whether the guess failed because the named source
+// does not exist, rather than because it exists but could not be read or
+// understood.
+//
+// Only an explicit signal counts as "not found": a source reporting itself
+// absent, or one that yielded no log lines. Everything else — an unreadable
+// kubeconfig, a forbidden resource, a failed read — keeps its own error so the
+// real reason reaches the user. Treating unknown errors as "not found" is what
+// made a permissions problem look like a missing service.
 func sourceNotFound(err error) bool {
-	var g formatguesser.GuessError
-	var c formatguesser.ConsistencyError
-	var m *formatguesser.MissingFieldsError
-	return !errors.As(err, &g) && !errors.As(err, &c) && !errors.As(err, &m)
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, source.ErrNotFound) {
+		return true
+	}
+	return errors.Is(err, formatguesser.ErrNoLogs)
 }
 
 // conflictFrom extracts a structured format conflict from a guess error, or
@@ -390,7 +402,7 @@ func handleVerify(ctx context.Context, cfg config.Config) {
 	fmt.Printf("Verification successful: connected to panel at %s\n", cfg.Sender.PanelHost)
 }
 
-func handleKubectlSetup(cfgPath, kubeconfigPath string) {
+func handleKubectlSetup(kubeconfigPath string) {
 	if os.Getuid() != 0 {
 		log.Fatalf("kubectl-setup must be run as root: sudo tracer-collector kubectl-setup")
 	}
@@ -419,6 +431,10 @@ func handleKubectlSetup(cfgPath, kubeconfigPath string) {
 	fmt.Printf("Verifying installed kubeconfig %s...\n", kubeconfig.Path)
 	if err := kubeconfig.Verify(kubeconfig.Path); err != nil {
 		log.Fatalf("The installed kubeconfig does not work: %v", err)
+	}
+
+	if err := install.InstallSystemd(kubeconfig.Path); err != nil {
+		log.Fatalf("Could not update the collector service: %v", err)
 	}
 
 	fmt.Printf("Kubectl access configured for the collector: %s\n", kubeconfig.Path)

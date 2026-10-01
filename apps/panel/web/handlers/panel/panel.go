@@ -1333,6 +1333,16 @@ func appFormCancelHref(collectorName string, isEdit bool) string {
 	return "/panel"
 }
 
+// notFoundStatus explains that the collector could not find the source, keeping
+// the collector's own reason when it sent one so a missing service is
+// distinguishable from a collector that cannot read its logs.
+func notFoundStatus(service, reason string) string {
+	if reason == "" {
+		return service + " was not found on the collector."
+	}
+	return service + " was not found on the collector: " + reason
+}
+
 func (h *handler) previewAppFormat(w http.ResponseWriter, r *http.Request) {
 	user, err := auth.RequireUser(w, r)
 	if err != nil {
@@ -1388,7 +1398,7 @@ func (h *handler) previewAppFormat(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case result.NotFound:
 		guess.NotFound = true
-		guess.Status = service + " was not found on the collector."
+		guess.Status = notFoundStatus(service, result.Error)
 		guess.StatusOK = false
 	case result.Conflict != nil:
 		guess.Conflict = &view.FormatConflictView{
@@ -1700,7 +1710,10 @@ func (h *handler) createApp(w http.ResponseWriter, r *http.Request) {
 		if err := h.svc.GuessFormatAndSave(r.Context(), collectorName, appName); err != nil {
 			switch {
 			case errors.Is(err, panelsvc.ErrAppNoSource):
-				http.Error(w, "an app needs at least a log source or an uptime check; none could be detected", http.StatusUnprocessableEntity)
+				// The wrapped reason names what the collector could not find or
+				// read; a bare "none could be detected" sent people looking in
+				// the wrong place.
+				renderError(err.Error())
 			default:
 				http.Error(w, err.Error(), http.StatusBadGateway)
 			}
@@ -1826,8 +1839,8 @@ func (h *handler) deleteApp(w http.ResponseWriter, r *http.Request) {
 
 func (h *handler) getInstallScript(w http.ResponseWriter, r *http.Request) {
 	collectorName := r.PathValue("collector")
-	if collectorName == "" {
-		http.Error(w, "collector name is required", http.StatusBadRequest)
+	if err := domain.ValidateCollectorName(collectorName); err != nil {
+		http.Error(w, "invalid collector name", http.StatusBadRequest)
 		return
 	}
 
@@ -1854,7 +1867,7 @@ func (h *handler) getInstallScript(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/x-shellscript")
 	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"install-%s.sh\"", collectorName))
-	fmt.Fprintf(w, "#!/bin/bash\nset -euo pipefail\n\nsudo tracer-collector install\nsudo tracer-collector set name %s\nsudo tracer-collector set api-key %s\nsudo tracer-collector set panel-host %s\nsudo systemctl restart tracer-collector\n", collectorName, apiKey, panelHost)
+	fmt.Fprint(w, renderCollectorInstallScript(collectorName, apiKey, panelHost, installScriptURL))
 }
 
 func logTraceIDDisplay(traceID sql.NullString) string {

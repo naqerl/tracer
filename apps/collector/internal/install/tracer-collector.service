@@ -8,6 +8,9 @@ Type=simple
 User={{.User}}
 Group={{.Group}}
 SupplementaryGroups=systemd-journal adm
+{{- if .Kubeconfig}}
+Environment=KUBECONFIG={{.Kubeconfig}}
+{{- end}}
 ExecStart={{.Bindir}}/tracer-collector -config {{.ConfigFilePath}}
 Restart=always
 RestartSec=5

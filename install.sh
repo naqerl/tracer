@@ -13,7 +13,13 @@
 #   TRACER_VERSION       - version tag to download (default: latest)
 #   TRACER_COLLECTOR_ONLY - set to 1 to skip installing the panel
 #   TRACER_DIR           - installation directory for binaries (default: /usr/local/bin)
+#   TRACER_COLLECTOR_NAME - collector name to configure (skips `set name`)
+#   TRACER_COLLECTOR_API_KEY - collector API key to configure
+#   TRACER_COLLECTOR_PANEL_HOST - panel address (host:port or URL) to configure
 #   DEBUG                - set to 1 to enable shell tracing
+#
+# Re-running the script is supported: an existing collector is upgraded in
+# place and its configuration is preserved.
 #
 # Note: sudo resets the environment by default, so pass variables through sudo
 # explicitly instead of exporting them first, e.g.:
@@ -70,6 +76,15 @@ if [ "$TRACER_VERSION" = "latest" ]; then
 	fi
 fi
 
+# --- Collector's previous state ------------------------------------------------
+# An existing collector is upgraded: its unit is stopped before the binary is
+# replaced, then started again at the end.
+COLLECTOR_UNIT="tracer-collector"
+COLLECTOR_WAS_INSTALLED=0
+if systemctl cat "${COLLECTOR_UNIT}.service" >/dev/null 2>&1; then
+	COLLECTOR_WAS_INSTALLED=1
+fi
+
 log "Installing tracer ${TRACER_VERSION} (${ARCH})..."
 
 # --- Download binaries -------------------------------------------------------
@@ -117,8 +132,13 @@ done
 # --- Install binaries --------------------------------------------------------
 log "Installing binaries to ${TRACER_DIR}..."
 mkdir -p "$TRACER_DIR"
+if [ "${COLLECTOR_WAS_INSTALLED}" -eq 1 ]; then
+	# A running executable cannot be overwritten (ETXTBSY).
+	log "Stopping ${COLLECTOR_UNIT}..."
+	systemctl stop "${COLLECTOR_UNIT}.service" || warn "Could not stop ${COLLECTOR_UNIT}"
+fi
 for bin in "${BINARIES[@]}"; do
-	cp "$TMPDIR/bin/$bin" "${TRACER_DIR}/${bin}"
+	install -m 0755 "$TMPDIR/bin/$bin" "${TRACER_DIR}/${bin}"
 	log "  Installed ${TRACER_DIR}/${bin}"
 done
 
@@ -128,6 +148,21 @@ export PATH="$TRACER_DIR:$PATH"
 # --- Run tracer-collector install --------------------------------------------
 log "Running tracer-collector install..."
 tracer-collector install
+
+# --- Configure the collector ---------------------------------------------------
+# Values passed through the environment win, so a panel-generated install
+# command configures the collector in a single run.
+configure_collector() {
+	local key="$1" envvar="$2"
+	local value="${!envvar:-}"
+	if [ -n "$value" ]; then
+		log "Configuring collector ${key}..."
+		tracer-collector set "$key" "$value"
+	fi
+}
+configure_collector name TRACER_COLLECTOR_NAME
+configure_collector api-key TRACER_COLLECTOR_API_KEY
+configure_collector panel-host TRACER_COLLECTOR_PANEL_HOST
 
 # --- Run tracer-panel install (if applicable) --------------------------------
 if [ "${TRACER_COLLECTOR_ONLY:-}" != "1" ]; then
@@ -172,32 +207,40 @@ if [ "${TRACER_COLLECTOR_ONLY:-}" != "1" ]; then
 	PANEL_PORT=$(tracer-panel config port) || die "Failed to get panel port from config"
 fi
 
+start_services() {
+	local unit="$1"
+	systemctl enable "${unit}" >/dev/null 2>&1 || warn "Could not enable ${unit} for boot"
+	systemctl restart "${unit}" || die "${unit} failed to start. Check: journalctl -u ${unit} -n 50"
+	log "${unit} is running"
+}
+
 echo ""
 echo "========================================"
 echo "Installation complete!"
 echo "========================================"
 echo ""
-if [ "${TRACER_COLLECTOR_ONLY:-}" = "1" ]; then
-	echo "Configure the collector to connect to your panel:"
+
+if [ "${TRACER_COLLECTOR_ONLY:-}" != "1" ] && [ -n "${PANEL_PORT:-}" ]; then
+	start_services tracer-panel.service
+	echo ""
+	echo "Panel URL: http://localhost:${PANEL_PORT}"
+	echo ""
+fi
+
+log "Starting tracer-collector..."
+start_services "${COLLECTOR_UNIT}.service"
+
+# Only worth checking when the collector actually has somewhere to connect.
+if [ -n "${TRACER_COLLECTOR_API_KEY:-}${INIT_API_KEY:-}" ]; then
+	echo ""
+	log "Verifying the collector can reach the panel..."
+	tracer-collector verify || warn "The collector could not reach the panel yet. Check the panel address and API key, then run: sudo tracer-collector verify"
+else
+	echo ""
+	warn "The collector has no panel address configured yet. Set it with:"
 	echo "  sudo tracer-collector set api-key <collector-api-key>"
 	echo "  sudo tracer-collector set panel-host <panel-host>:8080"
-	echo ""
-	echo "Then verify the connection:"
-	echo "  sudo tracer-collector verify"
-	echo ""
-elif [ -z "${INIT_API_KEY:-}" ]; then
-	echo "Panel was already initialized, so the collector API key was not configured."
-	echo "Set it before starting the collector:"
-	echo "  sudo tracer-collector set api-key <collector-api-key>"
-	echo "  sudo tracer-collector verify"
-	echo ""
 fi
-echo "Start services with:"
-echo "  sudo systemctl start tracer-collector"
-if [ "${TRACER_COLLECTOR_ONLY:-}" != "1" ]; then
-	echo "  sudo systemctl start tracer-panel"
-fi
+
 echo ""
-if [ -n "${PANEL_PORT:-}" ]; then
-	echo "Panel URL: http://localhost:${PANEL_PORT}"
-fi
+echo "Follow the collector logs with: journalctl -u ${COLLECTOR_UNIT} -f"

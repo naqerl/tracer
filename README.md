@@ -64,15 +64,26 @@ sudo tracer-collector kubectl-setup --kubeconfig /path/to/kubeconfig
 ```
 
 It verifies the config works, copies it to `/etc/tracer/kubeconfig`, verifies
-the copy, and points every existing kubectl source that does not already set a
-`kubeconfig` at the installed file — so a kubectl source can never silently
-fall back to an unreadable system default.
+the copy, and points the collector service at it by setting `KUBECONFIG` in the
+systemd unit — so a kubectl source can never silently fall back to an
+unreadable system default.
+
+`tracer-collector install` does the same automatically when it finds `kubectl`
+on `PATH`, so a fresh install already works. Run `kubectl-setup` yourself only
+to point the collector at a different cluster.
 
 ### Point the collector at your panel
 
-The collector connects to the panel over WebSocket. On a remote server (or
-after a collector-only install) you must tell it where the panel is and which
-API key to use:
+The fastest way is the collector API key page (Settings &rarr; Collector API
+Keys &rarr; a key). Press **Copy** and paste the command on the collector host.
+It installs the collector, or upgrades an existing one in place, and starts it:
+
+```bash
+curl -fsSL https://panel.example.com/panel/collectors/<name>/install-script \
+  -H 'X-API-Key: <collector-api-key>' | sudo bash
+```
+
+The same steps by hand, if you prefer:
 
 ```bash
 # API key: create it in the panel UI (Settings → Collector API Keys)
@@ -123,8 +134,11 @@ sudo tracer-panel -init -force -username admin -password 'new-password'
 
 ### API key reveal
 
-- On the collector API key detail page (`/settings/admin/collector-api-keys/{name}`)
+- On the collector API key detail page (`/settings/admin/collector-api-keys/{id}`)
   an eye icon reveals the full key. Reveal is a POST request.
+- The **Copy** button next to the install command puts the whole command, key
+  included, on the clipboard without revealing anything on screen. **Show**
+  displays the command with the key when you want to read it.
 - Keys created before this version store no plaintext and show **Not revealable**.
 - The master key used to encrypt collector key plaintext at rest lives in
   `{dataDir}/keys.key` (created with 0600 permissions on first use) and can be

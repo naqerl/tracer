@@ -10,27 +10,39 @@ import templruntime "github.com/a-h/templ/runtime"
 
 import (
 	"fmt"
+	"net/url"
 	"strconv"
+	"strings"
 
 	"tracer/apps/panel/web/templates"
 )
 
-// collectorInstallCmdTmpl returns the install command with a placeholder
-// for the API key that gets replaced at copy time.
-func collectorInstallCmdTmpl(name, host string) string {
-	return fmt.Sprintf(`curl -fsSL %s/panel/collectors/%s/install-script -H "X-API-Key: <API_KEY>" | sudo bash`, host, name)
+// MaskedInstallCommand is what the Install block shows until the command is
+// revealed: the shape of the command with the credential replaced by a
+// placeholder, so it reads as a command without carrying the secret.
+func MaskedInstallCommand(host, name string) string {
+	installURL := fmt.Sprintf(
+		"%s/panel/collectors/%s/install-script",
+		strings.TrimRight(strings.TrimSpace(host), "/"),
+		url.PathEscape(strings.TrimSpace(name)),
+	)
+	return fmt.Sprintf("curl -fsSL '%s' -H %s | sudo bash", installURL, "'X-API-Key: …'")
 }
 
 // CollectorAPIKeyDetailProps holds data for the collector API key detail page.
 type CollectorAPIKeyDetailProps struct {
-	Title         string
-	KeyID         int64
-	KeyName       string
-	CreatedAt     int64
-	LastUsed      int64
-	LastUsedValid bool
-	CanReveal     bool
-	Host          string
+	Title          string
+	KeyID          int64
+	KeyName        string
+	CreatedAt      int64
+	LastUsed       int64
+	LastUsedValid  bool
+	CanReveal      bool
+	Host           string
+	CommandURL     string
+	MaskedCommand  string
+	NotRevealable  bool
+	NotInstallable bool
 }
 
 // CollectorAPIKeyDetail renders the collector API key detail page.
@@ -100,13 +112,13 @@ func CollectorAPIKeyDetail(props CollectorAPIKeyDetailProps) templ.Component {
 			var templ_7745c5c3_Var4 string
 			templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinStringErrs(props.KeyName)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/collector_api_key.templ`, Line: 45, Col: 26}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/collector_api_key.templ`, Line: 57, Col: 26}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "</span> <span class=\"text-fg-secondary\">Key Suffix:</span>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "</span> <span class=\"text-fg-secondary\">API key:</span>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -125,7 +137,7 @@ func CollectorAPIKeyDetail(props CollectorAPIKeyDetailProps) templ.Component {
 			var templ_7745c5c3_Var5 string
 			templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinStringErrs(formatTimestamp(props.CreatedAt))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/collector_api_key.templ`, Line: 55, Col: 45}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/collector_api_key.templ`, Line: 67, Col: 45}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var5))
 			if templ_7745c5c3_Err != nil {
@@ -139,7 +151,7 @@ func CollectorAPIKeyDetail(props CollectorAPIKeyDetailProps) templ.Component {
 				var templ_7745c5c3_Var6 string
 				templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.JoinStringErrs(formatTimestamp(props.LastUsed))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/collector_api_key.templ`, Line: 60, Col: 40}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/collector_api_key.templ`, Line: 72, Col: 40}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var6))
 				if templ_7745c5c3_Err != nil {
@@ -151,65 +163,173 @@ func CollectorAPIKeyDetail(props CollectorAPIKeyDetailProps) templ.Component {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "</span></div></div><div class=\"mb-8\"><h3 class=\"text-lg font-medium mb-3\">Install</h3><p class=\"text-sm text-fg-secondary mb-3\">Reveal the key, then copy and paste this command on the collector host:</p><div class=\"relative\"><pre id=\"collector-onboarding\" class=\"bg-bg-secondary p-4 pr-20 overflow-x-auto text-sm\" data-install-tmpl=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "</span></div></div><div class=\"mb-8\"><h3 class=\"text-lg font-medium mb-3\">Install</h3>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var7 string
-			templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.ResolveAttributeValue(collectorInstallCmdTmpl(props.KeyName, props.Host))
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/collector_api_key.templ`, Line: 73, Col: 76}
+			if props.NotInstallable {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "<p class=\"text-sm text-fg-secondary\">This key's name cannot be used in an install command. Create a collector key named with letters, digits, dot, dash or underscore.</p>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			} else {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "<p class=\"text-sm text-fg-secondary mb-3\">Paste this on the collector host. It installs the collector, or upgrades it in place if one is already there, then starts it.</p><div id=\"collector-install-command\" class=\"relative\"><pre id=\"collector-onboarding\" class=\"bg-bg-secondary p-4 pr-28 overflow-x-auto text-sm\" data-command-url=\"")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				var templ_7745c5c3_Var7 string
+				templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.ResolveAttributeValue(props.CommandURL)
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/collector_api_key.templ`, Line: 92, Col: 42}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var7)
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "\"><code>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				var templ_7745c5c3_Var8 string
+				templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(props.MaskedCommand)
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/collector_api_key.templ`, Line: 92, Col: 72}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "</code></pre><div class=\"absolute top-2 right-2 flex gap-1\">")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				if !props.NotRevealable {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "<button type=\"button\" hx-post=\"")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					var templ_7745c5c3_Var9 string
+					templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.ResolveAttributeValue(props.CommandURL)
+					if templ_7745c5c3_Err != nil {
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/collector_api_key.templ`, Line: 96, Col: 35}
+					}
+					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var9)
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "\" hx-target=\"#collector-install-command\" hx-swap=\"outerHTML\" class=\"text-xs px-2 py-1 bg-bg text-fg-secondary hover:text-fg transition-colors\" title=\"Show the command with the API key\">Show</button> <button type=\"button\" onclick=\"copyCollectorOnboarding(this)\" class=\"text-xs px-2 py-1 bg-bg text-fg-secondary hover:text-fg transition-colors\" title=\"Copy the command\">Copy</button>")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, "</div></div>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				if props.NotRevealable {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, "<p class=\"text-xs text-fg-secondary/60 mt-2\">This key cannot be shown again because it was created before keys were stored reversibly. Copy a newly created key to install a collector.</p>")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				}
 			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var7)
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "\"><code>")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var8 string
-			templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(collectorInstallCmdTmpl(props.KeyName, props.Host))
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/collector_api_key.templ`, Line: 73, Col: 137}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "</code></pre><button type=\"button\" onclick=\"copyCollectorOnboarding(this)\" class=\"absolute top-2 right-2 text-xs px-2 py-1 bg-bg text-fg-secondary hover:text-fg transition-colors\" title=\"Copy command\">Copy</button></div></div><script>\n\t\t\t\tfunction copyCollectorOnboarding(btn) {\n\t\t\t\t\tvar keyEl = document.querySelector('#collector-api-key-value code');\n\t\t\t\t\tvar key = keyEl ? keyEl.textContent.trim() : '';\n\t\t\t\t\tif (!key) {\n\t\t\t\t\t\talert('Reveal the API key first.');\n\t\t\t\t\t\treturn;\n\t\t\t\t\t}\n\t\t\t\t\tvar cmd = document.getElementById('collector-onboarding').getAttribute('data-install-tmpl').replace('<API_KEY>', key);\n\t\t\t\t\tnavigator.clipboard.writeText(cmd).then(function() {\n\t\t\t\t\t\tbtn.textContent = 'Copied!';\n\t\t\t\t\t\tsetTimeout(function() { btn.textContent = 'Copy'; }, 1500);\n\t\t\t\t\t});\n\t\t\t\t}\n\t\t\t</script><div><button hx-delete=\"")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var9 string
-			templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.ResolveAttributeValue("/settings/admin/collector-api-keys/" + strconv.FormatInt(props.KeyID, 10))
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/collector_api_key.templ`, Line: 97, Col: 98}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var9)
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "\" hx-confirm=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, "</div><script>\n\t\t\t\tfunction copyCollectorOnboarding(btn) {\n\t\t\t\t\tvar el = document.getElementById('collector-onboarding');\n\t\t\t\t\tvar url = el.getAttribute('data-command-url');\n\t\t\t\t\tif (!url) {\n\t\t\t\t\t\treturn;\n\t\t\t\t\t}\n\t\t\t\t\t// Fetch the real command instead of reading it from the page, so\n\t\t\t\t\t// the plaintext is never in the DOM unless it was revealed.\n\t\t\t\t\t// HX-Request must stay unset: it asks for the reveal fragment,\n\t\t\t\t\t// and the clipboard would get markup instead of the command.\n\t\t\t\t\tbtn.textContent = '...';\n\t\t\t\t\tfetch(url, { method: 'POST' })\n\t\t\t\t\t\t.then(function(res) {\n\t\t\t\t\t\t\tif (!res.ok) { throw new Error('request failed'); }\n\t\t\t\t\t\t\treturn res.text();\n\t\t\t\t\t\t})\n\t\t\t\t\t\t.then(function(cmd) {\n\t\t\t\t\t\t\treturn navigator.clipboard.writeText(cmd);\n\t\t\t\t\t\t})\n\t\t\t\t\t\t.then(function() {\n\t\t\t\t\t\t\tbtn.textContent = 'Copied!';\n\t\t\t\t\t\t})\n\t\t\t\t\t\t.catch(function() {\n\t\t\t\t\t\t\tbtn.textContent = 'Failed';\n\t\t\t\t\t\t})\n\t\t\t\t\t\t.then(function() {\n\t\t\t\t\t\t\tsetTimeout(function() { btn.textContent = 'Copy'; }, 1500);\n\t\t\t\t\t\t});\n\t\t\t\t}\n\t\t\t</script><div><button hx-delete=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var10 string
-			templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.ResolveAttributeValue("Delete collector API key " + props.KeyName + "?")
+			templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.ResolveAttributeValue("/settings/admin/collector-api-keys/" + strconv.FormatInt(props.KeyID, 10))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/collector_api_key.templ`, Line: 98, Col: 68}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/collector_api_key.templ`, Line: 148, Col: 98}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var10)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "\" hx-target=\"body\" hx-swap=\"outerHTML\" class=\"text-sm text-fg-secondary hover:text-red-500 underline transition-colors\">Delete collector API key</button></div></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "\" hx-confirm=\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var11 string
+			templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.ResolveAttributeValue("Delete collector API key " + props.KeyName + "?")
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/collector_api_key.templ`, Line: 149, Col: 67}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var11)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 19, "\" hx-target=\"body\" hx-swap=\"outerHTML\" class=\"text-sm text-fg-secondary hover:text-red-500 underline transition-colors\">Delete collector API key</button></div></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			return nil
 		})
 		templ_7745c5c3_Err = templates.Layout("Collector API Key", templates.NavData{Since: "24h"}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var2), templ_7745c5c3_Buffer)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		return nil
+	})
+}
+
+// InstallCommandProps holds data for the install command fragment. The reveal
+// endpoint renders it with the plaintext command so htmx can swap it in.
+type InstallCommandProps struct {
+	Command string
+	URL     string
+}
+
+// InstallCommand renders the install command block after a reveal, so the
+// plaintext is on screen only once the user asks for it.
+func InstallCommand(props InstallCommandProps) templ.Component {
+	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
+		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
+		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
+			return templ_7745c5c3_CtxErr
+		}
+		templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
+		if !templ_7745c5c3_IsBuffer {
+			defer func() {
+				templ_7745c5c3_BufErr := templruntime.ReleaseBuffer(templ_7745c5c3_Buffer)
+				if templ_7745c5c3_Err == nil {
+					templ_7745c5c3_Err = templ_7745c5c3_BufErr
+				}
+			}()
+		}
+		ctx = templ.InitializeContext(ctx)
+		templ_7745c5c3_Var12 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var12 == nil {
+			templ_7745c5c3_Var12 = templ.NopComponent
+		}
+		ctx = templ.ClearChildren(ctx)
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 20, "<div id=\"collector-install-command\" class=\"relative\"><pre id=\"collector-onboarding\" class=\"bg-bg-secondary p-4 pr-28 overflow-x-auto text-sm\" data-command-url=\"")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var13 string
+		templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.ResolveAttributeValue(props.URL)
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/collector_api_key.templ`, Line: 172, Col: 31}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var13)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, "\"><code>")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var14 string
+		templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.JoinStringErrs(props.Command)
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/collector_api_key.templ`, Line: 172, Col: 55}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var14))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 22, "</code></pre><div class=\"absolute top-2 right-2 flex gap-1\"><button type=\"button\" onclick=\"copyCollectorOnboarding(this)\" class=\"text-xs px-2 py-1 bg-bg text-fg-secondary hover:text-fg transition-colors\" title=\"Copy the command\">Copy</button></div></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
