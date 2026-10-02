@@ -36,6 +36,11 @@ type kubectlSource struct {
 	ctx     context.Context // stored from Open for use in restart
 	seeked  bool
 
+	// resolved records that a bare name has already been looked up among the
+	// workload kinds, so a retry that finds nothing does not ask the API
+	// server for every kind again.
+	resolved bool
+
 	// stderr captures the running kubectl's stderr so a failing process can
 	// report why it failed (e.g. an unreadable kubeconfig) instead of leaving
 	// the caller with a bare EOF. waited tracks whether Next already called
@@ -70,6 +75,65 @@ func (ks *kubectlSource) Open(ctx context.Context) error {
 	}
 	ks.ctx = ctx
 	return nil
+}
+
+// workloadKinds are tried, in order, when a bare name matches no pod. kubectl
+// resolves an unqualified name as a pod, so a workload name such as `barse`
+// fails with NotFound unless its kind is spelled out.
+var workloadKinds = []string{"deployment", "statefulset", "daemonset", "replicaset", "replicationcontroller", "job", "cronjob"}
+
+// hasResourceKind reports whether the resource already names its kind, either
+// as `deploy/barse` or via a selector.
+func hasResourceKind(resource string) bool {
+	if strings.HasPrefix(resource, "-l ") || strings.HasPrefix(resource, "--selector ") {
+		return true
+	}
+	_, _, found := strings.Cut(resource, "/")
+	return found
+}
+
+// resolveBareName rewrites a bare workload name to its kind-qualified form.
+//
+// A name with no `/` is passed to kubectl as a pod name, which is correct for
+// pods but fails for a Deployment, StatefulSet, or Job even when that workload
+// exists. When the bare name matches no pod, each workload kind is queried and
+// the first match is used, so entering `barse` finds the deployment.
+func (ks *kubectlSource) resolveBareName(ctx context.Context) {
+	resource := strings.TrimSpace(ks.resource)
+	if hasResourceKind(resource) {
+		return
+	}
+	ks.resolved = true
+
+	if ks.resourceExists(ctx, resource, "pod") {
+		return
+	}
+
+	for _, kind := range workloadKinds {
+		if !ks.resourceExists(ctx, resource, kind) {
+			continue
+		}
+		slog.Debug("kubectl source: resolved bare name to workload kind",
+			"resource", resource, "kind", kind, "namespace", ks.namespace)
+		ks.resource = kind + "/" + resource
+		return
+	}
+}
+
+// resourceExists reports whether a named resource of the given kind is present.
+func (ks *kubectlSource) resourceExists(ctx context.Context, name, kind string) bool {
+	args := []string{"get", kind, name, "-n", ks.namespace, "-o", "name"}
+	if ks.kubeconfig != "" {
+		args = append(args, "--kubeconfig", ks.kubeconfig)
+	}
+	cmd := exec.CommandContext(ctx, "kubectl", args...)
+	out, err := cmd.Output()
+	if err != nil {
+		// A missing resource and a broken connection are indistinguishable
+		// here on purpose: either way there is nothing to resolve to.
+		return false
+	}
+	return strings.TrimSpace(string(out)) != ""
 }
 
 func (ks *kubectlSource) Next(ctx context.Context) (string, error) {
@@ -124,6 +188,22 @@ func (ks *kubectlSource) Next(ctx context.Context) (string, error) {
 		if waitErr := ks.cmd.Wait(); waitErr != nil {
 			stderr := strings.TrimSpace(ks.stderr.String())
 			if isNoSuchResource(stderr) {
+				// A bare name is resolved as a pod by kubectl, so a workload
+				// like `barse` fails even though the deployment exists. Look for
+				// the workload kind once, then retry with it.
+				if !ks.resolved && !hasResourceKind(ks.resource) {
+					original := ks.resource
+					ks.resolveBareName(ctx)
+					if ks.resource != original {
+						if err := ks.Close(); err != nil {
+							return "", fmt.Errorf("could not reset kubectl source: %w", err)
+						}
+						if err := ks.startKubectl(follow); err != nil {
+							return "", err
+						}
+						return ks.Next(ctx)
+					}
+				}
 				return "", NotFound(fmt.Errorf("kubectl logs (%s/%s): %s",
 					ks.namespace, ks.resource, stderr))
 			}

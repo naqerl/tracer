@@ -1340,6 +1340,11 @@ func notFoundStatus(service, reason string) string {
 	if reason == "" {
 		return service + " was not found on the collector."
 	}
+	// The collector's own message already names the source, so lead with it
+	// rather than repeating "not found" around a wrapped cause.
+	if strings.Contains(reason, "not found") {
+		return reason
+	}
 	return service + " was not found on the collector: " + reason
 }
 

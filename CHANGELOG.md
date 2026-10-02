@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Fixed
+- A bare workload name in a kubectl log source resolves to its kind instead of failing as a missing pod. kubectl resolves an unqualified name like `barse` as a pod, so a Deployment, StatefulSet, DaemonSet, Job or CronJob reported `pods "barse" not found` even though the workload existed. When a bare name matches no pod, the collector looks for each workload kind and retries with the one it finds; a name that already carries its kind, or a label selector, is left alone. Verified against a live cluster: `website` resolves to `deployment/website` and reads logs, while an unknown name still reports `source not found` with the original error.
+- The add-app log source status no longer repeats itself. A not-found result that already says "not found" is shown as the collector phrased it, instead of being wrapped in `barse was not found on the collector: source not found: …`.
+
 ### Changed
 - The collector API key page has a copy-paste install command. `Copy` puts the full command, API key included, on the clipboard in one click without revealing it first, and `Show` displays the command with the key if you want to read it. The command installs the collector or upgrades an existing one and starts it, so it works the same on a fresh host and on one that already runs a collector. Keys that cannot be revealed again offer neither button, since the install-command endpoint only serves revealable keys.
 - The panel favicon is now a 16×16 crisp-edge letter T on a dark field with a blue accent square, matching the website/barse/factory family of marks.

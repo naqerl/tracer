@@ -16,7 +16,8 @@ import (
 var ErrNotFound = errors.New("source not found")
 
 // NotFound marks err as ErrNotFound so callers can tell an absent source from
-// a source that failed to produce logs for another reason.
+// a source that failed to produce logs for another reason. The sentinel leads
+// the message so it reads as a cause rather than a trailing tag.
 func NotFound(err error) error {
 	if err == nil {
 		return nil

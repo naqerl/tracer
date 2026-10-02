@@ -24,8 +24,16 @@ func TestNotFoundStatusKeepsReason(t *testing.T) {
 		{
 			name:    "with_reason",
 			service: "deploy/barse",
-			reason:  "kubectl logs (default/deploy/barse): pods \"barse\" not found",
-			want:    `deploy/barse was not found on the collector: kubectl logs (default/deploy/barse): pods "barse" not found`,
+			reason:  "permission denied reading the kubeconfig",
+			want:    "deploy/barse was not found on the collector: permission denied reading the kubeconfig",
+		},
+		{
+			// The collector's message already states the absence, so repeating
+			// "was not found" around it is noise.
+			name:    "reason_already_says_not_found",
+			service: "barse",
+			reason:  `source not found: kubectl logs (default/barse): pods "barse" not found`,
+			want:    `source not found: kubectl logs (default/barse): pods "barse" not found`,
 		},
 	}
 
