@@ -9,6 +9,10 @@ const PANEL_PASSWORD = process.env.DEMO_PASSWORD || 'demo1234';
 // skeleton and the loaded cards.
 const TOLERANCE_PX = 0.5;
 
+// A placeholder stands in for text, so it may differ from the text it replaces
+// by the rounding of the font box alone.
+const TEXT_TOLERANCE_PX = 1.5;
+
 // Apps are laid out in one, two or three columns depending on the viewport,
 // so the size of a card changes with it. The grid must stay pixel-perfect in
 // every layout.
@@ -75,6 +79,45 @@ function measureGrids() {
     }),
   }));
 }
+
+// Boxes of what a card's two text lines carry inside their line boxes, measured
+// from the top of the card: the placeholder rectangle while loading, the text it
+// stands in for once the fragment arrives. Text has no box of its own, so its
+// font box is read off a range over the text node.
+function measureTextLines() {
+  const box = (rect, cardTop) => ({
+    top: rect.top - cardTop,
+    bottom: rect.bottom - cardTop,
+    height: rect.height,
+  });
+  const content = (line) => {
+    const placeholder = line.querySelector('[class*="bg-fg/10"]');
+    if (placeholder) {
+      return placeholder.getBoundingClientRect();
+    }
+    const text = document.createTreeWalker(line, NodeFilter.SHOW_TEXT).nextNode();
+    if (!text) {
+      return null;
+    }
+    const range = document.createRange();
+    range.selectNodeContents(text);
+    return range.getBoundingClientRect();
+  };
+  return Array.from(document.querySelectorAll('.apps-grid')).map((grid) =>
+    Array.from(grid.children).map((card) => {
+      const cardTop = card.getBoundingClientRect().top;
+      const lines = card.firstElementChild;
+      const name = content(lines.children[0]);
+      const meta = content(lines.children[1]);
+      return {
+        name: name ? box(name, cardTop) : null,
+        meta: meta ? box(meta, cardTop) : null,
+      };
+    })
+  );
+}
+
+const centre = (box) => (box.top + box.bottom) / 2;
 
 // Injects a painted block right below the apps grid. Painted content is what
 // Chrome's layout instability API tracks, so the sentinel both reports how far
@@ -161,6 +204,55 @@ for (const viewport of VIEWPORTS) {
         Math.abs(loaded.documentHeight - skeleton.documentHeight),
         'page height changed while the apps grid loaded'
       ).toBeLessThanOrEqual(TOLERANCE_PX);
+    });
+
+    test('app card text placeholders stand in for the text', async ({ page }) => {
+      const held = await holdAppsFragment(page);
+      await openDashboard(page);
+
+      const skeletonGrid = page.locator('.apps-grid').first();
+      await expect(skeletonGrid.locator('.animate-pulse').first()).toBeVisible();
+      const skeleton = (await page.evaluate(measureTextLines))[0];
+      expect(held.heldCount(), 'the apps fragment was never held').toBeGreaterThan(0);
+      expect(skeleton.length, 'panel renders no app cards to compare').toBeGreaterThan(0);
+
+      held.release();
+      await expect(skeletonGrid.locator('a').first()).toBeVisible();
+      await page.waitForFunction(() => document.querySelectorAll('.apps-grid .animate-pulse').length === 0);
+      const loaded = (await page.evaluate(measureTextLines))[0];
+
+      const diffs = [];
+      skeleton.forEach((card, i) => {
+        const other = loaded[i];
+        for (const line of ['name', 'meta']) {
+          const placeholder = card[line];
+          const text = other[line];
+          if (!placeholder) {
+            diffs.push(`card ${i} ${line} line carries no placeholder rectangle`);
+            continue;
+          }
+          if (Math.abs(placeholder.height - text.height) > TEXT_TOLERANCE_PX) {
+            diffs.push(
+              `card ${i} ${line} line: placeholder ${placeholder.height}px tall vs text ${text.height}px`
+            );
+          }
+          if (Math.abs(centre(placeholder) - centre(text)) > TEXT_TOLERANCE_PX) {
+            diffs.push(
+              `card ${i} ${line} line: placeholder centred at ${centre(placeholder)}px, text at ${centre(text)}px`
+            );
+          }
+        }
+        const placeholderGap = card.meta.top - card.name.bottom;
+        const textGap = other.meta.top - other.name.bottom;
+        if (placeholderGap <= 0) {
+          diffs.push(`card ${i}: the name placeholder touches the errors placeholder (${placeholderGap}px apart)`);
+        } else if (Math.abs(placeholderGap - textGap) > TEXT_TOLERANCE_PX) {
+          diffs.push(
+            `card ${i}: ${placeholderGap}px between the name and errors placeholders vs ${textGap}px between the texts`
+          );
+        }
+      });
+      expect(diffs).toEqual([]);
     });
 
     test('loading the apps grid causes no layout shift', async ({ page }) => {

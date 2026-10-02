@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"slices"
 	"strings"
 	"testing"
 
@@ -32,6 +33,27 @@ func TestAppCardSkeletonKeepsLoadedCardBoxes(t *testing.T) {
 	for i, want := range loadedBoxes {
 		if skeletonBoxes[i] != want {
 			t.Fatalf("skeleton box %d is %q, loaded box is %q", i, skeletonBoxes[i], want)
+		}
+	}
+}
+
+func TestAppCardSkeletonCentresTextPlaceholders(t *testing.T) {
+	skeleton := renderComponent(t, AppCard("demo", AppView{}, true))
+	card := skeleton.Find("body").Children().First()
+	lines := card.Children().First()
+	if lines.Children().Length() != 2 {
+		t.Fatalf("card text block holds %d lines, want the name and the errors line", lines.Children().Length())
+	}
+	for i := range lines.Children().Length() {
+		line := lines.Children().Eq(i)
+		rect := line.Find("[class*='bg-fg/10']").First()
+		if rect.Length() != 1 {
+			t.Fatalf("line %d holds %d placeholder rectangles, want one", i, rect.Length())
+		}
+		holder := rect.Parent()
+		if !hasClass(holder, "items-center") || heightClass(holder.AttrOr("class", "")) == "" {
+			t.Fatalf("line %d: placeholder %q is not centred in a box holding the line height, so it sticks to the line below",
+				i, rect.AttrOr("class", ""))
 		}
 	}
 }
@@ -91,4 +113,19 @@ func layoutClasses(sel *goquery.Selection) string {
 		}
 	}
 	return strings.Join(kept, " ")
+}
+
+// hasClass reports whether the box carries the class.
+func hasClass(sel *goquery.Selection, class string) bool {
+	return slices.Contains(strings.Fields(sel.AttrOr("class", "")), class)
+}
+
+// heightClass returns the Tailwind height class a box is sized with.
+func heightClass(classes string) string {
+	for _, class := range strings.Fields(classes) {
+		if strings.HasPrefix(class, "h-") {
+			return class
+		}
+	}
+	return ""
 }

@@ -68,19 +68,24 @@ templ CollectorApps(props CollectorAppsProps) {
 
 // appCardBody renders the lines and uptime bars shared by the loading and the
 // loaded app card. Every line keeps the box of the real one; only its content
-// turns into a placeholder rectangle while loading.
+// turns into a placeholder rectangle while loading: the line keeps its own
+// height and centres a rectangle the size of the text it stands in for.
 templ appCardBody(app AppView, loading bool) {
 	<div class="flex flex-col min-w-0">
 		<div class="font-medium truncate">
 			if loading {
-				<div class="h-6 w-24 rounded bg-fg/10"></div>
+				<div class="h-6 flex items-center">
+					<div class="h-[1.2em] w-24 rounded bg-fg/10"></div>
+				</div>
 			} else {
 				{ app.Name }
 			}
 		</div>
 		<div class="flex items-center gap-2 text-xs min-w-0">
 			if loading {
-				<div class="h-4 w-16 rounded bg-fg/10"></div>
+				<div class="h-4 flex items-center">
+					<div class="h-[1.2em] w-16 rounded bg-fg/10"></div>
+				</div>
 			} else if app.ErrorTrend != "" {
 				<span class="whitespace-nowrap value-breath">
 					<span class="text-fg-secondary">errors</span>
