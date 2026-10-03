@@ -490,7 +490,7 @@ func AppForm(p AppFormProps) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 34, "\" hx-trigger=\"input changed delay:500ms\" hx-include=\"closest form\" hx-target=\"#app-form-container\" hx-swap=\"innerHTML\" hx-indicator=\"#app-format-indicator\" id=\"app-service-input\" class=\"flex-1 min-w-0 w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg placeholder:text-fg-secondary/50\"></div><p class=\"text-xs text-fg-secondary mt-1\">Systemd unit name, kubectl resource, or custom source. Defaults to the app name.</p></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 34, "\" hx-trigger=\"input changed delay:500ms\" hx-include=\"closest form\" hx-target=\"#app-form-container\" hx-swap=\"innerHTML\" hx-indicator=\"#app-format-indicator\" id=\"app-service-input\" class=\"flex-1 min-w-0 w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg placeholder:text-fg-secondary/50\"></div><p class=\"text-xs text-fg-secondary mt-1\">Systemd unit name, kubectl resource, or custom source. Leave empty for an uptime-only app.</p></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

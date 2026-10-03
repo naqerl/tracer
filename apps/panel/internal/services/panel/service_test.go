@@ -3255,7 +3255,7 @@ func slogtextGuess(unit string) types.FormatResultEvent {
 	}
 }
 
-func TestPreviewFormat(t *testing.T) {
+func TestGuessFormat(t *testing.T) {
 	ctx := t.Context()
 	guesser := &fakeFormatGuesser{
 		result: types.FormatResultEvent{
@@ -3268,9 +3268,9 @@ func TestPreviewFormat(t *testing.T) {
 	}
 	svc := New(nil, nil, nil, nil, nil, guesser)
 
-	result, err := svc.PreviewFormat(ctx, "collector-a", "nginx", types.ParserSpec{})
+	result, err := svc.GuessFormat(ctx, "collector-a", "nginx", types.ParserSpec{})
 	if err != nil {
-		t.Fatalf("PreviewFormat: %v", err)
+		t.Fatalf("GuessFormat: %v", err)
 	}
 	if result.App.Source.Type != "journalctl" {
 		t.Fatalf("source type = %q, want journalctl", result.App.Source.Type)
@@ -3283,26 +3283,29 @@ func TestPreviewFormat(t *testing.T) {
 	}
 }
 
-func TestPreviewFormatNilGuesser(t *testing.T) {
+func TestGuessFormatNilGuesser(t *testing.T) {
 	svc := New(nil, nil, nil, nil, nil, nil)
-	if _, err := svc.PreviewFormat(t.Context(), "collector-a", "nginx", types.ParserSpec{}); err == nil {
+	if _, err := svc.GuessFormat(t.Context(), "collector-a", "nginx", types.ParserSpec{}); err == nil {
 		t.Fatal("expected error when guesser is unavailable")
 	}
 }
 
-func TestGuessFormatAndSaveNoSource(t *testing.T) {
+func TestSaveAppNoSource(t *testing.T) {
 	ctx := t.Context()
 	svc := New(nil, nil, nil, nil, nil, &fakeFormatGuesser{
 		result: types.FormatResultEvent{},
 	})
 
-	err := svc.GuessFormatAndSave(ctx, "collector-a", "nginx")
-	if !errors.Is(err, ErrAppNoSource) {
-		t.Fatalf("GuessFormatAndSave error = %v, want ErrAppNoSource", err)
+	err := svc.SaveApp(ctx, "collector-a", NewApp{Name: "nginx", Service: "nginx"})
+	if !errors.Is(err, ErrAppSourceNotFound) {
+		t.Fatalf("SaveApp error = %v, want ErrAppSourceNotFound", err)
+	}
+	if errors.Is(err, ErrAppNoSource) {
+		t.Fatal("a failed guess must not read as an app that has nothing to collect")
 	}
 }
 
-func TestGuessFormatAndSaveNotFound(t *testing.T) {
+func TestSaveAppNotFound(t *testing.T) {
 	ctx := t.Context()
 	svc := New(nil, nil, nil, nil, nil, &fakeFormatGuesser{
 		result: types.FormatResultEvent{
@@ -3311,8 +3314,11 @@ func TestGuessFormatAndSaveNotFound(t *testing.T) {
 		},
 	})
 
-	err := svc.GuessFormatAndSave(ctx, "collector-a", "nginx")
-	if !errors.Is(err, ErrAppNoSource) {
-		t.Fatalf("GuessFormatAndSave error = %v, want ErrAppNoSource", err)
+	err := svc.SaveApp(ctx, "collector-a", NewApp{Name: "nginx", Service: "nginx"})
+	if !errors.Is(err, ErrAppSourceNotFound) {
+		t.Fatalf("SaveApp error = %v, want ErrAppSourceNotFound", err)
+	}
+	if !strings.Contains(err.Error(), "no logs found in the source") {
+		t.Fatalf("SaveApp error = %v, want the collector reason", err)
 	}
 }

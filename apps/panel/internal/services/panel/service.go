@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	neturl "net/url"
 	"sort"
 	"strings"
 	"sync"
@@ -29,7 +30,9 @@ var (
 	ErrLogNotFound       = errors.New("log not found")
 	ErrAccessDenied      = errors.New("access denied")
 	ErrAppNoSource       = errors.New("app has no log source or uptime check: nothing to do")
+	ErrAppSourceNotFound = errors.New("log source not found")
 	ErrAppNameTaken      = errors.New("app name already in use")
+	ErrAppInvalidCheck   = errors.New("invalid uptime check")
 )
 
 const (
@@ -122,6 +125,27 @@ func (s *Service) ListCollectors(ctx context.Context, userID int64) ([]Collector
 	return collectors[:i], nil
 }
 
+// NewApp is what an app form submitted: the app name, the log source to read
+// and the parser that reads it, the service to guess that source from when the
+// form left the source unset, and the uptime check fields.
+type NewApp struct {
+	Name           string
+	Source         *sharedtypes.SourceSpec
+	Parser         sharedtypes.ParserSpec
+	Service        string
+	URL            string
+	Interval       string
+	ExpectedStatus string
+}
+
+// UptimeCheck is a validated health check: the URL to probe, how often, and
+// the status codes that count as up.
+type UptimeCheck struct {
+	URL            string
+	Interval       string
+	ExpectedStatus string
+}
+
 type GetCollectorRequest struct {
 	UserID        int64
 	CollectorName string
@@ -211,7 +235,7 @@ func (s *Service) EnsureSelfApps(ctx context.Context, collectorName string) erro
 		if collectorConfigHasApp(cfg, appName) {
 			continue
 		}
-		result, err := s.PreviewFormat(ctx, collectorName, appName, sharedtypes.ParserSpec{})
+		result, err := s.GuessFormat(ctx, collectorName, appName, sharedtypes.ParserSpec{})
 		if err != nil {
 			continue
 		}
@@ -409,37 +433,31 @@ func (s *Service) RenameApp(ctx context.Context, collectorName, oldName, newName
 	return nil
 }
 
-// GuessFormatAndSave sends a format guess request to the collector via
-// WebSocket, builds an app config from the result, saves it, and pushes
-// the updated config to the collector. Returns an error on failure.
-func (s *Service) GuessFormatAndSave(ctx context.Context, collectorName, appName string) error {
-	if s.guesser == nil {
-		return fmt.Errorf("format guessing not available")
+// SaveApp stores an app in the collector config and pushes the config to the
+// collector. The log source is the one the form spelled out, or a guess for the
+// service it named; the uptime check comes from the URL fields. Both land in a
+// single config write, so the collector never sees a half-configured app. The
+// uptime check is validated before the source is resolved, so a bad URL is
+// reported even when the log source cannot be resolved either.
+func (s *Service) SaveApp(ctx context.Context, collectorName string, app NewApp) error {
+	if err := domain.ValidateCollectorName(collectorName); err != nil {
+		return fmt.Errorf("invalid collector name: %w", err)
+	}
+	appName := strings.TrimSpace(app.Name)
+	if err := domain.ValidateAppName(appName); err != nil {
+		return fmt.Errorf("invalid app name: %w", err)
 	}
 
-	requestID := uuid.NewString()
-	result, err := s.guesser.GuessFormat(ctx, collectorName, sharedtypes.FormatRequestEvent{
-		Type:      sharedtypes.EventTypeFormatRequest,
-		RequestID: requestID,
-		App:       appName,
-		Service:   appName,
-	})
+	health, err := CheckUptime(app.URL, app.Interval, app.ExpectedStatus)
 	if err != nil {
-		return fmt.Errorf("could not detect format: %w", err)
+		return fmt.Errorf("%w: %w", ErrAppInvalidCheck, err)
 	}
-	if result.NotFound {
-		// Keep the collector's reason when it sent one, so a missing service is
-		// distinguishable from a collector that cannot read its logs.
-		if result.Error != "" {
-			return fmt.Errorf("no log source found for %s: %s: %w", appName, result.Error, ErrAppNoSource)
-		}
-		return fmt.Errorf("no log source found for %s: %w", appName, ErrAppNoSource)
+	source, parser, err := s.resolveAppSource(ctx, collectorName, appName, app)
+	if err != nil {
+		return err
 	}
-	if result.Error != "" {
-		return fmt.Errorf("format detection failed: %s", result.Error)
-	}
-	if result.App.Source == nil {
-		return fmt.Errorf("could not detect log source for %s: %w", appName, ErrAppNoSource)
+	if source == nil && health == nil {
+		return ErrAppNoSource
 	}
 
 	existing, err := s.FetchCollectorConfig(ctx, collectorName)
@@ -453,31 +471,108 @@ func (s *Service) GuessFormatAndSave(ctx context.Context, collectorName, appName
 			return fmt.Errorf("invalid stored config: %w", jErr)
 		}
 	}
+	if _, ok := cfg.GetApp(appName); ok {
+		return ErrAppNameTaken
+	}
 
-	if err := cfg.AddApp(appName, *result.App.Source, sharedtypes.ParserSpec{
-		Type:   result.Parser.Type,
-		Params: result.Parser.Params,
-	}); err != nil {
-		return fmt.Errorf("could not add app: %w", err)
+	if source == nil {
+		if err := cfg.AddUptimeApp(appName, health.URL, health.Interval, health.ExpectedStatus); err != nil {
+			return fmt.Errorf("could not add app: %w", err)
+		}
+	} else {
+		if err := cfg.AddApp(appName, *source, parser); err != nil {
+			return fmt.Errorf("could not add app: %w", err)
+		}
+		if health != nil {
+			if err := cfg.SetAppHealth(appName, health.URL, health.Interval, health.ExpectedStatus); err != nil {
+				return fmt.Errorf("could not add uptime check: %w", err)
+			}
+		}
 	}
 
 	updated, err := json.Marshal(&cfg)
 	if err != nil {
 		return fmt.Errorf("could not marshal config: %w", err)
 	}
-
 	if err := s.SaveCollectorConfig(ctx, collectorName, string(updated)); err != nil {
 		return fmt.Errorf("could not save config: %w", err)
 	}
-
 	return nil
 }
 
-// PreviewFormat asks the collector to detect the log format for a service
-// without saving anything. It returns the raw result so the caller can
+// resolveAppSource returns the log source and parser to store for an app: the
+// ones the form spelled out, or a guess for the service it named. Neither means
+// the app collects no logs, which is what an uptime-only monitor is.
+func (s *Service) resolveAppSource(ctx context.Context, collectorName, appName string, app NewApp) (*sharedtypes.SourceSpec, sharedtypes.ParserSpec, error) {
+	if app.Source != nil {
+		source := *app.Source
+		return &source, app.Parser, nil
+	}
+
+	service := strings.TrimSpace(app.Service)
+	if service == "" {
+		return nil, sharedtypes.ParserSpec{}, nil
+	}
+
+	result, err := s.GuessFormat(ctx, collectorName, service, sharedtypes.ParserSpec{})
+	if err != nil {
+		return nil, sharedtypes.ParserSpec{}, fmt.Errorf("could not detect format: %w", err)
+	}
+	if result.NotFound {
+		// Keep the collector's reason when it sent one, so a missing service is
+		// distinguishable from a collector that cannot read its logs.
+		if result.Error != "" {
+			return nil, sharedtypes.ParserSpec{}, fmt.Errorf("%w for %s: %s", ErrAppSourceNotFound, appName, result.Error)
+		}
+		return nil, sharedtypes.ParserSpec{}, fmt.Errorf("%w for %s", ErrAppSourceNotFound, appName)
+	}
+	if result.Error != "" {
+		return nil, sharedtypes.ParserSpec{}, fmt.Errorf("format detection failed: %s", result.Error)
+	}
+	if result.App.Source == nil {
+		return nil, sharedtypes.ParserSpec{}, fmt.Errorf("%w for %s: the collector returned no source", ErrAppSourceNotFound, appName)
+	}
+	return result.App.Source, result.Parser, nil
+}
+
+// CheckUptime validates the uptime fields an app form carries and fills in the
+// defaults the collector expects. A nil check means the app is not monitored,
+// which is what an uptime-only app adds on top of its logs.
+func CheckUptime(rawURL, rawInterval, rawExpected string) (*UptimeCheck, error) {
+	url := strings.TrimSpace(rawURL)
+	if url == "" {
+		return nil, nil
+	}
+
+	parsed, err := neturl.Parse(url)
+	if err != nil {
+		return nil, fmt.Errorf("could not parse health check url: %w", err)
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return nil, fmt.Errorf("health check url must be http or https, got %q", url)
+	}
+
+	interval := strings.TrimSpace(rawInterval)
+	if interval == "" {
+		interval = defaultHealthInterval.String()
+	}
+	if _, err := time.ParseDuration(interval); err != nil {
+		return nil, fmt.Errorf("could not parse check interval: %w", err)
+	}
+
+	expected := strings.TrimSpace(rawExpected)
+	if expected == "" {
+		expected = "200"
+	}
+
+	return &UptimeCheck{URL: url, Interval: interval, ExpectedStatus: expected}, nil
+}
+
+// GuessFormat asks the collector to detect the log format for a service
+// without storing anything. It returns the raw result so the caller can
 // distinguish a not-found service, a guess conflict, and a successful guess.
 // favour carries a user-chosen resolution for a prior conflict.
-func (s *Service) PreviewFormat(ctx context.Context, collectorName, serviceName string, favour sharedtypes.ParserSpec) (sharedtypes.FormatResultEvent, error) {
+func (s *Service) GuessFormat(ctx context.Context, collectorName, serviceName string, favour sharedtypes.ParserSpec) (sharedtypes.FormatResultEvent, error) {
 	if s.guesser == nil {
 		return sharedtypes.FormatResultEvent{}, fmt.Errorf("format guessing not available")
 	}

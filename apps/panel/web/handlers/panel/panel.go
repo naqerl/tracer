@@ -1361,9 +1361,6 @@ func (h *handler) previewAppFormat(w http.ResponseWriter, r *http.Request) {
 
 	name := strings.TrimSpace(r.FormValue("name"))
 	service := strings.TrimSpace(r.FormValue("service"))
-	if service == "" {
-		service = name
-	}
 	isEdit := strings.TrimSpace(r.FormValue("edit_app")) != ""
 	cancelHref := appFormCancelHref(collectorName, isEdit)
 
@@ -1387,12 +1384,14 @@ func (h *handler) previewAppFormat(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if service == "" {
+		// An app without a log source is a valid uptime-only app, so an empty
+		// field guesses nothing and reports nothing.
 		render(guess)
 		return
 	}
 
 	favour := parseFavour(r.FormValue("favour_field"), r.FormValue("favour_value"))
-	result, err := h.svc.PreviewFormat(r.Context(), collectorName, service, favour)
+	result, err := h.svc.GuessFormat(r.Context(), collectorName, service, favour)
 	if err != nil {
 		guess.Status = "Could not detect format: " + err.Error()
 		guess.StatusOK = false
@@ -1603,7 +1602,11 @@ func (h *handler) updateApp(w http.ResponseWriter, r *http.Request) {
 		renderError("invalid source parameters")
 		return
 	}
-	health := healthFromForm(r)
+	health, healthErr := panelsvc.CheckUptime(r.FormValue("url"), r.FormValue("interval"), r.FormValue("expected_status"))
+	if healthErr != nil {
+		renderError(fmt.Errorf("%w: %w", panelsvc.ErrAppInvalidCheck, healthErr).Error())
+		return
+	}
 	sourceCleared := sourceType == "" && strings.TrimSpace(r.FormValue("parser_type")) == ""
 	_, exists := cfg.GetApp(appName)
 
@@ -1624,9 +1627,9 @@ func (h *handler) updateApp(w http.ResponseWriter, r *http.Request) {
 
 	if health != nil {
 		if exists {
-			err = cfg.SetAppHealth(appName, health.Params["url"], health.Params["interval"], health.Params["expected_status"])
+			err = cfg.SetAppHealth(appName, health.URL, health.Interval, health.ExpectedStatus)
 		} else {
-			err = cfg.AddUptimeApp(appName, health.Params["url"], health.Params["interval"], health.Params["expected_status"])
+			err = cfg.AddUptimeApp(appName, health.URL, health.Interval, health.ExpectedStatus)
 		}
 	} else if exists {
 		err = cfg.ClearAppHealth(appName)
@@ -1699,75 +1702,36 @@ func (h *handler) createApp(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid source parameters", http.StatusBadRequest)
 		return
 	}
-	health := healthFromForm(r)
 	if sourceType != "" && !hasSource {
 		renderError("parser type is required when a log source is set")
 		return
 	}
 
-	cfg, err := h.loadCollectorConfig(r.Context(), collectorName)
-	if err != nil {
-		templates.RenderError(w, r, "Error", "Failed to load config", http.StatusInternalServerError)
-		return
-	}
-
-	if !hasSource && sourceType == "" && health == nil {
-		if err := h.svc.GuessFormatAndSave(r.Context(), collectorName, appName); err != nil {
-			switch {
-			case errors.Is(err, panelsvc.ErrAppNoSource):
-				// The wrapped reason names what the collector could not find or
-				// read; a bare "none could be detected" sent people looking in
-				// the wrong place.
-				renderError(err.Error())
-			default:
-				http.Error(w, err.Error(), http.StatusBadGateway)
-			}
-			return
-		}
-		view.AppSaved(view.AppSavedProps{
-			Collector: collectorName,
-			AppName:   appName,
-		}).Render(r.Context(), w)
-		return
-	}
-
-	if !hasSource && sourceType == "" {
-		service := strings.TrimSpace(r.FormValue("service"))
-		if service == "" {
-			service = appName
-		}
-		result, gErr := h.svc.PreviewFormat(r.Context(), collectorName, service, types.ParserSpec{})
-		if gErr == nil && !result.NotFound && result.Error == "" && result.App.Source != nil {
-			hasSource = true
-			src = *result.App.Source
-			parser = types.ParserSpec{Type: result.Parser.Type, Params: result.Parser.Params}
-		}
-	}
-
+	var source *types.SourceSpec
 	if hasSource {
-		if err := cfg.AddApp(appName, src, parser); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
+		source = &src
 	}
-	if health != nil {
-		if _, ok := cfg.GetApp(appName); ok {
-			err = cfg.SetAppHealth(appName, health.Params["url"], health.Params["interval"], health.Params["expected_status"])
-		} else {
-			err = cfg.AddUptimeApp(appName, health.Params["url"], health.Params["interval"], health.Params["expected_status"])
+	err = h.svc.SaveApp(r.Context(), collectorName, panelsvc.NewApp{
+		Name:           appName,
+		Source:         source,
+		Parser:         parser,
+		Service:        strings.TrimSpace(r.FormValue("service")),
+		URL:            strings.TrimSpace(r.FormValue("url")),
+		Interval:       r.FormValue("interval"),
+		ExpectedStatus: r.FormValue("expected_status"),
+	})
+	if err != nil {
+		switch {
+		case errors.Is(err, panelsvc.ErrAppNameTaken):
+			renderError("app name already in use")
+		case errors.Is(err, panelsvc.ErrAppNoSource),
+			errors.Is(err, panelsvc.ErrAppSourceNotFound),
+			errors.Is(err, panelsvc.ErrAppInvalidCheck):
+			renderError(err.Error())
+		default:
+			slog.Error("could not save app", "collector", collectorName, "app", appName, "error", err)
+			renderError(err.Error())
 		}
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-	}
-	if _, ok := cfg.GetApp(appName); !ok {
-		http.Error(w, "an app needs at least a log source or an uptime check; none could be detected", http.StatusUnprocessableEntity)
-		return
-	}
-
-	if err := h.saveCollectorConfig(r.Context(), collectorName, cfg); err != nil {
-		templates.RenderError(w, r, "Error", "Failed to save config", http.StatusInternalServerError)
 		return
 	}
 
@@ -1891,30 +1855,6 @@ func parseOffset(offsetParam string) int {
 		return 0
 	}
 	return offset
-}
-
-// healthFromForm returns an HTTP health check when the form includes a URL.
-func healthFromForm(r *http.Request) *types.HealthCheckSpec {
-	url := strings.TrimSpace(r.FormValue("url"))
-	if url == "" {
-		return nil
-	}
-	interval := strings.TrimSpace(r.FormValue("interval"))
-	if interval == "" {
-		interval = "30s"
-	}
-	expectedStatus := strings.TrimSpace(r.FormValue("expected_status"))
-	if expectedStatus == "" {
-		expectedStatus = "200"
-	}
-	return &types.HealthCheckSpec{
-		Type: "http",
-		Params: map[string]string{
-			"url":             url,
-			"interval":        interval,
-			"expected_status": expectedStatus,
-		},
-	}
 }
 
 // sourceFromForm returns the raw source type, a log source and parser when

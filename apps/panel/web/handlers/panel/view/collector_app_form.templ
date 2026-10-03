@@ -179,7 +179,7 @@ templ AppForm(p AppFormProps) {
 							   id="app-service-input"
 							   class="flex-1 min-w-0 w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg placeholder:text-fg-secondary/50"/>
 					</div>
-					<p class="text-xs text-fg-secondary mt-1">Systemd unit name, kubectl resource, or custom source. Defaults to the app name.</p>
+					<p class="text-xs text-fg-secondary mt-1">Systemd unit name, kubectl resource, or custom source. Leave empty for an uptime-only app.</p>
 				</div>
 					@AppFormatFeedback(p.Guess)
 					if p.Guess.Detected && len(p.Guess.Samples) > 0 {
