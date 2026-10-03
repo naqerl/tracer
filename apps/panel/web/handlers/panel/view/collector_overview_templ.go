@@ -18,6 +18,7 @@ type CollectorOverviewProps struct {
 	Since              string
 	Stats              *CollectorStatsView
 	AccessibleAppCount int
+	CanModify          bool
 }
 
 // CollectorOverview renders the collector overview page
@@ -63,6 +64,7 @@ func CollectorOverview(props CollectorOverviewProps) templ.Component {
 				HeaderHref:         "/panel/collectors/" + props.CollectorName,
 				Stats:              props.Stats,
 				AccessibleAppCount: props.AccessibleAppCount,
+				CanModify:          props.CanModify,
 			}).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err

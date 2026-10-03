@@ -89,20 +89,25 @@ type AppFormProps struct {
 	Guess          FormatGuessView
 }
 
-// AppFormPage is the full-page wrapper for the app edit form.
+// AppFormPage is the full-page wrapper for the app form. The heading names
+// the operation: the collector an app is added to, or the app being edited.
 templ AppFormPage(p AppFormProps) {
 	@templates.Layout(p.Title, templates.NavData{Since: "24h"}) {
 		<div class="max-w-4xl mx-auto p-2 md:p-6">
 			<h1 class="text-xl font-semibold mb-6">
-				Edit app - { p.ServiceName }
+				if p.IsEdit {
+					Edit app - { p.ServiceName }
+				} else {
+					Add app to { p.Collector }
+				}
 			</h1>
-			<a href={ p.CancelHref } onclick="if (window.history.length > 1) { window.history.back(); return false; }" class="text-fg-secondary hover:text-fg text-sm mb-6 inline-block">&lt; back</a>
+			<a href={ p.CancelHref } class="text-fg-secondary hover:text-fg text-sm mb-6 inline-block">&lt; back</a>
 @AppForm(p)
  			if p.IsEdit {
- 				<div class="mt-8 pt-6 border-t border-bg-secondary/70">
- 					<button
- 						hx-delete={ "/panel/collectors/" + p.Collector + "/apps/" + p.EditApp }
- 						hx-confirm={ "Delete app '" + p.EditApp + "'?" }
+				<div class="mt-8 pt-6 border-t border-bg-secondary/70">
+					<button
+						hx-delete={ "/panel/collectors/" + p.Collector + "/apps/" + p.EditApp }
+						hx-confirm={ "Delete app '" + p.EditApp + "'?" }
 						class="text-sm text-red-500 hover:text-red-400 transition-colors"
 						title="Delete app"
 					>
@@ -155,20 +160,15 @@ templ AppForm(p AppFormProps) {
 			<div class="border border-bg-secondary/70 p-4">
 				<h3 class="text-fg font-medium mb-3">Log source</h3>
 				<div class="space-y-4">
-<div>
-					<label class="block text-sm text-fg-secondary mb-1">
-						if p.Guess.NotFound {
-							<span class="text-red-500 font-medium mr-1">not found</span>
-						}
-						Log source
-						@templates.FieldStatus("app-format-status", p.Guess.Status, p.Guess.StatusOK, false)
-						@templates.Indicator("app-format-indicator", "Guessing format…")
-					</label>
-					<div class="flex gap-2 items-end">
-					<button type="button"
-							onclick="var s = document.getElementById('app-service-input'); var n = document.getElementById('app-name-input'); if (s && n) { s.value = n.value; htmx.trigger(s, 'input'); }"
-							class="shrink-0 text-base text-fg-secondary border border-fg/20 px-2 py-2 hover:text-fg hover:border-fg/60 transition-colors"
-							title="Use the app name as the log source">use app name</button>
+					<div>
+						<label class="block text-sm text-fg-secondary mb-1">
+							if p.Guess.NotFound {
+								<span class="text-red-500 font-medium mr-1">not found</span>
+							}
+							Log source
+							@templates.FieldStatus("app-format-status", p.Guess.Status, p.Guess.StatusOK, false)
+							@templates.Indicator("app-format-indicator", "Guessing format…")
+						</label>
 						<input type="text" name="service" value={ p.Guess.Service } placeholder={ tern(p.ServiceName == "", "e.g. nginx.service, pod/nginx-1", p.ServiceName) }
 							   hx-post={ "/panel/collectors/" + p.Collector + "/apps/preview" }
 							   hx-trigger="input changed delay:500ms"
@@ -178,9 +178,8 @@ templ AppForm(p AppFormProps) {
 							   hx-indicator="#app-format-indicator"
 							   id="app-service-input"
 							   class="flex-1 min-w-0 w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base text-fg placeholder:text-fg-secondary/50"/>
-					</div>
 					<p class="text-xs text-fg-secondary mt-1">Systemd unit name, kubectl resource, or custom source. Leave empty for an uptime-only app.</p>
-				</div>
+					</div>
 					@AppFormatFeedback(p.Guess)
 					if p.Guess.Detected && len(p.Guess.Samples) > 0 {
 						<div>
@@ -245,7 +244,7 @@ templ AppForm(p AppFormProps) {
 							@templates.FieldStatus("app-health-status", "", false, false)
 							@templates.Indicator("health-probe-spinner", "probing")
 						</label>
-						<input type="url" name="url" value={ p.URL } placeholder="https://naqerl.com" autocomplete="off" hx-post={ "/panel/collectors/" + p.Collector + "/apps/health-probe" } hx-trigger="input changed delay:500ms, focusout" hx-target="#app-health-status" hx-swap="outerHTML" hx-include="closest #health-check-form" hx-indicator="#health-probe-spinner" class="w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base font-mono text-fg placeholder:text-fg-secondary/50"/>
+						<input type="text" inputmode="url" spellcheck="false" name="url" value={ p.URL } placeholder="https://naqerl.com" autocomplete="off" hx-post={ "/panel/collectors/" + p.Collector + "/apps/health-probe" } hx-trigger="input changed delay:500ms, focusout" hx-target="#app-health-status" hx-swap="outerHTML" hx-include="closest #health-check-form" hx-indicator="#health-probe-spinner" class="w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base font-mono text-fg placeholder:text-fg-secondary/50"/>
 					</div>
 					<div>
 						<label class="block text-sm text-fg-secondary mb-1">Check interval</label>
@@ -271,19 +270,12 @@ templ AppForm(p AppFormProps) {
 						Save app
 					}
 				</button>
-				<a href={ p.CancelHref } onclick="if (window.history.length > 1) { window.history.back(); return false; }" class="text-sm text-fg-secondary border border-bg-secondary px-4 py-2 hover:text-fg transition-colors inline-block">
+				<a href={ p.CancelHref } class="text-sm text-fg-secondary border border-bg-secondary px-4 py-2 hover:text-fg transition-colors inline-block">
 					Cancel
 				</a>
 			</div>
 		</form>
 	</div>
-	@AppFormScript()
-}
-
-// AppFormScript renders the app-form JavaScript. A window flag makes it
-// idempotent so re-rendering the fragment on htmx swaps never double-wires.
-templ AppFormScript() {
-	<script src="/static/app-form.js"></script>
 }
 
 // ParserParamField renders one editable parser parameter input. The name is
@@ -310,13 +302,13 @@ templ AppFormatFeedback(g FormatGuessView) {
 			<div class="flex gap-2">
 				for _, opt := range g.Conflict.Options {
 					<button type="button"
-							class="text-sm text-fg border border-fg px-4 py-2 hover:bg-fg hover:text-bg transition-colors"
-							hx-post={ "/panel/collectors/" + g.Collector + "/apps/preview" }
-							hx-include="closest form"
-							hx-vals={ "{\"favour_field\":\"" + g.Conflict.Field + "\",\"favour_value\":\"" + opt + "\"}" }
-							hx-target="#app-form-container"
-							hx-swap="innerHTML"
-							hx-indicator="#app-format-indicator">
+						class="text-sm text-fg border border-fg px-4 py-2 hover:bg-fg hover:text-bg transition-colors"
+						hx-post={ "/panel/collectors/" + g.Collector + "/apps/preview" }
+						hx-include="closest form"
+						hx-vals={ "{\"favour_field\":\"" + g.Conflict.Field + "\",\"favour_value\":\"" + opt + "\"}" }
+						hx-target="#app-form-container"
+						hx-swap="innerHTML"
+						hx-indicator="#app-format-indicator">
 						{ "favour " + opt }
 					</button>
 				}

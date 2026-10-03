@@ -10,6 +10,7 @@ type CollectorOverviewProps struct {
 	Since              string
 	Stats              *CollectorStatsView
 	AccessibleAppCount int
+	CanModify          bool
 }
 
 // CollectorOverview renders the collector overview page
@@ -21,6 +22,7 @@ templ CollectorOverview(props CollectorOverviewProps) {
 				HeaderHref:         "/panel/collectors/" + props.CollectorName,
 				Stats:              props.Stats,
 				AccessibleAppCount: props.AccessibleAppCount,
+				CanModify:          props.CanModify,
 			})
 		</div>
 	}

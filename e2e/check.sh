@@ -202,6 +202,15 @@ log "checking panel health and demo logs"
 wait_for_panel_health "${collector_name}"
 wait_for_logs "${collector_name}"
 
+log "checking app creation page"
+add_page="$(curl -fsS "${DEMO_URL}/panel/collectors/${collector_name}/app" -H "Cookie: ${COOKIE}")"
+if ! grep -Fq "hx-post=\"/panel/collectors/${collector_name}/apps\"" <<<"${add_page}"; then
+  fail "creation page ${DEMO_URL}/panel/collectors/${collector_name}/app does not render the create form"
+fi
+if grep -Fq 'use app name' <<<"${add_page}"; then
+  fail "creation page still renders the use-app-name button"
+fi
+
 log "checking app edit form"
 # The edit form must show the app name pre-filled (editable so the app can be
 # renamed) and a working log-source input that can be updated via PUT.
@@ -224,7 +233,7 @@ fi
 
 # Update the log source via PUT and verify the save response. A health URL
 # must not drop the journalctl source (the form always submits both blocks).
-put_response="$(curl -fsS -X PUT \
+put_response="$(curl -fsS -i -X PUT \
   -d 'name=demo-api' \
   -d 'service=demo-api.service' \
   -d 'source_type=journalctl' \
@@ -239,11 +248,8 @@ put_response="$(curl -fsS -X PUT \
   -d 'expected_status=200' \
   -H "Cookie: ${COOKIE}" \
   "${DEMO_URL}/panel/collectors/${collector_name}/apps/demo-api")"
-if ! grep -Fq 'App "demo-api" saved' <<<"${put_response}"; then
-  fail "PUT update for demo-api did not return success"
-fi
-if ! grep -Eq 'hx-get="[^"]+/apps/demo-api"' <<<"${put_response}"; then
-  fail "saved response for edit must hx-get the app page (not apps list)"
+if ! tr -d '\r' <<<"${put_response}" | grep -Eiq '^hx-redirect:[[:space:]]*/panel/collectors/'"${collector_name}"'/apps/demo-api[[:space:]]*$'; then
+  fail "PUT update for demo-api did not redirect to the app page"
 fi
 
 demo_api_settings="$(curl -fsS "${DEMO_URL}/panel/collectors/${collector_name}/apps/demo-api/settings" -H "Cookie: ${COOKIE}")"
@@ -252,7 +258,7 @@ grep -Fq 'value="http://localhost:8080/healthz"' <<<"${demo_api_settings}" || fa
 
 log "checking create/update save logs and health together"
 combo_app="combo-app"
-create_response="$(curl -fsS -X POST \
+create_response="$(curl -fsS -i -X POST \
   -d "name=${combo_app}" \
   -d 'service=demo-api.service' \
   -d 'source_type=journalctl' \
@@ -267,8 +273,8 @@ create_response="$(curl -fsS -X POST \
   -d 'expected_status=200' \
   -H "Cookie: ${COOKIE}" \
   "${DEMO_URL}/panel/collectors/${collector_name}/apps")"
-if ! grep -Fq "App \"${combo_app}\" saved" <<<"${create_response}"; then
-  fail "POST create for ${combo_app} (logs+health) did not return success: ${create_response}"
+if ! tr -d '\r' <<<"${create_response}" | grep -Eiq '^hx-redirect:[[:space:]]*/panel[[:space:]]*$'; then
+  fail "POST create for ${combo_app} (logs+health) did not redirect to the panel: ${create_response}"
 fi
 
 wait_for_app_settings() {
@@ -300,15 +306,15 @@ wait_for_combo_logs() {
 wait_for_combo_logs
 
 uptime_only="uptime-only-app"
-uptime_response="$(curl -fsS -X POST \
+uptime_response="$(curl -fsS -i -X POST \
   -d "name=${uptime_only}" \
   -d 'url=http://localhost:8080/healthz' \
   -d 'interval=300s' \
   -d 'expected_status=200' \
   -H "Cookie: ${COOKIE}" \
   "${DEMO_URL}/panel/collectors/${collector_name}/apps")"
-if ! grep -Fq "App \"${uptime_only}\" saved" <<<"${uptime_response}"; then
-  fail "POST create for ${uptime_only} did not return success: ${uptime_response}"
+if ! tr -d '\r' <<<"${uptime_response}" | grep -Eiq '^hx-redirect:[[:space:]]*/panel[[:space:]]*$'; then
+  fail "POST create for ${uptime_only} did not redirect to the panel: ${uptime_response}"
 fi
 
 wait_for_uptime_settings() {
@@ -345,7 +351,7 @@ wait_for_uptime_value() {
 wait_for_uptime_value
 
 # Add a health URL to a logs-only app (demo-cron) without dropping its source.
-cron_put="$(curl -fsS -X PUT \
+cron_put="$(curl -fsS -i -X PUT \
   -d 'name=demo-cron' \
   -d 'service=demo-cron.service' \
   -d 'source_type=journalctl' \
@@ -360,8 +366,8 @@ cron_put="$(curl -fsS -X PUT \
   -d 'expected_status=200' \
   -H "Cookie: ${COOKIE}" \
   "${DEMO_URL}/panel/collectors/${collector_name}/apps/demo-cron")"
-if ! grep -Fq 'App "demo-cron" saved' <<<"${cron_put}"; then
-  fail "PUT update adding health to demo-cron did not return success"
+if ! tr -d '\r' <<<"${cron_put}" | grep -Eiq '^hx-redirect:[[:space:]]*/panel/collectors/'"${collector_name}"'/apps/demo-cron[[:space:]]*$'; then
+  fail "PUT update adding health to demo-cron did not redirect to the app page"
 fi
 wait_for_app_settings "demo-cron"
 

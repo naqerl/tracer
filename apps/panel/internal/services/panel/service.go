@@ -551,6 +551,9 @@ func CheckUptime(rawURL, rawInterval, rawExpected string) (*UptimeCheck, error) 
 	if parsed.Scheme != "http" && parsed.Scheme != "https" {
 		return nil, fmt.Errorf("health check url must be http or https, got %q", url)
 	}
+	if parsed.Hostname() == "" {
+		return nil, fmt.Errorf("health check url must name a host, got %q", url)
+	}
 
 	interval := strings.TrimSpace(rawInterval)
 	if interval == "" {

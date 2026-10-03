@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	authsvc "tracer/apps/panel/internal/services/auth"
 	ingestsvc "tracer/apps/panel/internal/services/ingest"
 	panelsvc "tracer/apps/panel/internal/services/panel"
 	"tracer/libs/types"
@@ -78,8 +79,8 @@ func TestCreateAppSavesLogsAndHealth(t *testing.T) {
 	if rr.Code != http.StatusOK {
 		t.Fatalf("create status = %d body %s", rr.Code, rr.Body.String())
 	}
-	if !strings.Contains(rr.Body.String(), `App "combo" saved`) {
-		t.Fatalf("expected save confirmation, got %s", rr.Body.String())
+	if got := rr.Header().Get("HX-Redirect"); got != "/panel" {
+		t.Fatalf("HX-Redirect = %q, want /panel", got)
 	}
 
 	app := storedApp(t, panelService, "combo")
@@ -437,10 +438,10 @@ func TestUpdateAppShowsErrorOnSaveFailure(t *testing.T) {
 	}
 }
 
-// TestAddAppFormLivesOnPanel verifies the add-app form is served by the panel
-// page itself: the collector's "+" link points at /panel?add=<collector> and
-// that page renders the create form, while the plain panel page does not.
-func TestAddAppFormLivesOnPanel(t *testing.T) {
+// TestCreateAppPageIsTheOnlyCreationPage verifies the app creation form lives
+// on its own page per collector, that the "+" link points there, and that the
+// panel page no longer renders the form itself.
+func TestCreateAppPageIsTheOnlyCreationPage(t *testing.T) {
 	handler, token, _, _, _, _ := newServerWithGuesser(t, nil)
 
 	plain := httptest.NewRequest(http.MethodGet, "/panel/", nil)
@@ -448,27 +449,148 @@ func TestAddAppFormLivesOnPanel(t *testing.T) {
 	plainRR := httptest.NewRecorder()
 	handler.ServeHTTP(plainRR, plain)
 	if strings.Contains(plainRR.Body.String(), `hx-post="/panel/collectors/demo/apps"`) {
-		t.Fatalf("expected no add form without the add parameter, got %s", plainRR.Body.String())
+		t.Fatalf("expected no create form on the panel page, got %s", plainRR.Body.String())
 	}
-	if !strings.Contains(plainRR.Body.String(), `href="/panel/?add=demo"`) {
-		t.Fatalf("expected the add link to point at the panel, got %s", plainRR.Body.String())
+	if !strings.Contains(plainRR.Body.String(), `href="/panel/collectors/demo/app"`) {
+		t.Fatalf("expected the add link to point at the creation page, got %s", plainRR.Body.String())
 	}
 
-	req := httptest.NewRequest(http.MethodGet, "/panel/?add=demo", nil)
+	withParam := httptest.NewRequest(http.MethodGet, "/panel/?add=demo", nil)
+	withParam.AddCookie(&http.Cookie{Name: "tracer_session", Value: token})
+	paramRR := httptest.NewRecorder()
+	handler.ServeHTTP(paramRR, withParam)
+	if strings.Contains(paramRR.Body.String(), `hx-post="/panel/collectors/demo/apps"`) {
+		t.Fatalf("expected no create form for the add parameter, got %s", paramRR.Body.String())
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/panel/collectors/demo/app", nil)
 	req.AddCookie(&http.Cookie{Name: "tracer_session", Value: token})
 	rr := httptest.NewRecorder()
 	handler.ServeHTTP(rr, req)
 	if rr.Code != http.StatusOK {
-		t.Fatalf("panel status = %d body %s", rr.Code, rr.Body.String())
+		t.Fatalf("creation page status = %d body %s", rr.Code, rr.Body.String())
 	}
 	body := rr.Body.String()
 	if !strings.Contains(body, `hx-post="/panel/collectors/demo/apps"`) {
-		t.Fatalf("expected the add form on the panel page, got %s", body)
+		t.Fatalf("expected the create form on the creation page, got %s", body)
 	}
 	if !strings.Contains(body, "Add app to demo") {
-		t.Fatalf("expected the add form to name its collector, got %s", body)
+		t.Fatalf("expected the create form to name its collector, got %s", body)
 	}
 	assertCancelAnchor(t, body, "/panel")
+
+	form := appFormFragment(t, body)
+	if strings.Contains(form, "onclick=") {
+		t.Fatalf("expected no inline JavaScript in the form, got %s", form)
+	}
+	if strings.Contains(form, "use app name") {
+		t.Fatalf("expected the use-app-name button to be gone, got %s", form)
+	}
+	if strings.Contains(form, "app-form.js") {
+		t.Fatalf("expected no app-form script, got %s", form)
+	}
+}
+
+// TestCreateAppPageRefusesUserWithoutModifyAccess verifies that the creation
+// page is not served to a user who may not add apps: the route answers 403 and
+// renders no form, so nothing points them at a page that only refuses them.
+func TestCreateAppPageRefusesUserWithoutModifyAccess(t *testing.T) {
+	handler, _, _, _, authService, _ := newServerWithGuesser(t, nil)
+	viewer := registerViewer(t, authService)
+
+	req := httptest.NewRequest(http.MethodGet, "/panel/collectors/demo/app", nil)
+	req.AddCookie(&http.Cookie{Name: "tracer_session", Value: viewer})
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for a user without modify access, got %d body %s", rr.Code, rr.Body.String())
+	}
+	if strings.Contains(rr.Body.String(), `hx-post="/panel/collectors/demo/apps"`) {
+		t.Fatalf("expected no create form for a forbidden user, got %s", rr.Body.String())
+	}
+}
+
+// TestCreateAppPageUnknownCollector verifies the creation page answers 404 for
+// a collector that does not exist.
+func TestCreateAppPageUnknownCollector(t *testing.T) {
+	handler, token, _, _, _, _ := newServerWithGuesser(t, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/panel/collectors/ghost/app", nil)
+	req.AddCookie(&http.Cookie{Name: "tracer_session", Value: token})
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for an unknown collector, got %d body %s", rr.Code, rr.Body.String())
+	}
+	if strings.Contains(rr.Body.String(), `hx-post="/panel/collectors/ghost/apps"`) {
+		t.Fatalf("expected no create form for an unknown collector, got %s", rr.Body.String())
+	}
+}
+
+// TestCollectorOverviewLinksToAppCreationPage verifies the collector overview
+// carries the add-app link to the creation page.
+func TestCollectorOverviewLinksToAppCreationPage(t *testing.T) {
+	handler, token, _, _, _, _ := newServerWithGuesser(t, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/panel/collectors/demo", nil)
+	req.AddCookie(&http.Cookie{Name: "tracer_session", Value: token})
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("collector overview status = %d body %s", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), `href="/panel/collectors/demo/app"`) {
+		t.Fatalf("expected the add link on the collector overview, got %s", rr.Body.String())
+	}
+}
+
+// TestCreateAppRejectsUnusableHealthURL verifies a health URL that is not an
+// http(s) address is refused with the reason on the re-rendered form and is
+// not stored, since nothing downstream would notice it until the monitor
+// reported the app as down.
+func TestCreateAppRejectsUnusableHealthURL(t *testing.T) {
+	handler, token, _, _, _, panelService := newServerWithGuesser(t, nil)
+
+	for _, tc := range []struct {
+		rawURL string
+		want   string
+	}{
+		{"ftp://example.com", "health check url must be http or https"},
+		{"example.com/health", "health check url must be http or https"},
+		{"http://", "health check url must name a host"},
+		{"https://exa mple.com", "could not parse health check url"},
+	} {
+		rr := postApp(t, handler, token, url.Values{
+			"name": {"bad-url"},
+			"url":  {tc.rawURL},
+		})
+		if rr.Code != http.StatusOK {
+			t.Fatalf("create status = %d body %s", rr.Code, rr.Body.String())
+		}
+		if !strings.Contains(rr.Body.String(), tc.want) {
+			t.Fatalf("expected %q on the form for %q, got %s", tc.want, tc.rawURL, rr.Body.String())
+		}
+		if got := rr.Header().Get("HX-Redirect"); got != "" {
+			t.Fatalf("expected no redirect for %q, got %q", tc.rawURL, got)
+		}
+	}
+
+	raw, err := panelService.FetchCollectorConfig(t.Context(), "demo")
+	if err != nil {
+		t.Fatalf("fetch config: %v", err)
+	}
+	if raw != "" {
+		var cfg types.CollectorConfig
+		if err := json.Unmarshal([]byte(raw), &cfg); err != nil {
+			t.Fatalf("unmarshal config %q: %v", raw, err)
+		}
+		if _, ok := cfg.GetApp("bad-url"); ok {
+			t.Fatalf("expected no app stored for an unusable health URL, got %s", raw)
+		}
+	}
 }
 
 // TestAppFormCancelHrefFollowsReRenders verifies the form's Cancel destination
@@ -531,6 +653,25 @@ func TestNewAppPageIsGone(t *testing.T) {
 	}
 }
 
+// registerViewer registers a non-admin user with no app access and returns a
+// session token for them.
+func registerViewer(t *testing.T, authService *authsvc.Service) string {
+	t.Helper()
+	user, err := authService.Register(t.Context(), authsvc.RegisterRequest{
+		Username: "viewer",
+		Password: "secret",
+		IsAdmin:  false,
+	})
+	if err != nil {
+		t.Fatalf("register viewer: %v", err)
+	}
+	token, err := authService.CreateSession(t.Context(), user.ID)
+	if err != nil {
+		t.Fatalf("create viewer session: %v", err)
+	}
+	return token
+}
+
 func postForm(t *testing.T, handler http.Handler, token, path string, values url.Values) *httptest.ResponseRecorder {
 	t.Helper()
 	req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(values.Encode()))
@@ -543,10 +684,25 @@ func postForm(t *testing.T, handler http.Handler, token, path string, values url
 
 func assertCancelAnchor(t *testing.T, body, want string) {
 	t.Helper()
-	if !strings.Contains(body, `<a href="`+want+`" onclick=`) {
+	if !strings.Contains(body, `<a href="`+want+`"`) {
 		t.Fatalf("expected the Cancel anchor to point at %q, got %s", want, body)
 	}
 	if strings.Contains(body, `<a href=""`) {
 		t.Fatalf("Cancel anchor has no destination: %s", body)
 	}
+}
+
+// appFormFragment returns the rendered app form, without the page chrome that
+// surrounds it.
+func appFormFragment(t *testing.T, body string) string {
+	t.Helper()
+	start := strings.Index(body, `<div id="app-form-container"`)
+	if start < 0 {
+		t.Fatalf("no app form in page: %s", body)
+	}
+	end := strings.Index(body[start:], `</form>`)
+	if end < 0 {
+		t.Fatalf("unterminated app form: %s", body)
+	}
+	return body[start : start+end]
 }

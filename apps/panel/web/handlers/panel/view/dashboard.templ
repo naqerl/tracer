@@ -15,6 +15,7 @@ type CollectorView struct {
 	LastSeenAt         time.Time
 	Stats              *CollectorStatsView
 	AccessibleAppCount int
+	CanModify          bool
 }
 
 // CollectorStatsView represents collector resource stats.
@@ -28,13 +29,11 @@ type CollectorStatsView struct {
 	Staleness          string
 }
 
-// DashboardProps holds data for the dashboard page. AddApp carries the
-// new-app form when the panel was opened with an "add" collector.
+// DashboardProps holds data for the dashboard page.
 type DashboardProps struct {
 	Title      string
 	Since      string
 	Collectors []CollectorView
-	AddApp     *AppFormProps
 }
 
 // cpuClass returns a CSS class based on CPU usage.
@@ -90,6 +89,7 @@ type CollectorSectionProps struct {
 	HeaderHref         string
 	Stats              *CollectorStatsView
 	AccessibleAppCount int
+	CanModify          bool
 }
 
 // CollectorSection renders a collector's header, stats row, and apps grid.
@@ -121,9 +121,11 @@ templ CollectorSection(props CollectorSectionProps) {
 					@StatsRow(props.Stats, props.Name)
 				</div>
 			</div>
-			<a href={ "/panel/?add=" + props.Name } class="ml-4 shrink-0 text-fg-secondary hover:text-fg transition-colors" aria-label="Add an app" title="Add an app">
-				<img src="/static/img/plus.svg" alt="" class="w-5 h-5"/>
-			</a>
+			if props.CanModify {
+				<a href={ "/panel/collectors/" + props.Name + "/app" } class="ml-4 shrink-0 text-fg-secondary hover:text-fg transition-colors" aria-label="Add an app" title="Add an app">
+					<img src="/static/img/plus.svg" alt="" class="w-5 h-5"/>
+				</a>
+			}
 		</div>
 		<!-- Apps Grid -->
 		<div
@@ -141,14 +143,6 @@ templ Dashboard(p DashboardProps) {
 	@templates.Layout(p.Title, templates.NavData{Since: p.Since}) {
 		<div class="max-w-5xl mx-auto p-2 md:p-6">
 			<div>
-				if p.AddApp != nil {
-					<div class="mb-10 max-w-4xl">
-						<h1 class="text-xl font-semibold mb-6">
-							Add app to { p.AddApp.Collector }
-						</h1>
-						@AppForm(*p.AddApp)
-					</div>
-				}
 				if len(p.Collectors) == 0 {
 					<div class="text-center text-fg-secondary py-12">
 						<p>No collectors connected. Create a collector API key in <a href="/settings" class="text-fg underline">Settings</a> to get started.</p>
@@ -160,6 +154,7 @@ templ Dashboard(p DashboardProps) {
 						HeaderHref:         "/panel/collectors/" + c.Name,
 						Stats:              c.Stats,
 						AccessibleAppCount: c.AccessibleAppCount,
+						CanModify:          c.CanModify,
 					})
 				}
 			</div>

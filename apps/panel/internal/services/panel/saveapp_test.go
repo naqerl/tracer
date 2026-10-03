@@ -232,6 +232,9 @@ func TestCheckUptimeRejectsBadInput(t *testing.T) {
 	if _, err := CheckUptime("https://example.com", "every minute", "200"); err == nil {
 		t.Fatal("expected an unparsable interval to be rejected")
 	}
+	if _, err := CheckUptime("http://:8080/health", "30s", "200"); err == nil {
+		t.Fatal("expected a url naming no host to be rejected")
+	}
 }
 
 func savedApp(t *testing.T, svc *Service, collectorName, appName string) types.AppSpec {

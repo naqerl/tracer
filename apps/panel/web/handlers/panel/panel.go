@@ -11,7 +11,6 @@ import (
 	"log/slog"
 	"math"
 	"net/http"
-	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -68,6 +67,7 @@ func InitMux(svc *panelsvc.Service, authService *authsvc.Service) *http.ServeMux
 	m.HandleFunc("GET /collectors/{collector}/stats", h.getCollectorStats)
 
 	// App create, edit and config
+	m.HandleFunc("GET /collectors/{collector}/app", h.getCreateAppPage)
 	m.HandleFunc("POST /collectors/{collector}/apps", h.createApp)
 	m.HandleFunc("POST /collectors/{collector}/apps/preview", h.previewAppFormat)
 	m.HandleFunc("POST /collectors/{collector}/apps/health-probe", h.probeAppHealth)
@@ -144,6 +144,7 @@ func (h *handler) getDashboard(w http.ResponseWriter, r *http.Request) {
 			LastSeenAt:         collector.LastSeenAt,
 			Stats:              collectorStatsView(collector.Stats),
 			AccessibleAppCount: len(apps),
+			CanModify:          h.canModifyCollector(r.Context(), user, collector.Name),
 		})
 	}
 
@@ -151,32 +152,10 @@ func (h *handler) getDashboard(w http.ResponseWriter, r *http.Request) {
 		Title:      "Panel",
 		Since:      sinceLabel,
 		Collectors: collectorViews,
-		AddApp:     h.addAppForm(r, user, collectors),
 	}).Render(r.Context(), w)
 }
 
-// addAppForm builds the new-app form for the collector named by the "add"
-// query parameter, or nil when the panel was opened without it or the
-// collector is not the user's to modify.
-func (h *handler) addAppForm(r *http.Request, user domain.User, collectors []panelsvc.Collector) *view.AppFormProps {
-	collectorName := strings.TrimSpace(r.URL.Query().Get("add"))
-	if collectorName == "" {
-		return nil
-	}
-	visible := slices.ContainsFunc(collectors, func(c panelsvc.Collector) bool { return c.Name == collectorName })
-	if !visible {
-		return nil
-	}
-	if !h.canModifyCollector(r.Context(), user, collectorName) {
-		return nil
-	}
-	return &view.AppFormProps{
-		Collector:  collectorName,
-		CancelHref: appFormCancelHref(collectorName, false),
-	}
-}
-
-// Collector handlers
+// ── Collector handlers ───────────────────────────────────────────────────────
 
 func (h *handler) getCollector(w http.ResponseWriter, r *http.Request) {
 	user, err := auth.RequireUser(w, r)
@@ -224,6 +203,7 @@ func (h *handler) getCollector(w http.ResponseWriter, r *http.Request) {
 		Since:              sinceLabel,
 		Stats:              collectorStatsView(coll.Stats),
 		AccessibleAppCount: len(apps),
+		CanModify:          h.canModifyCollector(r.Context(), user, req.CollectorName),
 	}).Render(r.Context(), w)
 }
 
@@ -1254,6 +1234,48 @@ func (h *handler) getLogByID(w http.ResponseWriter, r *http.Request) {
 
 // ── App form ────────────────────────────────────────────────────────────────
 
+// getCreateAppPage renders the app creation form for one collector.
+func (h *handler) getCreateAppPage(w http.ResponseWriter, r *http.Request) {
+	user, err := auth.RequireUser(w, r)
+	if err != nil {
+		return
+	}
+
+	req := panelsvc.GetCollectorRequest{
+		UserID:        user.ID,
+		CollectorName: r.PathValue("collector"),
+	}
+	if err := req.Validate(); err != nil {
+		templates.RenderError(w, r, "Error", err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if _, err := h.svc.GetCollector(r.Context(), req); err != nil {
+		switch {
+		case errors.Is(err, panelsvc.ErrCollectorNotFound):
+			templates.RenderError(w, r, "Error", "Collector not found", http.StatusNotFound)
+		case errors.Is(err, panelsvc.ErrAccessDenied):
+			templates.RenderError(w, r, "Forbidden", "You don't have access to this collector", http.StatusForbidden)
+		default:
+			templates.RenderError(w, r, "Error", "Failed to get collector", http.StatusInternalServerError)
+		}
+		return
+	}
+
+	if !h.canModifyCollector(r.Context(), user, req.CollectorName) {
+		templates.RenderError(w, r, "Forbidden", "You can't add apps to this collector", http.StatusForbidden)
+		return
+	}
+
+	if err := view.AppFormPage(view.AppFormProps{
+		Title:      "Add app - " + req.CollectorName,
+		Collector:  req.CollectorName,
+		CancelHref: appFormCancelHref(req.CollectorName, false),
+	}).Render(r.Context(), w); err != nil {
+		slog.Error("could not render app creation page", "collector", req.CollectorName, "error", err)
+	}
+}
+
 func (h *handler) getEditAppPage(w http.ResponseWriter, r *http.Request) {
 	user, err := auth.RequireUser(w, r)
 	if err != nil {
@@ -1735,10 +1757,7 @@ func (h *handler) createApp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	view.AppSaved(view.AppSavedProps{
-		Collector: collectorName,
-		AppName:   appName,
-	}).Render(r.Context(), w)
+	w.Header().Set("HX-Redirect", "/panel")
 }
 
 // loadCollectorConfig loads and decodes the stored collector config.
