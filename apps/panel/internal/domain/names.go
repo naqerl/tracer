@@ -43,6 +43,9 @@ func ValidateUserID(value int64) error {
 	return nil
 }
 
+// validateIdentifier holds a name to the characters that are safe in a filesystem
+// path segment and in a URL. Dot-only names are rejected: they are joined into
+// storage paths, where "." and ".." climb out of the directory.
 func validateIdentifier(field, value string, maxLength int) error {
 	trimmed := strings.TrimSpace(value)
 	if trimmed == "" {
@@ -50,6 +53,9 @@ func validateIdentifier(field, value string, maxLength int) error {
 	}
 	if trimmed != value {
 		return fmt.Errorf("%s must not have leading or trailing spaces", field)
+	}
+	if trimmed == "." || trimmed == ".." {
+		return fmt.Errorf("%s must not be %q", field, trimmed)
 	}
 	if len(trimmed) > maxLength {
 		return fmt.Errorf("%s must be <= %d characters", field, maxLength)

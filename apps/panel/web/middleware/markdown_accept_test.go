@@ -130,6 +130,11 @@ func TestShouldConvert(t *testing.T) {
 	}{
 		{name: "html explicit", status: 200, ct: "text/html", body: "<p>hi</p>", want: true},
 		{name: "html sniffed", status: 200, ct: "", body: "<!DOCTYPE html><html><p>hi</p></html>", want: true},
+		{name: "html fragment with unrecognized first tag", status: 200, ct: "", body: "<h2>Uptime</h2>", want: true},
+		{name: "html comment", status: 200, ct: "", body: "<!-- x --><p>hi</p>", want: true},
+		{name: "angle text not html", status: 200, ct: "", body: "<-5", want: false},
+		{name: "leading text not html", status: 200, ct: "", body: "1 < 2", want: false},
+		{name: "empty body", status: 200, ct: "", body: "", want: false},
 		{name: "xhtml", status: 200, ct: "application/xhtml+xml", body: "<p>hi</p>", want: true},
 		{name: "json", status: 200, ct: "application/json", body: `{"a":1}`, want: false},
 		{name: "sse", status: 200, ct: "text/event-stream", body: "data: x\n", want: false},
@@ -243,6 +248,32 @@ func TestMarkdownAcceptMiddlewareConverts(t *testing.T) {
 	}
 	if rec.Header().Get("Content-Length") != "" {
 		t.Fatal("expected Content-Length removed after conversion")
+	}
+}
+
+func TestMarkdownAcceptMiddlewareConvertsUnrecognizedFragment(t *testing.T) {
+	mw := BuildMarkdownAcceptMiddleware()
+	handler := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// No Content-Type, and <h2> is outside http.DetectContentType's sniff
+		// list, so the fragment sniffs as text/plain unless the middleware
+		// recognizes a leading tag itself.
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("<h2>Uptime <span>N/A</span></h2>"))
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/panel/collectors/host/apps/api/uptime", nil)
+	req.Header.Set("Accept", "text/markdown")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if ct := rec.Header().Get("Content-Type"); !strings.HasPrefix(ct, "text/markdown") {
+		t.Fatalf("expected text/markdown, got %q", ct)
+	}
+	if strings.Contains(rec.Body.String(), "<h2>") {
+		t.Fatalf("expected the fragment converted, got:\n%s", rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "Uptime") {
+		t.Fatalf("expected the text kept, got:\n%s", rec.Body.String())
 	}
 }
 
