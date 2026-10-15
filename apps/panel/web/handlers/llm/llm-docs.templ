@@ -28,6 +28,18 @@ templ llmDocsHTML(baseURL string) {
 						<pre class="overflow-x-auto text-sm"><code>curl -H "X-API-Key: YOUR_KEY" -H "Accept: text/markdown" "https://{ baseURL }/panel"</code></pre>
 					</div>
 
+					<h2 class="text-xl font-semibold text-fg mt-8 mb-4">MCP (Model Context Protocol)</h2>
+					<p class="text-fg-secondary mb-2">
+						MCP clients such as Claude Desktop, Cursor and MCP Inspector can use these pages as tools instead of
+						fetching markdown. The endpoint is <code class="text-accent">/mcp</code> and speaks streamable HTTP.
+					</p>
+					<p class="text-fg-secondary mb-6">
+						Point the client at <code class="text-accent">https://{ baseURL }/mcp</code> and send the same user
+						API key as <code class="text-accent">X-API-Key</code> on every request. A session cookie will not open
+						it: MCP is token-only. On a panel running without authentication (the demo), reads work without a key
+						while the app-creation tool is refused.
+					</p>
+
 					<h2 class="text-xl font-semibold text-fg mt-8 mb-4">Permissions</h2>
 					<p class="text-fg-secondary mb-4">API keys inherit your user's app access permissions:</p>
 					<ul class="list-disc list-inside mb-6">

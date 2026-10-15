@@ -15,6 +15,7 @@ Demo: [tracer.naqel.com](https://tracer.naqel.com) &middot; Landing: [naqerl.com
 - **Telegram & ntfy.sh notifications** &mdash; per-user notifier configuration, enable/disable without deleting, multiple notifiers per user
 - **Resource monitoring** &mdash; collects CPU, RAM, and disk usage from each collector; real-time status on the dashboard
 - **API access for agents** &mdash; collector API keys for machine-to-machine auth, per-user API keys for scripted access, both with per-key revocation
+- **MCP server for AI agents** &mdash; the panel serves a Model Context Protocol endpoint at `/mcp`, so Claude Desktop, Cursor and MCP Inspector can query it as read-only tools (plus one app-creation tool) using a per-user API key
 - **Multiple log formats** &mdash; JSON with customizable field mappings, Go slog text, user-defined regex, journalctl
 - **Per-app SQLite databases** &mdash; WAL mode, automatic retention cleanup (default: 90 days), configurable sample rate for non-error logs (default: 10%; errors always 100%)
 - **Panel-driven collector config** &mdash; collectors are configured entirely from the panel UI; config is pushed over the live WebSocket and hot-reloads with no local files
@@ -145,6 +146,99 @@ sudo tracer-panel -init -force -username admin -password 'new-password'
   overridden with the `TRACER_KEY_SECRET` env var (64 hex chars). Losing it makes
   existing keys unrevealable.
 
+## MCP server for AI agents
+
+The panel serves a [Model Context Protocol](https://modelcontextprotocol.io) endpoint at **`/mcp`**, so
+an agent can answer questions like *"what is failing on my-server/web-api?"* from real Tracer data.
+There is no separate binary and no stdio: MCP is part of the panel you already run.
+
+Tools read the same pages a browser does, rendered as markdown by the panel's own handlers, so every
+existing access rule applies unchanged. A single result is capped at 48 KiB and ends with a truncation
+note when it was cut.
+
+### Authenticate
+
+MCP is **token-only**: every request must carry a panel **user API key** in `X-API-Key`. A browser
+session cookie is deliberately not accepted, so a logged-in browser cannot drive the endpoint.
+
+Create a key in **Settings &rarr; API Keys** and copy the plaintext (it is shown once). The key
+inherits that user's app permissions: an admin key sees every collector and app, a regular user's key
+sees only the apps assigned to that user.
+
+A panel started with `-no-auth` (the public demo) has no keys to check, so MCP works there without one. `create_app` is refused in that mode, so **MCP** is read-only on the demo — the demo's web UI has its own, wider write exemptions.
+
+### Tools
+
+`since` selects the time window (`1h`, `6h`, `24h`, `7d`, `30d`; default `24h`) and `level` filters log
+groups (`all`, `error`, `warn`, `info`; default `error`).
+
+| Tool | What it answers |
+|---|---|
+| `list_collectors` | Which collectors exist, with status, resource snapshot and app counts |
+| `get_collector` | One collector's overview |
+| `collector_resources` | CPU, RAM and disk history for the window |
+| `list_apps` | Apps on a collector with uptime bars and error counts |
+| `get_app` | One app's page: its uptime, plus links to its log stats and log groups |
+| `app_stats` | Log volume and the error / warning / info split |
+| `app_uptime` | Uptime percentage and per-bucket bars |
+| `list_log_groups` | Grouped, deduplicated log messages, newest first |
+| `get_log_group` | One group's message, level and count |
+| `log_group_entries` | The individual entries inside a group (50 per page, `offset` to page) |
+| `get_log` | One entry in full, with trace id and context |
+| `create_app` | Add an app to a collector — the only write tool |
+
+### Write tools
+
+`create_app` adds an app to a collector: a `service` (systemd unit, kubectl workload or file path) to
+collect its logs, a `url` to watch over HTTP, or both. It is refused when the panel runs with
+`-no-auth` (demo mode), and otherwise needs a user who may modify that collector. Everything else
+reads only.
+
+### Claude Desktop
+
+Add to `claude_desktop_config.json` (Settings &rarr; Developer &rarr; Edit Config). Remote MCP servers
+are configured with a URL and headers rather than a command:
+
+```json
+{
+  "mcpServers": {
+    "tracer": {
+      "type": "http",
+      "url": "https://tracer.example.com/mcp",
+      "headers": { "X-API-Key": "your-user-api-key" }
+    }
+  }
+}
+```
+
+### Cursor
+
+Add the same block to `.cursor/mcp.json` in the project (or `~/.cursor/mcp.json` for every project):
+
+```json
+{
+  "mcpServers": {
+    "tracer": {
+      "type": "http",
+      "url": "https://tracer.example.com/mcp",
+      "headers": { "X-API-Key": "your-user-api-key" }
+    }
+  }
+}
+```
+
+### MCP Inspector
+
+```bash
+npx @modelcontextprotocol/inspector
+# Transport: Streamable HTTP   URL: https://tracer.example.com/mcp
+# Header:      X-API-Key: your-user-api-key
+```
+
+The endpoint speaks the **streamable HTTP** transport: responses stream as server-sent events and each
+session gets an `Mcp-Session-Id`. The older HTTP+SSE transport (separate `/sse` and `/messages`
+endpoints) is not served.
+
 ## Architecture
 
 - Collectors connect to the panel via WebSocket, register their apps, and stream log events
@@ -157,7 +251,7 @@ sudo tracer-panel -init -force -username admin -password 'new-password'
 ### Build from source
 
 ```bash
-# Build both binaries
+# Build every binary
 make build
 
 # Run tests and lint

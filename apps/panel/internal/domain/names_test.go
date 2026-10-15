@@ -15,6 +15,8 @@ func TestValidateCollectorName(t *testing.T) {
 		{name: "surrounding whitespace", value: " collector-1 ", wantErr: true},
 		{name: "too long", value: string(make([]byte, maxCollectorNameLength+1)), wantErr: true},
 		{name: "invalid character", value: "collector/name", wantErr: true},
+		{name: "current directory", value: ".", wantErr: true},
+		{name: "parent directory", value: "..", wantErr: true},
 	}
 
 	for _, tt := range tests {
@@ -38,6 +40,10 @@ func TestValidateAppName(t *testing.T) {
 
 	if err := ValidateAppName("app.main"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+	// An app name is joined into a storage path too, so ".." must not pass.
+	if err := ValidateAppName(".."); err == nil {
+		t.Fatal("expected an error for an app named \"..\"")
 	}
 }
 

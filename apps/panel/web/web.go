@@ -10,6 +10,7 @@ import (
 	"tracer/apps/panel/web/handlers/auth"
 	"tracer/apps/panel/web/handlers/ingest"
 	"tracer/apps/panel/web/handlers/llm"
+	"tracer/apps/panel/web/handlers/mcp"
 	"tracer/apps/panel/web/handlers/panel"
 	"tracer/apps/panel/web/handlers/settings"
 	"tracer/apps/panel/web/handlers/topology"
@@ -48,7 +49,18 @@ func NewServer(deps Dependencies, port string, noAuth bool) *http.Server {
 	})
 	mux.Handle("/static/", http.StripPrefix("/static", static.InitMux()))
 	mux.Handle("/ingest/", http.StripPrefix("/ingest", ingest.InitMux(deps.Auth, deps.Ingest, deps.Tracker, deps.Topology, deps.PanelService, deps.User, deps.CollectorConns)))
-	mux.Handle("/panel/", http.StripPrefix("/panel", panel.InitMux(deps.PanelService, deps.Auth)))
+	panelMux := panel.InitMux(deps.PanelService, deps.Auth)
+	mux.Handle("/panel/", http.StripPrefix("/panel", panelMux))
+	// The MCP endpoint reads the panel in-process, through its own mux, so a
+	// tool call renders exactly what a browser or API request would.
+	mcpEndpoint := mcp.New(mcp.Deps{
+		Panel:   middleware.BuildMarkdownAcceptMiddleware()(panelMux),
+		Service: deps.PanelService,
+		Auth:    deps.Auth,
+		User:    deps.User,
+		NoAuth:  noAuth,
+	})
+	mux.Handle("/mcp", mcpEndpoint.Handler())
 	mux.Handle("/topology/", http.StripPrefix("/topology", topology.InitMux(deps.Topology, deps.User)))
 	mux.Handle("/auth/", http.StripPrefix("/auth", authMux))
 	mux.Handle("/llm", llm.InitMux())

@@ -249,9 +249,31 @@ func (b *bufferedResponseWriter) shouldConvert() bool {
 	}
 	ct := b.header.Get("Content-Type")
 	if ct == "" {
-		ct = http.DetectContentType(b.body.Bytes())
+		if strings.HasPrefix(http.DetectContentType(b.body.Bytes()), "text/html") {
+			return true
+		}
+		return looksLikeHTMLFragment(b.body.Bytes())
 	}
 	return strings.HasPrefix(ct, "text/html") || strings.HasPrefix(ct, "application/xhtml+xml")
+}
+
+// looksLikeHTMLFragment reports whether the body opens with an HTML tag. It
+// covers fragments that http.DetectContentType cannot recognize, such as one
+// starting with <h2>, which would otherwise sniff as text/plain and defeat
+// markdown conversion.
+func looksLikeHTMLFragment(body []byte) bool {
+	trimmed := bytes.TrimLeft(body, " \t\r\n")
+	if len(trimmed) < 2 || trimmed[0] != '<' {
+		return false
+	}
+	switch c := trimmed[1]; {
+	case c == '!' || c == '/':
+		return true
+	case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z':
+		return true
+	default:
+		return false
+	}
 }
 
 // replay copies the captured response to the real writer as-is.

@@ -11,6 +11,7 @@ require (
 	github.com/go-test/deep v1.1.1
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3
+	github.com/modelcontextprotocol/go-sdk v1.8.0
 	github.com/pressly/goose/v3 v3.26.0
 	golang.org/x/crypto v0.50.0
 	golang.org/x/net v0.53.0
@@ -35,16 +36,22 @@ require (
 	github.com/andybalholm/cascadia v1.3.2 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/gomarkdown/markdown v0.0.0-20250311123330-531bef5e742b // indirect
+	github.com/google/jsonschema-go v0.4.3 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mfridman/interpolate v0.0.2 // indirect
 	github.com/ncruces/go-strftime v0.1.9 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
+	github.com/segmentio/asm v1.2.0 // indirect
+	github.com/segmentio/encoding v0.5.4 // indirect
 	github.com/sethvargo/go-retry v0.3.0 // indirect
+	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	golang.org/x/exp v0.0.0-20250620022241-b7579e27df2b // indirect
 	golang.org/x/exp/typeparams v0.0.0-20231108232855-2478ac86f678 // indirect
 	golang.org/x/mod v0.35.0 // indirect
+	golang.org/x/oauth2 v0.35.0 // indirect
 	golang.org/x/sync v0.20.0 // indirect
+	golang.org/x/time v0.15.0 // indirect
 	golang.org/x/tools v0.44.1-0.20260420230617-19499e7caabc // indirect
 	honnef.co/go/tools v0.8.1 // indirect
 	modernc.org/libc v1.66.10 // indirect
