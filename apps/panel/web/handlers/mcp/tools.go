@@ -2,11 +2,14 @@ package mcp
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 
@@ -77,41 +80,69 @@ type createAppInput struct {
 // ── Tool registration ───────────────────────────────────────────────────────
 
 func (s *Server) registerTools() {
-	mcpsdk.AddTool(s.server, readOnlyTool("list_collectors",
+	addTool(s.server, readOnlyTool("list_collectors",
 		"List every collector the caller can see, with connection status, system stats and app counts. Start here to find collector names."),
 		s.listCollectors)
-	mcpsdk.AddTool(s.server, readOnlyTool("get_collector",
+	addTool(s.server, readOnlyTool("get_collector",
 		"Show one collector's overview: connection state, CPU/RAM/disk snapshot and how many apps it has."),
 		s.getCollector)
-	mcpsdk.AddTool(s.server, readOnlyTool("collector_resources",
+	addTool(s.server, readOnlyTool("collector_resources",
 		"CPU, RAM and disk history for one collector over a time window."),
 		s.collectorResources)
-	mcpsdk.AddTool(s.server, readOnlyTool("list_apps",
+	addTool(s.server, readOnlyTool("list_apps",
 		"List the apps on one collector with uptime bars, error counts and the error trend for the window, so the failing apps stand out."),
 		s.listApps)
-	mcpsdk.AddTool(s.server, readOnlyTool("get_app",
+	addTool(s.server, readOnlyTool("get_app",
 		"Show one app's page: its uptime for the window, with links to its log stats and log groups. Call list_log_groups for the app's error groups and app_stats for the log counts."),
 		s.getApp)
-	mcpsdk.AddTool(s.server, readOnlyTool("app_stats",
+	addTool(s.server, readOnlyTool("app_stats",
 		"Log volume for one app over the window: totals and the error, warning and info split."),
 		s.appStats)
-	mcpsdk.AddTool(s.server, readOnlyTool("app_uptime",
+	addTool(s.server, readOnlyTool("app_uptime",
 		"Uptime percentage and per-bucket bars for one app over the window."),
 		s.appUptime)
-	mcpsdk.AddTool(s.server, readOnlyTool("list_log_groups",
+	addTool(s.server, readOnlyTool("list_log_groups",
 		"Grouped, deduplicated log messages for one app, newest first, with an occurrence count per group. This is where failures show up; pass level=all to include info and warnings."),
 		s.listLogGroups)
-	mcpsdk.AddTool(s.server, readOnlyTool("get_log_group",
+	addTool(s.server, readOnlyTool("get_log_group",
 		"One log group in full: its message, level and count. Use log_group_entries for the individual entries."),
 		s.getLogGroup)
-	mcpsdk.AddTool(s.server, readOnlyTool("log_group_entries",
+	addTool(s.server, readOnlyTool("log_group_entries",
 		"Individual log entries inside one group, each with its timestamp and context. Use offset to page; the panel returns 50 per page."),
 		s.logGroupEntries)
-	mcpsdk.AddTool(s.server, readOnlyTool("get_log",
+	addTool(s.server, readOnlyTool("get_log",
 		"One log entry in full: message, level, time, trace id and structured context."),
 		s.getLog)
-	mcpsdk.AddTool(s.server, createAppTool(),
+	addTool(s.server, createAppTool(),
 		s.createApp)
+}
+
+// addTool registers a tool and logs every call to it.
+func addTool[In any](server *mcpsdk.Server, tool *mcpsdk.Tool, handler mcpsdk.ToolHandlerFor[In, any]) {
+	mcpsdk.AddTool(server, tool, withLogging(tool.Name, handler))
+}
+
+// withLogging wraps a tool handler so every call is logged with its name,
+// arguments, duration and outcome. This is what lets the panel log show which
+// tool an agent asked for, not just that /mcp was called.
+func withLogging[In any](name string, handler mcpsdk.ToolHandlerFor[In, any]) mcpsdk.ToolHandlerFor[In, any] {
+	return func(ctx context.Context, req *mcpsdk.CallToolRequest, in In) (*mcpsdk.CallToolResult, any, error) {
+		start := time.Now()
+		res, out, err := handler(ctx, req, in)
+
+		attrs := []any{"tool", name, "duration_ms", time.Since(start).Milliseconds()}
+		args, mErr := json.Marshal(in)
+		if mErr != nil {
+			slog.Error("could not marshal tool arguments for logging", "tool", name, "error", mErr)
+		} else {
+			attrs = append(attrs, "args", string(args))
+		}
+		if err != nil {
+			attrs = append(attrs, "isError", true, "error", err.Error())
+		}
+		slog.Info("MCP tool call", attrs...)
+		return res, out, err
+	}
 }
 
 // readOnlyTool returns a tool marked as read-only, which is every tracer tool

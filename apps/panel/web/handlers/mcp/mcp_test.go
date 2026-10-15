@@ -1,6 +1,8 @@
 package mcp
 
 import (
+	"bytes"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -289,6 +291,41 @@ func TestToolEscapesNamesIntoTheRoute(t *testing.T) {
 	got := e.panel.last()
 	if want := "/collectors/demo%2F..%2F..%2Fsettings"; got != want {
 		t.Errorf("panel was asked for %q, want %q", got, want)
+	}
+}
+
+func TestToolCallsAreLogged(t *testing.T) {
+	// The panel's log is how an operator sees what an agent asked for, so the
+	// tool name and its arguments must reach it.
+	e := newEndpoint(t, false)
+	session := e.connect(t, e.userKey(t, e.admin.ID, "mcp"))
+
+	var buf bytes.Buffer
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
+	t.Cleanup(func() { slog.SetDefault(previous) })
+
+	e.call(t, session, "list_log_groups", map[string]any{
+		"collector": "demo", "app": "myapp", "level": "all",
+	})
+	logged := buf.String()
+	if !strings.Contains(logged, "MCP tool call") {
+		t.Fatalf("the log does not record the tool call: %q", logged)
+	}
+	if !strings.Contains(logged, "tool=list_log_groups") {
+		t.Errorf("the log does not name the tool: %q", logged)
+	}
+	// slog's text handler quotes a string value with strconv.Quote.
+	wantArgs := "args=" + strconv.Quote(`{"collector":"demo","app":"myapp","level":"all"}`)
+	if !strings.Contains(logged, wantArgs) {
+		t.Errorf("the log does not carry the arguments (want %s): %q", wantArgs, logged)
+	}
+
+	// A refused call is logged too, marked as an error rather than hidden.
+	buf.Reset()
+	_ = callTool(t, session, "get_app", map[string]any{"collector": "demo", "app": "nope"})
+	if failed := buf.String(); !strings.Contains(failed, "isError=true") {
+		t.Errorf("a failed call is not marked in the log: %q", failed)
 	}
 }
 
