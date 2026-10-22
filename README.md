@@ -190,9 +190,10 @@ groups (`all`, `error`, `warn`, `info`; default `error`).
 ### Write tools
 
 `create_app` adds an app to a collector: a `service` (systemd unit, kubectl workload or file path) to
-collect its logs, a `url` to watch over HTTP, or both. It is refused when the panel runs with
-`-no-auth` (demo mode), and otherwise needs a user who may modify that collector. Everything else
-reads only.
+collect its logs, a `url` to watch over HTTP, or both. `alert_delay` (a Go duration such as `5m`,
+default `0s`) holds an uptime alert back until the app has been down that long. It is refused when the
+panel runs with `-no-auth` (demo mode), and otherwise needs a user who may modify that collector.
+Everything else reads only.
 
 ### Claude Desktop
 

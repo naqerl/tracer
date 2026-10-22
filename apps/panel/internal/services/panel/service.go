@@ -136,14 +136,17 @@ type NewApp struct {
 	URL            string
 	Interval       string
 	ExpectedStatus string
+	AlertDelay     string
 }
 
-// UptimeCheck is a validated health check: the URL to probe, how often, and
-// the status codes that count as up.
+// UptimeCheck is a validated health check: the URL to probe, how often, the
+// status codes that count as up, and how long the app must stay down before an
+// alert is sent.
 type UptimeCheck struct {
 	URL            string
 	Interval       string
 	ExpectedStatus string
+	AlertDelay     string
 }
 
 type GetCollectorRequest struct {
@@ -448,7 +451,7 @@ func (s *Service) SaveApp(ctx context.Context, collectorName string, app NewApp)
 		return fmt.Errorf("invalid app name: %w", err)
 	}
 
-	health, err := CheckUptime(app.URL, app.Interval, app.ExpectedStatus)
+	health, err := CheckUptime(app.URL, app.Interval, app.ExpectedStatus, app.AlertDelay)
 	if err != nil {
 		return fmt.Errorf("%w: %w", ErrAppInvalidCheck, err)
 	}
@@ -476,7 +479,7 @@ func (s *Service) SaveApp(ctx context.Context, collectorName string, app NewApp)
 	}
 
 	if source == nil {
-		if err := cfg.AddUptimeApp(appName, health.URL, health.Interval, health.ExpectedStatus); err != nil {
+		if err := cfg.AddUptimeApp(appName, health.URL, health.Interval, health.ExpectedStatus, health.AlertDelay); err != nil {
 			return fmt.Errorf("could not add app: %w", err)
 		}
 	} else {
@@ -484,7 +487,7 @@ func (s *Service) SaveApp(ctx context.Context, collectorName string, app NewApp)
 			return fmt.Errorf("could not add app: %w", err)
 		}
 		if health != nil {
-			if err := cfg.SetAppHealth(appName, health.URL, health.Interval, health.ExpectedStatus); err != nil {
+			if err := cfg.SetAppHealth(appName, health.URL, health.Interval, health.ExpectedStatus, health.AlertDelay); err != nil {
 				return fmt.Errorf("could not add uptime check: %w", err)
 			}
 		}
@@ -537,8 +540,10 @@ func (s *Service) resolveAppSource(ctx context.Context, collectorName, appName s
 
 // CheckUptime validates the uptime fields an app form carries and fills in the
 // defaults the collector expects. A nil check means the app is not monitored,
-// which is what an uptime-only app adds on top of its logs.
-func CheckUptime(rawURL, rawInterval, rawExpected string) (*UptimeCheck, error) {
+// which is what an uptime-only app adds on top of its logs. An optional alert
+// delay controls how long the app must stay down before an alert is sent;
+// empty means immediate.
+func CheckUptime(rawURL, rawInterval, rawExpected string, rawAlertDelay ...string) (*UptimeCheck, error) {
 	url := strings.TrimSpace(rawURL)
 	if url == "" {
 		return nil, nil
@@ -568,7 +573,19 @@ func CheckUptime(rawURL, rawInterval, rawExpected string) (*UptimeCheck, error) 
 		expected = "200"
 	}
 
-	return &UptimeCheck{URL: url, Interval: interval, ExpectedStatus: expected}, nil
+	alertDelay := "0s"
+	if len(rawAlertDelay) > 0 && strings.TrimSpace(rawAlertDelay[0]) != "" {
+		alertDelay = strings.TrimSpace(rawAlertDelay[0])
+	}
+	delay, err := time.ParseDuration(alertDelay)
+	if err != nil {
+		return nil, fmt.Errorf("could not parse alert delay: %w", err)
+	}
+	if delay < 0 {
+		return nil, fmt.Errorf("alert delay must not be negative, got %q", alertDelay)
+	}
+
+	return &UptimeCheck{URL: url, Interval: interval, ExpectedStatus: expected, AlertDelay: alertDelay}, nil
 }
 
 // GuessFormat asks the collector to detect the log format for a service

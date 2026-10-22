@@ -76,6 +76,7 @@ type createAppInput struct {
 	URL            string `json:"url,omitempty" jsonschema:"optional HTTP health-check URL to poll"`
 	Interval       string `json:"interval,omitempty" jsonschema:"how often to run the health check, e.g. 30s (default 60s)"`
 	ExpectedStatus string `json:"expected_status,omitempty" jsonschema:"comma-separated HTTP status codes that count as up, e.g. 200,301 (default any 2xx)"`
+	AlertDelay     string `json:"alert_delay,omitempty" jsonschema:"how long the app must stay down before an uptime alert is sent, e.g. 5m (default 0s: alert immediately)"`
 }
 
 type createNotifierInput struct {
@@ -359,6 +360,7 @@ func (s *Server) createApp(ctx context.Context, req *mcpsdk.CallToolRequest, in 
 		URL:            strings.TrimSpace(in.URL),
 		Interval:       strings.TrimSpace(in.Interval),
 		ExpectedStatus: strings.TrimSpace(in.ExpectedStatus),
+		AlertDelay:     strings.TrimSpace(in.AlertDelay),
 	})
 	switch {
 	case errors.Is(err, panelsvc.ErrAppNameTaken):

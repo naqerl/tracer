@@ -137,6 +137,30 @@ type HealthCheckSpec struct {
 	Params map[string]string `json:"params"`
 }
 
+// HealthParamAlertDelay is the health-check param holding how long an app must
+// stay down before its uptime alert is sent.
+const HealthParamAlertDelay = "alert_delay"
+
+// UptimeAlertDelay returns how long an app must stay down before its uptime
+// alert is sent. An absent or empty param means no delay: alert immediately.
+func (a AppSpec) UptimeAlertDelay() (time.Duration, error) {
+	if a.Health == nil {
+		return 0, nil
+	}
+	raw := strings.TrimSpace(a.Health.Params[HealthParamAlertDelay])
+	if raw == "" {
+		return 0, nil
+	}
+	delay, err := time.ParseDuration(raw)
+	if err != nil {
+		return 0, fmt.Errorf("invalid %s: %w", HealthParamAlertDelay, err)
+	}
+	if delay < 0 {
+		return 0, fmt.Errorf("invalid %s: must not be negative", HealthParamAlertDelay)
+	}
+	return delay, nil
+}
+
 // SourceSpec returns the source spec if set. The second return value reports
 // whether a source was configured.
 func (a AppSpec) SourceSpec() (*SourceSpec, bool) {
@@ -202,6 +226,9 @@ func (c *CollectorConfig) Validate() error {
 				}
 			}
 		}
+		if _, err := app.UptimeAlertDelay(); err != nil {
+			return fmt.Errorf("app %s: %w", app.Name, err)
+		}
 	}
 
 	if c.Stats != nil {
@@ -232,14 +259,16 @@ func (c *CollectorConfig) AddApp(appName string, src SourceSpec, parser ParserSp
 }
 
 // AddUptimeApp appends an uptime-only app (health check, no logs) to the config.
-func (c *CollectorConfig) AddUptimeApp(appName, url, interval, expectedStatus string) error {
+// An optional alert delay controls how long the app must stay down before an
+// uptime alert is sent; empty means immediate.
+func (c *CollectorConfig) AddUptimeApp(appName, url, interval, expectedStatus string, alertDelay ...string) error {
 	if c.Apps == nil {
 		c.Apps = []AppSpec{}
 	}
 
 	c.Apps = append(c.Apps, AppSpec{
 		Name:   appName,
-		Health: httpHealthSpec(url, interval, expectedStatus),
+		Health: httpHealthSpec(url, interval, expectedStatus, firstString(alertDelay)),
 	})
 	return nil
 }
@@ -281,13 +310,14 @@ func (c *CollectorConfig) SetAppSource(name string, src SourceSpec, parser Parse
 }
 
 // SetAppHealth sets or replaces the HTTP health check of an existing app,
-// leaving any log source in place.
-func (c *CollectorConfig) SetAppHealth(name, url, interval, expectedStatus string) error {
+// leaving any log source in place. An optional alert delay controls how long
+// the app must stay down before an uptime alert is sent; empty means immediate.
+func (c *CollectorConfig) SetAppHealth(name, url, interval, expectedStatus string, alertDelay ...string) error {
 	for i := range c.Apps {
 		if c.Apps[i].Name != name {
 			continue
 		}
-		c.Apps[i].Health = httpHealthSpec(url, interval, expectedStatus)
+		c.Apps[i].Health = httpHealthSpec(url, interval, expectedStatus, firstString(alertDelay))
 		return nil
 	}
 	return fmt.Errorf("app %s not found", name)
@@ -335,13 +365,25 @@ func (c *CollectorConfig) ClearAppSource(name string) error {
 	return fmt.Errorf("app %s not found", name)
 }
 
-func httpHealthSpec(url, interval, expectedStatus string) *HealthCheckSpec {
+func httpHealthSpec(url, interval, expectedStatus, alertDelay string) *HealthCheckSpec {
+	alertDelay = strings.TrimSpace(alertDelay)
+	if alertDelay == "" {
+		alertDelay = "0s"
+	}
 	return &HealthCheckSpec{
 		Type: "http",
 		Params: map[string]string{
-			"url":             url,
-			"interval":        interval,
-			"expected_status": expectedStatus,
+			"url":                 url,
+			"interval":            interval,
+			"expected_status":     expectedStatus,
+			HealthParamAlertDelay: alertDelay,
 		},
 	}
+}
+
+func firstString(values []string) string {
+	if len(values) == 0 {
+		return ""
+	}
+	return values[0]
 }

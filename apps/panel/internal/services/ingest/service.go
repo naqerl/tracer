@@ -135,9 +135,10 @@ type Service struct {
 	cfg            IngestConfig
 	resolver       CollectorConfigResolver
 
-	mu           sync.Mutex
-	lastNotified map[string]int64 // collector/resource -> last notify unix time
-	lastStatsAt  map[string]int64 // collector -> last stats sample unix time
+	mu             sync.Mutex
+	lastNotified   map[string]int64 // collector/resource -> last notify unix time
+	lastStatsAt    map[string]int64 // collector -> last stats sample unix time
+	downNotifiedAt map[string]int64 // collector/app -> start of the alerted down period
 }
 
 // New creates a new ingest service. A nil notifyChan or alertFormatter is
@@ -157,6 +158,7 @@ func New(dbManager DBManager, notifyChan chan<- notify.Notification, alertFormat
 		resolver:       resolver,
 		lastNotified:   make(map[string]int64),
 		lastStatsAt:    make(map[string]int64),
+		downNotifiedAt: make(map[string]int64),
 	}
 }
 
@@ -865,6 +867,7 @@ func (s *Service) SaveHealthPeriod(ctx context.Context, req StoreHealthRequest) 
 	}
 
 	var prev types.HealthStatus
+	var periodStartedAt int64
 
 	err = handle.Write(ctx, func(tx db.DBTX) error {
 		q := db.New(tx)
@@ -879,6 +882,7 @@ func (s *Service) SaveHealthPeriod(ctx context.Context, req StoreHealthRequest) 
 		current, err := q.GetOpenHealthPeriod(ctx)
 		switch {
 		case err == nil:
+			periodStartedAt = current.StartedAt
 			if current.Status == string(req.Status) {
 				return nil
 			}
@@ -894,6 +898,7 @@ func (s *Service) SaveHealthPeriod(ctx context.Context, req StoreHealthRequest) 
 			return err
 		}
 
+		periodStartedAt = req.Time.Unix()
 		return q.SaveHealthPeriod(ctx, db.SaveHealthPeriodParams{
 			Status:    string(req.Status),
 			StartedAt: req.Time.Unix(),
@@ -903,6 +908,54 @@ func (s *Service) SaveHealthPeriod(ctx context.Context, req StoreHealthRequest) 
 	if err != nil {
 		return err
 	}
+
+	s.notifyHealth(ctx, req, prev, periodStartedAt)
+	return nil
+}
+
+// notifyHealth sends an uptime notification for a health update. A down app is
+// alerted once its configured delay has elapsed, and at most once per down
+// period; every other status change alerts immediately.
+func (s *Service) notifyHealth(ctx context.Context, req StoreHealthRequest, prev types.HealthStatus, periodStartedAt int64) {
+	key := req.CollectorName + "/" + req.AppName
+
+	if req.Status == types.HealthStatusDown {
+		elapsed := req.Time.Sub(time.Unix(periodStartedAt, 0))
+		if elapsed < s.uptimeAlertDelay(ctx, req.CollectorName, req.AppName) {
+			return
+		}
+
+		s.mu.Lock()
+		if s.downNotifiedAt == nil {
+			s.downNotifiedAt = make(map[string]int64)
+		}
+		notifiedAt, notified := s.downNotifiedAt[key]
+		if notified && notifiedAt == periodStartedAt {
+			s.mu.Unlock()
+			return
+		}
+		select {
+		case s.notifyChan <- notify.Notification{
+			Type:          notify.TypeUptime,
+			CollectorName: req.CollectorName,
+			AppName:       req.AppName,
+			Payload: notify.UptimeEntry{
+				Status:    req.Status,
+				Previous:  prev,
+				Timestamp: req.Time.Unix(),
+			},
+		}:
+			s.downNotifiedAt[key] = periodStartedAt
+		default:
+			slog.Error("Notification channel full, dropping uptime notification")
+		}
+		s.mu.Unlock()
+		return
+	}
+
+	s.mu.Lock()
+	delete(s.downNotifiedAt, key)
+	s.mu.Unlock()
 
 	// Notify on status change, but not on initial "up" state (normal startup).
 	if prev != req.Status && !(prev == types.HealthStatusUnknown && req.Status == types.HealthStatusUp) {
@@ -921,8 +974,44 @@ func (s *Service) SaveHealthPeriod(ctx context.Context, req StoreHealthRequest) 
 			slog.Error("Notification channel full, dropping uptime notification")
 		}
 	}
+}
 
-	return nil
+// uptimeAlertDelay reads how long an app must stay down before its uptime
+// alert is sent. A missing or malformed setting alerts immediately.
+func (s *Service) uptimeAlertDelay(ctx context.Context, collectorName, appName string) time.Duration {
+	handle, err := s.dbManager.GetCollectorDB(collectorName)
+	if err != nil {
+		slog.Error("failed to open collector database for uptime alert delay", "collector", collectorName, "error", err)
+		return 0
+	}
+
+	raw, err := db.New(handle.Read()).GetCollectorConfig(ctx)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		return 0
+	case err != nil:
+		slog.Error("failed to read collector config for uptime alert delay", "collector", collectorName, "error", err)
+		return 0
+	}
+	if raw == "" {
+		return 0
+	}
+
+	var cfg types.CollectorConfig
+	if err := json.Unmarshal([]byte(raw), &cfg); err != nil {
+		slog.Error("failed to decode collector config for uptime alert delay", "collector", collectorName, "error", err)
+		return 0
+	}
+	app, ok := cfg.GetApp(appName)
+	if !ok {
+		return 0
+	}
+	delay, err := app.UptimeAlertDelay()
+	if err != nil {
+		slog.Error("invalid uptime alert delay", "collector", collectorName, "app", appName, "error", err)
+		return 0
+	}
+	return delay
 }
 
 // sendLogNotification sends a log-derived notification with its structured

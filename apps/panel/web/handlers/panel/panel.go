@@ -1624,7 +1624,13 @@ func (h *handler) updateApp(w http.ResponseWriter, r *http.Request) {
 		renderError("invalid source parameters")
 		return
 	}
-	health, healthErr := panelsvc.CheckUptime(r.FormValue("url"), r.FormValue("interval"), r.FormValue("expected_status"))
+	alertDelay := strings.TrimSpace(r.FormValue("alert_delay"))
+	if alertDelay == "" {
+		if existingApp, ok := cfg.GetApp(appName); ok && existingApp.Health != nil {
+			alertDelay = existingApp.Health.Params[types.HealthParamAlertDelay]
+		}
+	}
+	health, healthErr := panelsvc.CheckUptime(r.FormValue("url"), r.FormValue("interval"), r.FormValue("expected_status"), alertDelay)
 	if healthErr != nil {
 		renderError(fmt.Errorf("%w: %w", panelsvc.ErrAppInvalidCheck, healthErr).Error())
 		return
@@ -1741,6 +1747,7 @@ func (h *handler) createApp(w http.ResponseWriter, r *http.Request) {
 		URL:            strings.TrimSpace(r.FormValue("url")),
 		Interval:       r.FormValue("interval"),
 		ExpectedStatus: r.FormValue("expected_status"),
+		AlertDelay:     strings.TrimSpace(r.FormValue("alert_delay")),
 	})
 	if err != nil {
 		switch {
