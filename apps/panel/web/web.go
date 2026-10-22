@@ -56,6 +56,7 @@ func NewServer(deps Dependencies, port string, noAuth bool) *http.Server {
 	mcpEndpoint := mcp.New(mcp.Deps{
 		Panel:   middleware.BuildMarkdownAcceptMiddleware()(panelMux),
 		Service: deps.PanelService,
+		Notify:  deps.Notify,
 		Auth:    deps.Auth,
 		User:    deps.User,
 		NoAuth:  noAuth,

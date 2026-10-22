@@ -21,6 +21,9 @@ import (
 	authsvc "tracer/apps/panel/internal/services/auth"
 	ingestsvc "tracer/apps/panel/internal/services/ingest"
 	notifysvc "tracer/apps/panel/internal/services/notify"
+	forgejonotify "tracer/apps/panel/internal/services/notify/forgejo"
+	ntfy "tracer/apps/panel/internal/services/notify/ntfy"
+	telegram "tracer/apps/panel/internal/services/notify/telegram"
 	panelsvc "tracer/apps/panel/internal/services/panel"
 	usersvc "tracer/apps/panel/internal/services/user"
 	"tracer/apps/panel/internal/testutil"
@@ -71,13 +74,13 @@ func TestToolList(t *testing.T) {
 	for _, tool := range res.Tools {
 		readOnly[tool.Name] = tool.Annotations != nil && tool.Annotations.ReadOnlyHint
 	}
-	if len(readOnly) != 12 {
+	if len(readOnly) != 13 {
 		t.Fatalf("listed %d tools, want 12: %v", len(readOnly), readOnly)
 	}
 	for name, only := range readOnly {
-		if name == "create_app" {
+		if name == "create_app" || name == "create_notifier" {
 			if only {
-				t.Error("create_app is marked read-only")
+				t.Errorf("%s is marked read-only", name)
 			}
 			continue
 		}
@@ -390,6 +393,16 @@ func newEndpoint(t *testing.T, noAuth bool) *endpoint {
 	ingest := ingestsvc.New(dbMgr, make(chan notifysvc.Notification, 10), func(_, _ string, _ int64) string { return "" }, cfg, nil)
 	panelSvc := panelsvc.New(dbMgr, ingest, ingestsvc.NewTracker(), users, nil, nil)
 
+	forgejoCache := forgejonotify.NewCache(forgejonotify.IssueCacheTTL)
+	notifierFactories := map[string]notifysvc.FromRawJSON{
+		"telegram": telegram.FromRawJSON,
+		"ntfy":     ntfy.FromRawJSON,
+		"forgejo": func(name, config string) (notifysvc.Notifier, error) {
+			return forgejonotify.New(name, config, forgejoCache)
+		},
+	}
+	notifySvc := notifysvc.New(handle, users, dbMgr, notifierFactories)
+
 	if _, err := ingest.StoreLog(t.Context(), ingestsvc.StoreLogRequest{
 		CollectorName: "demo",
 		AppName:       "myapp",
@@ -402,7 +415,7 @@ func newEndpoint(t *testing.T, noAuth bool) *endpoint {
 
 	panels := panel.InitMux(panelSvc, auth)
 	e.panel = &spyPanel{handler: middleware.BuildMarkdownAcceptMiddleware()(panels)}
-	srv := New(Deps{Panel: e.panel, Service: panelSvc, Auth: auth, User: users, NoAuth: noAuth})
+	srv := New(Deps{Panel: e.panel, Service: panelSvc, Notify: notifySvc, Auth: auth, User: users, NoAuth: noAuth})
 	httpSrv := httptest.NewServer(srv.Handler())
 	t.Cleanup(httpSrv.Close)
 	e.url = httpSrv.URL

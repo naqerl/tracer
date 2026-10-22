@@ -14,6 +14,7 @@ import (
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"tracer/apps/panel/internal/domain"
+	notifysvc "tracer/apps/panel/internal/services/notify"
 	panelsvc "tracer/apps/panel/internal/services/panel"
 	"tracer/apps/panel/web/templates"
 )
@@ -77,6 +78,20 @@ type createAppInput struct {
 	ExpectedStatus string `json:"expected_status,omitempty" jsonschema:"comma-separated HTTP status codes that count as up, e.g. 200,301 (default any 2xx)"`
 }
 
+type createNotifierInput struct {
+	Type      string `json:"type" jsonschema:"notifier type: ntfy, telegram or forgejo"`
+	Name      string `json:"name" jsonschema:"name for the new notifier"`
+	URL       string `json:"url,omitempty" jsonschema:"ntfy server URL (default https://ntfy.sh)"`
+	Topic     string `json:"topic,omitempty" jsonschema:"ntfy topic name"`
+	Token     string `json:"token,omitempty" jsonschema:"telegram bot token or Forgejo API token"`
+	ChatID    int64  `json:"chat_id,omitempty" jsonschema:"telegram chat id"`
+	BaseURL   string `json:"base_url,omitempty" jsonschema:"Forgejo base URL"`
+	OwnerRepo string `json:"owner_repo,omitempty" jsonschema:"Forgejo repository as owner/repo"`
+	Labels    string `json:"labels,omitempty" jsonschema:"Forgejo labels: comma-separated label names (ntfy/telegram unused)"`
+	Milestone string `json:"milestone,omitempty" jsonschema:"Forgejo milestone name"`
+	Config    string `json:"config,omitempty" jsonschema:"raw notifier config JSON; when set, the type-specific fields are ignored"`
+}
+
 // ── Tool registration ───────────────────────────────────────────────────────
 
 func (s *Server) registerTools() {
@@ -115,6 +130,8 @@ func (s *Server) registerTools() {
 		s.getLog)
 	addTool(s.server, createAppTool(),
 		s.createApp)
+	addTool(s.server, createNotifierTool(),
+		s.createNotifier)
 }
 
 // addTool registers a tool and logs every call to it.
@@ -164,6 +181,18 @@ func createAppTool() *mcpsdk.Tool {
 		Description: "Add an app to a collector. Give a service (systemd unit, kubectl workload or file path) to collect its logs, " +
 			"or a URL to watch it over HTTP, or both. The collector resolves the log format when a service is given. " +
 			"Not available on a panel that runs without authentication (demo mode), and requires permission to modify the collector.",
+		Annotations: &mcpsdk.ToolAnnotations{ReadOnlyHint: false, DestructiveHint: &destructive},
+	}
+}
+
+// createNotifierTool returns the notifier-creation tool.
+func createNotifierTool() *mcpsdk.Tool {
+	destructive := false
+	return &mcpsdk.Tool{
+		Name: "create_notifier",
+		Description: "Create a notifier (ntfy, telegram or forgejo) for the caller. " +
+			"For ntfy pass url and topic; for telegram pass token and chat_id; for forgejo pass base_url, token and owner_repo. " +
+			"Or pass a raw config JSON via config. The notifier is tested (welcome notification) before it is saved.",
 		Annotations: &mcpsdk.ToolAnnotations{ReadOnlyHint: false, DestructiveHint: &destructive},
 	}
 }
@@ -303,6 +332,119 @@ func (s *Server) createApp(ctx context.Context, req *mcpsdk.CallToolRequest, in 
 		return nil, nil, fmt.Errorf("could not create the app: %w", err)
 	default:
 		return textResult(fmt.Sprintf("Created app %q on collector %q. Read it with get_app, or pass a service or URL to monitor another.", name, in.Collector)), nil, nil
+	}
+}
+
+// createNotifier creates a notifier for the caller.
+func (s *Server) createNotifier(ctx context.Context, req *mcpsdk.CallToolRequest, in createNotifierInput) (*mcpsdk.CallToolResult, any, error) {
+	if s.deps.NoAuth {
+		return nil, nil, errors.New("creating notifiers is not allowed on this panel: it runs without authentication (demo mode)")
+	}
+	if s.deps.Notify == nil {
+		return nil, nil, errors.New("notifier service is not configured on this panel")
+	}
+	user, err := s.caller(ctx, req)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	notifierType := strings.TrimSpace(in.Type)
+	if notifierType == "" {
+		return nil, nil, errors.New("type is required")
+	}
+	name := strings.TrimSpace(in.Name)
+	if name == "" {
+		return nil, nil, errors.New("name is required")
+	}
+
+	configJSON := strings.TrimSpace(in.Config)
+	if configJSON == "" {
+		switch notifierType {
+		case "ntfy":
+			url := strings.TrimSpace(in.URL)
+			if url == "" {
+				url = "https://ntfy.sh"
+			}
+			topic := strings.TrimSpace(in.Topic)
+			if topic == "" {
+				return nil, nil, errors.New("topic is required for ntfy notifiers")
+			}
+			cfg := struct {
+				URL   string `json:"url"`
+				Topic string `json:"topic"`
+			}{URL: url, Topic: topic}
+			b, err := json.Marshal(cfg)
+			if err != nil {
+				return nil, nil, fmt.Errorf("could not marshal ntfy config: %w", err)
+			}
+			configJSON = string(b)
+		case "telegram":
+			token := strings.TrimSpace(in.Token)
+			chatID := in.ChatID
+			if token == "" || chatID == 0 {
+				return nil, nil, errors.New("token and chat_id are required for telegram notifiers")
+			}
+			cfg := struct {
+				Token  string `json:"token"`
+				ChatID int64  `json:"chat_id"`
+			}{Token: token, ChatID: chatID}
+			b, err := json.Marshal(cfg)
+			if err != nil {
+				return nil, nil, fmt.Errorf("could not marshal telegram config: %w", err)
+			}
+			configJSON = string(b)
+		case "forgejo":
+			baseURL := strings.TrimRight(strings.TrimSpace(in.BaseURL), "/")
+			token := strings.TrimSpace(in.Token)
+			ownerRepo := strings.TrimSpace(in.OwnerRepo)
+			if baseURL == "" || token == "" || ownerRepo == "" {
+				return nil, nil, errors.New("base_url, token and owner_repo are required for forgejo notifiers")
+			}
+			parts := strings.SplitN(ownerRepo, "/", 2)
+			if len(parts) != 2 {
+				return nil, nil, fmt.Errorf("owner_repo must be owner/repo, got %q", ownerRepo)
+			}
+			owner := strings.TrimSpace(parts[0])
+			repo := strings.TrimSpace(parts[1])
+			if owner == "" || repo == "" {
+				return nil, nil, fmt.Errorf("owner_repo must be owner/repo, got %q", ownerRepo)
+			}
+			cfg := struct {
+				BaseURL   string  `json:"base_url"`
+				Token     string  `json:"token"`
+				Owner     string  `json:"owner"`
+				Repo      string  `json:"repo"`
+				Labels    []int64 `json:"labels,omitempty"`
+				Milestone int64   `json:"milestone,omitempty"`
+			}{BaseURL: baseURL, Token: token, Owner: owner, Repo: repo}
+			b, err := json.Marshal(cfg)
+			if err != nil {
+				return nil, nil, fmt.Errorf("could not marshal forgejo config: %w", err)
+			}
+			configJSON = string(b)
+		default:
+			return nil, nil, fmt.Errorf("unknown notifier type %q", notifierType)
+		}
+	}
+
+	req2 := notifysvc.AddNotifierRequest{
+		UserID: user.ID,
+		Name:   name,
+		Type:   notifierType,
+		Config: configJSON,
+	}
+	if err := req2.Validate(); err != nil {
+		return nil, nil, err
+	}
+
+	id, err := s.deps.Notify.Add(ctx, user, req2)
+	switch {
+	case errors.Is(err, notifysvc.ErrWelcomeValidation):
+		return nil, nil, fmt.Errorf("welcome validation failed: %w", err)
+	case err != nil:
+		return nil, nil, fmt.Errorf("could not create the notifier: %w", err)
+	default:
+		return textResult(fmt.Sprintf("Created notifier %q (id %d) of type %q.", name, id, notifierType)), nil, nil
 	}
 }
 

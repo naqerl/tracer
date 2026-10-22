@@ -19,6 +19,7 @@ import (
 	"tracer/apps/panel"
 	"tracer/apps/panel/internal/domain"
 	authsvc "tracer/apps/panel/internal/services/auth"
+	notifysvc "tracer/apps/panel/internal/services/notify"
 	panelsvc "tracer/apps/panel/internal/services/panel"
 	usersvc "tracer/apps/panel/internal/services/user"
 	"tracer/apps/panel/web/middleware"
@@ -47,6 +48,8 @@ type Deps struct {
 	Panel http.Handler
 	// Service backs the write tools.
 	Service *panelsvc.Service
+	// Notify backs notifier creation.
+	Notify *notifysvc.Service
 	// Auth validates a caller's API key.
 	Auth *authsvc.Service
 	// User loads the API key's user.
