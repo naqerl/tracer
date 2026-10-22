@@ -149,6 +149,8 @@ func (s *Server) registerTools() {
 		s.addNotifierSubscription)
 	addTool(s.server, removeNotifierSubscriptionTool(),
 		s.removeNotifierSubscription)
+	addTool(s.server, deleteNotifierTool(),
+		s.deleteNotifier)
 }
 
 // addTool registers a tool and logs every call to it.
@@ -235,6 +237,15 @@ func removeNotifierSubscriptionTool() *mcpsdk.Tool {
 	return &mcpsdk.Tool{
 		Name:        "remove_notifier_subscription",
 		Description: "Unsubscribe a notifier from one collector/app pair.",
+		Annotations: &mcpsdk.ToolAnnotations{ReadOnlyHint: false, DestructiveHint: &destructive},
+	}
+}
+
+func deleteNotifierTool() *mcpsdk.Tool {
+	destructive := true
+	return &mcpsdk.Tool{
+		Name:        "delete_notifier",
+		Description: "Delete a notifier by id.",
 		Annotations: &mcpsdk.ToolAnnotations{ReadOnlyHint: false, DestructiveHint: &destructive},
 	}
 }
@@ -569,6 +580,23 @@ func (s *Server) removeNotifierSubscription(ctx context.Context, req *mcpsdk.Cal
 		return nil, nil, fmt.Errorf("could not remove subscription: %w", err)
 	}
 	return textResult(fmt.Sprintf("Unsubscribed notifier %d from %s/%s.", in.NotifierID, in.Collector, in.App)), nil, nil
+}
+
+func (s *Server) deleteNotifier(ctx context.Context, req *mcpsdk.CallToolRequest, in notifierIDInput) (*mcpsdk.CallToolResult, any, error) {
+	if s.deps.NoAuth {
+		return nil, nil, errors.New("deleting notifiers is not allowed on this panel: it runs without authentication (demo mode)")
+	}
+	if s.deps.Notify == nil {
+		return nil, nil, errors.New("notifier service is not configured on this panel")
+	}
+	user, err := s.caller(ctx, req)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := s.deps.Notify.Delete(ctx, user, in.NotifierID); err != nil {
+		return nil, nil, fmt.Errorf("could not delete notifier: %w", err)
+	}
+	return textResult(fmt.Sprintf("Deleted notifier %d.", in.NotifierID)), nil, nil
 }
 
 // canModify reports whether the user may add apps to the collector. The
