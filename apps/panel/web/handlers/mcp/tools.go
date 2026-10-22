@@ -92,6 +92,16 @@ type createNotifierInput struct {
 	Config    string `json:"config,omitempty" jsonschema:"raw notifier config JSON; when set, the type-specific fields are ignored"`
 }
 
+type notifierIDInput struct {
+	NotifierID int64 `json:"notifier_id" jsonschema:"notifier id, as returned by create_notifier"`
+}
+
+type notifierSubscriptionInput struct {
+	NotifierID int64  `json:"notifier_id" jsonschema:"notifier id, as returned by create_notifier"`
+	Collector  string `json:"collector" jsonschema:"collector name"`
+	App        string `json:"app" jsonschema:"app name"`
+}
+
 // ── Tool registration ───────────────────────────────────────────────────────
 
 func (s *Server) registerTools() {
@@ -132,6 +142,12 @@ func (s *Server) registerTools() {
 		s.createApp)
 	addTool(s.server, createNotifierTool(),
 		s.createNotifier)
+	addTool(s.server, listNotifierSubscriptionsTool(),
+		s.listNotifierSubscriptions)
+	addTool(s.server, addNotifierSubscriptionTool(),
+		s.addNotifierSubscription)
+	addTool(s.server, removeNotifierSubscriptionTool(),
+		s.removeNotifierSubscription)
 }
 
 // addTool registers a tool and logs every call to it.
@@ -193,6 +209,31 @@ func createNotifierTool() *mcpsdk.Tool {
 		Description: "Create a notifier (ntfy, telegram or forgejo) for the caller. " +
 			"For ntfy pass url and topic; for telegram pass token and chat_id; for forgejo pass base_url, token and owner_repo. " +
 			"Or pass a raw config JSON via config. The notifier is tested (welcome notification) before it is saved.",
+		Annotations: &mcpsdk.ToolAnnotations{ReadOnlyHint: false, DestructiveHint: &destructive},
+	}
+}
+
+func listNotifierSubscriptionsTool() *mcpsdk.Tool {
+	destructive := false
+	return &mcpsdk.Tool{
+		Name:        "list_notifier_subscriptions",
+		Description: "List the collector/app subscriptions of a notifier.",
+		Annotations: &mcpsdk.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: &destructive},
+	}
+}
+func addNotifierSubscriptionTool() *mcpsdk.Tool {
+	destructive := false
+	return &mcpsdk.Tool{
+		Name:        "add_notifier_subscription",
+		Description: "Subscribe a notifier to one collector/app pair (append; does not remove existing subscriptions).",
+		Annotations: &mcpsdk.ToolAnnotations{ReadOnlyHint: false, DestructiveHint: &destructive},
+	}
+}
+func removeNotifierSubscriptionTool() *mcpsdk.Tool {
+	destructive := false
+	return &mcpsdk.Tool{
+		Name:        "remove_notifier_subscription",
+		Description: "Unsubscribe a notifier from one collector/app pair.",
 		Annotations: &mcpsdk.ToolAnnotations{ReadOnlyHint: false, DestructiveHint: &destructive},
 	}
 }
@@ -446,6 +487,86 @@ func (s *Server) createNotifier(ctx context.Context, req *mcpsdk.CallToolRequest
 	default:
 		return textResult(fmt.Sprintf("Created notifier %q (id %d) of type %q.", name, id, notifierType)), nil, nil
 	}
+}
+
+func (s *Server) listNotifierSubscriptions(ctx context.Context, req *mcpsdk.CallToolRequest, in notifierIDInput) (*mcpsdk.CallToolResult, any, error) {
+	if s.deps.Notify == nil {
+		return nil, nil, errors.New("notifier service is not configured on this panel")
+	}
+	user, err := s.caller(ctx, req)
+	if err != nil {
+		return nil, nil, err
+	}
+	subs, err := s.deps.Notify.GetSubscriptions(ctx, user, in.NotifierID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("could not list subscriptions: %w", err)
+	}
+	if len(subs) == 0 {
+		return textResult("No subscriptions."), nil, nil
+	}
+	var b strings.Builder
+	for _, sub := range subs {
+		fmt.Fprintf(&b, "%s/%s\n", sub.CollectorName, sub.AppName)
+	}
+	return textResult(strings.TrimSpace(b.String())), nil, nil
+}
+
+func (s *Server) addNotifierSubscription(ctx context.Context, req *mcpsdk.CallToolRequest, in notifierSubscriptionInput) (*mcpsdk.CallToolResult, any, error) {
+	if s.deps.NoAuth {
+		return nil, nil, errors.New("modifying notifiers is not allowed on this panel: it runs without authentication (demo mode)")
+	}
+	if s.deps.Notify == nil {
+		return nil, nil, errors.New("notifier service is not configured on this panel")
+	}
+	user, err := s.caller(ctx, req)
+	if err != nil {
+		return nil, nil, err
+	}
+	subs, err := s.deps.Notify.GetSubscriptions(ctx, user, in.NotifierID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("could not load subscriptions: %w", err)
+	}
+	for _, sub := range subs {
+		if sub.CollectorName == in.Collector && sub.AppName == in.App {
+			return textResult(fmt.Sprintf("Notifier %d is already subscribed to %s/%s.", in.NotifierID, in.Collector, in.App)), nil, nil
+		}
+	}
+	subs = append(subs, notifysvc.Subscription{CollectorName: in.Collector, AppName: in.App})
+	if err := s.deps.Notify.SetSubscriptions(ctx, user, in.NotifierID, subs); err != nil {
+		return nil, nil, fmt.Errorf("could not add subscription: %w", err)
+	}
+	return textResult(fmt.Sprintf("Subscribed notifier %d to %s/%s.", in.NotifierID, in.Collector, in.App)), nil, nil
+}
+
+func (s *Server) removeNotifierSubscription(ctx context.Context, req *mcpsdk.CallToolRequest, in notifierSubscriptionInput) (*mcpsdk.CallToolResult, any, error) {
+	if s.deps.NoAuth {
+		return nil, nil, errors.New("modifying notifiers is not allowed on this panel: it runs without authentication (demo mode)")
+	}
+	if s.deps.Notify == nil {
+		return nil, nil, errors.New("notifier service is not configured on this panel")
+	}
+	user, err := s.caller(ctx, req)
+	if err != nil {
+		return nil, nil, err
+	}
+	subs, err := s.deps.Notify.GetSubscriptions(ctx, user, in.NotifierID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("could not load subscriptions: %w", err)
+	}
+	filtered := subs[:0]
+	for _, sub := range subs {
+		if sub.CollectorName == in.Collector && sub.AppName == in.App {
+			continue
+		}
+		filtered = append(filtered, sub)
+	}
+	if len(filtered) == len(subs) {
+		return textResult(fmt.Sprintf("Notifier %d was not subscribed to %s/%s.", in.NotifierID, in.Collector, in.App)), nil, nil
+	}
+	if err := s.deps.Notify.SetSubscriptions(ctx, user, in.NotifierID, filtered); err != nil {
+		return nil, nil, fmt.Errorf("could not remove subscription: %w", err)
+	}
+	return textResult(fmt.Sprintf("Unsubscribed notifier %d from %s/%s.", in.NotifierID, in.Collector, in.App)), nil, nil
 }
 
 // canModify reports whether the user may add apps to the collector. The

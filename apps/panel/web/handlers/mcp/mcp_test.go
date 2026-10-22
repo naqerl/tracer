@@ -74,11 +74,11 @@ func TestToolList(t *testing.T) {
 	for _, tool := range res.Tools {
 		readOnly[tool.Name] = tool.Annotations != nil && tool.Annotations.ReadOnlyHint
 	}
-	if len(readOnly) != 13 {
-		t.Fatalf("listed %d tools, want 12: %v", len(readOnly), readOnly)
+	if len(readOnly) != 16 {
+		t.Fatalf("listed %d tools, want 16: %v", len(readOnly), readOnly)
 	}
 	for name, only := range readOnly {
-		if name == "create_app" || name == "create_notifier" {
+		if name == "create_app" || name == "create_notifier" || name == "add_notifier_subscription" || name == "remove_notifier_subscription" {
 			if only {
 				t.Errorf("%s is marked read-only", name)
 			}
