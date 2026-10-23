@@ -1655,9 +1655,9 @@ func (h *handler) updateApp(w http.ResponseWriter, r *http.Request) {
 
 	if health != nil {
 		if exists {
-			err = cfg.SetAppHealth(appName, health.URL, health.Interval, health.ExpectedStatus)
+			err = cfg.SetAppHealth(appName, health.URL, health.Interval, health.ExpectedStatus, health.AlertDelay)
 		} else {
-			err = cfg.AddUptimeApp(appName, health.URL, health.Interval, health.ExpectedStatus)
+			err = cfg.AddUptimeApp(appName, health.URL, health.Interval, health.ExpectedStatus, health.AlertDelay)
 		}
 	} else if exists {
 		err = cfg.ClearAppHealth(appName)

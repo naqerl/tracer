@@ -13,6 +13,8 @@ type HTTPConfig struct {
 	URL            string
 	Method         string
 	Timeout        time.Duration
+	Attempts       int
+	RetryInterval  time.Duration
 	ExpectedStatus map[int]struct{}
 }
 
@@ -20,6 +22,8 @@ func (HTTPConfig) Default() HTTPConfig {
 	return HTTPConfig{
 		Method:         "GET",
 		Timeout:        5 * time.Second,
+		Attempts:       3,
+		RetryInterval:  time.Second,
 		ExpectedStatus: map[int]struct{}{200: {}},
 	}
 }
@@ -64,6 +68,30 @@ func specHTTPConfig(s types.HealthCheckSpec) (HTTPConfig, error) {
 		timeout = d
 	}
 
+	attempts := cfg.Attempts
+	if raw := strings.TrimSpace(s.Params["attempts"]); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil {
+			return HTTPConfig{}, fmt.Errorf("invalid params.attempts: %w", err)
+		}
+		if n < 1 || n > 10 {
+			return HTTPConfig{}, fmt.Errorf("invalid params.attempts: must be between 1 and 10")
+		}
+		attempts = n
+	}
+
+	retryInterval := cfg.RetryInterval
+	if raw := strings.TrimSpace(s.Params["retry_interval"]); raw != "" {
+		d, err := time.ParseDuration(raw)
+		if err != nil {
+			return HTTPConfig{}, fmt.Errorf("invalid params.retry_interval: %w", err)
+		}
+		if d < 0 {
+			return HTTPConfig{}, fmt.Errorf("invalid params.retry_interval: must not be negative")
+		}
+		retryInterval = d
+	}
+
 	expected := cfg.ExpectedStatus
 	if raw := strings.TrimSpace(s.Params["expected_status"]); raw != "" {
 		expected = map[int]struct{}{}
@@ -80,6 +108,8 @@ func specHTTPConfig(s types.HealthCheckSpec) (HTTPConfig, error) {
 		URL:            url,
 		Method:         method,
 		Timeout:        timeout,
+		Attempts:       attempts,
+		RetryInterval:  retryInterval,
 		ExpectedStatus: expected,
 	}, nil
 }

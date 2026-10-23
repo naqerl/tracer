@@ -954,11 +954,16 @@ func (s *Service) notifyHealth(ctx context.Context, req StoreHealthRequest, prev
 	}
 
 	s.mu.Lock()
+	_, wasNotified := s.downNotifiedAt[key]
 	delete(s.downNotifiedAt, key)
 	s.mu.Unlock()
 
-	// Notify on status change, but not on initial "up" state (normal startup).
-	if prev != req.Status && !(prev == types.HealthStatusUnknown && req.Status == types.HealthStatusUp) {
+	// Announce only recoveries from a down that was notified; a blip held
+	// back by alert_delay must not produce an up on its own.
+	if !wasNotified {
+		return
+	}
+	if prev != req.Status {
 		select {
 		case s.notifyChan <- notify.Notification{
 			Type:          notify.TypeUptime,

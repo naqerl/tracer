@@ -46,7 +46,7 @@ stored app config over the live WebSocket connection. Collectors hot-reload on
 receipt, so you can add, edit, and delete apps without touching the collector
 host.
 
-- **Add an app** — the *+* next to a collector opens its app creation page (`/panel/collectors/<collector>/app`). Give a service name (systemd unit, kubectl resource, or any log source); leave it empty for an uptime-only app. For uptime-only monitoring, add an optional health-check URL; the collector polls it and no log collection happens. Saving returns you to `/panel`.
+- **Add an app** — the *+* next to a collector opens its app creation page (`/panel/collectors/<collector>/app`). Give a service name (systemd unit, kubectl resource, or any log source); leave it empty for an uptime-only app. For uptime-only monitoring, add an optional health-check URL; the collector polls it and no log collection happens. Saving returns you to `/panel`. Each check runs on a fresh connection and is retried up to three times (5 s per attempt, 1 s apart); a probe is down only when every attempt fails.
 - **Format guessing** — the collector runs the format guesser on the named service over the WebSocket and auto-detects the log format (JSON or slog text) and field mappings. The panel saves the result and pushes it back.
 - **Delete / edit apps** — each app card has a *Delete* button (with confirmation) and a *setting* link.
 - **Raw config** — the settings page exposes the JSON collector config for direct editing.
