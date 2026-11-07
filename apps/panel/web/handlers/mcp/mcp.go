@@ -24,6 +24,7 @@ import (
 	usersvc "tracer/apps/panel/internal/services/user"
 	"tracer/apps/panel/web/middleware"
 	"tracer/apps/panel/web/templates"
+	"tracer/libs/apikey"
 )
 
 // maxContentBytes bounds one tool result so a single large page cannot flood a
@@ -93,9 +94,9 @@ func (s *Server) requireAPIKey(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
-		key := r.Header.Get("X-API-Key")
+		key := apikey.FromHeader(r.Header)
 		if key == "" {
-			http.Error(w, "X-API-Key header is required", http.StatusUnauthorized)
+			http.Error(w, "X-API-Key or Authorization: Bearer header is required", http.StatusUnauthorized)
 			return
 		}
 		if _, err := s.deps.Auth.ValidateUserAPIKey(r.Context(), key); err != nil {
@@ -115,10 +116,10 @@ func (s *Server) caller(ctx context.Context, req *mcpsdk.CallToolRequest) (domai
 	}
 	var key string
 	if req != nil && req.Extra != nil {
-		key = req.Extra.Header.Get("X-API-Key")
+		key = apikey.FromHeader(req.Extra.Header)
 	}
 	if key == "" {
-		return domain.User{}, errors.New("the request carried no X-API-Key header")
+		return domain.User{}, errors.New("the request carried no API key")
 	}
 	userID, err := s.deps.Auth.ValidateUserAPIKey(ctx, key)
 	if err != nil {

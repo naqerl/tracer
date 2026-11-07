@@ -10,6 +10,7 @@ import (
 	authsvc "tracer/apps/panel/internal/services/auth"
 	usersvc "tracer/apps/panel/internal/services/user"
 	"tracer/apps/panel/web/middleware"
+	"tracer/libs/apikey"
 )
 
 type contextKey string
@@ -82,7 +83,7 @@ func BuildAuthMiddleware(authService *authsvc.Service, userService *usersvc.Serv
 				next.ServeHTTP(w, r)
 				return
 			}
-			if apiKey := r.Header.Get("X-API-Key"); apiKey != "" {
+			if apiKey := apikey.FromHeader(r.Header); apiKey != "" {
 				userID, err := authService.ValidateUserAPIKey(r.Context(), apiKey)
 				if err == nil {
 					r = setActorForUser(r, userService, userID)

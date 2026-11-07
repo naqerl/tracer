@@ -35,7 +35,8 @@ templ llmDocsHTML(baseURL string) {
 					</p>
 					<p class="text-fg-secondary mb-6">
 						Point the client at <code class="text-accent">https://{ baseURL }/mcp</code> and send the same user
-						API key as <code class="text-accent">X-API-Key</code> on every request. A session cookie will not open
+						API key as <code class="text-accent">X-API-Key</code> on every request, or as a standard
+						<code class="text-accent">Authorization: Bearer YOUR_KEY</code> credential. A session cookie will not open
 						it: MCP is token-only. On a panel running without authentication (the demo), reads work without a key
 						while the app-creation tool is refused.
 					</p>

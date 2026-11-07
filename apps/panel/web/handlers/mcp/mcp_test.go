@@ -445,6 +445,30 @@ func (e *endpoint) userKeyID(t *testing.T, userID int64) int64 {
 	return keys[0].ID
 }
 
+func TestEndpointAcceptsBearerCredential(t *testing.T) {
+	e := newEndpoint(t, false)
+	key := e.userKey(t, e.admin.ID, "mcp")
+
+	session := connect(t, e.url, map[string]string{"Authorization": "Bearer " + key})
+	res, err := session.ListTools(t.Context(), nil)
+	if err != nil {
+		t.Fatalf("list tools over a bearer credential: %v", err)
+	}
+	if len(res.Tools) == 0 {
+		t.Fatal("the bearer credential opened the endpoint but listed no tools")
+	}
+
+	if err := connectErr(t, e.url, map[string]string{"Authorization": "Bearer not-a-key"}); err == nil {
+		t.Fatal("connecting with an invalid bearer credential succeeded, want a 401")
+	}
+	if err := connectErr(t, e.url, map[string]string{"Authorization": "Basic " + key}); err == nil {
+		t.Fatal("connecting with a basic credential succeeded, want a 401")
+	}
+	if err := connectErr(t, e.url, map[string]string{"X-API-Key": key, "Authorization": "Bearer not-a-key"}); err != nil {
+		t.Fatalf("the X-API-Key header should win over a bad bearer credential: %v", err)
+	}
+}
+
 func (e *endpoint) connect(t *testing.T, key string) *mcpsdk.ClientSession {
 	t.Helper()
 	return connect(t, e.url, map[string]string{"X-API-Key": key})
