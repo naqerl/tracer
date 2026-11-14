@@ -391,7 +391,7 @@ func newEndpoint(t *testing.T, noAuth bool) *endpoint {
 		RetentionDays: 90,
 	}, filepath.Join(dataDir, "config.yaml"))
 	ingest := ingestsvc.New(dbMgr, make(chan notifysvc.Notification, 10), func(_, _ string, _ int64) string { return "" }, cfg, nil)
-	panelSvc := panelsvc.New(dbMgr, ingest, ingestsvc.NewTracker(), users, nil, nil)
+	panelSvc := panelsvc.New(dbMgr, ingest, ingestsvc.NewTracker(), users, nil, nil, nil)
 
 	forgejoCache := forgejonotify.NewCache(forgejonotify.IssueCacheTTL)
 	notifierFactories := map[string]notifysvc.FromRawJSON{

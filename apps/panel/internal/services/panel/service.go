@@ -19,6 +19,7 @@ import (
 	"tracer/apps/panel/db"
 	"tracer/apps/panel/internal/dbmanager"
 	"tracer/apps/panel/internal/domain"
+	"tracer/apps/panel/internal/maintenance"
 	"tracer/apps/panel/internal/services/ingest"
 	"tracer/apps/panel/internal/services/user"
 	sharedtypes "tracer/libs/types"
@@ -46,24 +47,31 @@ const (
 	HealthBucketCount = 37
 )
 
-func New(dbManager *dbmanager.Manager, ingestSvc *ingest.Service, tracker *ingest.Tracker, userSvc *user.Service, pusher ConfigPusher, guesser FormatGuesser) *Service {
+func New(dbManager *dbmanager.Manager, ingestSvc *ingest.Service, tracker *ingest.Tracker, userSvc *user.Service, pusher ConfigPusher, guesser FormatGuesser, maintenanceReporter MaintenanceReporter) *Service {
 	return &Service{
-		dbManager: dbManager,
-		ingestSvc: ingestSvc,
-		userSvc:   userSvc,
-		tracker:   tracker,
-		pusher:    pusher,
-		guesser:   guesser,
+		dbManager:   dbManager,
+		ingestSvc:   ingestSvc,
+		userSvc:     userSvc,
+		tracker:     tracker,
+		pusher:      pusher,
+		guesser:     guesser,
+		maintenance: maintenanceReporter,
 	}
 }
 
 type Service struct {
-	dbManager *dbmanager.Manager
-	ingestSvc *ingest.Service
-	userSvc   *user.Service
-	tracker   *ingest.Tracker
-	pusher    ConfigPusher
-	guesser   FormatGuesser
+	dbManager   *dbmanager.Manager
+	ingestSvc   *ingest.Service
+	userSvc     *user.Service
+	tracker     *ingest.Tracker
+	pusher      ConfigPusher
+	guesser     FormatGuesser
+	maintenance MaintenanceReporter
+}
+
+// MaintenanceReporter exposes the most recent maintenance outcome for an app.
+type MaintenanceReporter interface {
+	LastResult(collectorName, appName string) (maintenance.Result, bool)
 }
 
 // ConfigPusher delivers configuration to collectors that are currently
@@ -804,8 +812,22 @@ type CollectorApp struct {
 	ErrorTrendValid bool
 	HasLogs         bool
 	Bars            []HealthBucket
+	Storage         AppStorage
 	LastUpdateAt    time.Time
 	Interval        time.Duration
+}
+
+// AppStorage is an app database's size, free pages and latest maintenance
+// outcome.
+type AppStorage struct {
+	HasStorage         bool
+	DBBytes            int64
+	WALBytes           int64
+	FreeBytes          int64
+	HasMaintenance     bool
+	LastMaintenanceAt  time.Time
+	LastReclaimedBytes int64
+	LastVacuumed       bool
 }
 
 // Activity describes the last time a collector or app reported data and the
@@ -922,6 +944,13 @@ func filterAccessibleApps(access user.AccessPolicy, collectorName string, apps [
 // appStats reads the uptime percentage and error count for a single app.
 func (s *Service) appStats(ctx context.Context, collectorName, appName string, since time.Time, interval time.Duration, hasHealth, hasLogSource bool) CollectorApp {
 	app := CollectorApp{Name: appName, Interval: interval, HasUptime: hasHealth, HasLogSource: hasLogSource}
+
+	storage, err := s.readAppStorage(ctx, collectorName, appName)
+	if err != nil {
+		slog.Error("could not read app storage for grid", "collector", collectorName, "app", appName, "error", err)
+	} else {
+		app.Storage = storage
+	}
 
 	queries, err := s.queriesForApp(collectorName, appName)
 	if errors.Is(err, ErrAppNotFound) {
@@ -1211,6 +1240,38 @@ func (s *Service) GetStatsHistory(ctx context.Context, req GetStatsHistoryReques
 	}
 
 	return s.ingestSvc.GetStatsHistory(ctx, req.CollectorName, req.Since)
+}
+
+type GetAppStorageRequest struct {
+	UserID        int64
+	CollectorName string
+	AppName       string
+}
+
+func (r GetAppStorageRequest) Validate() error {
+	if err := domain.ValidateUserID(r.UserID); err != nil {
+		return err
+	}
+	if r.CollectorName == "" {
+		return fmt.Errorf("collector name is required")
+	}
+	if r.AppName == "" {
+		return fmt.Errorf("app name is required")
+	}
+	return nil
+}
+
+// GetAppStorage returns an app database's size and latest maintenance outcome.
+func (s *Service) GetAppStorage(ctx context.Context, req GetAppStorageRequest) (AppStorage, error) {
+	access, err := s.userSvc.FindAccessPolicy(ctx, req.UserID)
+	if err != nil {
+		return AppStorage{}, fmt.Errorf("could not load access for user %d: %w", req.UserID, err)
+	}
+	if !access.AllowedTo(req.CollectorName, req.AppName) {
+		return AppStorage{}, ErrAccessDenied
+	}
+
+	return s.readAppStorage(ctx, req.CollectorName, req.AppName)
 }
 
 type GetAppStatsRequest struct {
@@ -1686,6 +1747,38 @@ func (s *Service) GetLogVolumeTimeSeries(ctx context.Context, collectorName, app
 		Since:       since.Unix(),
 		Granularity: granularity,
 	})
+}
+
+func (s *Service) readAppStorage(ctx context.Context, collectorName, appName string) (AppStorage, error) {
+	handle, err := s.dbManager.GetAppDB(collectorName, appName)
+	if errors.Is(err, dbmanager.ErrDBNotFound) {
+		return AppStorage{}, ErrAppNotFound
+	}
+	if err != nil {
+		return AppStorage{}, fmt.Errorf("could not open app database: %w", err)
+	}
+
+	stats, err := maintenance.Measure(ctx, handle, s.dbManager.AppDBPath(collectorName, appName))
+	if err != nil {
+		return AppStorage{}, fmt.Errorf("could not measure app database: %w", err)
+	}
+
+	storage := AppStorage{
+		HasStorage: true,
+		DBBytes:    stats.DBBytes,
+		WALBytes:   stats.WALBytes,
+		FreeBytes:  stats.FreeBytes,
+	}
+	if s.maintenance == nil {
+		return storage, nil
+	}
+	if last, ok := s.maintenance.LastResult(collectorName, appName); ok {
+		storage.HasMaintenance = true
+		storage.LastMaintenanceAt = last.At
+		storage.LastReclaimedBytes = last.ReclaimedBytes
+		storage.LastVacuumed = last.Vacuumed
+	}
+	return storage, nil
 }
 
 func (s *Service) queriesForApp(collectorName, appName string) (*db.Queries, error) {

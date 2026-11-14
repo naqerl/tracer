@@ -101,7 +101,7 @@ func setupTestService(t *testing.T) (*Service, *dbmanager.DBHandle, int64, strin
 	}
 
 	// --- Create the panel service ---
-	svc := New(mgr, ingestSvc, tracker, userSvc, &fakeConfigPusher{}, nil)
+	svc := New(mgr, ingestSvc, tracker, userSvc, &fakeConfigPusher{}, nil, nil)
 
 	return svc, panelDB, user.ID, "test-collector", "test-app"
 }
@@ -139,7 +139,7 @@ func setupTestServiceNoAccess(t *testing.T) (*Service, int64) {
 		t.Fatalf("register user: %v", err)
 	}
 
-	svc := New(mgr, ingestSvc, tracker, userSvc, &fakeConfigPusher{}, nil)
+	svc := New(mgr, ingestSvc, tracker, userSvc, &fakeConfigPusher{}, nil, nil)
 	return svc, user.ID
 }
 
@@ -3074,7 +3074,7 @@ func TestSaveCollectorConfigPushesToConnectedCollectors(t *testing.T) {
 	}
 
 	pusher := &fakeConfigPusher{}
-	svc := New(mgr, ingestSvc, tracker, userSvc, pusher, nil)
+	svc := New(mgr, ingestSvc, tracker, userSvc, pusher, nil, nil)
 
 	cfgJSON := `{"apps":[{"name":"a","parser":{"type":"json","params":{"level_field":"level","message_field":"msg","timestamp_field":"time","timestamp_format":"2006-01-02T15:04:05.999999999Z07:00"}},"source":{"type":"journalctl","params":{}}}]}`
 	if err := svc.SaveCollectorConfig(ctx, "push-collector", cfgJSON); err != nil {
@@ -3111,7 +3111,7 @@ func TestDeleteCollectorApp(t *testing.T) {
 	}
 
 	pusher := &fakeConfigPusher{}
-	svc := New(mgr, ingestSvc, tracker, userSvc, pusher, nil)
+	svc := New(mgr, ingestSvc, tracker, userSvc, pusher, nil, nil)
 
 	cfgJSON := `{"apps":[{"name":"keep","parser":{"type":"json","params":{"level_field":"level","message_field":"msg","timestamp_field":"time","timestamp_format":"2006-01-02T15:04:05.999999999Z07:00"}},"source":{"type":"journalctl","params":{}}},{"name":"remove","parser":{"type":"json","params":{"level_field":"level","message_field":"msg","timestamp_field":"time","timestamp_format":"2006-01-02T15:04:05.999999999Z07:00"}},"source":{"type":"journalctl","params":{}}}]}`
 	if err := svc.SaveCollectorConfig(ctx, "del-collector", cfgJSON); err != nil {
@@ -3266,7 +3266,7 @@ func TestGuessFormat(t *testing.T) {
 			Samples: []string{`{"level":"info"}`},
 		},
 	}
-	svc := New(nil, nil, nil, nil, nil, guesser)
+	svc := New(nil, nil, nil, nil, nil, guesser, nil)
 
 	result, err := svc.GuessFormat(ctx, "collector-a", "nginx", types.ParserSpec{})
 	if err != nil {
@@ -3284,7 +3284,7 @@ func TestGuessFormat(t *testing.T) {
 }
 
 func TestGuessFormatNilGuesser(t *testing.T) {
-	svc := New(nil, nil, nil, nil, nil, nil)
+	svc := New(nil, nil, nil, nil, nil, nil, nil)
 	if _, err := svc.GuessFormat(t.Context(), "collector-a", "nginx", types.ParserSpec{}); err == nil {
 		t.Fatal("expected error when guesser is unavailable")
 	}
@@ -3294,7 +3294,7 @@ func TestSaveAppNoSource(t *testing.T) {
 	ctx := t.Context()
 	svc := New(nil, nil, nil, nil, nil, &fakeFormatGuesser{
 		result: types.FormatResultEvent{},
-	})
+	}, nil)
 
 	err := svc.SaveApp(ctx, "collector-a", NewApp{Name: "nginx", Service: "nginx"})
 	if !errors.Is(err, ErrAppSourceNotFound) {
@@ -3312,7 +3312,7 @@ func TestSaveAppNotFound(t *testing.T) {
 			Error:    "no logs found in the source",
 			NotFound: true,
 		},
-	})
+	}, nil)
 
 	err := svc.SaveApp(ctx, "collector-a", NewApp{Name: "nginx", Service: "nginx"})
 	if !errors.Is(err, ErrAppSourceNotFound) {

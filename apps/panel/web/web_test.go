@@ -92,7 +92,7 @@ func newServerWithGuesser(t *testing.T, guesser panelsvc.FormatGuesser) (http.Ha
 	notifyService := notifysvc.New(panelHandle, userService, dbMgr, map[string]notifysvc.FromRawJSON{})
 	ingestService := ingestsvc.New(dbMgr, notifyChan, func(_, _ string, _ int64) string { return "" }, cfg, nil)
 	tracker := ingestsvc.NewTracker()
-	panelService := panelsvc.New(dbMgr, ingestService, tracker, userService, nil, guesser)
+	panelService := panelsvc.New(dbMgr, ingestService, tracker, userService, nil, guesser, nil)
 	topologyService := topologysvc.NewService(panelService)
 
 	// Seed one error log group via the public ingest API, then resolve its

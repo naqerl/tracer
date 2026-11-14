@@ -11,6 +11,7 @@ type AppProps struct {
 	App       string
 	Collector string
 	Since     string
+	Storage   AppStorageView
 	Uptime    AppHealthView
 	Level     string
 }
@@ -40,6 +41,8 @@ templ App(props AppProps) {
 					hx-swap="innerHTML"
 				></div>
 			</div>
+
+			@StoragePanel(props.Storage)
 
 			<div
 			  hx-get={ "/panel/collectors/" + props.Collector + "/apps/" + props.App + "/uptime" }
