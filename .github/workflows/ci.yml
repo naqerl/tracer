@@ -1,0 +1,32 @@
+# CI for tracer.
+#
+# Runs on every pull request and on pushes to main. There is no image build
+# here: images are published by release.yml on a tag, so a merge cannot publish
+# an artifact nobody asked for.
+
+name: CI
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Vet
+        run: make vet
+
+      - name: Test
+        run: make test
