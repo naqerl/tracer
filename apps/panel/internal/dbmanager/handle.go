@@ -40,9 +40,11 @@ func goroutineID() int64 {
 // callback on the same DBHandle, which would deadlock the write queue.
 var ErrWriteDeadlock = errors.New("write deadlock detected: nested Write() on same handle")
 
-// writeRequest wraps a write callback for the serialized write queue.
+// writeRequest wraps a callback for the serialized write queue. noTx runs the
+// callback outside a transaction, for statements SQLite forbids inside one.
 type writeRequest struct {
 	fn   func(db.DBTX) error
+	noTx bool
 	done chan error
 }
 
@@ -105,7 +107,27 @@ func (h *DBHandle) Write(ctx context.Context, fn func(db.DBTX) error) error {
 		return fmt.Errorf("db %s: %w", h.name, ErrWriteDeadlock)
 	}
 
-	return h.submit(ctx, fn)
+	return h.submit(ctx, writeRequest{fn: fn})
+}
+
+// Exclusive runs fn on the write queue without opening a transaction. It uses
+// the same queue as Write, so statements SQLite forbids inside a transaction
+// (VACUUM, WAL checkpoint) never race an insert on this database.
+func (h *DBHandle) Exclusive(ctx context.Context, fn func(db.DBTX) error) error {
+	h.mu.Lock()
+	workerGID := h.workerGID
+	closed := h.isClosed()
+	h.mu.Unlock()
+
+	if closed {
+		return errWriteQueueClosed
+	}
+
+	if workerGID != 0 && goroutineID() == workerGID {
+		return fmt.Errorf("db %s: %w", h.name, ErrWriteDeadlock)
+	}
+
+	return h.submit(ctx, writeRequest{fn: fn, noTx: true})
 }
 
 // isClosed returns true if the handle has been closed.
@@ -119,16 +141,16 @@ func (h *DBHandle) isClosed() bool {
 }
 
 // submit sends the write request to the queue and waits for completion.
-func (h *DBHandle) submit(ctx context.Context, fn func(db.DBTX) error) error {
+func (h *DBHandle) submit(ctx context.Context, req writeRequest) error {
 	// Ensure the worker goroutine is running
 	h.once.Do(func() {
 		h.wg.Go(h.workerLoop)
 	})
 
-	done := make(chan error, 1)
+	req.done = make(chan error, 1)
 
 	select {
-	case h.wch <- writeRequest{fn: fn, done: done}:
+	case h.wch <- req:
 	case <-h.closed:
 		return errWriteQueueClosed
 	case <-ctx.Done():
@@ -136,7 +158,7 @@ func (h *DBHandle) submit(ctx context.Context, fn func(db.DBTX) error) error {
 	}
 
 	select {
-	case err := <-done:
+	case err := <-req.done:
 		return err
 	case <-h.closed:
 		return errWriteQueueClosed
@@ -182,8 +204,18 @@ func (h *DBHandle) drainRequests() {
 	}
 }
 
-// processRequest executes a single write request inside a transaction.
+// processRequest executes a single write request, inside a transaction unless
+// the request opted out of one.
 func (h *DBHandle) processRequest(req writeRequest) {
+	if req.noTx {
+		err := req.fn(h.pool)
+		select {
+		case req.done <- err:
+		default:
+		}
+		return
+	}
+
 	// Begin a transaction for atomicity
 	tx, err := h.pool.BeginTx(context.Background(), nil)
 	if err != nil {

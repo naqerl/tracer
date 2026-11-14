@@ -21,6 +21,7 @@ import (
 	"tracer/apps/panel/internal/dbmanager"
 	"tracer/apps/panel/internal/domain"
 	"tracer/apps/panel/internal/install"
+	"tracer/apps/panel/internal/maintenance"
 	"tracer/apps/panel/internal/retention"
 	"tracer/apps/panel/internal/services/auth"
 	"tracer/apps/panel/internal/services/ingest"
@@ -307,13 +308,14 @@ func serve(ctx context.Context, cfg *config.Config, noAuth bool) error {
 	})
 	ingestService := ingest.New(dbManager, notifyChan, alertFormatter, cfg, resourceResolver)
 
-	// Initialize retention service
+	// Initialize retention and maintenance services
 	retentionService := retention.New(dbManager, ingestService, cfg)
+	maintenanceService := maintenance.New(dbManager, maintenance.DefaultConfig())
 
 	// Initialize collector tracker
 	tracker := ingest.NewTracker()
 	collectorConns := transport.NewConnections()
-	panelService := panel.New(dbManager, ingestService, tracker, userService, collectorConns, collectorConns)
+	panelService := panel.New(dbManager, ingestService, tracker, userService, collectorConns, collectorConns, maintenanceService)
 	topologyService := topology.NewService(panelService)
 
 	// Run services
@@ -323,11 +325,25 @@ func serve(ctx context.Context, cfg *config.Config, noAuth bool) error {
 
 		notifyDispatcher.Start(ctx)
 	})
+	retentionFirstPass := make(chan struct{})
 	wg.Go(func() {
 		slog.Info("starting retention service")
 		defer slog.Info("retention service stopped")
 
+		retentionService.RunOnce(ctx)
+		close(retentionFirstPass)
 		retentionService.Start(ctx)
+	})
+	wg.Go(func() {
+		slog.Info("starting maintenance service")
+		defer slog.Info("maintenance service stopped")
+
+		select {
+		case <-retentionFirstPass:
+		case <-ctx.Done():
+			return
+		}
+		maintenanceService.Start(ctx)
 	})
 	wg.Go(func() {
 		slog.Info("starting maintenance loop")

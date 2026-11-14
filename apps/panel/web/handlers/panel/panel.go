@@ -369,6 +369,7 @@ func (h *handler) getCollectorApps(w http.ResponseWriter, r *http.Request) {
 			ErrorTrendClass: errorTrendClass(a.ErrorTrendValid, a.ErrorTrendPct),
 			ErrorTrendUp:    a.ErrorTrendValid && a.ErrorTrendPct > 0,
 			LastUpdate:      lastUpdate,
+			Storage:         appStorageView(a.Storage),
 		}
 	}
 	view.CollectorApps(view.CollectorAppsProps{
@@ -565,12 +566,22 @@ func (h *handler) getApp(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+	storage, err := h.svc.GetAppStorage(r.Context(), panelsvc.GetAppStorageRequest{
+		UserID:        user.ID,
+		CollectorName: collectorName,
+		AppName:       appName,
+	})
+	if err != nil {
+		slog.Error("could not read app storage", "collector", collectorName, "app", appName, "error", err)
+	}
+
 	view.App(view.AppProps{
 		Title:     appName + " Analytics",
 		App:       appName,
 		Collector: collectorName,
 		Since:     sinceLabel,
 		Uptime:    appHealthViewFromServiceToView(uptime),
+		Storage:   appStorageView(storage),
 		Level:     level,
 	}).Render(r.Context(), w)
 }
@@ -710,6 +721,19 @@ func collectorStatsView(stats *panelsvc.CollectorStats) *view.CollectorStatsView
 		DiskUsedGB:         stats.DiskUsedGB,
 		TimestampFormatted: stats.TimestampFormatted,
 		Staleness:          stats.Staleness,
+	}
+}
+
+func appStorageView(storage panelsvc.AppStorage) view.AppStorageView {
+	return view.AppStorageView{
+		HasStorage:         storage.HasStorage,
+		DBBytes:            storage.DBBytes,
+		WALBytes:           storage.WALBytes,
+		FreeBytes:          storage.FreeBytes,
+		HasMaintenance:     storage.HasMaintenance,
+		LastMaintenanceAt:  storage.LastMaintenanceAt,
+		LastReclaimedBytes: storage.LastReclaimedBytes,
+		LastVacuumed:       storage.LastVacuumed,
 	}
 }
 

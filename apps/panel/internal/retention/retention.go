@@ -30,13 +30,15 @@ func New(dbManager *dbmanager.Manager, ingestService *ingest.Service, cfg Retent
 	}
 }
 
+// RunOnce performs a cleanup pass immediately.
+func (s *Service) RunOnce(ctx context.Context) {
+	s.runCleanup(ctx)
+}
+
+// Start runs a cleanup pass daily.
 func (s *Service) Start(ctx context.Context) {
 	slog.Info("Retention service started", "retention_days", s.cfg.GetRetentionDays())
 
-	// Run immediately on start
-	s.runCleanup(ctx)
-
-	// Then run daily
 	ticker := time.NewTicker(24 * time.Hour)
 	defer ticker.Stop()
 

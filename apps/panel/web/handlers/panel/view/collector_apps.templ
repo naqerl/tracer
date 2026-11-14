@@ -23,6 +23,7 @@ type AppView struct {
 	ErrorTrendClass string
 	ErrorTrendUp    bool
 	LastUpdate      LastUpdateView
+	Storage         AppStorageView
 }
 
 // AppCard renders a single app card in the apps grid. While loading it renders
@@ -110,6 +111,17 @@ templ appCardBody(app AppView, loading bool) {
 				</span>
 			}
 		</div>
+		<div class="flex items-center gap-3 text-xs min-w-0">
+			if loading {
+				@storageValueSkeleton("db")
+				@storageValueSkeleton("wal")
+				@storageValueSkeleton("free")
+			} else if app.Storage.HasStorage {
+				<span class="whitespace-nowrap"><span class="text-fg-secondary">db</span> <span class="text-fg">{ formatBytes(app.Storage.DBBytes) }</span></span>
+				<span class="whitespace-nowrap"><span class="text-fg-secondary">wal</span> <span class="text-fg">{ formatBytes(app.Storage.WALBytes) }</span></span>
+				<span class="whitespace-nowrap"><span class="text-fg-secondary">free</span> <span class="text-fg">{ formatBytes(app.Storage.FreeBytes) }</span></span>
+			}
+		</div>
 	</div>
 	<div class="relative">
 		if loading {
@@ -127,6 +139,17 @@ templ appCardBody(app AppView, loading bool) {
 			</div>
 		}
 	</div>
+}
+
+// storageValueSkeleton renders a labelled size placeholder matching the real
+// storage line's box while the app card loads.
+templ storageValueSkeleton(label string) {
+	<span class="whitespace-nowrap">
+		<span class="text-fg-secondary" markdown-exclude="true">{ label }</span>
+		<span class="inline-flex h-4 items-center">
+			<span class="h-[1.2em] w-10 rounded bg-fg/10"></span>
+		</span>
+	</span>
 }
 
 // placeholderUptimeBars returns the bars a skeleton card renders: as many as a

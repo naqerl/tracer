@@ -41,20 +41,25 @@ func TestAppCardSkeletonCentresTextPlaceholders(t *testing.T) {
 	skeleton := renderComponent(t, AppCard("demo", AppView{}, true))
 	card := skeleton.Find("body").Children().First()
 	lines := card.Children().First()
-	if lines.Children().Length() != 2 {
-		t.Fatalf("card text block holds %d lines, want the name and the errors line", lines.Children().Length())
+	if lines.Children().Length() != 3 {
+		t.Fatalf("card text block holds %d lines, want the name, stats and storage lines", lines.Children().Length())
 	}
 	for i := range lines.Children().Length() {
 		line := lines.Children().Eq(i)
-		rect := line.Find("[class*='bg-fg/10']").First()
-		if rect.Length() != 1 {
-			t.Fatalf("line %d holds %d placeholder rectangles, want one", i, rect.Length())
+		wantRects := 1
+		if i == 2 {
+			wantRects = 3
 		}
-		holder := rect.Parent()
-		if !hasClass(holder, "items-center") || heightClass(holder.AttrOr("class", "")) == "" {
-			t.Fatalf("line %d: placeholder %q is not centred in a box holding the line height, so it sticks to the line below",
-				i, rect.AttrOr("class", ""))
+		if got := line.Find("[class*='bg-fg/10']").Length(); got != wantRects {
+			t.Fatalf("line %d holds %d placeholder rectangles, want %d", i, got, wantRects)
 		}
+		line.Find("[class*='bg-fg/10']").Each(func(_ int, rect *goquery.Selection) {
+			holder := rect.Parent()
+			if !hasClass(holder, "items-center") || heightClass(holder.AttrOr("class", "")) == "" {
+				t.Fatalf("line %d: placeholder %q is not centred in a box holding the line height, so it sticks to the line below",
+					i, rect.AttrOr("class", ""))
+			}
+		})
 	}
 }
 
@@ -88,13 +93,14 @@ func cardBoxes(t *testing.T, doc *goquery.Document) []string {
 	if card.Children().Length() != 2 {
 		t.Fatalf("card holds %d boxes, want its text block and its bars", card.Children().Length())
 	}
-	return []string{
+	boxes := []string{
 		layoutClasses(card),
 		layoutClasses(lines),
-		layoutClasses(lines.Children().First()),
-		layoutClasses(lines.Children().Eq(1)),
-		layoutClasses(bars),
 	}
+	for i := range lines.Children().Length() {
+		boxes = append(boxes, layoutClasses(lines.Children().Eq(i)))
+	}
+	return append(boxes, layoutClasses(bars))
 }
 
 // layoutClasses keeps the classes that size a box and drops the ones that only

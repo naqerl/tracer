@@ -88,7 +88,7 @@ func newAuthedHandlerWithFactoriesAndManager(t *testing.T, isAdmin bool, factori
 	notifyService := notifysvc.New(db, userService, dbMgr, factories)
 
 	mux := http.NewServeMux()
-	panelService := panelsvc.New(dbMgr, ingestService, ingestsvc.NewTracker(), userService, nil, nil)
+	panelService := panelsvc.New(dbMgr, ingestService, ingestsvc.NewTracker(), userService, nil, nil, nil)
 	mux.Handle("/settings/", http.StripPrefix("/settings", InitMux(authService, userService, ingestService, dbMgr, notifyService, cfg, panelService)))
 	handler := authmw.BuildAuthMiddleware(authService, userService)(mux)
 

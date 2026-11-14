@@ -106,6 +106,11 @@ func (m *Manager) ListApps(collector string) ([]string, error) {
 	return apps, nil
 }
 
+// AppDBPath returns the filesystem path of an app's database file.
+func (m *Manager) AppDBPath(collectorName, appName string) string {
+	return m.appDBPath(collectorName, appName)
+}
+
 // GetAppDB returns the DBHandle for the given collector/app.
 // Returns ErrDBNotFound if the database does not exist.
 func (m *Manager) GetAppDB(collectorName, appName string) (*DBHandle, error) {

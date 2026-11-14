@@ -1,0 +1,68 @@
+package view
+
+import (
+	"fmt"
+	"time"
+)
+
+// AppStorageView is an app database's size and latest maintenance outcome.
+type AppStorageView struct {
+	HasStorage         bool
+	DBBytes            int64
+	WALBytes           int64
+	FreeBytes          int64
+	HasMaintenance     bool
+	LastMaintenanceAt  time.Time
+	LastReclaimedBytes int64
+	LastVacuumed       bool
+}
+
+// StoragePanel renders the app's database size, free pages and the last
+// maintenance pass.
+templ StoragePanel(storage AppStorageView) {
+	if storage.HasStorage {
+		<div class="flex flex-wrap items-center gap-4 mb-6 text-xs">
+			<div class="flex items-center gap-1">
+				<span class="text-fg-secondary">db:</span>
+				<span class="text-fg value-breath">{ formatBytes(storage.DBBytes) }</span>
+			</div>
+			<div class="flex items-center gap-1">
+				<span class="text-fg-secondary">wal:</span>
+				<span class="text-fg value-breath">{ formatBytes(storage.WALBytes) }</span>
+			</div>
+			<div class="flex items-center gap-1">
+				<span class="text-fg-secondary">free:</span>
+				<span class="text-fg value-breath">{ formatBytes(storage.FreeBytes) }</span>
+			</div>
+			if storage.HasMaintenance {
+				<div class="flex items-center gap-1">
+					<span class="text-fg-secondary">last maintenance:</span>
+					<span class="text-fg">{ FormatAgo(time.Since(storage.LastMaintenanceAt)) }</span>
+					<span class="text-fg-secondary">reclaimed</span>
+					<span class="text-fg">{ formatBytes(storage.LastReclaimedBytes) }</span>
+					if storage.LastVacuumed {
+						<span class="text-fg-secondary">(vacuumed)</span>
+					} else {
+						<span class="text-fg-secondary">(checkpoint only)</span>
+					}
+				</div>
+			}
+		</div>
+	}
+}
+
+func formatBytes(n int64) string {
+	if n < 1024 {
+		return fmt.Sprintf("%d B", n)
+	}
+
+	value := float64(n)
+	units := []string{"KB", "MB", "GB", "TB"}
+	for i, unit := range units {
+		value /= 1024
+		if value < 1024 || i == len(units)-1 {
+			return fmt.Sprintf("%.1f %s", value, unit)
+		}
+	}
+	return fmt.Sprintf("%.1f TB", value)
+}
