@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"math"
 	neturl "net/url"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -620,11 +621,18 @@ func CheckHealth(rawType, rawURL, rawInterval, rawExpectedStatus, rawCommand, ra
 			}
 		}
 
+		expect := strings.TrimSpace(rawExpect)
+		if expect != "" {
+			if _, err := regexp.Compile("(?m)" + expect); err != nil {
+				return nil, fmt.Errorf("could not compile expect regexp: %w", err)
+			}
+		}
+
 		return &sharedtypes.HealthCheckSpec{
 			Type: "command",
 			Params: map[string]string{
 				"command":                         command,
-				"expect":                          strings.TrimSpace(rawExpect),
+				"expect":                          expect,
 				"expected_exit":                   expectedExit,
 				"interval":                        interval,
 				sharedtypes.HealthParamAlertDelay: alertDelay,

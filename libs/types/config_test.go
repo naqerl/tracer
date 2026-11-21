@@ -86,6 +86,7 @@ func TestValidateHealthTypes(t *testing.T) {
 		{Type: "", Params: map[string]string{"url": "https://example.com"}},
 		{Type: "teapot", Params: map[string]string{"command": "true"}},
 		{Type: "command", Params: map[string]string{}},
+		{Type: "command", Params: map[string]string{"command": "true", "expect": "("}},
 		{Type: "systemd", Params: map[string]string{"unit": "nginx.service"}},
 		{Type: "podman", Params: map[string]string{"container": "api"}},
 	}

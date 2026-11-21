@@ -3,6 +3,7 @@ package types
 import (
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -386,8 +387,14 @@ func validateHealthCheck(spec *HealthCheckSpec) error {
 	case "http":
 		return nil
 	case "command":
-		if strings.TrimSpace(spec.Params["command"]) == "" {
+		if strings.TrimSpace(spec.Params[HealthParamCommand]) == "" {
 			return fmt.Errorf("command health check requires a command")
+		}
+		expect := strings.TrimSpace(spec.Params[HealthParamExpect])
+		if expect != "" {
+			if _, err := regexp.Compile("(?m)" + expect); err != nil {
+				return fmt.Errorf("could not compile expect regexp: %w", err)
+			}
 		}
 		return nil
 	case "systemd", "podman":

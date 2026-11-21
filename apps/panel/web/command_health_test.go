@@ -55,6 +55,32 @@ func TestCreateCommandHealthRequiresCommand(t *testing.T) {
 	}
 }
 
+func TestCreateCommandHealthRejectsInvalidExpect(t *testing.T) {
+	handler, token, _, _, _, panelService := newServerWithGuesser(t, nil)
+
+	rr := postApp(t, handler, token, url.Values{
+		"name":        {"pg-bad-regexp"},
+		"health_type": {"command"},
+		"command":     {"pg_isready"},
+		"expect":      {"("},
+	})
+	if rr.Code != http.StatusOK {
+		t.Fatalf("create status = %d body %s", rr.Code, rr.Body.String())
+	}
+	body := rr.Body.String()
+	if !strings.Contains(body, "invalid uptime check") || !strings.Contains(body, "expect regexp") {
+		t.Fatalf("expected an actionable invalid-expect error, got %s", body)
+	}
+
+	raw, err := panelService.FetchCollectorConfig(t.Context(), "demo")
+	if err != nil {
+		t.Fatalf("FetchCollectorConfig: %v", err)
+	}
+	if strings.Contains(raw, "pg-bad-regexp") {
+		t.Fatalf("invalid command check was stored: %s", raw)
+	}
+}
+
 func TestUpdateCommandHealthKeepsCommand(t *testing.T) {
 	handler, token, _, _, _, panelService := newServerWithGuesser(t, nil)
 
