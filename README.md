@@ -46,7 +46,7 @@ stored app config over the live WebSocket connection. Collectors hot-reload on
 receipt, so you can add, edit, and delete apps without touching the collector
 host.
 
-- **Add an app** — the *+* next to a collector opens its app creation page (`/panel/collectors/<collector>/app`). Give a service name (systemd unit, kubectl resource, or any log source); leave it empty for an uptime-only app. For uptime-only monitoring, add an optional health-check URL; the collector polls it and no log collection happens. Saving returns you to `/panel`. Each check runs on a fresh connection and is retried up to three times (5 s per attempt, 1 s apart); a probe is down only when every attempt fails.
+- **Add an app** — the *+* next to a collector opens its app creation page (`/panel/collectors/<collector>/app`). Give a service name (systemd unit, kubectl resource, or any log source); leave it empty for an uptime-only app. For uptime-only monitoring, add an optional health check; the collector polls it and no log collection happens. Saving returns you to `/panel`. An HTTP check runs on a fresh connection and is retried up to three times (5 s per attempt, 1 s apart); a probe is down only when every attempt fails. A command check runs a shell command on the collector and is up only when its exit code is expected and its output matches the optional regexp.
 - **Format guessing** — the collector runs the format guesser on the named service over the WebSocket and auto-detects the log format (JSON or slog text) and field mappings. The panel saves the result and pushes it back.
 - **Delete / edit apps** — each app card has a *Delete* button (with confirmation) and a *setting* link.
 - **Raw config** — the settings page exposes the JSON collector config for direct editing.
@@ -190,10 +190,32 @@ groups (`all`, `error`, `warn`, `info`; default `error`).
 ### Write tools
 
 `create_app` adds an app to a collector: a `service` (systemd unit, kubectl workload or file path) to
-collect its logs, a `url` to watch over HTTP, or both. `alert_delay` (a Go duration such as `5m`,
-default `0s`) holds an uptime alert back until the app has been down that long. It is refused when the
-panel runs with `-no-auth` (demo mode), and otherwise needs a user who may modify that collector.
-Everything else reads only.
+collect its logs, a health check to watch it, or both. `health_type` is `http` (the default) or
+`command`; an HTTP check takes `url` and `expected_status`, while a command check takes `command`,
+an optional `expect` Go regexp, and `expected_exit` (comma-separated codes, default `0`). `interval`
+sets how often the check runs (default `30s`), and `alert_delay` (a Go duration such as `5m`, default
+`0s`) holds an uptime alert back until the app has been down that long. It is refused when the panel
+runs with `-no-auth` (demo mode), and otherwise needs a user who may modify that collector. Everything
+else reads only.
+
+A command health check is useful for a dependency that has no HTTP endpoint. For example, to watch a
+Postgres replica from the collector host:
+
+```json
+{
+  "collector": "office",
+  "name": "pg-replica",
+  "health_type": "command",
+  "command": "pg_isready -h 127.0.0.1 -p 5433",
+  "expect": "accepting connections",
+  "expected_exit": "0",
+  "interval": "30s"
+}
+```
+
+The collector runs the command with `/bin/sh -c` in its own process group, gives it a timeout
+(5 s by default), and kills the whole group on timeout. A failure is logged once with the tail of the
+command's combined output.
 
 ### Claude Desktop
 

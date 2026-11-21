@@ -70,6 +70,33 @@ func TestValidateAcceptsCompleteParser(t *testing.T) {
 	}
 }
 
+func TestValidateHealthTypes(t *testing.T) {
+	valid := []*HealthCheckSpec{
+		testHTTPHealth("https://example.com", "30s", "200"),
+		{Type: "command", Params: map[string]string{"command": "true"}},
+	}
+	for _, health := range valid {
+		cfg := CollectorConfig{Apps: []AppSpec{{Name: "a", Health: health}}}
+		if err := cfg.Validate(); err != nil {
+			t.Fatalf("Validate(%+v) = %v, want nil", health, err)
+		}
+	}
+
+	invalid := []*HealthCheckSpec{
+		{Type: "", Params: map[string]string{"url": "https://example.com"}},
+		{Type: "teapot", Params: map[string]string{"command": "true"}},
+		{Type: "command", Params: map[string]string{}},
+		{Type: "systemd", Params: map[string]string{"unit": "nginx.service"}},
+		{Type: "podman", Params: map[string]string{"container": "api"}},
+	}
+	for _, health := range invalid {
+		cfg := CollectorConfig{Apps: []AppSpec{{Name: "a", Health: health}}}
+		if err := cfg.Validate(); err == nil {
+			t.Fatalf("Validate(%+v) = nil, want an error", health)
+		}
+	}
+}
+
 func TestValidateRejectsSourceWithoutParser(t *testing.T) {
 	cfg := CollectorConfig{
 		Apps: []AppSpec{{Name: "a", Source: &SourceSpec{Type: "journalctl"}}},
@@ -174,7 +201,7 @@ func TestAddAppRejectsDuplicateName(t *testing.T) {
 
 func TestSetAppSource(t *testing.T) {
 	var cfg CollectorConfig
-	if err := cfg.AddUptimeApp("nginx", "https://example.com", "30s", "200"); err != nil {
+	if err := cfg.AddUptimeApp("nginx", testHTTPHealth("https://example.com", "30s", "200")); err != nil {
 		t.Fatalf("AddUptimeApp: %v", err)
 	}
 
@@ -217,7 +244,7 @@ func TestSetAppHealthKeepsSource(t *testing.T) {
 		t.Fatalf("AddApp: %v", err)
 	}
 
-	if err := cfg.SetAppHealth("nginx", "https://example.com", "60s", "204"); err != nil {
+	if err := cfg.SetAppHealth("nginx", testHTTPHealth("https://example.com", "60s", "204")); err != nil {
 		t.Fatalf("SetAppHealth: %v", err)
 	}
 
@@ -235,7 +262,7 @@ func TestSetAppHealthKeepsSource(t *testing.T) {
 		t.Fatalf("health params = %v", app.Health.Params)
 	}
 
-	if err := cfg.SetAppHealth("missing", "https://example.com", "60s", "200"); err == nil {
+	if err := cfg.SetAppHealth("missing", testHTTPHealth("https://example.com", "60s", "200")); err == nil {
 		t.Fatal("expected error for missing app")
 	}
 }
@@ -245,7 +272,7 @@ func TestClearAppHealth(t *testing.T) {
 	if err := cfg.AddApp("nginx", SourceSpec{Type: "journalctl"}, ParserSpec{Type: "json"}); err != nil {
 		t.Fatalf("AddApp: %v", err)
 	}
-	if err := cfg.SetAppHealth("nginx", "https://example.com", "30s", "200"); err != nil {
+	if err := cfg.SetAppHealth("nginx", testHTTPHealth("https://example.com", "30s", "200")); err != nil {
 		t.Fatalf("SetAppHealth: %v", err)
 	}
 
@@ -270,7 +297,7 @@ func TestClearAppSource(t *testing.T) {
 	if err := cfg.AddApp("nginx", SourceSpec{Type: "journalctl"}, ParserSpec{Type: "json"}); err != nil {
 		t.Fatalf("AddApp: %v", err)
 	}
-	if err := cfg.SetAppHealth("nginx", "https://example.com", "30s", "200"); err != nil {
+	if err := cfg.SetAppHealth("nginx", testHTTPHealth("https://example.com", "30s", "200")); err != nil {
 		t.Fatalf("SetAppHealth: %v", err)
 	}
 
@@ -329,5 +356,16 @@ func TestRenameApp(t *testing.T) {
 	}
 	if err := cfg.RenameApp("missing", "x"); err == nil {
 		t.Fatal("expected error for missing app")
+	}
+}
+
+func testHTTPHealth(url, interval, expectedStatus string) *HealthCheckSpec {
+	return &HealthCheckSpec{
+		Type: "http",
+		Params: map[string]string{
+			"url":             url,
+			"interval":        interval,
+			"expected_status": expectedStatus,
+		},
 	}
 }

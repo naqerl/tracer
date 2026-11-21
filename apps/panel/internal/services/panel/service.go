@@ -10,6 +10,7 @@ import (
 	"math"
 	neturl "net/url"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -141,21 +142,18 @@ type NewApp struct {
 	Source         *sharedtypes.SourceSpec
 	Parser         sharedtypes.ParserSpec
 	Service        string
+	HealthType     string
 	URL            string
+	Command        string
+	Expect         string
+	ExpectedExit   string
 	Interval       string
 	ExpectedStatus string
 	AlertDelay     string
 }
 
-// UptimeCheck is a validated health check: the URL to probe, how often, the
-// status codes that count as up, and how long the app must stay down before an
-// alert is sent.
-type UptimeCheck struct {
-	URL            string
-	Interval       string
-	ExpectedStatus string
-	AlertDelay     string
-}
+// UptimeCheck is a validated HTTP health check.
+type UptimeCheck = sharedtypes.HealthCheckSpec
 
 type GetCollectorRequest struct {
 	UserID        int64
@@ -459,7 +457,7 @@ func (s *Service) SaveApp(ctx context.Context, collectorName string, app NewApp)
 		return fmt.Errorf("invalid app name: %w", err)
 	}
 
-	health, err := CheckUptime(app.URL, app.Interval, app.ExpectedStatus, app.AlertDelay)
+	health, err := CheckHealth(app.HealthType, app.URL, app.Interval, app.ExpectedStatus, app.Command, app.Expect, app.ExpectedExit, app.AlertDelay)
 	if err != nil {
 		return fmt.Errorf("%w: %w", ErrAppInvalidCheck, err)
 	}
@@ -487,7 +485,7 @@ func (s *Service) SaveApp(ctx context.Context, collectorName string, app NewApp)
 	}
 
 	if source == nil {
-		if err := cfg.AddUptimeApp(appName, health.URL, health.Interval, health.ExpectedStatus, health.AlertDelay); err != nil {
+		if err := cfg.AddUptimeApp(appName, health); err != nil {
 			return fmt.Errorf("could not add app: %w", err)
 		}
 	} else {
@@ -495,7 +493,7 @@ func (s *Service) SaveApp(ctx context.Context, collectorName string, app NewApp)
 			return fmt.Errorf("could not add app: %w", err)
 		}
 		if health != nil {
-			if err := cfg.SetAppHealth(appName, health.URL, health.Interval, health.ExpectedStatus, health.AlertDelay); err != nil {
+			if err := cfg.SetAppHealth(appName, health); err != nil {
 				return fmt.Errorf("could not add uptime check: %w", err)
 			}
 		}
@@ -546,26 +544,12 @@ func (s *Service) resolveAppSource(ctx context.Context, collectorName, appName s
 	return result.App.Source, result.Parser, nil
 }
 
-// CheckUptime validates the uptime fields an app form carries and fills in the
-// defaults the collector expects. A nil check means the app is not monitored,
-// which is what an uptime-only app adds on top of its logs. An optional alert
-// delay controls how long the app must stay down before an alert is sent;
-// empty means immediate.
-func CheckUptime(rawURL, rawInterval, rawExpected string, rawAlertDelay ...string) (*UptimeCheck, error) {
-	url := strings.TrimSpace(rawURL)
-	if url == "" {
-		return nil, nil
-	}
-
-	parsed, err := neturl.Parse(url)
-	if err != nil {
-		return nil, fmt.Errorf("could not parse health check url: %w", err)
-	}
-	if parsed.Scheme != "http" && parsed.Scheme != "https" {
-		return nil, fmt.Errorf("health check url must be http or https, got %q", url)
-	}
-	if parsed.Hostname() == "" {
-		return nil, fmt.Errorf("health check url must name a host, got %q", url)
+// CheckHealth validates the health-check fields an app form carries and builds
+// the spec the collector runs. A nil check means the app has no health check.
+func CheckHealth(rawType, rawURL, rawInterval, rawExpectedStatus, rawCommand, rawExpect, rawExpectedExit, rawAlertDelay string) (*sharedtypes.HealthCheckSpec, error) {
+	healthType := strings.ToLower(strings.TrimSpace(rawType))
+	if healthType == "" {
+		healthType = "http"
 	}
 
 	interval := strings.TrimSpace(rawInterval)
@@ -576,14 +560,9 @@ func CheckUptime(rawURL, rawInterval, rawExpected string, rawAlertDelay ...strin
 		return nil, fmt.Errorf("could not parse check interval: %w", err)
 	}
 
-	expected := strings.TrimSpace(rawExpected)
-	if expected == "" {
-		expected = "200"
-	}
-
-	alertDelay := "0s"
-	if len(rawAlertDelay) > 0 && strings.TrimSpace(rawAlertDelay[0]) != "" {
-		alertDelay = strings.TrimSpace(rawAlertDelay[0])
+	alertDelay := strings.TrimSpace(rawAlertDelay)
+	if alertDelay == "" {
+		alertDelay = "0s"
 	}
 	delay, err := time.ParseDuration(alertDelay)
 	if err != nil {
@@ -593,7 +572,78 @@ func CheckUptime(rawURL, rawInterval, rawExpected string, rawAlertDelay ...strin
 		return nil, fmt.Errorf("alert delay must not be negative, got %q", alertDelay)
 	}
 
-	return &UptimeCheck{URL: url, Interval: interval, ExpectedStatus: expected, AlertDelay: alertDelay}, nil
+	switch healthType {
+	case "http":
+		url := strings.TrimSpace(rawURL)
+		if url == "" {
+			return nil, nil
+		}
+
+		parsed, err := neturl.Parse(url)
+		if err != nil {
+			return nil, fmt.Errorf("could not parse health check url: %w", err)
+		}
+		if parsed.Scheme != "http" && parsed.Scheme != "https" {
+			return nil, fmt.Errorf("health check url must be http or https, got %q", url)
+		}
+		if parsed.Hostname() == "" {
+			return nil, fmt.Errorf("health check url must name a host, got %q", url)
+		}
+
+		expected := strings.TrimSpace(rawExpectedStatus)
+		if expected == "" {
+			expected = "200"
+		}
+
+		return &sharedtypes.HealthCheckSpec{
+			Type: "http",
+			Params: map[string]string{
+				"url":                             url,
+				"interval":                        interval,
+				"expected_status":                 expected,
+				sharedtypes.HealthParamAlertDelay: alertDelay,
+			},
+		}, nil
+	case "command":
+		command := strings.TrimSpace(rawCommand)
+		if command == "" {
+			return nil, fmt.Errorf("command health check requires a command")
+		}
+
+		expectedExit := strings.TrimSpace(rawExpectedExit)
+		if expectedExit == "" {
+			expectedExit = "0"
+		}
+		for _, part := range strings.Split(expectedExit, ",") {
+			if _, err := strconv.Atoi(strings.TrimSpace(part)); err != nil {
+				return nil, fmt.Errorf("expected_exit must be a comma-separated list of exit codes: %w", err)
+			}
+		}
+
+		return &sharedtypes.HealthCheckSpec{
+			Type: "command",
+			Params: map[string]string{
+				"command":                         command,
+				"expect":                          strings.TrimSpace(rawExpect),
+				"expected_exit":                   expectedExit,
+				"interval":                        interval,
+				sharedtypes.HealthParamAlertDelay: alertDelay,
+			},
+		}, nil
+	case "systemd", "podman":
+		return nil, fmt.Errorf("health type %q is not implemented yet", rawType)
+	default:
+		return nil, fmt.Errorf("unknown health type %q", rawType)
+	}
+}
+
+// CheckUptime validates HTTP uptime fields and builds their health-check spec.
+func CheckUptime(rawURL, rawInterval, rawExpected string, rawAlertDelay ...string) (*sharedtypes.HealthCheckSpec, error) {
+	alertDelay := ""
+	if len(rawAlertDelay) > 0 {
+		alertDelay = rawAlertDelay[0]
+	}
+	return CheckHealth("http", rawURL, rawInterval, rawExpected, "", "", "", alertDelay)
 }
 
 // GuessFormat asks the collector to detect the log format for a service

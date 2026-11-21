@@ -137,9 +137,21 @@ type HealthCheckSpec struct {
 	Params map[string]string `json:"params"`
 }
 
-// HealthParamAlertDelay is the health-check param holding how long an app must
-// stay down before its uptime alert is sent.
-const HealthParamAlertDelay = "alert_delay"
+// Health check types and params shared by the panel and collector.
+const (
+	HealthTypeHTTP    = "http"
+	HealthTypeCommand = "command"
+
+	HealthParamURL            = "url"
+	HealthParamMethod         = "method"
+	HealthParamExpectedStatus = "expected_status"
+	HealthParamCommand        = "command"
+	HealthParamExpect         = "expect"
+	HealthParamExpectedExit   = "expected_exit"
+	HealthParamInterval       = "interval"
+	HealthParamTimeout        = "timeout"
+	HealthParamAlertDelay     = "alert_delay"
+)
 
 // UptimeAlertDelay returns how long an app must stay down before its uptime
 // alert is sent. An absent or empty param means no delay: alert immediately.
@@ -226,6 +238,11 @@ func (c *CollectorConfig) Validate() error {
 				}
 			}
 		}
+		if app.Health != nil {
+			if err := validateHealthCheck(app.Health); err != nil {
+				return fmt.Errorf("app %s: %w", app.Name, err)
+			}
+		}
 		if _, err := app.UptimeAlertDelay(); err != nil {
 			return fmt.Errorf("app %s: %w", app.Name, err)
 		}
@@ -259,16 +276,14 @@ func (c *CollectorConfig) AddApp(appName string, src SourceSpec, parser ParserSp
 }
 
 // AddUptimeApp appends an uptime-only app (health check, no logs) to the config.
-// An optional alert delay controls how long the app must stay down before an
-// uptime alert is sent; empty means immediate.
-func (c *CollectorConfig) AddUptimeApp(appName, url, interval, expectedStatus string, alertDelay ...string) error {
+func (c *CollectorConfig) AddUptimeApp(appName string, health *HealthCheckSpec) error {
 	if c.Apps == nil {
 		c.Apps = []AppSpec{}
 	}
 
 	c.Apps = append(c.Apps, AppSpec{
 		Name:   appName,
-		Health: httpHealthSpec(url, interval, expectedStatus, firstString(alertDelay)),
+		Health: health,
 	})
 	return nil
 }
@@ -309,15 +324,14 @@ func (c *CollectorConfig) SetAppSource(name string, src SourceSpec, parser Parse
 	return fmt.Errorf("app %s not found", name)
 }
 
-// SetAppHealth sets or replaces the HTTP health check of an existing app,
-// leaving any log source in place. An optional alert delay controls how long
-// the app must stay down before an uptime alert is sent; empty means immediate.
-func (c *CollectorConfig) SetAppHealth(name, url, interval, expectedStatus string, alertDelay ...string) error {
+// SetAppHealth sets or replaces the health check of an existing app, leaving
+// any log source in place.
+func (c *CollectorConfig) SetAppHealth(name string, health *HealthCheckSpec) error {
 	for i := range c.Apps {
 		if c.Apps[i].Name != name {
 			continue
 		}
-		c.Apps[i].Health = httpHealthSpec(url, interval, expectedStatus, firstString(alertDelay))
+		c.Apps[i].Health = health
 		return nil
 	}
 	return fmt.Errorf("app %s not found", name)
@@ -365,25 +379,20 @@ func (c *CollectorConfig) ClearAppSource(name string) error {
 	return fmt.Errorf("app %s not found", name)
 }
 
-func httpHealthSpec(url, interval, expectedStatus, alertDelay string) *HealthCheckSpec {
-	alertDelay = strings.TrimSpace(alertDelay)
-	if alertDelay == "" {
-		alertDelay = "0s"
+func validateHealthCheck(spec *HealthCheckSpec) error {
+	switch strings.ToLower(strings.TrimSpace(spec.Type)) {
+	case "":
+		return fmt.Errorf("health type is required")
+	case "http":
+		return nil
+	case "command":
+		if strings.TrimSpace(spec.Params["command"]) == "" {
+			return fmt.Errorf("command health check requires a command")
+		}
+		return nil
+	case "systemd", "podman":
+		return fmt.Errorf("health type %q is not implemented yet", spec.Type)
+	default:
+		return fmt.Errorf("unknown health type %q", spec.Type)
 	}
-	return &HealthCheckSpec{
-		Type: "http",
-		Params: map[string]string{
-			"url":                 url,
-			"interval":            interval,
-			"expected_status":     expectedStatus,
-			HealthParamAlertDelay: alertDelay,
-		},
-	}
-}
-
-func firstString(values []string) string {
-	if len(values) == 0 {
-		return ""
-	}
-	return values[0]
 }

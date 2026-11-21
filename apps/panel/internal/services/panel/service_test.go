@@ -3176,7 +3176,7 @@ func TestBuildCollectorConfig(t *testing.T) {
 
 func TestBuildUptimeAppConfig(t *testing.T) {
 	var cfg types.CollectorConfig
-	if err := cfg.AddUptimeApp("status-page", "https://example.com", "30s", "200"); err != nil {
+	if err := cfg.AddUptimeApp("status-page", &types.HealthCheckSpec{Type: "http", Params: map[string]string{"url": "https://example.com", "interval": "30s", "expected_status": "200"}}); err != nil {
 		t.Fatalf("AddUptimeApp: %v", err)
 	}
 	if len(cfg.Apps) != 1 {

@@ -82,9 +82,14 @@ type AppFormProps struct {
 	ServiceName    string
 	EditApp        string
 	IsEdit         bool
+	HealthType     string
 	URL            string
+	Command        string
+	Expect         string
+	ExpectedExit   string
 	Interval       string
 	ExpectedStatus string
+	AlertDelay     string
 	Error          string
 	Guess          FormatGuessView
 }
@@ -235,16 +240,39 @@ templ AppForm(p AppFormProps) {
 			</div>
 
 			<div class="border border-bg-secondary/70 p-4">
-				<h3 class="text-fg font-medium mb-1">Uptime</h3>
-				<p class="text-xs text-fg-secondary mb-3">Health check (optional — HTTP uptime monitoring)</p>
+				<h3 class="text-fg font-medium mb-1">Health check</h3>
+				<p class="text-xs text-fg-secondary mb-3">Optional uptime monitoring. Run an HTTP probe or a shell command on the collector.</p>
 				<div class="space-y-3" id="health-check-form">
 					<div>
+						<label class="block text-sm text-fg-secondary mb-1">Check type</label>
+						<select name="health_type" style="color-scheme: dark" class="w-full bg-bg text-fg border border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base">
+							<option class="bg-bg text-fg" value="http" selected?={ p.HealthType == "" || p.HealthType == "http" }>HTTP</option>
+							<option class="bg-bg text-fg" value="command" selected?={ p.HealthType == "command" }>Command</option>
+						</select>
+					</div>
+					<div>
 						<label class="block text-sm text-fg-secondary mb-1">
-							URL to check
+							URL to check (HTTP)
 							@templates.FieldStatus("app-health-status", "", false, false)
 							@templates.Indicator("health-probe-spinner", "probing")
 						</label>
 						<input type="text" inputmode="url" spellcheck="false" name="url" value={ p.URL } placeholder="https://naqerl.com" autocomplete="off" hx-post={ "/panel/collectors/" + p.Collector + "/apps/health-probe" } hx-trigger="input changed delay:500ms, focusout" hx-target="#app-health-status" hx-swap="outerHTML" hx-include="closest #health-check-form" hx-indicator="#health-probe-spinner" class="w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base font-mono text-fg placeholder:text-fg-secondary/50"/>
+					</div>
+					<div>
+						<label class="block text-sm text-fg-secondary mb-1">Expected status codes (HTTP)</label>
+						<input type="text" name="expected_status" value={ tern(p.ExpectedStatus == "", "200", p.ExpectedStatus) } placeholder="200" autocomplete="off" hx-post={ "/panel/collectors/" + p.Collector + "/apps/health-probe" } hx-trigger="input changed delay:500ms, focusout" hx-target="#app-health-status" hx-swap="outerHTML" hx-include="closest #health-check-form" hx-indicator="#health-probe-spinner" class="w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base font-mono text-fg placeholder:text-fg-secondary/50"/>
+					</div>
+					<div>
+						<label class="block text-sm text-fg-secondary mb-1">Command (run with /bin/sh -c)</label>
+						<input type="text" spellcheck="false" name="command" value={ p.Command } placeholder="pg_isready -h 127.0.0.1 -p 5432" autocomplete="off" class="w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base font-mono text-fg placeholder:text-fg-secondary/50"/>
+					</div>
+					<div>
+						<label class="block text-sm text-fg-secondary mb-1">Output must match (regexp)</label>
+						<input type="text" spellcheck="false" name="expect" value={ p.Expect } placeholder="accepting connections" autocomplete="off" class="w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base font-mono text-fg placeholder:text-fg-secondary/50"/>
+					</div>
+					<div>
+						<label class="block text-sm text-fg-secondary mb-1">Expected exit codes</label>
+						<input type="text" name="expected_exit" value={ tern(p.ExpectedExit == "", "0", p.ExpectedExit) } placeholder="0" autocomplete="off" class="w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base font-mono text-fg placeholder:text-fg-secondary/50"/>
 					</div>
 					<div>
 						<label class="block text-sm text-fg-secondary mb-1">Check interval</label>
@@ -256,8 +284,8 @@ templ AppForm(p AppFormProps) {
 						</select>
 					</div>
 					<div>
-						<label class="block text-sm text-fg-secondary mb-1">Expected status codes</label>
-						<input type="text" name="expected_status" value={ tern(p.ExpectedStatus == "", "200", p.ExpectedStatus) } placeholder="200" autocomplete="off" hx-post={ "/panel/collectors/" + p.Collector + "/apps/health-probe" } hx-trigger="input changed delay:500ms, focusout" hx-target="#app-health-status" hx-swap="outerHTML" hx-include="closest #health-check-form" hx-indicator="#health-probe-spinner" class="w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base font-mono text-fg placeholder:text-fg-secondary/50"/>
+						<label class="block text-sm text-fg-secondary mb-1">Alert delay</label>
+						<input type="text" name="alert_delay" value={ p.AlertDelay } placeholder="0s" autocomplete="off" class="w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base font-mono text-fg placeholder:text-fg-secondary/50"/>
 					</div>
 				</div>
 			</div>

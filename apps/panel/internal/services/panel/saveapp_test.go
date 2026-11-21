@@ -204,14 +204,17 @@ func TestCheckUptimeDefaults(t *testing.T) {
 	if check == nil {
 		t.Fatal("expected a health check")
 	}
-	if check.URL != "https://example.com/health" {
-		t.Fatalf("url = %q, want the trimmed input", check.URL)
+	if check.Type != "http" {
+		t.Fatalf("type = %q, want http", check.Type)
 	}
-	if check.Interval != "30s" {
-		t.Fatalf("interval = %q, want the 30s default", check.Interval)
+	if check.Params["url"] != "https://example.com/health" {
+		t.Fatalf("url = %q, want the trimmed input", check.Params["url"])
 	}
-	if check.ExpectedStatus != "200" {
-		t.Fatalf("expected status = %q, want the 200 default", check.ExpectedStatus)
+	if check.Params["interval"] != "30s" {
+		t.Fatalf("interval = %q, want the 30s default", check.Params["interval"])
+	}
+	if check.Params["expected_status"] != "200" {
+		t.Fatalf("expected status = %q, want the 200 default", check.Params["expected_status"])
 	}
 }
 

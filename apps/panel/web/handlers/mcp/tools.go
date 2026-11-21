@@ -73,8 +73,12 @@ type createAppInput struct {
 	Collector      string `json:"collector" jsonschema:"collector name, as returned by list_collectors"`
 	Name           string `json:"name" jsonschema:"name for the new app; names are unique per collector"`
 	Service        string `json:"service,omitempty" jsonschema:"log source: a systemd unit, a kubectl workload, or a file path. Empty creates an uptime-only app"`
+	HealthType     string `json:"health_type,omitempty" jsonschema:"health check type: http or command (default http)"`
 	URL            string `json:"url,omitempty" jsonschema:"optional HTTP health-check URL to poll"`
-	Interval       string `json:"interval,omitempty" jsonschema:"how often to run the health check, e.g. 30s (default 60s)"`
+	Command        string `json:"command,omitempty" jsonschema:"shell command to run for a command health check (via /bin/sh -c)"`
+	Expect         string `json:"expect,omitempty" jsonschema:"Go regular expression the command output must match"`
+	ExpectedExit   string `json:"expected_exit,omitempty" jsonschema:"comma-separated exit codes that count as up, e.g. 0,2 (default 0)"`
+	Interval       string `json:"interval,omitempty" jsonschema:"how often to run the health check, e.g. 30s (default 30s)"`
 	ExpectedStatus string `json:"expected_status,omitempty" jsonschema:"comma-separated HTTP status codes that count as up, e.g. 200,301 (default any 2xx)"`
 	AlertDelay     string `json:"alert_delay,omitempty" jsonschema:"how long the app must stay down before an uptime alert is sent, e.g. 5m (default 0s: alert immediately)"`
 }
@@ -198,8 +202,10 @@ func createAppTool() *mcpsdk.Tool {
 	return &mcpsdk.Tool{
 		Name: "create_app",
 		Description: "Add an app to a collector. Give a service (systemd unit, kubectl workload or file path) to collect its logs, " +
-			"or a URL to watch it over HTTP, or both. The collector resolves the log format when a service is given. " +
-			"Not available on a panel that runs without authentication (demo mode), and requires permission to modify the collector.",
+			"or a health check to watch it, or both. health_type=http probes a URL; health_type=command runs a shell command " +
+			"and can require an output regexp (expect) and one or more expected_exit codes. The collector resolves the log " +
+			"format when a service is given. Not available on a panel that runs without authentication (demo mode), and " +
+			"requires permission to modify the collector.",
 		Annotations: &mcpsdk.ToolAnnotations{ReadOnlyHint: false, DestructiveHint: &destructive},
 	}
 }
@@ -368,7 +374,11 @@ func (s *Server) createApp(ctx context.Context, req *mcpsdk.CallToolRequest, in 
 	err = s.deps.Service.SaveApp(ctx, in.Collector, panelsvc.NewApp{
 		Name:           name,
 		Service:        strings.TrimSpace(in.Service),
+		HealthType:     strings.TrimSpace(in.HealthType),
 		URL:            strings.TrimSpace(in.URL),
+		Command:        strings.TrimSpace(in.Command),
+		Expect:         strings.TrimSpace(in.Expect),
+		ExpectedExit:   strings.TrimSpace(in.ExpectedExit),
 		Interval:       strings.TrimSpace(in.Interval),
 		ExpectedStatus: strings.TrimSpace(in.ExpectedStatus),
 		AlertDelay:     strings.TrimSpace(in.AlertDelay),
@@ -377,7 +387,7 @@ func (s *Server) createApp(ctx context.Context, req *mcpsdk.CallToolRequest, in 
 	case errors.Is(err, panelsvc.ErrAppNameTaken):
 		return nil, nil, fmt.Errorf("an app named %q already exists on collector %q", name, in.Collector)
 	case errors.Is(err, panelsvc.ErrAppNoSource):
-		return nil, nil, errors.New("an app needs a log source (service) or a health-check URL")
+		return nil, nil, errors.New("an app needs a log source (service) or a health check")
 	case errors.Is(err, panelsvc.ErrAppSourceNotFound):
 		return nil, nil, fmt.Errorf("the collector could not resolve that log source: %w", err)
 	case errors.Is(err, panelsvc.ErrAppInvalidCheck):

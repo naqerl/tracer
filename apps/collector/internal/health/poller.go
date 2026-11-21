@@ -35,6 +35,13 @@ func New(spec types.HealthCheckSpec) (Poller, error) {
 		}
 		httpChecker := NewHTTPChecker(httpConfig)
 		checker = httpChecker
+	case "command":
+		commandConfig, err := specCommandConfig(spec)
+		if err != nil {
+			return Poller{}, fmt.Errorf("command health: %w", err)
+		}
+		commandChecker := NewCommandChecker(commandConfig)
+		checker = commandChecker
 	case "systemd", "podman":
 		return Poller{}, fmt.Errorf("health type %q is not implemented yet", spec.Type)
 	default:

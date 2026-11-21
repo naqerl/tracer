@@ -1361,9 +1361,14 @@ func (h *handler) getEditAppPage(w http.ResponseWriter, r *http.Request) {
 			}
 			props.Guess = guess
 			if app.Health != nil {
+				props.HealthType = app.Health.Type
 				props.URL = app.Health.Params["url"]
+				props.Command = app.Health.Params["command"]
+				props.Expect = app.Health.Params["expect"]
+				props.ExpectedExit = app.Health.Params["expected_exit"]
 				props.Interval = app.Health.Params["interval"]
 				props.ExpectedStatus = app.Health.Params["expected_status"]
+				props.AlertDelay = app.Health.Params[types.HealthParamAlertDelay]
 			}
 		}
 	}
@@ -1417,9 +1422,14 @@ func (h *handler) previewAppFormat(w http.ResponseWriter, r *http.Request) {
 			ServiceName:    name,
 			EditApp:        strings.TrimSpace(r.FormValue("edit_app")),
 			IsEdit:         isEdit,
+			HealthType:     formHealthType(r),
 			URL:            strings.TrimSpace(r.FormValue("url")),
+			Command:        strings.TrimSpace(r.FormValue("command")),
+			Expect:         r.FormValue("expect"),
+			ExpectedExit:   r.FormValue("expected_exit"),
 			Interval:       r.FormValue("interval"),
 			ExpectedStatus: r.FormValue("expected_status"),
+			AlertDelay:     strings.TrimSpace(r.FormValue("alert_delay")),
 			Guess:          guess,
 		}).Render(r.Context(), w)
 	}
@@ -1594,6 +1604,15 @@ func parseExpectedStatuses(raw string) map[int]struct{} {
 	return expected
 }
 
+// formHealthType reads the health-check type from the app form, accepting the
+// short "type" field as well as "health_type".
+func formHealthType(r *http.Request) string {
+	if value := strings.TrimSpace(r.FormValue("health_type")); value != "" {
+		return value
+	}
+	return strings.TrimSpace(r.FormValue("type"))
+}
+
 // parseFavour builds a parser spec favour from a conflict field/value pair.
 // The special field name "type" favours the parser type; any other field
 // favours a specific parser param mapping.
@@ -1630,9 +1649,14 @@ func (h *handler) updateApp(w http.ResponseWriter, r *http.Request) {
 			ServiceName:    newName,
 			EditApp:        appName,
 			IsEdit:         true,
+			HealthType:     formHealthType(r),
 			URL:            strings.TrimSpace(r.FormValue("url")),
+			Command:        strings.TrimSpace(r.FormValue("command")),
+			Expect:         r.FormValue("expect"),
+			ExpectedExit:   r.FormValue("expected_exit"),
 			Interval:       r.FormValue("interval"),
 			ExpectedStatus: r.FormValue("expected_status"),
+			AlertDelay:     strings.TrimSpace(r.FormValue("alert_delay")),
 			Error:          msg,
 		}).Render(r.Context(), w)
 	}
@@ -1654,7 +1678,7 @@ func (h *handler) updateApp(w http.ResponseWriter, r *http.Request) {
 			alertDelay = existingApp.Health.Params[types.HealthParamAlertDelay]
 		}
 	}
-	health, healthErr := panelsvc.CheckUptime(r.FormValue("url"), r.FormValue("interval"), r.FormValue("expected_status"), alertDelay)
+	health, healthErr := panelsvc.CheckHealth(formHealthType(r), r.FormValue("url"), r.FormValue("interval"), r.FormValue("expected_status"), r.FormValue("command"), r.FormValue("expect"), r.FormValue("expected_exit"), alertDelay)
 	if healthErr != nil {
 		renderError(fmt.Errorf("%w: %w", panelsvc.ErrAppInvalidCheck, healthErr).Error())
 		return
@@ -1679,9 +1703,9 @@ func (h *handler) updateApp(w http.ResponseWriter, r *http.Request) {
 
 	if health != nil {
 		if exists {
-			err = cfg.SetAppHealth(appName, health.URL, health.Interval, health.ExpectedStatus, health.AlertDelay)
+			err = cfg.SetAppHealth(appName, health)
 		} else {
-			err = cfg.AddUptimeApp(appName, health.URL, health.Interval, health.ExpectedStatus, health.AlertDelay)
+			err = cfg.AddUptimeApp(appName, health)
 		}
 	} else if exists {
 		err = cfg.ClearAppHealth(appName)
@@ -1734,9 +1758,14 @@ func (h *handler) createApp(w http.ResponseWriter, r *http.Request) {
 			Collector:      collectorName,
 			CancelHref:     appFormCancelHref(collectorName, false),
 			ServiceName:    appName,
+			HealthType:     formHealthType(r),
 			URL:            strings.TrimSpace(r.FormValue("url")),
+			Command:        strings.TrimSpace(r.FormValue("command")),
+			Expect:         r.FormValue("expect"),
+			ExpectedExit:   r.FormValue("expected_exit"),
 			Interval:       r.FormValue("interval"),
 			ExpectedStatus: r.FormValue("expected_status"),
+			AlertDelay:     strings.TrimSpace(r.FormValue("alert_delay")),
 			Error:          msg,
 		}).Render(r.Context(), w)
 	}
@@ -1768,7 +1797,11 @@ func (h *handler) createApp(w http.ResponseWriter, r *http.Request) {
 		Source:         source,
 		Parser:         parser,
 		Service:        strings.TrimSpace(r.FormValue("service")),
+		HealthType:     formHealthType(r),
 		URL:            strings.TrimSpace(r.FormValue("url")),
+		Command:        strings.TrimSpace(r.FormValue("command")),
+		Expect:         r.FormValue("expect"),
+		ExpectedExit:   r.FormValue("expected_exit"),
 		Interval:       r.FormValue("interval"),
 		ExpectedStatus: r.FormValue("expected_status"),
 		AlertDelay:     strings.TrimSpace(r.FormValue("alert_delay")),
