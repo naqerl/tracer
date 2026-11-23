@@ -51,9 +51,9 @@ const (
 	defaultMemDeltaKB      = 64
 	defaultDiskDeltaKB     = 1024
 
-	defaultCPUThresholdPercent   = 0.0 // disabled
-	defaultMemThresholdPercent   = 0.0
-	defaultDiskThresholdPercent  = 0.0
+	defaultCPUThresholdPercent   = 95.0
+	defaultMemThresholdPercent   = 95.0
+	defaultDiskThresholdPercent  = 95.0
 	defaultResourceNotifyMinutes = 10
 )
 
