@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
@@ -998,6 +999,287 @@ func TestNotifierDetailPageShowsAppSubscriptions(t *testing.T) {
 	}
 }
 
+// TestWildcardSubscriptionFormRoundTripsThroughNotifierDetail verifies a saved wildcard renders
+// checked and an unchanged save keeps exactly the stored wildcard rows.
+func TestWildcardSubscriptionFormRoundTripsThroughNotifierDetail(t *testing.T) {
+	handler, _, _, token, notifyService, dbMgr := newAuthedHandlerWithFactoriesAndManager(t, true, map[string]notifysvc.FromRawJSON{
+		"test": func(_, _ string) (notifysvc.Notifier, error) { return wildcardStubNotifier{}, nil },
+	})
+	for _, app := range []string{"api", "worker"} {
+		if _, err := dbMgr.CreateAppDB("prod", app); err != nil {
+			t.Fatalf("create prod/%s app db: %v", app, err)
+		}
+	}
+
+	actor := domain.User{ID: 1, Role: domain.RoleAdmin}
+	id, err := notifyService.Add(t.Context(), actor, notifysvc.AddNotifierRequest{
+		UserID: 1,
+		Name:   "issues",
+		Type:   "test",
+		Config: "{}",
+	})
+	if err != nil {
+		t.Fatalf("add notifier: %v", err)
+	}
+	notifierURL := "/settings/notifiers/" + strconv.FormatInt(id, 10)
+
+	putSubscriptions := func(body string) {
+		t.Helper()
+		req := httptest.NewRequest(http.MethodPut, notifierURL+"/subscriptions", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.AddCookie(&http.Cookie{Name: "tracer_session", Value: token})
+		rr := httptest.NewRecorder()
+		handler.ServeHTTP(rr, req)
+		if rr.Code != http.StatusSeeOther {
+			t.Fatalf("expected redirect after subscriptions update, got %d (body: %s)", rr.Code, rr.Body.String())
+		}
+	}
+	detailBody := func() string {
+		t.Helper()
+		req := httptest.NewRequest(http.MethodGet, notifierURL, nil)
+		req.AddCookie(&http.Cookie{Name: "tracer_session", Value: token})
+		rr := httptest.NewRecorder()
+		handler.ServeHTTP(rr, req)
+		if rr.Code != http.StatusOK {
+			t.Fatalf("expected 200 for notifier detail, got %d (body: %s)", rr.Code, rr.Body.String())
+		}
+		return rr.Body.String()
+	}
+
+	putSubscriptions("apps=*%3A*")
+	subscriptions, err := notifyService.GetSubscriptions(t.Context(), actor, id)
+	if err != nil {
+		t.Fatalf("get subscriptions: %v", err)
+	}
+	if len(subscriptions) != 1 || subscriptions[0] != (notifysvc.Subscription{CollectorName: "*", AppName: "*"}) {
+		t.Fatalf("expected exactly *:*, got %+v", subscriptions)
+	}
+
+	out := detailBody()
+	for _, want := range []string{
+		`data-scope-wildcard="1"`,
+		`value="*:*" data-checked-value="*:*"`,
+		`data-label="all collectors, all apps">[x] all collectors, all apps`,
+		`value="" data-checked-value="prod:*"`,
+		`value="" data-checked-value="prod:api"`,
+		`value="" data-checked-value="prod:worker"`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("expected %q in wildcard subscription form, got: %s", want, out)
+		}
+	}
+
+	// Repeating the same PUT must not expand the wildcard into per-app rows.
+	putSubscriptions("apps=*%3A*")
+	subscriptions, err = notifyService.GetSubscriptions(t.Context(), actor, id)
+	if err != nil {
+		t.Fatalf("get subscriptions after repeat: %v", err)
+	}
+	if len(subscriptions) != 1 {
+		t.Fatalf("expected unchanged wildcard save to keep one row, got %+v", subscriptions)
+	}
+
+	putSubscriptions("apps=*%3A*&apps=prod%3A*")
+	subscriptions, err = notifyService.GetSubscriptions(t.Context(), actor, id)
+	if err != nil {
+		t.Fatalf("get subscriptions with collector wildcard: %v", err)
+	}
+	if !subscriptionSetsEqual(subscriptions, notifysvc.Subscription{CollectorName: "*", AppName: "*"}, notifysvc.Subscription{CollectorName: "prod", AppName: "*"}) {
+		t.Fatalf("expected exactly *:* and prod:*, got %+v", subscriptions)
+	}
+
+	out = detailBody()
+	if !strings.Contains(out, `value="prod:*" data-checked-value="prod:*"`) || !strings.Contains(out, `data-label="all apps">[x] all apps`) {
+		t.Errorf("expected prod:* rendered checked as all apps, got: %s", out)
+	}
+
+	putSubscriptions("apps=*%3A*&apps=prod%3A*")
+	subscriptions, err = notifyService.GetSubscriptions(t.Context(), actor, id)
+	if err != nil {
+		t.Fatalf("get subscriptions after unchanged save: %v", err)
+	}
+	if !subscriptionSetsEqual(subscriptions, notifysvc.Subscription{CollectorName: "*", AppName: "*"}, notifysvc.Subscription{CollectorName: "prod", AppName: "*"}) {
+		t.Fatalf("expected unchanged save to keep *:* and prod:*, got %+v", subscriptions)
+	}
+}
+
+// TestWildcardIDsStayDistinctForCollidingCollectorNames verifies two
+// collectors whose names sanitize to the same id keep independent wildcard
+// rows and round-trip through an unchanged save.
+func TestWildcardIDsStayDistinctForCollidingCollectorNames(t *testing.T) {
+	handler, _, _, token, notifyService, dbMgr := newAuthedHandlerWithFactoriesAndManager(t, true, map[string]notifysvc.FromRawJSON{
+		"test": func(_, _ string) (notifysvc.Notifier, error) { return wildcardStubNotifier{}, nil },
+	})
+	for _, collector := range []string{"a.b", "a-b"} {
+		if _, err := dbMgr.CreateAppDB(collector, "api"); err != nil {
+			t.Fatalf("create %s/api app db: %v", collector, err)
+		}
+	}
+
+	actor := domain.User{ID: 1, Role: domain.RoleAdmin}
+	id, err := notifyService.Add(t.Context(), actor, notifysvc.AddNotifierRequest{
+		UserID: 1,
+		Name:   "issues",
+		Type:   "test",
+		Config: "{}",
+	})
+	if err != nil {
+		t.Fatalf("add notifier: %v", err)
+	}
+	notifierURL := "/settings/notifiers/" + strconv.FormatInt(id, 10)
+	putSubscriptions := func(body string) {
+		t.Helper()
+		req := httptest.NewRequest(http.MethodPut, notifierURL+"/subscriptions", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.AddCookie(&http.Cookie{Name: "tracer_session", Value: token})
+		rr := httptest.NewRecorder()
+		handler.ServeHTTP(rr, req)
+		if rr.Code != http.StatusSeeOther {
+			t.Fatalf("expected redirect after subscriptions update, got %d (body: %s)", rr.Code, rr.Body.String())
+		}
+	}
+
+	putSubscriptions("apps=a.b%3A*&apps=a-b%3A*")
+	subscriptions, err := notifyService.GetSubscriptions(t.Context(), actor, id)
+	if err != nil {
+		t.Fatalf("get subscriptions: %v", err)
+	}
+	if !subscriptionSetsEqual(subscriptions, notifysvc.Subscription{CollectorName: "a.b", AppName: "*"}, notifysvc.Subscription{CollectorName: "a-b", AppName: "*"}) {
+		t.Fatalf("expected both colliding collector wildcards, got %+v", subscriptions)
+	}
+
+	detailReq := httptest.NewRequest(http.MethodGet, notifierURL, nil)
+	detailReq.AddCookie(&http.Cookie{Name: "tracer_session", Value: token})
+	detailRR := httptest.NewRecorder()
+	handler.ServeHTTP(detailRR, detailReq)
+	if detailRR.Code != http.StatusOK {
+		t.Fatalf("expected 200 for notifier detail, got %d (body: %s)", detailRR.Code, detailRR.Body.String())
+	}
+	out := detailRR.Body.String()
+	for _, want := range []string{
+		`id="scope_wildcard_a-b-_0_value"`,
+		`id="scope_wildcard_a-b-_1_value"`,
+		`value="a.b:*" data-checked-value="a.b:*"`,
+		`value="a-b:*" data-checked-value="a-b:*"`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("expected %q in colliding collector form, got: %s", want, out)
+		}
+	}
+
+	putSubscriptions("apps=a.b%3A*&apps=a-b%3A*")
+	subscriptions, err = notifyService.GetSubscriptions(t.Context(), actor, id)
+	if err != nil {
+		t.Fatalf("get subscriptions after repeat: %v", err)
+	}
+	if !subscriptionSetsEqual(subscriptions, notifysvc.Subscription{CollectorName: "a.b", AppName: "*"}, notifysvc.Subscription{CollectorName: "a-b", AppName: "*"}) {
+		t.Fatalf("expected unchanged save to keep both wildcards, got %+v", subscriptions)
+	}
+}
+
+// TestWildcardForRemovedCollectorSurvivesNotifierDetailSave verifies a stored
+// wildcard for a collector that no longer exists is shown and survives a save.
+func TestWildcardForRemovedCollectorSurvivesNotifierDetailSave(t *testing.T) {
+	handler, _, _, token, notifyService, _ := newAuthedHandlerWithFactoriesAndManager(t, true, map[string]notifysvc.FromRawJSON{
+		"test": func(_, _ string) (notifysvc.Notifier, error) { return wildcardStubNotifier{}, nil },
+	})
+
+	actor := domain.User{ID: 1, Role: domain.RoleAdmin}
+	id, err := notifyService.Add(t.Context(), actor, notifysvc.AddNotifierRequest{
+		UserID: 1,
+		Name:   "issues",
+		Type:   "test",
+		Config: "{}",
+	})
+	if err != nil {
+		t.Fatalf("add notifier: %v", err)
+	}
+	if err := notifyService.SetSubscriptions(t.Context(), actor, id, []notifysvc.Subscription{
+		{CollectorName: "legacy", AppName: "*"},
+	}); err != nil {
+		t.Fatalf("set subscriptions: %v", err)
+	}
+
+	notifierURL := "/settings/notifiers/" + strconv.FormatInt(id, 10)
+	detailReq := httptest.NewRequest(http.MethodGet, notifierURL, nil)
+	detailReq.AddCookie(&http.Cookie{Name: "tracer_session", Value: token})
+	detailRR := httptest.NewRecorder()
+	handler.ServeHTTP(detailRR, detailReq)
+	if detailRR.Code != http.StatusOK {
+		t.Fatalf("expected 200 for notifier detail, got %d (body: %s)", detailRR.Code, detailRR.Body.String())
+	}
+	out := detailRR.Body.String()
+	for _, want := range []string{`value="legacy:*" data-checked-value="legacy:*"`, `data-label="all apps">[x] all apps`} {
+		if !strings.Contains(out, want) {
+			t.Errorf("expected %q for missing collector wildcard, got: %s", want, out)
+		}
+	}
+
+	subReq := httptest.NewRequest(http.MethodPut, notifierURL+"/subscriptions", strings.NewReader("apps=legacy%3A*"))
+	subReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	subReq.AddCookie(&http.Cookie{Name: "tracer_session", Value: token})
+	subRR := httptest.NewRecorder()
+	handler.ServeHTTP(subRR, subReq)
+	if subRR.Code != http.StatusSeeOther {
+		t.Fatalf("expected redirect after subscriptions update, got %d (body: %s)", subRR.Code, subRR.Body.String())
+	}
+
+	subscriptions, err := notifyService.GetSubscriptions(t.Context(), actor, id)
+	if err != nil {
+		t.Fatalf("get subscriptions: %v", err)
+	}
+	if len(subscriptions) != 1 || subscriptions[0] != (notifysvc.Subscription{CollectorName: "legacy", AppName: "*"}) {
+		t.Fatalf("expected unchanged save to keep legacy:*, got %+v", subscriptions)
+	}
+}
+
+// TestUserAppsUpdateDropsWildcardFormPairs verifies an access policy cannot gain a
+// wildcard and the user page renders no wildcard rows.
+func TestUserAppsUpdateDropsWildcardFormPairs(t *testing.T) {
+	handler, authService, dbHandle, token, _, dbMgr := newAuthedHandlerWithFactoriesAndManager(t, true, map[string]notifysvc.FromRawJSON{})
+	if _, err := dbMgr.CreateAppDB("prod", "api"); err != nil {
+		t.Fatalf("create prod/api app db: %v", err)
+	}
+	target, err := authService.Register(t.Context(), authsvc.RegisterRequest{Username: "bob", Password: "secret", IsAdmin: false})
+	if err != nil {
+		t.Fatalf("register bob: %v", err)
+	}
+
+	userURL := "/settings/users/" + strconv.FormatInt(target.ID, 10)
+	putReq := httptest.NewRequest(http.MethodPut, userURL+"/apps", strings.NewReader("apps=prod%3Aapi&apps=*%3A*"))
+	putReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	putReq.AddCookie(&http.Cookie{Name: "tracer_session", Value: token})
+	putRR := httptest.NewRecorder()
+	handler.ServeHTTP(putRR, putReq)
+	if putRR.Code != http.StatusSeeOther {
+		t.Fatalf("expected redirect after apps update, got %d (body: %s)", putRR.Code, putRR.Body.String())
+	}
+
+	policy, err := usersvc.NewService(dbHandle).FindAccessPolicy(t.Context(), target.ID)
+	if err != nil {
+		t.Fatalf("find access policy: %v", err)
+	}
+	want := []usersvc.AppAccess{{CollectorName: "prod", AppName: "api"}}
+	if !reflect.DeepEqual(policy.Apps, want) {
+		t.Fatalf("policy apps = %+v, want %+v", policy.Apps, want)
+	}
+
+	detailReq := httptest.NewRequest(http.MethodGet, userURL, nil)
+	detailReq.AddCookie(&http.Cookie{Name: "tracer_session", Value: token})
+	detailRR := httptest.NewRecorder()
+	handler.ServeHTTP(detailRR, detailReq)
+	if detailRR.Code != http.StatusOK {
+		t.Fatalf("expected 200 for user detail, got %d (body: %s)", detailRR.Code, detailRR.Body.String())
+	}
+	out := detailRR.Body.String()
+	if strings.Contains(out, `data-scope-wildcard="1"`) || strings.Contains(out, `*:*`) || strings.Contains(out, "all apps") {
+		t.Errorf("expected no wildcard rows on the user page, got: %s", out)
+	}
+	if !strings.Contains(out, `value="prod:api" data-checked-value="prod:api"`) {
+		t.Errorf("expected prod:api still granted, got: %s", out)
+	}
+}
+
 // TestUserAppsUsesSharedScopeTree verifies the user detail page renders the
 // same hierarchical scope tree as notifier subscriptions (full page with back
 // link and info grid, shared ScopeTree component), with unchecked apps
@@ -1596,4 +1878,32 @@ func TestCreateForgejoNotifierRejectedByWelcomeValidation(t *testing.T) {
 	if !strings.Contains(out, `id="forgejo-auth-status"`) {
 		t.Errorf("expected error targeted at the token label, got: %s", out)
 	}
+}
+
+// wildcardStubNotifier is a no-op notifier type for tests that only need a
+// persisted notifier row.
+type wildcardStubNotifier struct{}
+
+func (wildcardStubNotifier) Type() string { return "test" }
+
+func (wildcardStubNotifier) Name() string { return "test" }
+
+func (wildcardStubNotifier) Notify(notifysvc.Notification) error { return nil }
+
+// subscriptionSetsEqual reports whether got contains exactly the wanted pairs.
+func subscriptionSetsEqual(got []notifysvc.Subscription, want ...notifysvc.Subscription) bool {
+	if len(got) != len(want) {
+		return false
+	}
+	remaining := make(map[notifysvc.Subscription]int, len(got))
+	for _, sub := range got {
+		remaining[sub]++
+	}
+	for _, sub := range want {
+		if remaining[sub] == 0 {
+			return false
+		}
+		remaining[sub]--
+	}
+	return true
 }

@@ -33,8 +33,13 @@ function renderScopeCollector(container, collectorToggle) {
 		collectorToggle.classList.add('text-fg-secondary');
 	}
 }
+function scopeGroupButtons(container) {
+	return Array.from(container.querySelectorAll('[data-action="toggle-checkbox"]')).filter(function(btn) {
+		return !btn.closest('[data-scope-wildcard]');
+	});
+}
 function setScopeGroup(container, on) {
-	container.querySelectorAll('[data-action="toggle-checkbox"]').forEach(function(btn) {
+	scopeGroupButtons(container).forEach(function(btn) {
 		const id = btn.dataset.id;
 		const input = document.getElementById(id + '_value');
 		const checkedValue = input.dataset.checkedValue || 'on';
@@ -55,7 +60,7 @@ function setScopeGroup(container, on) {
 	if (collectorToggle) renderScopeCollector(container, collectorToggle);
 }
 function allAppsOn(container) {
-	const btns = Array.from(container.querySelectorAll('[data-action="toggle-checkbox"]'));
+	const btns = scopeGroupButtons(container);
 	return btns.length > 0 && btns.every(function(btn) {
 		const id = btn.dataset.id;
 		const input = document.getElementById(id + '_value');

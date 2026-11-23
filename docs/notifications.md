@@ -36,12 +36,11 @@ name is empty. User access still applies after matching: an admin receives
 everything, while a regular user only receives collectors and apps their
 access policy allows.
 
-Create a wildcard subscription through MCP `add_notifier_subscription` with
-`collector: "*"` and `app: "*"`. The notifier form only lists concrete
-collector/app pairs, and saving that form replaces all subscriptions of the
-notifier, so a notifier-page save erases a `*:*` row. Until the selector
-supports wildcards, re-add the row with MCP after editing subscriptions in the
-panel.
+The notifier form offers `*:*` as **all collectors, all apps** and a
+`collector:*` row in every accessible collector group. The form shows stored
+wildcard rows whose collector is no longer listed, so an unchanged save keeps
+them. A `*` collector with a concrete app (`*/app`) is still available through
+MCP `add_notifier_subscription`, but the panel form does not render that row.
 
 ## Resource thresholds
 

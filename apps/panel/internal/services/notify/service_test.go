@@ -2,6 +2,7 @@ package notify
 
 import (
 	"errors"
+	"reflect"
 	"testing"
 
 	"golang.org/x/crypto/bcrypt"
@@ -62,20 +63,16 @@ func TestGetSubscriptionOptions(t *testing.T) {
 		t.Fatalf("get subscription options: %v", err)
 	}
 
-	want := map[string]bool{"prod:api": true, "prod:worker": false, "staging:web": false}
-	if len(options) != len(want) {
-		t.Fatalf("expected %d options, got %d: %+v", len(want), len(options), options)
+	want := []domain.ScopeEntry{
+		{Collector: "*", App: "*", Granted: false},
+		{Collector: "prod", App: "*", Granted: false},
+		{Collector: "prod", App: "api", Granted: true},
+		{Collector: "prod", App: "worker", Granted: false},
+		{Collector: "staging", App: "*", Granted: false},
+		{Collector: "staging", App: "web", Granted: false},
 	}
-	for _, opt := range options {
-		key := opt.Collector + ":" + opt.App
-		enabled, ok := want[key]
-		if !ok {
-			t.Errorf("unexpected option %q", key)
-			continue
-		}
-		if opt.Granted != enabled {
-			t.Errorf("option %q granted = %v, want %v", key, opt.Granted, enabled)
-		}
+	if !reflect.DeepEqual(options, want) {
+		t.Fatalf("options = %+v, want %+v", options, want)
 	}
 }
 
@@ -101,6 +98,9 @@ func TestGetSubscriptionOptionsFiltersByAccess(t *testing.T) {
 	if _, err := mgr.CreateAppDB("prod", "worker"); err != nil {
 		t.Fatalf("create prod/worker: %v", err)
 	}
+	if _, err := mgr.CreateAppDB("staging", "web"); err != nil {
+		t.Fatalf("create staging/web: %v", err)
+	}
 
 	collected := &fakeNotifier{}
 	service := New(db, userSvc, mgr, map[string]FromRawJSON{
@@ -115,18 +115,85 @@ func TestGetSubscriptionOptionsFiltersByAccess(t *testing.T) {
 	if err != nil {
 		t.Fatalf("add notifier: %v", err)
 	}
+	// A wildcard for a collector the actor cannot reach must still be preserved.
+	if err := service.SetSubscriptions(t.Context(), domain.User{ID: user.ID, Role: domain.RoleUser}, id, []Subscription{
+		{CollectorName: "staging", AppName: "*"},
+	}); err != nil {
+		t.Fatalf("set subscriptions: %v", err)
+	}
 
 	options, err := service.GetSubscriptionOptions(t.Context(), domain.User{ID: user.ID, Role: domain.RoleUser}, id)
 	if err != nil {
 		t.Fatalf("get subscription options: %v", err)
 	}
-	if len(options) != 1 || options[0].Collector != "prod" || options[0].App != "api" {
-		t.Fatalf("expected only prod/api, got %+v", options)
+	want := []domain.ScopeEntry{
+		{Collector: "*", App: "*", Granted: false},
+		{Collector: "prod", App: "*", Granted: false},
+		{Collector: "prod", App: "api", Granted: false},
+		{Collector: "staging", App: "*", Granted: true},
+	}
+	if !reflect.DeepEqual(options, want) {
+		t.Fatalf("options = %+v, want %+v", options, want)
 	}
 
 	// A non-owner cannot enumerate options for someone else's notifier.
 	if _, err := service.GetSubscriptionOptions(t.Context(), domain.User{ID: 999, Role: domain.RoleUser}, id); !errors.Is(err, ErrAccessDenied) {
 		t.Fatalf("expected ErrAccessDenied for non-owner, got %v", err)
+	}
+}
+
+// TestSubscriptionOptionsPreserveUnlistedWildcardRows verifies stored
+// wildcard rows survive even when no collector produced them, so an unchanged
+// save cannot delete them.
+func TestSubscriptionOptionsPreserveUnlistedWildcardRows(t *testing.T) {
+	db := testutil.NewTestDB(t)
+	userSvc := usersvc.NewService(db)
+	authSvc := authsvc.New(db, testutil.TestKeySecret(), bcrypt.MinCost)
+
+	admin, err := authSvc.Register(t.Context(), authsvc.RegisterRequest{Username: "admin", Password: "secret", IsAdmin: true})
+	if err != nil {
+		t.Fatalf("register admin: %v", err)
+	}
+
+	mgr := testutil.NewTestDBManager(t)
+	if _, err := mgr.CreateAppDB("prod", "api"); err != nil {
+		t.Fatalf("create prod/api: %v", err)
+	}
+
+	collected := &fakeNotifier{}
+	service := New(db, userSvc, mgr, map[string]FromRawJSON{
+		"test": func(_, _ string) (Notifier, error) { return collected, nil },
+	})
+	actor := domain.User{ID: admin.ID, Role: domain.RoleAdmin}
+	id, err := service.Add(t.Context(), actor, AddNotifierRequest{
+		UserID: admin.ID,
+		Name:   "issues",
+		Type:   "test",
+		Config: "{}",
+	})
+	if err != nil {
+		t.Fatalf("add notifier: %v", err)
+	}
+	if err := service.SetSubscriptions(t.Context(), actor, id, []Subscription{
+		{CollectorName: "*", AppName: "*"},
+		{CollectorName: "prod", AppName: "*"},
+		{CollectorName: "legacy", AppName: "*"},
+	}); err != nil {
+		t.Fatalf("set subscriptions: %v", err)
+	}
+
+	options, err := service.GetSubscriptionOptions(t.Context(), actor, id)
+	if err != nil {
+		t.Fatalf("get subscription options: %v", err)
+	}
+	want := []domain.ScopeEntry{
+		{Collector: "*", App: "*", Granted: true},
+		{Collector: "prod", App: "*", Granted: true},
+		{Collector: "prod", App: "api", Granted: false},
+		{Collector: "legacy", App: "*", Granted: true},
+	}
+	if !reflect.DeepEqual(options, want) {
+		t.Fatalf("options = %+v, want %+v", options, want)
 	}
 }
 

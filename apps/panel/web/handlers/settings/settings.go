@@ -454,9 +454,13 @@ func (h *handler) updateUserApps(w http.ResponseWriter, r *http.Request) {
 	selectedMap := make(map[string]bool, len(selectedPairs))
 	for _, pair := range selectedPairs {
 		parts := strings.Split(pair, ":")
-		if len(parts) == 2 {
-			selectedMap[pair] = true
+		if len(parts) != 2 {
+			continue
 		}
+		if parts[0] == "*" || parts[1] == "*" {
+			continue
+		}
+		selectedMap[pair] = true
 	}
 
 	currentMap := make(map[string]bool)
