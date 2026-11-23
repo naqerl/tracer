@@ -254,11 +254,24 @@ func (s *Service) GetSubscriptionOptions(ctx context.Context, actor domain.Actor
 		}
 	}
 
-	var options []domain.ScopeEntry
+	options := []domain.ScopeEntry{{
+		Collector: "*",
+		App:       "*",
+		Granted:   subscribed["*:*"],
+	}}
+	emittedWildcards := map[string]bool{"*": true}
+
 	for _, collector := range collectors {
 		if !access.AllowedTo(collector, "") {
 			continue
 		}
+		options = append(options, domain.ScopeEntry{
+			Collector: collector,
+			App:       "*",
+			Granted:   subscribed[collector+":*"],
+		})
+		emittedWildcards[collector] = true
+
 		apps, err := s.appLister.ListApps(collector)
 		if err != nil {
 			return nil, fmt.Errorf("could not list apps for collector %s: %w", collector, err)
@@ -273,6 +286,22 @@ func (s *Service) GetSubscriptionOptions(ctx context.Context, actor domain.Actor
 				Granted:   subscribed[collector+":"+app],
 			})
 		}
+	}
+
+	// Stored wildcards for unlisted or inaccessible collectors must stay
+	// selectable so an unchanged save does not delete them.
+	for _, sub := range subscriptions {
+		if sub.AppName != "*" {
+			continue
+		}
+		if emittedWildcards[sub.CollectorName] {
+			continue
+		}
+		options = append(options, domain.ScopeEntry{
+			Collector: sub.CollectorName,
+			App:       "*",
+			Granted:   true,
+		})
 	}
 
 	return options, nil

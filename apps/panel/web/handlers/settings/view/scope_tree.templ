@@ -23,7 +23,20 @@ templ ScopeTree(method string, action string, entries []domain.ScopeEntry) {
 				<p class="text-sm mt-2">Start a collector to begin receiving logs and create applications.</p>
 			</div>
 		} else {
-			{{ order, grouped := groupScopeEntries(entries) }}
+			{{ allCollectors, hasAllCollectors, groupedEntries := splitAllCollectorsEntry(entries) }}
+			if hasAllCollectors {
+				<div data-scope-wildcard="1">
+					@templates.MarkdownCheckbox(
+						scopeTreeWildcardID("*:*"),
+						"apps",
+						"all collectors, all apps",
+						"*:*",
+						allCollectors.Granted,
+						0,
+					)
+				</div>
+			}
+			{{ order, grouped := groupScopeEntries(groupedEntries) }}
 			for ci, collector := range order {
 				{{ apps := grouped[collector] }}
 				<div class="py-2" data-scope-collector={ collector }>
@@ -37,14 +50,27 @@ templ ScopeTree(method string, action string, entries []domain.ScopeEntry) {
 					</button>
 					<div class="space-y-1 mt-2">
 						for ai, app := range apps {
-							@templates.MarkdownCheckbox(
-								scopeTreeAppID(app.Collector, ci, app.App, ai),
-								"apps",
-								app.App,
-								app.Collector + ":" + app.App,
-								app.Granted,
-								1,
-							)
+							if app.App == "*" {
+								<div data-scope-wildcard="1">
+									@templates.MarkdownCheckbox(
+										scopeTreeWildcardID(app.Collector + ":*", ci),
+										"apps",
+										"all apps",
+										app.Collector + ":*",
+										app.Granted,
+										1,
+									)
+								</div>
+							} else {
+								@templates.MarkdownCheckbox(
+									scopeTreeAppID(app.Collector, ci, app.App, ai),
+									"apps",
+									app.App,
+									app.Collector + ":" + app.App,
+									app.Granted,
+									1,
+								)
+							}
 						}
 					</div>
 				</div>
@@ -67,6 +93,25 @@ func scopeTreeFormAttrs(method, action string) templ.Attributes {
 	}
 }
 
+// splitAllCollectorsEntry removes all-collectors wildcards so one can render
+// above the collector groups.
+func splitAllCollectorsEntry(entries []domain.ScopeEntry) (domain.ScopeEntry, bool, []domain.ScopeEntry) {
+	var allCollectors domain.ScopeEntry
+	found := false
+	remaining := make([]domain.ScopeEntry, 0, len(entries))
+	for _, entry := range entries {
+		if entry.Collector != "*" || entry.App != "*" {
+			remaining = append(remaining, entry)
+			continue
+		}
+		if !found {
+			allCollectors = entry
+			found = true
+		}
+	}
+	return allCollectors, found, remaining
+}
+
 // groupScopeEntries groups a flat list of collector/app entries by collector,
 // sorting collectors and the apps within each collector alphabetically.
 func groupScopeEntries(entries []domain.ScopeEntry) ([]string, map[string][]domain.ScopeEntry) {
@@ -87,14 +132,30 @@ func groupScopeEntries(entries []domain.ScopeEntry) ([]string, map[string][]doma
 	return order, byCollector
 }
 
-// allGranted reports whether every app in the group is granted.
+// allGranted reports whether every real app in the group is granted.
 func allGranted(apps []domain.ScopeEntry) bool {
+	granted := 0
 	for _, a := range apps {
+		if a.App == "*" {
+			continue
+		}
 		if !a.Granted {
 			return false
 		}
+		granted++
 	}
-	return len(apps) > 0
+	return granted > 0
+}
+
+// scopeTreeWildcardID returns the id prefix for a wildcard checkbox; scope is
+// the submitted value (e.g. "*:*" or "prod:*") and rowIndex keeps rows with
+// colliding sanitized names distinct.
+func scopeTreeWildcardID(scope string, rowIndex ...int) string {
+	id := "scope_wildcard_" + templates.SanitizeID(scope)
+	if len(rowIndex) == 0 {
+		return id
+	}
+	return fmt.Sprintf("%s_%d", id, rowIndex[0])
 }
 
 // scopeTreeCollectorID returns the button id for a collector row; the index

@@ -59,23 +59,45 @@ func ScopeTree(method string, action string, entries []domain.ScopeEntry) templ.
 				return templ_7745c5c3_Err
 			}
 		} else {
-			order, grouped := groupScopeEntries(entries)
+			allCollectors, hasAllCollectors, groupedEntries := splitAllCollectorsEntry(entries)
+			if hasAllCollectors {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "<div data-scope-wildcard=\"1\">")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templates.MarkdownCheckbox(
+					scopeTreeWildcardID("*:*"),
+					"apps",
+					"all collectors, all apps",
+					"*:*",
+					allCollectors.Granted,
+					0,
+				).Render(ctx, templ_7745c5c3_Buffer)
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "</div>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			order, grouped := groupScopeEntries(groupedEntries)
 			for ci, collector := range order {
 				apps := grouped[collector]
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "<div class=\"py-2\" data-scope-collector=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "<div class=\"py-2\" data-scope-collector=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var2 string
 				templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.ResolveAttributeValue(collector)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/scope_tree.templ`, Line: 29, Col: 54}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/scope_tree.templ`, Line: 42, Col: 54}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var2)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -84,20 +106,20 @@ func ScopeTree(method string, action string, entries []domain.ScopeEntry) templ.
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "<button type=\"button\" id=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "<button type=\"button\" id=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var4 string
 				templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.ResolveAttributeValue(scopeTreeCollectorID(collector, ci) + "_toggle")
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/scope_tree.templ`, Line: 32, Col: 58}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/scope_tree.templ`, Line: 45, Col: 58}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var4)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "\" class=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "\" class=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -110,60 +132,82 @@ func ScopeTree(method string, action string, entries []domain.ScopeEntry) templ.
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "\" data-action=\"toggle-scope-collector\" data-label=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "\" data-action=\"toggle-scope-collector\" data-label=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var6 string
 				templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.ResolveAttributeValue(collector)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/scope_tree.templ`, Line: 35, Col: 28}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/scope_tree.templ`, Line: 48, Col: 28}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var6)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var7 string
 				templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(tern(allGranted(apps), "[x] ", "[ ] ") + collector)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/scope_tree.templ`, Line: 36, Col: 58}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/settings/view/scope_tree.templ`, Line: 49, Col: 58}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "</button><div class=\"space-y-1 mt-2\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "</button><div class=\"space-y-1 mt-2\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				for ai, app := range apps {
-					templ_7745c5c3_Err = templates.MarkdownCheckbox(
-						scopeTreeAppID(app.Collector, ci, app.App, ai),
-						"apps",
-						app.App,
-						app.Collector+":"+app.App,
-						app.Granted,
-						1,
-					).Render(ctx, templ_7745c5c3_Buffer)
-					if templ_7745c5c3_Err != nil {
-						return templ_7745c5c3_Err
+					if app.App == "*" {
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "<div data-scope-wildcard=\"1\">")
+						if templ_7745c5c3_Err != nil {
+							return templ_7745c5c3_Err
+						}
+						templ_7745c5c3_Err = templates.MarkdownCheckbox(
+							scopeTreeWildcardID(app.Collector+":*", ci),
+							"apps",
+							"all apps",
+							app.Collector+":*",
+							app.Granted,
+							1,
+						).Render(ctx, templ_7745c5c3_Buffer)
+						if templ_7745c5c3_Err != nil {
+							return templ_7745c5c3_Err
+						}
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "</div>")
+						if templ_7745c5c3_Err != nil {
+							return templ_7745c5c3_Err
+						}
+					} else {
+						templ_7745c5c3_Err = templates.MarkdownCheckbox(
+							scopeTreeAppID(app.Collector, ci, app.App, ai),
+							"apps",
+							app.App,
+							app.Collector+":"+app.App,
+							app.Granted,
+							1,
+						).Render(ctx, templ_7745c5c3_Buffer)
+						if templ_7745c5c3_Err != nil {
+							return templ_7745c5c3_Err
+						}
 					}
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "</div></div>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, "</div></div>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, " <div class=\"flex gap-3 mt-6\"><button type=\"submit\" class=\"text-sm text-fg border border-fg px-4 py-2 hover:bg-fg hover:text-bg transition-colors\">Save Changes</button> <a href=\"/settings\" class=\"text-sm text-fg-secondary border border-fg-secondary px-4 py-2 hover:bg-fg-secondary hover:text-bg transition-colors\">Cancel</a></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, " <div class=\"flex gap-3 mt-6\"><button type=\"submit\" class=\"text-sm text-fg border border-fg px-4 py-2 hover:bg-fg hover:text-bg transition-colors\">Save Changes</button> <a href=\"/settings\" class=\"text-sm text-fg-secondary border border-fg-secondary px-4 py-2 hover:bg-fg-secondary hover:text-bg transition-colors\">Cancel</a></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "</form>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, "</form>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -171,7 +215,7 @@ func ScopeTree(method string, action string, entries []domain.ScopeEntry) templ.
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "<script src=\"/static/scope-tree.js\"></script>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "<script src=\"/static/scope-tree.js\"></script>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -185,6 +229,25 @@ func scopeTreeFormAttrs(method, action string) templ.Attributes {
 	return templ.Attributes{
 		"hx-" + method: action,
 	}
+}
+
+// splitAllCollectorsEntry removes all-collectors wildcards so one can render
+// above the collector groups.
+func splitAllCollectorsEntry(entries []domain.ScopeEntry) (domain.ScopeEntry, bool, []domain.ScopeEntry) {
+	var allCollectors domain.ScopeEntry
+	found := false
+	remaining := make([]domain.ScopeEntry, 0, len(entries))
+	for _, entry := range entries {
+		if entry.Collector != "*" || entry.App != "*" {
+			remaining = append(remaining, entry)
+			continue
+		}
+		if !found {
+			allCollectors = entry
+			found = true
+		}
+	}
+	return allCollectors, found, remaining
 }
 
 // groupScopeEntries groups a flat list of collector/app entries by collector,
@@ -207,14 +270,30 @@ func groupScopeEntries(entries []domain.ScopeEntry) ([]string, map[string][]doma
 	return order, byCollector
 }
 
-// allGranted reports whether every app in the group is granted.
+// allGranted reports whether every real app in the group is granted.
 func allGranted(apps []domain.ScopeEntry) bool {
+	granted := 0
 	for _, a := range apps {
+		if a.App == "*" {
+			continue
+		}
 		if !a.Granted {
 			return false
 		}
+		granted++
 	}
-	return len(apps) > 0
+	return granted > 0
+}
+
+// scopeTreeWildcardID returns the id prefix for a wildcard checkbox; scope is
+// the submitted value (e.g. "*:*" or "prod:*") and rowIndex keeps rows with
+// colliding sanitized names distinct.
+func scopeTreeWildcardID(scope string, rowIndex ...int) string {
+	id := "scope_wildcard_" + templates.SanitizeID(scope)
+	if len(rowIndex) == 0 {
+		return id
+	}
+	return fmt.Sprintf("%s_%d", id, rowIndex[0])
 }
 
 // scopeTreeCollectorID returns the button id for a collector row; the index

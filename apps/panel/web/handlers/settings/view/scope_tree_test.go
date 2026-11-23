@@ -15,6 +15,7 @@ func TestGroupScopeEntries(t *testing.T) {
 	entries := []domain.ScopeEntry{
 		{Collector: "prod", App: "api", Granted: true},
 		{Collector: "staging", App: "web", Granted: false},
+		{Collector: "prod", App: "*", Granted: true},
 		{Collector: "prod", App: "worker", Granted: false},
 		{Collector: "staging", App: "db", Granted: true},
 		{Collector: "prod", App: "api", Granted: true}, // duplicate row
@@ -29,6 +30,7 @@ func TestGroupScopeEntries(t *testing.T) {
 
 	want := map[string][]domain.ScopeEntry{
 		"prod": {
+			{Collector: "prod", App: "*", Granted: true},
 			{Collector: "prod", App: "api", Granted: true},
 			{Collector: "prod", App: "api", Granted: true},
 			{Collector: "prod", App: "worker", Granted: false},
@@ -44,6 +46,36 @@ func TestGroupScopeEntries(t *testing.T) {
 	}
 }
 
+// TestScopeTreeSplitAllCollectorsEntry verifies the all-collectors wildcard is removed
+// before grouping and the remaining entries keep their order.
+func TestScopeTreeSplitAllCollectorsEntry(t *testing.T) {
+	entries := []domain.ScopeEntry{
+		{Collector: "*", App: "*", Granted: true},
+		{Collector: "prod", App: "*", Granted: false},
+		{Collector: "prod", App: "api", Granted: true},
+		{Collector: "*", App: "*", Granted: false},
+	}
+
+	all, ok, remaining := splitAllCollectorsEntry(entries)
+
+	if !ok || all != entries[0] {
+		t.Fatalf("splitAllCollectorsEntry = (%+v, %v), want (%+v, true)", all, ok, entries[0])
+	}
+	want := []domain.ScopeEntry{
+		{Collector: "prod", App: "*", Granted: false},
+		{Collector: "prod", App: "api", Granted: true},
+	}
+	if !reflect.DeepEqual(remaining, want) {
+		t.Fatalf("remaining = %+v, want %+v", remaining, want)
+	}
+
+	// Entries without the wildcard are returned unchanged.
+	plain := []domain.ScopeEntry{{Collector: "prod", App: "api", Granted: true}}
+	if _, ok, remaining := splitAllCollectorsEntry(plain); ok || !reflect.DeepEqual(remaining, plain) {
+		t.Fatalf("splitAllCollectorsEntry without wildcard = (%v, %+v), want (false, %+v)", ok, remaining, plain)
+	}
+}
+
 // TestAllGranted verifies a collector square is [x] only when every app row is
 // granted and there is at least one app.
 func TestAllGranted(t *testing.T) {
@@ -55,6 +87,9 @@ func TestAllGranted(t *testing.T) {
 		{name: "empty", apps: nil, want: false},
 		{name: "all granted", apps: []domain.ScopeEntry{{Granted: true}, {Granted: true}}, want: true},
 		{name: "one not granted", apps: []domain.ScopeEntry{{Granted: true}, {Granted: false}}, want: false},
+		{name: "wildcard ignored", apps: []domain.ScopeEntry{{App: "*", Granted: false}, {Granted: true}}, want: true},
+		{name: "only wildcard", apps: []domain.ScopeEntry{{App: "*", Granted: true}}, want: false},
+		{name: "real app not granted", apps: []domain.ScopeEntry{{App: "*", Granted: true}, {Granted: false}}, want: false},
 	}
 	for _, tc := range cases {
 		if got := allGranted(tc.apps); got != tc.want {
@@ -89,5 +124,11 @@ func TestScopeTreeIDCollisionFreesIds(t *testing.T) {
 	}
 	if scopeTreeAppID("c", 0, "a/b", 0) == scopeTreeAppID("c", 0, "a-b", 1) {
 		t.Fatal("app ids must stay distinct across app indexes")
+	}
+	if scopeTreeWildcardID("a.b:*", 0) == scopeTreeWildcardID("a-b:*", 1) {
+		t.Fatal("wildcard ids must stay distinct across collector indexes")
+	}
+	if scopeTreeWildcardID("*:*") == scopeTreeWildcardID("...:*", 0) {
+		t.Fatal("all-collectors wildcard id must stay distinct from a group wildcard")
 	}
 }
