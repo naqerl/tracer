@@ -68,9 +68,10 @@ type Notification struct {
 }
 
 // FormatMessage renders the conventional plain-text presentation used by
-// chat-style notifiers (ntfy, telegram): an app@collector header, and either
-// the log message in a code fence with its panel link (LogEntry payload) or
-// the plain payload string.
+// chat-style notifiers (ntfy, telegram): a header naming the app and collector
+// (collector only when the notification has no app), and either the log
+// message in a code fence with its panel link (LogEntry payload) or the plain
+// payload string.
 func FormatMessage(n Notification) string {
 	var msg string
 	switch p := n.Payload.(type) {
@@ -94,7 +95,9 @@ func FormatMessage(n Notification) string {
 	}
 	if n.AppName != "" || n.CollectorName != "" {
 		header := n.AppName
-		if n.CollectorName != "" {
+		if n.AppName == "" {
+			header = n.CollectorName
+		} else if n.CollectorName != "" {
 			header = fmt.Sprintf("%s@%s", n.AppName, n.CollectorName)
 		}
 		msg = fmt.Sprintf("%s\n\n%s", header, msg)

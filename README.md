@@ -12,7 +12,7 @@ Demo: [tracer.naqel.com](https://tracer.naqel.com) &middot; Landing: [naqerl.com
 
 - **One-command install** &mdash; `curl ... | sudo bash` gets you a running panel and collector
 - **Multi-user & role-based access** &mdash; admin and regular user roles with per-app access control, session-based auth with secure cookies
-- **Telegram & ntfy.sh notifications** &mdash; per-user notifier configuration, enable/disable without deleting, multiple notifiers per user
+- **Telegram & ntfy.sh notifications** &mdash; per-user notifier configuration with wildcard subscriptions that also carry resource, uptime and lifecycle alerts; enable/disable without deleting, multiple notifiers per user
 - **Resource monitoring** &mdash; collects CPU, RAM, and disk usage from each collector; real-time status on the dashboard
 - **API access for agents** &mdash; collector API keys for machine-to-machine auth, per-user API keys for scripted access, both with per-key revocation
 - **MCP server for AI agents** &mdash; the panel serves a Model Context Protocol endpoint at `/mcp`, so Claude Desktop, Cursor and MCP Inspector can query it as read-only tools (plus one app-creation tool) using a per-user API key

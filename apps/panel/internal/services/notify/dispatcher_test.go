@@ -33,8 +33,8 @@ func (f *fakeNotifier) Notify(n Notification) error {
 }
 
 // startDispatcher builds a dispatcher backed by a real panel DB with one
-// user, one notifier subscribed to prod/api, and starts its loop.
-func startDispatcher(t *testing.T) (*Dispatcher, chan Notification, *fakeNotifier, context.CancelFunc) {
+// user, one notifier subscribed to the given pairs, and starts its loop.
+func startDispatcher(t *testing.T, subscriptions []Subscription) (*Dispatcher, chan Notification, *fakeNotifier, context.CancelFunc) {
 	t.Helper()
 
 	db := testutil.NewTestDB(t)
@@ -69,9 +69,7 @@ func startDispatcher(t *testing.T) (*Dispatcher, chan Notification, *fakeNotifie
 	if err != nil {
 		t.Fatalf("add notifier: %v", err)
 	}
-	if err := service.SetSubscriptions(t.Context(), domain.User{ID: user.ID, Role: domain.RoleAdmin}, id, []Subscription{
-		{CollectorName: "prod", AppName: "api"},
-	}); err != nil {
+	if err := service.SetSubscriptions(t.Context(), domain.User{ID: user.ID, Role: domain.RoleAdmin}, id, subscriptions); err != nil {
 		t.Fatalf("set subscriptions: %v", err)
 	}
 
@@ -112,8 +110,40 @@ func waitForNotification(t *testing.T, collected *fakeNotifier, typ Notification
 	}
 }
 
+// waitForNotificationCount waits until the fake holds want notifications of
+// the given type, then checks that no duplicate arrives.
+func waitForNotificationCount(t *testing.T, collected *fakeNotifier, typ NotificationType, want int) {
+	t.Helper()
+
+	deadline := time.Now().Add(5 * time.Second)
+	for notificationCount(collected, typ) < want {
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting for %d %s notifications", want, typ)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	time.Sleep(100 * time.Millisecond)
+	if got := notificationCount(collected, typ); got != want {
+		t.Errorf("expected %d %s notifications, got %d", want, typ, got)
+	}
+}
+
+func notificationCount(collected *fakeNotifier, typ NotificationType) int {
+	collected.mu.Lock()
+	defer collected.mu.Unlock()
+
+	count := 0
+	for _, n := range collected.received {
+		if n.Type == typ {
+			count++
+		}
+	}
+	return count
+}
+
 func TestDispatcherPassesStructuredNotification(t *testing.T) {
-	_, ch, collected, _ := startDispatcher(t)
+	_, ch, collected, _ := startDispatcher(t, []Subscription{{CollectorName: "prod", AppName: "api"}})
 
 	ch <- Notification{
 		Type:          TypeAlert,
@@ -143,7 +173,7 @@ func TestDispatcherPassesStructuredNotification(t *testing.T) {
 }
 
 func TestDispatcherPassesPlainPayload(t *testing.T) {
-	_, ch, collected, _ := startDispatcher(t)
+	_, ch, collected, _ := startDispatcher(t, []Subscription{{CollectorName: "prod", AppName: "api"}})
 
 	ch <- Notification{
 		Type:          TypeLifecycle,
@@ -156,6 +186,29 @@ func TestDispatcherPassesPlainPayload(t *testing.T) {
 	if n.Payload != "restart" {
 		t.Errorf("expected plain payload to pass through, got %v", n.Payload)
 	}
+}
+
+// TestDispatcherWildcardMatchesEmptyAppNotification verifies a *:* subscription
+// delivers a resource alert that has no app name.
+func TestDispatcherWildcardMatchesEmptyAppNotification(t *testing.T) {
+	_, ch, collected, _ := startDispatcher(t, []Subscription{{CollectorName: "*", AppName: "*"}})
+
+	ch <- Notification{
+		Type:          TypeResource,
+		CollectorName: "cyberpass",
+		AppName:       "",
+		Payload: ResourceEntry{
+			DiskUsedPercent: 93,
+			Breached:        []string{"disk"},
+		},
+	}
+
+	n := waitForNotification(t, collected, TypeResource)
+	if n.CollectorName != "cyberpass" || n.AppName != "" {
+		t.Errorf("expected cyberpass with an empty app, got %s/%s", n.CollectorName, n.AppName)
+	}
+
+	waitForNotificationCount(t, collected, TypeResource, 1)
 }
 
 // TestNotifyServiceAccessDenial covers every access-checked method with

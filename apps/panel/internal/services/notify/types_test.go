@@ -83,8 +83,8 @@ func TestFormatMessageResourceEntry(t *testing.T) {
 	if got == "" {
 		t.Fatal("FormatMessage returned empty for ResourceEntry")
 	}
-	// Should contain the collector header and resource details
-	want := "@prod\n\nresource threshold breached: cpu\n\nCPU: 97.3%\nMemory: 7000 / 8192 MB (85.4%)\nDisk: 80 / 100 GB (80.0%)"
+	// A resource alert has no app, so the header is the collector alone.
+	want := "prod\n\nresource threshold breached: cpu\n\nCPU: 97.3%\nMemory: 7000 / 8192 MB (85.4%)\nDisk: 80 / 100 GB (80.0%)"
 	if got != want {
 		t.Errorf("FormatMessage mismatch:\n got: %q\nwant: %q", got, want)
 	}
