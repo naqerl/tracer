@@ -22,14 +22,23 @@ const (
 
 // Stats contains system statistics, shared between collector and panel via API
 type Stats struct {
-	CPUUsagePercent float64   `json:"cpu_usage_percent"`
-	MemTotalMB      int64     `json:"mem_total_mb"`
-	MemUsedMB       int64     `json:"mem_used_mb"`
-	MemAvailableMB  int64     `json:"mem_available_mb"`
-	DiskTotalGB     int64     `json:"disk_total_gb"`
-	DiskUsedGB      int64     `json:"disk_used_gb"`
-	DiskAvailGB     int64     `json:"disk_avail_gb"`
-	Timestamp       time.Time `json:"timestamp"`
+	CPUUsagePercent float64                 `json:"cpu_usage_percent"`
+	MemTotalMB      int64                   `json:"mem_total_mb"`
+	MemUsedMB       int64                   `json:"mem_used_mb"`
+	MemAvailableMB  int64                   `json:"mem_available_mb"`
+	DiskTotalGB     int64                   `json:"disk_total_gb"`
+	DiskUsedGB      int64                   `json:"disk_used_gb"`
+	DiskAvailGB     int64                   `json:"disk_avail_gb"`
+	Timestamp       time.Time               `json:"timestamp"`
+	AppDrops        map[string]AppDropStats `json:"app_drops,omitempty"`
+}
+
+// AppDropStats reports unparseable log lines dropped by one app during the
+// collector's last stats interval.
+type AppDropStats struct {
+	DroppedLines int64     `json:"dropped_lines"`
+	LastSample   string    `json:"last_sample,omitempty"`
+	UpdatedAt    time.Time `json:"updated_at"`
 }
 
 // LogEntry represents a parsed log line, shared between collector and panel via API

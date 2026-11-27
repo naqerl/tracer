@@ -369,14 +369,14 @@ func TestAutoRefreshAppStatsFragmentBreathesValuesOnly(t *testing.T) {
 		t.Fatalf("expected 200 for app stats fragment, got %d", rr.Code)
 	}
 	body := rr.Body.String()
-	if !strings.Contains(body, "Total Logs") || !strings.Contains(body, "Errors") {
+	if !strings.Contains(body, "Total Logs") || !strings.Contains(body, "Errors") || !strings.Contains(body, "Dropped") {
 		t.Fatalf("expected app stats fragment body, got %q", body)
 	}
-	if strings.Count(body, "value-breath") != 4 {
-		t.Fatalf("expected the four stat counts to carry value-breath, got %d occurrences", strings.Count(body, "value-breath"))
+	if strings.Count(body, "value-breath") != 5 {
+		t.Fatalf("expected the five stat counts to carry value-breath, got %d occurrences", strings.Count(body, "value-breath"))
 	}
 	// The static labels must not animate.
-	for _, label := range []string{"Total Logs", "Errors", "Warnings", "Info"} {
+	for _, label := range []string{"Total Logs", "Errors", "Warnings", "Info", "Dropped"} {
 		if strings.Contains(body, label+" value-breath") || strings.Contains(body, "value-breath "+label) {
 			t.Fatalf("expected static label %q to stay unanimated, got %q", label, body)
 		}

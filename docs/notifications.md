@@ -31,16 +31,39 @@ A subscription is a collector/app pair. Either part may be `*`:
 | `*/*` | every notification from every collector |
 
 A `*/*` subscription carries error and lifecycle alerts as well as uptime and
-resource alerts. In particular it matches resource notifications, whose app
-name is empty. User access still applies after matching: an admin receives
-everything, while a regular user only receives collectors and apps their
-access policy allows.
+resource alerts. In particular it matches resource and uptime notifications,
+whose app name is empty. Such a notification matches `*/*` and `collector/*`,
+but not `*/app` or `collector/app`; an agent subscribed only to a concrete app
+misses collector-wide alerts. A global agent needs `*/*` to see them all. User
+access still applies after matching: an admin receives everything, while a
+regular user only receives collectors and apps their access policy allows.
 
 The notifier form offers `*:*` as **all collectors, all apps** and a
 `collector:*` row in every accessible collector group. The form shows stored
 wildcard rows whose collector is no longer listed, so an unchanged save keeps
 them. A `*` collector with a concrete app (`*/app`) is still available through
 MCP `add_notifier_subscription`, but the panel form does not render that row.
+
+## Dropped log lines
+
+The four matches above are the whole routing model. Because `*/*` carries every
+log alert from every app, it treats the log stream itself as an alert channel.
+An app whose output cannot be parsed is therefore a denial of that channel, not
+a source of extra alerts: the collector counts the unusable lines and never
+reports each one at error level. A broken parser or a mixed log format must not
+flood the topic that is supposed to carry real incidents.
+
+The collector keeps a per-app count for its current stats interval. It emits at
+most one warning per app for the interval, carrying the interval count, the
+lifetime total, and a 200-byte sample of the last dropped line. For its own
+journal unit (`tracer-collector`) it suppresses that warning entirely, so
+collecting its own stream cannot generate alert traffic; the counts still flow
+to the panel.
+
+The panel accumulates the interval counts it receives on the existing stats
+event and exposes them as the app's **Dropped** card. A nonzero value is a
+signal to inspect the app's log format; it is not a notification and does not
+create a panel log entry.
 
 ## Resource thresholds
 

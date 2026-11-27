@@ -9,15 +9,16 @@ type AppStatsProps struct {
 	Stats AppStatsData
 }
 
-// AppStatsData carries the log counts for the overview cards. HasLogs is
-// false when the app never received a log, in which case the counts render
-// as "N/A".
+// AppStatsData carries the counts for the overview cards. HasLogs is false
+// when the app never received a log, in which case the log counts render as
+// "N/A". Dropped is always numeric.
 type AppStatsData struct {
 	HasLogs  bool
 	Total    int64
 	Errors   int64
 	Warnings int64
 	Infos    int64
+	Dropped  int64
 }
 
 // statValue formats a log count, or "N/A" when the app has no logs.
@@ -25,6 +26,11 @@ func statValue(hasLogs bool, v int64) string {
 	if !hasLogs {
 		return "N/A"
 	}
+	return strconv.FormatInt(v, 10)
+}
+
+// dropValue formats a dropped-line count, which is always numeric.
+func dropValue(v int64) string {
 	return strconv.FormatInt(v, 10)
 }
 
@@ -46,8 +52,8 @@ func statClass(hasLogs bool, v int64, accent string) string {
 templ AppStatsSkeleton() {
 	<div id="app-stats" aria-hidden="true">
 		<h2 class="text-lg font-medium mb-4">Overview</h2>
-		<div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-			for i := 0; i < 4; i++ {
+		<div class="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-6">
+			for i := 0; i < 5; i++ {
 				<div class="bg-bg-secondary p-4 text-center">
 					<div class="animate-pulse" aria-hidden="true">
 						<div class="mx-auto h-8 w-14 rounded bg-fg/10"></div>
@@ -65,7 +71,7 @@ templ AppStatsSkeleton() {
 templ AppStats(props AppStatsProps) {
 	<div id="app-stats">
 		<h2 class="text-lg font-medium mb-4">Overview</h2>
-		<div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+		<div class="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-6">
 			<div class="bg-bg-secondary p-4 text-center">
 				<div class={ "text-2xl font-bold value-breath " + statClass(props.Stats.HasLogs, props.Stats.Total, "") }>{ statValue(props.Stats.HasLogs, props.Stats.Total) }</div>
 				<div class="mt-2 text-xs text-fg-secondary">Total Logs</div>
@@ -81,6 +87,10 @@ templ AppStats(props AppStatsProps) {
 			<div class="bg-bg-secondary p-4 text-center">
 				<div class={ "text-2xl font-bold value-breath " + statClass(props.Stats.HasLogs, props.Stats.Infos, "text-blue-400") }>{ statValue(props.Stats.HasLogs, props.Stats.Infos) }</div>
 				<div class="mt-2 text-xs text-fg-secondary">Info</div>
+			</div>
+			<div class="bg-bg-secondary p-4 text-center">
+				<div class={ "text-2xl font-bold value-breath " + statClass(true, props.Stats.Dropped, "text-secondary") }>{ dropValue(props.Stats.Dropped) }</div>
+				<div class="mt-2 text-xs text-fg-secondary">Dropped</div>
 			</div>
 		</div>
 	</div>

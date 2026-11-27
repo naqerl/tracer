@@ -17,15 +17,16 @@ type AppStatsProps struct {
 	Stats AppStatsData
 }
 
-// AppStatsData carries the log counts for the overview cards. HasLogs is
-// false when the app never received a log, in which case the counts render
-// as "N/A".
+// AppStatsData carries the counts for the overview cards. HasLogs is false
+// when the app never received a log, in which case the log counts render as
+// "N/A". Dropped is always numeric.
 type AppStatsData struct {
 	HasLogs  bool
 	Total    int64
 	Errors   int64
 	Warnings int64
 	Infos    int64
+	Dropped  int64
 }
 
 // statValue formats a log count, or "N/A" when the app has no logs.
@@ -33,6 +34,11 @@ func statValue(hasLogs bool, v int64) string {
 	if !hasLogs {
 		return "N/A"
 	}
+	return strconv.FormatInt(v, 10)
+}
+
+// dropValue formats a dropped-line count, which is always numeric.
+func dropValue(v int64) string {
 	return strconv.FormatInt(v, 10)
 }
 
@@ -72,11 +78,11 @@ func AppStatsSkeleton() templ.Component {
 			templ_7745c5c3_Var1 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div id=\"app-stats\" aria-hidden=\"true\"><h2 class=\"text-lg font-medium mb-4\">Overview</h2><div class=\"grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div id=\"app-stats\" aria-hidden=\"true\"><h2 class=\"text-lg font-medium mb-4\">Overview</h2><div class=\"grid grid-cols-2 sm:grid-cols-5 gap-3 mb-6\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		for i := 0; i < 4; i++ {
+		for i := 0; i < 5; i++ {
 			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "<div class=\"bg-bg-secondary p-4 text-center\"><div class=\"animate-pulse\" aria-hidden=\"true\"><div class=\"mx-auto h-8 w-14 rounded bg-fg/10\"></div><div class=\"mx-auto mt-2 h-4 w-16 rounded bg-fg/10\"></div></div></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
@@ -114,7 +120,7 @@ func AppStats(props AppStatsProps) templ.Component {
 			templ_7745c5c3_Var2 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "<div id=\"app-stats\"><h2 class=\"text-lg font-medium mb-4\">Overview</h2><div class=\"grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6\"><div class=\"bg-bg-secondary p-4 text-center\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "<div id=\"app-stats\"><h2 class=\"text-lg font-medium mb-4\">Overview</h2><div class=\"grid grid-cols-2 sm:grid-cols-5 gap-3 mb-6\"><div class=\"bg-bg-secondary p-4 text-center\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -254,7 +260,42 @@ func AppStats(props AppStatsProps) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, "</div><div class=\"mt-2 text-xs text-fg-secondary\">Info</div></div></div></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, "</div><div class=\"mt-2 text-xs text-fg-secondary\">Info</div></div><div class=\"bg-bg-secondary p-4 text-center\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var15 = []any{"text-2xl font-bold value-breath " + statClass(true, props.Stats.Dropped, "text-secondary")}
+		templ_7745c5c3_Err = templ.RenderCSSItems(ctx, templ_7745c5c3_Buffer, templ_7745c5c3_Var15...)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, "<div class=\"")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var16 string
+		templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.ResolveAttributeValue(templ.CSSClasses(templ_7745c5c3_Var15).String())
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/panel/view/app_stats.templ`, Line: 1, Col: 0}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var16)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var17 string
+		templ_7745c5c3_Var17, templ_7745c5c3_Err = templ.JoinStringErrs(dropValue(props.Stats.Dropped))
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `apps/panel/web/handlers/panel/view/app_stats.templ`, Line: 86, Col: 139}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var17))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 19, "</div><div class=\"mt-2 text-xs text-fg-secondary\">Dropped</div></div></div></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

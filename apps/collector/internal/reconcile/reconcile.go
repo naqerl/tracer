@@ -4,20 +4,25 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"tracer/apps/collector/internal/app"
+	"tracer/apps/collector/internal/dropstats"
 	"tracer/apps/collector/internal/health"
 	"tracer/apps/collector/internal/lifecycle"
 	"tracer/apps/collector/internal/parser"
 	"tracer/apps/collector/internal/source"
 	"tracer/apps/collector/internal/supervisor"
+	"tracer/build"
 	"tracer/libs/types"
 )
 
 // Apply reconciles the running components against the configured apps and
 // applies them to sup, hot-reloading only what changed. Validation is handled
 // by CollectorConfig.Validate() before reaching here.
-func Apply(ctx context.Context, sup *supervisor.Supervisor, mpsc chan<- types.Event, apps []types.AppSpec) error {
+func Apply(ctx context.Context, sup *supervisor.Supervisor, mpsc chan<- types.Event, apps []types.AppSpec, drops *dropstats.Tracker) error {
+	drops.SetSelfApps(selfAppNames(apps))
+
 	// Build supervisor components. Capacity is len*2 because most apps
 	// produce both a log component and a health component; health-only
 	// apps contribute just one.
@@ -43,7 +48,7 @@ func Apply(ctx context.Context, sup *supervisor.Supervisor, mpsc chan<- types.Ev
 			components = append(components, appComponent{
 				id:   "app:" + spec.Name,
 				sig:  componentSignature(spec),
-				app:  app.New(s, p, lfc, spec.Name),
+				app:  app.New(s, p, lfc, spec.Name, drops),
 				mpsc: mpsc,
 			})
 		}
@@ -89,6 +94,27 @@ func componentSignature(appSpec types.AppSpec) string {
 		return appSpec.Name
 	}
 	return string(b)
+}
+
+// selfAppNames returns apps that tail the collector's own journal unit.
+func selfAppNames(apps []types.AppSpec) []string {
+	var names []string
+	seen := make(map[string]struct{})
+	for _, spec := range apps {
+		if spec.Source == nil {
+			continue
+		}
+		unit := strings.TrimSuffix(strings.TrimSpace(spec.Source.Params["unit"]), ".service")
+		if unit != build.CollectorUser {
+			continue
+		}
+		if _, ok := seen[spec.Name]; ok {
+			continue
+		}
+		seen[spec.Name] = struct{}{}
+		names = append(names, spec.Name)
+	}
+	return names
 }
 
 // ── Supervisor components ───────────────────────────────────────────────────

@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"tracer/apps/collector/internal/dropstats"
 	"tracer/libs/types"
 )
 
@@ -12,6 +13,7 @@ type Spec struct {
 	CPU           bool
 	Mem           bool
 	Disk          bool
+	Drops         *dropstats.Tracker
 }
 
 type Stats struct {
@@ -66,6 +68,7 @@ func (rm ResourceMonitor) Produce(ctx context.Context) <-chan types.Event {
 							DiskUsedGB:      snapshot.DiskUsedGB,
 							DiskAvailGB:     snapshot.DiskAvailGB,
 							Timestamp:       snapshot.Timestamp,
+							AppDrops:        rm.spec.Drops.Report(),
 						},
 					}
 				} else {

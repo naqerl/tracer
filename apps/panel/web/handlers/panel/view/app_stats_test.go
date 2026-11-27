@@ -14,6 +14,15 @@ func TestStatValue(t *testing.T) {
 	}
 }
 
+func TestDropValue(t *testing.T) {
+	if got := dropValue(0); got != "0" {
+		t.Fatalf("dropValue(0) = %q, want \"0\"", got)
+	}
+	if got := dropValue(42); got != "42" {
+		t.Fatalf("dropValue(42) = %q, want \"42\"", got)
+	}
+}
+
 func TestStatClass(t *testing.T) {
 	tests := []struct {
 		hasLogs bool

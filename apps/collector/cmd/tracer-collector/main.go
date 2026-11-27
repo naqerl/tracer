@@ -17,6 +17,7 @@ import (
 
 	"tracer/apps/collector"
 	"tracer/apps/collector/internal/config"
+	"tracer/apps/collector/internal/dropstats"
 	"tracer/apps/collector/internal/formatguesser"
 	"tracer/apps/collector/internal/install"
 	"tracer/apps/collector/internal/kubeconfig"
@@ -155,6 +156,7 @@ func main() {
 
 func serve(ctx context.Context, cfg config.Config) error {
 	mpsc := make(chan types.Event, 1000)
+	drops := dropstats.New(slog.Default())
 
 	senderSvc := sender.New(cfg.Sender, mpsc)
 	sup := supervisor.New()
@@ -172,6 +174,7 @@ func serve(ctx context.Context, cfg config.Config) error {
 			CPU:           sc.CPU,
 			Mem:           sc.Mem,
 			Disk:          sc.Disk,
+			Drops:         drops,
 		})
 		go func() {
 			for evt := range monitor.Produce(statsCtx) {
@@ -218,7 +221,7 @@ func serve(ctx context.Context, cfg config.Config) error {
 				}
 				applyStats(cc.GetStats())
 				current = cc.Apps
-				if err := reconcile.Apply(ctx, sup, mpsc, current); err != nil {
+				if err := reconcile.Apply(ctx, sup, mpsc, current, drops); err != nil {
 					slog.Error("could not apply pushed config, keeping current", "error", err)
 					continue
 				}
