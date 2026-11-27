@@ -575,14 +575,22 @@ func (h *handler) getApp(w http.ResponseWriter, r *http.Request) {
 		slog.Error("could not read app storage", "collector", collectorName, "app", appName, "error", err)
 	}
 
+	healthSummary := ""
+	if cfg, err := h.loadCollectorConfig(r.Context(), collectorName); err != nil {
+		slog.Error("could not load app health summary", "collector", collectorName, "app", appName, "error", err)
+	} else if app, ok := cfg.GetApp(appName); ok {
+		healthSummary = panelsvc.HealthCheckSummary(app.Health)
+	}
+
 	view.App(view.AppProps{
-		Title:     appName + " Analytics",
-		App:       appName,
-		Collector: collectorName,
-		Since:     sinceLabel,
-		Uptime:    appHealthViewFromServiceToView(uptime),
-		Storage:   appStorageView(storage),
-		Level:     level,
+		Title:         appName + " Analytics",
+		App:           appName,
+		Collector:     collectorName,
+		Since:         sinceLabel,
+		Uptime:        appHealthViewFromServiceToView(uptime),
+		Storage:       appStorageView(storage),
+		Level:         level,
+		HealthSummary: healthSummary,
 	}).Render(r.Context(), w)
 }
 
@@ -1369,6 +1377,9 @@ func (h *handler) getEditAppPage(w http.ResponseWriter, r *http.Request) {
 				props.Interval = app.Health.Params["interval"]
 				props.ExpectedStatus = app.Health.Params["expected_status"]
 				props.AlertDelay = app.Health.Params[types.HealthParamAlertDelay]
+				props.Timeout = app.Health.Params["timeout"]
+				props.Attempts = app.Health.Params["attempts"]
+				props.RetryInterval = app.Health.Params["retry_interval"]
 			}
 		}
 	}
@@ -1430,6 +1441,9 @@ func (h *handler) previewAppFormat(w http.ResponseWriter, r *http.Request) {
 			Interval:       r.FormValue("interval"),
 			ExpectedStatus: r.FormValue("expected_status"),
 			AlertDelay:     strings.TrimSpace(r.FormValue("alert_delay")),
+			Timeout:        strings.TrimSpace(r.FormValue("timeout")),
+			Attempts:       strings.TrimSpace(r.FormValue("attempts")),
+			RetryInterval:  strings.TrimSpace(r.FormValue("retry_interval")),
 			Guess:          guess,
 		}).Render(r.Context(), w)
 	}
@@ -1657,6 +1671,9 @@ func (h *handler) updateApp(w http.ResponseWriter, r *http.Request) {
 			Interval:       r.FormValue("interval"),
 			ExpectedStatus: r.FormValue("expected_status"),
 			AlertDelay:     strings.TrimSpace(r.FormValue("alert_delay")),
+			Timeout:        strings.TrimSpace(r.FormValue("timeout")),
+			Attempts:       strings.TrimSpace(r.FormValue("attempts")),
+			RetryInterval:  strings.TrimSpace(r.FormValue("retry_interval")),
 			Error:          msg,
 		}).Render(r.Context(), w)
 	}
@@ -1678,7 +1695,8 @@ func (h *handler) updateApp(w http.ResponseWriter, r *http.Request) {
 			alertDelay = existingApp.Health.Params[types.HealthParamAlertDelay]
 		}
 	}
-	health, healthErr := panelsvc.CheckHealth(formHealthType(r), r.FormValue("url"), r.FormValue("interval"), r.FormValue("expected_status"), r.FormValue("command"), r.FormValue("expect"), r.FormValue("expected_exit"), alertDelay)
+	health, healthErr := panelsvc.CheckHealth(formHealthType(r), r.FormValue("url"), r.FormValue("interval"), r.FormValue("expected_status"), r.FormValue("command"), r.FormValue("expect"), r.FormValue("expected_exit"), alertDelay,
+		strings.TrimSpace(r.FormValue("timeout")), strings.TrimSpace(r.FormValue("attempts")), strings.TrimSpace(r.FormValue("retry_interval")))
 	if healthErr != nil {
 		renderError(fmt.Errorf("%w: %w", panelsvc.ErrAppInvalidCheck, healthErr).Error())
 		return
@@ -1766,6 +1784,9 @@ func (h *handler) createApp(w http.ResponseWriter, r *http.Request) {
 			Interval:       r.FormValue("interval"),
 			ExpectedStatus: r.FormValue("expected_status"),
 			AlertDelay:     strings.TrimSpace(r.FormValue("alert_delay")),
+			Timeout:        strings.TrimSpace(r.FormValue("timeout")),
+			Attempts:       strings.TrimSpace(r.FormValue("attempts")),
+			RetryInterval:  strings.TrimSpace(r.FormValue("retry_interval")),
 			Error:          msg,
 		}).Render(r.Context(), w)
 	}
@@ -1805,6 +1826,9 @@ func (h *handler) createApp(w http.ResponseWriter, r *http.Request) {
 		Interval:       r.FormValue("interval"),
 		ExpectedStatus: r.FormValue("expected_status"),
 		AlertDelay:     strings.TrimSpace(r.FormValue("alert_delay")),
+		Timeout:        strings.TrimSpace(r.FormValue("timeout")),
+		Attempts:       strings.TrimSpace(r.FormValue("attempts")),
+		RetryInterval:  strings.TrimSpace(r.FormValue("retry_interval")),
 	})
 	if err != nil {
 		switch {

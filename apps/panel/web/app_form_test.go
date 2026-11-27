@@ -706,3 +706,230 @@ func appFormFragment(t *testing.T, body string) string {
 	}
 	return body[start : start+end]
 }
+
+func TestCreateAppSavesRetrySettings(t *testing.T) {
+	handler, token, _, _, _, panelService := newServerWithGuesser(t, nil)
+
+	rr := postApp(t, handler, token, url.Values{
+		"name":            {"slow-origin"},
+		"url":             {"https://slow.example.com/health"},
+		"interval":        {"30s"},
+		"expected_status": {"200"},
+		"timeout":         {"15s"},
+		"attempts":        {"1"},
+		"retry_interval":  {"0s"},
+	})
+	if rr.Code != http.StatusOK {
+		t.Fatalf("create status = %d body %s", rr.Code, rr.Body.String())
+	}
+
+	app := storedApp(t, panelService, "slow-origin")
+	if app.Health == nil {
+		t.Fatal("expected a health check")
+	}
+	if app.Health.Params["timeout"] != "15s" || app.Health.Params["attempts"] != "1" || app.Health.Params["retry_interval"] != "0s" {
+		t.Fatalf("health params = %v, want the submitted retry settings", app.Health.Params)
+	}
+}
+
+func TestCreateAppRejectsOutOfRangeTimeout(t *testing.T) {
+	handler, token, _, _, _, panelService := newServerWithGuesser(t, nil)
+
+	rr := postApp(t, handler, token, url.Values{
+		"name":    {"too-slow"},
+		"url":     {"https://example.com/health"},
+		"timeout": {"90s"},
+	})
+	if rr.Code != http.StatusOK {
+		t.Fatalf("create status = %d body %s", rr.Code, rr.Body.String())
+	}
+	body := rr.Body.String()
+	if !strings.Contains(body, "invalid uptime check") || !strings.Contains(body, "timeout") {
+		t.Fatalf("expected the timeout reason on the form, got %s", body)
+	}
+	if !strings.Contains(body, `name="timeout" value="90s"`) {
+		t.Fatalf("expected the form to keep the submitted timeout, got %s", body)
+	}
+
+	raw, err := panelService.FetchCollectorConfig(t.Context(), "demo")
+	if err != nil {
+		t.Fatalf("FetchCollectorConfig: %v", err)
+	}
+	if strings.Contains(raw, "too-slow") {
+		t.Fatalf("invalid check was stored: %s", raw)
+	}
+}
+
+func TestCreateAppRejectsRetryIntervalLongerThanDefaultTimeout(t *testing.T) {
+	handler, token, _, _, _, _ := newServerWithGuesser(t, nil)
+
+	rr := postApp(t, handler, token, url.Values{
+		"name":           {"slow-retry"},
+		"url":            {"https://example.com/health"},
+		"retry_interval": {"10s"},
+	})
+	if rr.Code != http.StatusOK {
+		t.Fatalf("create status = %d body %s", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), "shorter than timeout 5s") {
+		t.Fatalf("expected the retry interval reason on the form, got %s", rr.Body.String())
+	}
+}
+
+func TestUpdateAppClearsRetrySettings(t *testing.T) {
+	handler, token, _, _, _, panelService := newServerWithGuesser(t, nil)
+
+	create := postApp(t, handler, token, url.Values{
+		"name":            {"clear-timeout"},
+		"url":             {"https://clear.example.com/health"},
+		"interval":        {"30s"},
+		"expected_status": {"200"},
+		"timeout":         {"15s"},
+		"attempts":        {"1"},
+		"retry_interval":  {"0s"},
+	})
+	if create.Code != http.StatusOK {
+		t.Fatalf("create status = %d body %s", create.Code, create.Body.String())
+	}
+
+	rr := putApp(t, handler, token, "clear-timeout", url.Values{
+		"name":            {"clear-timeout"},
+		"url":             {"https://clear.example.com/health"},
+		"interval":        {"30s"},
+		"expected_status": {"200"},
+	})
+	if rr.Code != http.StatusOK {
+		t.Fatalf("update status = %d body %s", rr.Code, rr.Body.String())
+	}
+
+	app := storedApp(t, panelService, "clear-timeout")
+	for _, key := range []string{"timeout", "attempts", "retry_interval"} {
+		if _, ok := app.Health.Params[key]; ok {
+			t.Fatalf("cleared %s was stored, params = %v", key, app.Health.Params)
+		}
+	}
+}
+
+func TestUpdateAppKeepsLegacyHealthParamsUnchanged(t *testing.T) {
+	handler, token, _, _, _, panelService := newServerWithGuesser(t, nil)
+
+	form := url.Values{
+		"name":            {"legacy-check"},
+		"url":             {"https://legacy.example.com/health"},
+		"interval":        {"60s"},
+		"expected_status": {"204"},
+		"alert_delay":     {"5m"},
+	}
+	if rr := postApp(t, handler, token, form); rr.Code != http.StatusOK {
+		t.Fatalf("create status = %d body %s", rr.Code, rr.Body.String())
+	}
+	before := storedApp(t, panelService, "legacy-check").Health.Params
+
+	rr := putApp(t, handler, token, "legacy-check", form)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("update status = %d body %s", rr.Code, rr.Body.String())
+	}
+	after := storedApp(t, panelService, "legacy-check").Health.Params
+
+	if len(before) != len(after) {
+		t.Fatalf("params = %v, want the original %v", after, before)
+	}
+	for key, want := range before {
+		if after[key] != want {
+			t.Fatalf("params = %v, want the original %v", after, before)
+		}
+	}
+}
+
+func TestEditFormPrefillsRetrySettingsAndAppPageSummarizes(t *testing.T) {
+	handler, token, _, ingestService, _, _ := newServerWithGuesser(t, nil)
+
+	create := postApp(t, handler, token, url.Values{
+		"name":            {"summary-check"},
+		"url":             {"https://summary.example.com/health"},
+		"interval":        {"30s"},
+		"expected_status": {"200"},
+		"timeout":         {"15s"},
+	})
+	if create.Code != http.StatusOK {
+		t.Fatalf("create status = %d body %s", create.Code, create.Body.String())
+	}
+	if _, err := ingestService.StoreLog(t.Context(), ingestsvc.StoreLogRequest{
+		CollectorName: "demo",
+		AppName:       "summary-check",
+		Entry:         types.LogEntry{Level: types.LevelInfo, Message: "seed", Timestamp: time.Now()},
+	}); err != nil {
+		t.Fatalf("seed app db: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/panel/collectors/demo/apps/summary-check/settings", nil)
+	req.AddCookie(&http.Cookie{Name: "tracer_session", Value: token})
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("settings status = %d body %s", rr.Code, rr.Body.String())
+	}
+	body := rr.Body.String()
+	if !strings.Contains(body, `name="timeout" value="15s"`) {
+		t.Fatalf("expected the stored timeout on the edit form, got %s", body)
+	}
+	if !strings.Contains(body, `name="attempts" value="" placeholder="3"`) {
+		t.Fatalf("expected an empty attempts field with the default placeholder, got %s", body)
+	}
+	if !strings.Contains(body, `name="timeout" value="15s" placeholder="5s"`) {
+		t.Fatalf("expected the timeout placeholder to stay 5s, got %s", body)
+	}
+
+	page := httptest.NewRequest(http.MethodGet, "/panel/collectors/demo/apps/summary-check?level=error", nil)
+	page.AddCookie(&http.Cookie{Name: "tracer_session", Value: token})
+	pageRR := httptest.NewRecorder()
+	handler.ServeHTTP(pageRR, page)
+	if pageRR.Code != http.StatusOK {
+		t.Fatalf("app page status = %d body %s", pageRR.Code, pageRR.Body.String())
+	}
+	if !strings.Contains(pageRR.Body.String(), "HTTP · every 30s · timeout 15s · 3 attempts · retry 1s") {
+		t.Fatalf("expected the health summary on the app page, got %s", pageRR.Body.String())
+	}
+}
+
+func TestAppPageSummaryUsesDefaultTimeoutAfterClearing(t *testing.T) {
+	handler, token, _, ingestService, _, _ := newServerWithGuesser(t, nil)
+
+	create := postApp(t, handler, token, url.Values{
+		"name":            {"default-check"},
+		"url":             {"https://default.example.com/health"},
+		"interval":        {"30s"},
+		"expected_status": {"200"},
+		"timeout":         {"15s"},
+	})
+	if create.Code != http.StatusOK {
+		t.Fatalf("create status = %d body %s", create.Code, create.Body.String())
+	}
+	if _, err := ingestService.StoreLog(t.Context(), ingestsvc.StoreLogRequest{
+		CollectorName: "demo",
+		AppName:       "default-check",
+		Entry:         types.LogEntry{Level: types.LevelInfo, Message: "seed", Timestamp: time.Now()},
+	}); err != nil {
+		t.Fatalf("seed app db: %v", err)
+	}
+
+	if rr := putApp(t, handler, token, "default-check", url.Values{
+		"name":            {"default-check"},
+		"url":             {"https://default.example.com/health"},
+		"interval":        {"30s"},
+		"expected_status": {"200"},
+	}); rr.Code != http.StatusOK {
+		t.Fatalf("update status = %d body %s", rr.Code, rr.Body.String())
+	}
+
+	page := httptest.NewRequest(http.MethodGet, "/panel/collectors/demo/apps/default-check?level=error", nil)
+	page.AddCookie(&http.Cookie{Name: "tracer_session", Value: token})
+	pageRR := httptest.NewRecorder()
+	handler.ServeHTTP(pageRR, page)
+	if pageRR.Code != http.StatusOK {
+		t.Fatalf("app page status = %d body %s", pageRR.Code, pageRR.Body.String())
+	}
+	if !strings.Contains(pageRR.Body.String(), "timeout 5s") {
+		t.Fatalf("expected the default timeout in the summary, got %s", pageRR.Body.String())
+	}
+}

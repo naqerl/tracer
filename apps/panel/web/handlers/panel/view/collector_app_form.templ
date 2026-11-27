@@ -2,6 +2,7 @@ package view
 
 import (
 	"encoding/json"
+	"tracer/apps/panel/internal/services/panel"
 	"tracer/apps/panel/web/templates"
 )
 
@@ -90,6 +91,9 @@ type AppFormProps struct {
 	Interval       string
 	ExpectedStatus string
 	AlertDelay     string
+	Timeout        string
+	Attempts       string
+	RetryInterval  string
 	Error          string
 	Guess          FormatGuessView
 }
@@ -262,6 +266,23 @@ templ AppForm(p AppFormProps) {
 						<label class="block text-sm text-fg-secondary mb-1">Expected status codes (HTTP)</label>
 						<input type="text" name="expected_status" value={ tern(p.ExpectedStatus == "", "200", p.ExpectedStatus) } placeholder="200" autocomplete="off" hx-post={ "/panel/collectors/" + p.Collector + "/apps/health-probe" } hx-trigger="input changed delay:500ms, focusout" hx-target="#app-health-status" hx-swap="outerHTML" hx-include="closest #health-check-form" hx-indicator="#health-probe-spinner" class="w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base font-mono text-fg placeholder:text-fg-secondary/50"/>
 					</div>
+					<div>
+						<label class="block text-sm text-fg-secondary mb-1">Timeout</label>
+						<input type="text" name="timeout" value={ p.Timeout } placeholder={ panel.DefaultHTTPTimeout } autocomplete="off" class="w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base font-mono text-fg placeholder:text-fg-secondary/50"/>
+						<p class="text-xs text-fg-secondary mt-1">Go duration, e.g. 15s (max 60s)</p>
+					</div>
+					if p.HealthType == "" || p.HealthType == "http" {
+						<div>
+							<label class="block text-sm text-fg-secondary mb-1">Attempts</label>
+							<input type="text" inputmode="numeric" name="attempts" value={ p.Attempts } placeholder={ panel.DefaultHTTPAttempts } autocomplete="off" class="w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base font-mono text-fg placeholder:text-fg-secondary/50"/>
+							<p class="text-xs text-fg-secondary mt-1">1 to 10 probes per check</p>
+						</div>
+						<div>
+							<label class="block text-sm text-fg-secondary mb-1">Retry interval</label>
+							<input type="text" name="retry_interval" value={ p.RetryInterval } placeholder={ panel.DefaultHTTPRetryInterval } autocomplete="off" class="w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base font-mono text-fg placeholder:text-fg-secondary/50"/>
+							<p class="text-xs text-fg-secondary mt-1">Wait between attempts, e.g. 1s</p>
+						</div>
+					}
 					<div>
 						<label class="block text-sm text-fg-secondary mb-1">Command (run with /bin/sh -c)</label>
 						<input type="text" spellcheck="false" name="command" value={ p.Command } placeholder="pg_isready -h 127.0.0.1 -p 5432" autocomplete="off" class="w-full bg-transparent border-b border-fg/20 focus:border-fg/60 focus:outline-none px-2 py-2 text-base font-mono text-fg placeholder:text-fg-secondary/50"/>

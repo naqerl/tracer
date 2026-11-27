@@ -44,6 +44,14 @@ const (
 	defaultStatsInterval  = 30 * time.Second
 	defaultHealthInterval = 30 * time.Second
 
+	// DefaultHTTPTimeout, DefaultHTTPAttempts and DefaultHTTPRetryInterval are
+	// the collector's HTTP check defaults, shown in the form and the summary.
+	DefaultHTTPTimeout       = "5s"
+	DefaultHTTPAttempts      = "3"
+	DefaultHTTPRetryInterval = "1s"
+
+	defaultHTTPTimeoutDuration = 5 * time.Second
+
 	// HealthBucketCount is the amount of uptime bars every app renders for a
 	// window, so bars stay comparable across apps.
 	HealthBucketCount = 37
@@ -151,6 +159,9 @@ type NewApp struct {
 	Interval       string
 	ExpectedStatus string
 	AlertDelay     string
+	Timeout        string
+	Attempts       string
+	RetryInterval  string
 }
 
 // UptimeCheck is a validated HTTP health check.
@@ -458,7 +469,7 @@ func (s *Service) SaveApp(ctx context.Context, collectorName string, app NewApp)
 		return fmt.Errorf("invalid app name: %w", err)
 	}
 
-	health, err := CheckHealth(app.HealthType, app.URL, app.Interval, app.ExpectedStatus, app.Command, app.Expect, app.ExpectedExit, app.AlertDelay)
+	health, err := CheckHealth(app.HealthType, app.URL, app.Interval, app.ExpectedStatus, app.Command, app.Expect, app.ExpectedExit, app.AlertDelay, app.Timeout, app.Attempts, app.RetryInterval)
 	if err != nil {
 		return fmt.Errorf("%w: %w", ErrAppInvalidCheck, err)
 	}
@@ -547,7 +558,7 @@ func (s *Service) resolveAppSource(ctx context.Context, collectorName, appName s
 
 // CheckHealth validates the health-check fields an app form carries and builds
 // the spec the collector runs. A nil check means the app has no health check.
-func CheckHealth(rawType, rawURL, rawInterval, rawExpectedStatus, rawCommand, rawExpect, rawExpectedExit, rawAlertDelay string) (*sharedtypes.HealthCheckSpec, error) {
+func CheckHealth(rawType, rawURL, rawInterval, rawExpectedStatus, rawCommand, rawExpect, rawExpectedExit, rawAlertDelay, rawTimeout, rawAttempts, rawRetryInterval string) (*sharedtypes.HealthCheckSpec, error) {
 	healthType := strings.ToLower(strings.TrimSpace(rawType))
 	if healthType == "" {
 		healthType = "http"
@@ -573,6 +584,18 @@ func CheckHealth(rawType, rawURL, rawInterval, rawExpectedStatus, rawCommand, ra
 		return nil, fmt.Errorf("alert delay must not be negative, got %q", alertDelay)
 	}
 
+	timeout := strings.TrimSpace(rawTimeout)
+	var timeoutDuration time.Duration
+	if timeout != "" {
+		timeoutDuration, err = time.ParseDuration(timeout)
+		if err != nil {
+			return nil, fmt.Errorf("could not parse timeout: %w", err)
+		}
+		if timeoutDuration <= 0 || timeoutDuration > 60*time.Second {
+			return nil, fmt.Errorf("timeout must be greater than 0 and at most 60s, got %q", timeout)
+		}
+	}
+
 	switch healthType {
 	case "http":
 		url := strings.TrimSpace(rawURL)
@@ -596,15 +619,51 @@ func CheckHealth(rawType, rawURL, rawInterval, rawExpectedStatus, rawCommand, ra
 			expected = "200"
 		}
 
-		return &sharedtypes.HealthCheckSpec{
-			Type: "http",
-			Params: map[string]string{
-				"url":                             url,
-				"interval":                        interval,
-				"expected_status":                 expected,
-				sharedtypes.HealthParamAlertDelay: alertDelay,
-			},
-		}, nil
+		attempts := strings.TrimSpace(rawAttempts)
+		if attempts != "" {
+			n, err := strconv.Atoi(attempts)
+			if err != nil {
+				return nil, fmt.Errorf("attempts must be an integer, got %q", attempts)
+			}
+			if n < 1 || n > 10 {
+				return nil, fmt.Errorf("attempts must be between 1 and 10, got %q", attempts)
+			}
+		}
+
+		retryInterval := strings.TrimSpace(rawRetryInterval)
+		if retryInterval != "" {
+			retry, err := time.ParseDuration(retryInterval)
+			if err != nil {
+				return nil, fmt.Errorf("could not parse retry interval: %w", err)
+			}
+			if retry < 0 {
+				return nil, fmt.Errorf("retry interval must not be negative, got %q", retryInterval)
+			}
+			effectiveTimeout := defaultHTTPTimeoutDuration
+			if timeout != "" {
+				effectiveTimeout = timeoutDuration
+			}
+			if retry >= effectiveTimeout {
+				return nil, fmt.Errorf("retry interval must be shorter than timeout %s, got %q", effectiveTimeout, retryInterval)
+			}
+		}
+
+		params := map[string]string{
+			"url":                             url,
+			"interval":                        interval,
+			"expected_status":                 expected,
+			sharedtypes.HealthParamAlertDelay: alertDelay,
+		}
+		if timeout != "" {
+			params["timeout"] = timeout
+		}
+		if attempts != "" {
+			params["attempts"] = attempts
+		}
+		if retryInterval != "" {
+			params["retry_interval"] = retryInterval
+		}
+		return &sharedtypes.HealthCheckSpec{Type: "http", Params: params}, nil
 	case "command":
 		command := strings.TrimSpace(rawCommand)
 		if command == "" {
@@ -628,16 +687,17 @@ func CheckHealth(rawType, rawURL, rawInterval, rawExpectedStatus, rawCommand, ra
 			}
 		}
 
-		return &sharedtypes.HealthCheckSpec{
-			Type: "command",
-			Params: map[string]string{
-				"command":                         command,
-				"expect":                          expect,
-				"expected_exit":                   expectedExit,
-				"interval":                        interval,
-				sharedtypes.HealthParamAlertDelay: alertDelay,
-			},
-		}, nil
+		params := map[string]string{
+			"command":                         command,
+			"expect":                          expect,
+			"expected_exit":                   expectedExit,
+			"interval":                        interval,
+			sharedtypes.HealthParamAlertDelay: alertDelay,
+		}
+		if timeout != "" {
+			params["timeout"] = timeout
+		}
+		return &sharedtypes.HealthCheckSpec{Type: "command", Params: params}, nil
 	case "systemd", "podman":
 		return nil, fmt.Errorf("health type %q is not implemented yet", rawType)
 	default:
@@ -651,7 +711,44 @@ func CheckUptime(rawURL, rawInterval, rawExpected string, rawAlertDelay ...strin
 	if len(rawAlertDelay) > 0 {
 		alertDelay = rawAlertDelay[0]
 	}
-	return CheckHealth("http", rawURL, rawInterval, rawExpected, "", "", "", alertDelay)
+	return CheckHealth("http", rawURL, rawInterval, rawExpected, "", "", "", alertDelay, "", "", "")
+}
+
+// HealthCheckSummary renders the effective settings of a check for the app page.
+func HealthCheckSummary(check *sharedtypes.HealthCheckSpec) string {
+	if check == nil {
+		return ""
+	}
+
+	interval := defaultHealthInterval.String()
+	if parsed, ok := parseIntervalParam(check.Params["interval"], defaultHealthInterval); ok {
+		interval = parsed.String()
+	}
+
+	timeout := DefaultHTTPTimeout
+	if parsed, ok := parseIntervalParam(check.Params["timeout"], defaultHTTPTimeoutDuration); ok {
+		timeout = parsed.String()
+	}
+
+	switch strings.ToLower(check.Type) {
+	case "command":
+		return fmt.Sprintf("Command · every %s · timeout %s", interval, timeout)
+	case "http", "":
+		attempts := DefaultHTTPAttempts
+		if raw := strings.TrimSpace(check.Params["attempts"]); raw != "" {
+			if n, err := strconv.Atoi(raw); err == nil && n >= 1 && n <= 10 {
+				attempts = strconv.Itoa(n)
+			}
+		}
+
+		retry := DefaultHTTPRetryInterval
+		if parsed, ok := parseIntervalParam(check.Params["retry_interval"], time.Second); ok {
+			retry = parsed.String()
+		}
+		return fmt.Sprintf("HTTP · every %s · timeout %s · %s attempts · retry %s", interval, timeout, attempts, retry)
+	default:
+		return ""
+	}
 }
 
 // GuessFormat asks the collector to detect the log format for a service

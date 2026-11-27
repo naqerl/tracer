@@ -2,6 +2,7 @@ package web_test
 
 import (
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
@@ -113,5 +114,46 @@ func TestUpdateCommandHealthKeepsCommand(t *testing.T) {
 	}
 	if app.Health.Params["expected_exit"] != "0,1" || app.Health.Params["alert_delay"] != "1m" {
 		t.Fatalf("health params = %v", app.Health.Params)
+	}
+}
+
+func TestCreateCommandHealthIgnoresRetrySettings(t *testing.T) {
+	handler, token, _, _, _, panelService := newServerWithGuesser(t, nil)
+
+	rr := postApp(t, handler, token, url.Values{
+		"name":           {"pg-timeout"},
+		"health_type":    {"command"},
+		"command":        {"pg_isready"},
+		"timeout":        {"30s"},
+		"attempts":       {"2"},
+		"retry_interval": {"5s"},
+	})
+	if rr.Code != http.StatusOK {
+		t.Fatalf("create status = %d body %s", rr.Code, rr.Body.String())
+	}
+
+	app := storedApp(t, panelService, "pg-timeout")
+	if app.Health == nil || app.Health.Params["timeout"] != "30s" {
+		t.Fatalf("health = %+v, want a 30s timeout", app.Health)
+	}
+	for _, key := range []string{"attempts", "retry_interval"} {
+		if _, ok := app.Health.Params[key]; ok {
+			t.Fatalf("command check stored %s, params = %v", key, app.Health.Params)
+		}
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/panel/collectors/demo/apps/pg-timeout/settings", nil)
+	req.AddCookie(&http.Cookie{Name: "tracer_session", Value: token})
+	settings := httptest.NewRecorder()
+	handler.ServeHTTP(settings, req)
+	if settings.Code != http.StatusOK {
+		t.Fatalf("settings status = %d body %s", settings.Code, settings.Body.String())
+	}
+	body := settings.Body.String()
+	if strings.Contains(body, `name="attempts"`) || strings.Contains(body, `name="retry_interval"`) {
+		t.Fatalf("expected retry fields to be hidden for a command check, got %s", body)
+	}
+	if !strings.Contains(body, `name="timeout"`) {
+		t.Fatalf("expected the timeout field for a command check, got %s", body)
 	}
 }
