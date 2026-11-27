@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"bytes"
+	"encoding/json"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -628,4 +629,56 @@ func contentText(t *testing.T, res *mcpsdk.CallToolResult) string {
 		t.Fatalf("content is %T, want *mcpsdk.TextContent", res.Content[0])
 	}
 	return text.Text
+}
+
+func TestCreateAppSetsRetrySettings(t *testing.T) {
+	e := newEndpoint(t, false)
+	session := e.connect(t, e.userKey(t, e.admin.ID, "mcp"))
+
+	res := callTool(t, session, "create_app", map[string]any{
+		"collector":      "demo",
+		"name":           "mcp-slow",
+		"url":            "https://slow.example.com/health",
+		"timeout":        "15s",
+		"attempts":       "1",
+		"retry_interval": "0s",
+	})
+	if res.IsError {
+		t.Fatalf("create_app reported an error: %s", contentText(t, res))
+	}
+
+	raw, err := e.panelSvc.FetchCollectorConfig(t.Context(), "demo")
+	if err != nil {
+		t.Fatalf("fetch config: %v", err)
+	}
+	var cfg types.CollectorConfig
+	if err := json.Unmarshal([]byte(raw), &cfg); err != nil {
+		t.Fatalf("unmarshal config: %v", err)
+	}
+	app, ok := cfg.GetApp("mcp-slow")
+	if !ok || app.Health == nil {
+		t.Fatalf("app = %+v, want a health check", app)
+	}
+	if app.Health.Params["timeout"] != "15s" || app.Health.Params["attempts"] != "1" || app.Health.Params["retry_interval"] != "0s" {
+		t.Fatalf("health params = %v, want the MCP retry settings", app.Health.Params)
+	}
+}
+
+func TestCreateAppRejectsOutOfRangeAttempts(t *testing.T) {
+	e := newEndpoint(t, false)
+	session := e.connect(t, e.userKey(t, e.admin.ID, "mcp"))
+
+	res := callTool(t, session, "create_app", map[string]any{
+		"collector": "demo",
+		"name":      "mcp-bad-attempts",
+		"url":       "https://example.com/health",
+		"attempts":  "11",
+	})
+	if !res.IsError {
+		t.Fatal("expected create_app to reject attempts 11")
+	}
+	text := contentText(t, res)
+	if !strings.Contains(text, "invalid health check") || !strings.Contains(text, "attempts must be between 1 and 10") {
+		t.Fatalf("error = %q, want the shared attempts validation", text)
+	}
 }

@@ -11,9 +11,10 @@ type AppProps struct {
 	App       string
 	Collector string
 	Since     string
-	Storage   AppStorageView
-	Uptime    AppHealthView
-	Level     string
+	Storage       AppStorageView
+	Uptime        AppHealthView
+	Level         string
+	HealthSummary string
 }
 
 // App renders the app detail page.
@@ -51,6 +52,10 @@ templ App(props AppProps) {
 			>
 				@UptimePanel(props.Uptime)
 			</div>
+
+			if props.HealthSummary != "" {
+				<p class="text-sm text-fg-secondary mb-6">{ props.HealthSummary }</p>
+			}
 
 			<div
 			  hx-get={ "/panel/collectors/" + props.Collector + "/apps/" + props.App + "/stats" }

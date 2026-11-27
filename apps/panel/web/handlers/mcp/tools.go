@@ -81,6 +81,9 @@ type createAppInput struct {
 	Interval       string `json:"interval,omitempty" jsonschema:"how often to run the health check, e.g. 30s (default 30s)"`
 	ExpectedStatus string `json:"expected_status,omitempty" jsonschema:"comma-separated HTTP status codes that count as up, e.g. 200,301 (default any 2xx)"`
 	AlertDelay     string `json:"alert_delay,omitempty" jsonschema:"how long the app must stay down before an uptime alert is sent, e.g. 5m (default 0s: alert immediately)"`
+	Timeout        string `json:"timeout,omitempty" jsonschema:"HTTP or command probe timeout as a Go duration, e.g. 15s; greater than 0 and at most 60s (default 5s)"`
+	Attempts       string `json:"attempts,omitempty" jsonschema:"HTTP probes per check as an integer from 1 to 10 (default 3); ignored for command checks"`
+	RetryInterval  string `json:"retry_interval,omitempty" jsonschema:"wait between HTTP attempts as a Go duration, e.g. 1s; not negative and shorter than the timeout (default 1s); ignored for command checks"`
 }
 
 type createNotifierInput struct {
@@ -203,8 +206,9 @@ func createAppTool() *mcpsdk.Tool {
 		Name: "create_app",
 		Description: "Add an app to a collector. Give a service (systemd unit, kubectl workload or file path) to collect its logs, " +
 			"or a health check to watch it, or both. health_type=http probes a URL; health_type=command runs a shell command " +
-			"and can require an output regexp (expect) and one or more expected_exit codes. The collector resolves the log " +
-			"format when a service is given. Not available on a panel that runs without authentication (demo mode), and " +
+			"and can require an output regexp (expect) and one or more expected_exit codes. timeout sets the probe timeout " +
+			"(default 5s, at most 60s); attempts (1-10, default 3) and retry_interval (default 1s) tune HTTP retries. " +
+			"The collector resolves the log format when a service is given. Not available on a panel that runs without authentication (demo mode), and " +
 			"requires permission to modify the collector.",
 		Annotations: &mcpsdk.ToolAnnotations{ReadOnlyHint: false, DestructiveHint: &destructive},
 	}
@@ -382,6 +386,9 @@ func (s *Server) createApp(ctx context.Context, req *mcpsdk.CallToolRequest, in 
 		Interval:       strings.TrimSpace(in.Interval),
 		ExpectedStatus: strings.TrimSpace(in.ExpectedStatus),
 		AlertDelay:     strings.TrimSpace(in.AlertDelay),
+		Timeout:        strings.TrimSpace(in.Timeout),
+		Attempts:       strings.TrimSpace(in.Attempts),
+		RetryInterval:  strings.TrimSpace(in.RetryInterval),
 	})
 	switch {
 	case errors.Is(err, panelsvc.ErrAppNameTaken):

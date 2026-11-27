@@ -256,3 +256,99 @@ func savedApp(t *testing.T, svc *Service, collectorName, appName string) types.A
 	}
 	return app
 }
+
+func TestCheckHealthWritesRetrySettingsOnlyWhenGiven(t *testing.T) {
+	baseline, err := CheckHealth("http", "https://example.com/health", "", "", "", "", "", "", "", "", "")
+	if err != nil {
+		t.Fatalf("CheckHealth: %v", err)
+	}
+	for _, key := range []string{"timeout", "attempts", "retry_interval"} {
+		if _, ok := baseline.Params[key]; ok {
+			t.Fatalf("empty %s wrote a key, params = %v", key, baseline.Params)
+		}
+	}
+
+	check, err := CheckHealth("http", "https://example.com/health", "", "", "", "", "", "", "15s", "1", "0s")
+	if err != nil {
+		t.Fatalf("CheckHealth with retry settings: %v", err)
+	}
+	if check.Params["timeout"] != "15s" || check.Params["attempts"] != "1" || check.Params["retry_interval"] != "0s" {
+		t.Fatalf("params = %v, want the submitted retry settings", check.Params)
+	}
+}
+
+func TestCheckHealthRejectsInvalidRetrySettings(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		typ  string
+		args [3]string
+		want string
+	}{
+		{name: "timeout too long", typ: "http", args: [3]string{"90s", "", ""}, want: "timeout"},
+		{name: "timeout zero", typ: "http", args: [3]string{"0s", "", ""}, want: "timeout"},
+		{name: "timeout not a duration", typ: "http", args: [3]string{"soon", "", ""}, want: "timeout"},
+		{name: "attempts zero", typ: "http", args: [3]string{"", "0", ""}, want: "attempts"},
+		{name: "attempts too many", typ: "http", args: [3]string{"", "11", ""}, want: "attempts"},
+		{name: "attempts not an integer", typ: "http", args: [3]string{"", "many", ""}, want: "attempts"},
+		{name: "retry interval negative", typ: "http", args: [3]string{"", "", "-1s"}, want: "retry interval"},
+		{name: "retry interval not a duration", typ: "http", args: [3]string{"", "", "soon"}, want: "retry interval"},
+		{name: "retry interval outlasts default timeout", typ: "http", args: [3]string{"", "", "10s"}, want: "shorter than timeout 5s"},
+		{name: "retry interval equals timeout", typ: "http", args: [3]string{"15s", "", "15s"}, want: "shorter than timeout 15s"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := CheckHealth(tc.typ, "https://example.com/health", "", "", "", "", "", "", tc.args[0], tc.args[1], tc.args[2])
+			if err == nil {
+				t.Fatalf("expected %s to be rejected", tc.name)
+			}
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("error = %q, want it to name %q", err, tc.want)
+			}
+		})
+	}
+}
+
+func TestCheckHealthRetryIntervalFitsExplicitTimeout(t *testing.T) {
+	check, err := CheckHealth("http", "https://example.com/health", "", "", "", "", "", "", "15s", "", "10s")
+	if err != nil {
+		t.Fatalf("CheckHealth: %v", err)
+	}
+	if check.Params["retry_interval"] != "10s" {
+		t.Fatalf("params = %v, want retry_interval 10s", check.Params)
+	}
+}
+
+func TestCheckHealthCommandKeepsOnlyTimeout(t *testing.T) {
+	check, err := CheckHealth("command", "", "", "", "pg_isready", "", "", "", "30s", "2", "5s")
+	if err != nil {
+		t.Fatalf("CheckHealth: %v", err)
+	}
+	if check.Params["timeout"] != "30s" {
+		t.Fatalf("timeout = %q, want 30s", check.Params["timeout"])
+	}
+	for _, key := range []string{"attempts", "retry_interval"} {
+		if _, ok := check.Params[key]; ok {
+			t.Fatalf("command check wrote %s, params = %v", key, check.Params)
+		}
+	}
+}
+
+func TestHealthCheckSummary(t *testing.T) {
+	if got := HealthCheckSummary(nil); got != "" {
+		t.Fatalf("nil summary = %q, want empty", got)
+	}
+
+	httpCheck := &types.HealthCheckSpec{Type: "http", Params: map[string]string{
+		"interval":       "30s",
+		"timeout":        "15s",
+		"attempts":       "3",
+		"retry_interval": "1s",
+	}}
+	if got, want := HealthCheckSummary(httpCheck), "HTTP · every 30s · timeout 15s · 3 attempts · retry 1s"; got != want {
+		t.Fatalf("http summary = %q, want %q", got, want)
+	}
+
+	commandCheck := &types.HealthCheckSpec{Type: "command", Params: map[string]string{"interval": "30s"}}
+	if got, want := HealthCheckSummary(commandCheck), "Command · every 30s · timeout 5s"; got != want {
+		t.Fatalf("command summary = %q, want %q", got, want)
+	}
+}

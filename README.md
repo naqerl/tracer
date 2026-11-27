@@ -194,9 +194,12 @@ collect its logs, a health check to watch it, or both. `health_type` is `http` (
 `command`; an HTTP check takes `url` and `expected_status`, while a command check takes `command`,
 an optional `expect` Go regexp, and `expected_exit` (comma-separated codes, default `0`). `interval`
 sets how often the check runs (default `30s`), and `alert_delay` (a Go duration such as `5m`, default
-`0s`) holds an uptime alert back until the app has been down that long. It is refused when the panel
-runs with `-no-auth` (demo mode), and otherwise needs a user who may modify that collector. Everything
-else reads only.
+`0s`) holds an uptime alert back until the app has been down that long. `timeout` (a Go duration up to
+`60s`, default `5s`) bounds each probe; for HTTP checks `attempts` (`1`–`10`, default `3`) and
+`retry_interval` (default `1s`, shorter than the timeout) tune the retries. Empty fields use the
+collector's defaults, and a command check takes only `timeout`. It is refused when the panel runs with
+`-no-auth` (demo mode), and otherwise needs a user who may modify that collector. Everything else
+reads only.
 
 A command health check is useful for a dependency that has no HTTP endpoint. For example, to watch a
 Postgres replica from the collector host:
