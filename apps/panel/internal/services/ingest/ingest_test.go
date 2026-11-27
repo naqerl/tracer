@@ -171,6 +171,57 @@ func TestResourceThresholdNotification(t *testing.T) {
 	}
 }
 
+func TestSaveSystemStatsAccumulatesAppDrops(t *testing.T) {
+	mgr := testutil.NewTestDBManager(t)
+	ch := make(chan notify.Notification, 8)
+	svc := New(mgr, ch, nil, &testIngestConfig{sampleRate: 1.0}, nil)
+
+	if err := svc.RegisterCollector(t.Context(), RegisterCollectorRequest{
+		CollectorName: "test-collector",
+		Apps:          []string{"alpha", "beta"},
+	}); err != nil {
+		t.Fatalf("register collector: %v", err)
+	}
+
+	save := func(now time.Time, drops map[string]types.AppDropStats) {
+		t.Helper()
+		if err := svc.SaveSystemStats(t.Context(), SaveSystemStatsRequest{
+			CollectorName: "test-collector",
+			Stats: types.Stats{
+				Timestamp: now,
+				AppDrops:  drops,
+			},
+		}); err != nil {
+			t.Fatalf("save stats: %v", err)
+		}
+	}
+
+	now := time.Now().Truncate(time.Second)
+	save(now, map[string]types.AppDropStats{
+		"alpha": {DroppedLines: 3, LastSample: "first"},
+		"beta":  {DroppedLines: 1, LastSample: "second"},
+	})
+	save(now.Add(time.Second), map[string]types.AppDropStats{
+		"alpha": {DroppedLines: 4, LastSample: "third"},
+	})
+
+	if got := svc.AppDroppedLines("test-collector", "alpha"); got != 7 {
+		t.Fatalf("alpha dropped lines = %d, want 7", got)
+	}
+	if got := svc.AppDroppedLines("test-collector", "beta"); got != 1 {
+		t.Fatalf("beta dropped lines = %d, want 1", got)
+	}
+	if got := svc.AppDroppedLines("test-collector", "gamma"); got != 0 {
+		t.Fatalf("gamma dropped lines = %d, want 0", got)
+	}
+	if got := svc.AppDroppedLines("other-collector", "alpha"); got != 0 {
+		t.Fatalf("other collector dropped lines = %d, want 0", got)
+	}
+	if ns := drainNotifications(ch); len(ns) != 0 {
+		t.Fatalf("app drops must not notify, got %+v", ns)
+	}
+}
+
 func TestStoreLogErrorAlerts(t *testing.T) {
 	mgr := testutil.NewTestDBManager(t)
 	ch := make(chan notify.Notification, 32)

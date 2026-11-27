@@ -635,6 +635,7 @@ func (h *handler) getAppStats(w http.ResponseWriter, r *http.Request) {
 			Errors:   stats.Errors,
 			Warnings: stats.Warnings,
 			Infos:    stats.Infos,
+			Dropped:  stats.Dropped,
 		},
 	}).Render(r.Context(), w)
 }

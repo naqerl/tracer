@@ -1441,6 +1441,7 @@ type AppStats struct {
 	Errors   int64
 	Warnings int64
 	Infos    int64
+	Dropped  int64
 	HasLogs  bool
 }
 
@@ -1488,6 +1489,7 @@ func (s *Service) GetAppStats(ctx context.Context, req GetAppStatsRequest) (AppS
 		Errors:   counts.Errors,
 		Warnings: counts.Warnings,
 		Infos:    counts.Infos,
+		Dropped:  s.ingestSvc.AppDroppedLines(req.CollectorName, req.AppName),
 		HasLogs:  hasLogs,
 	}, nil
 }

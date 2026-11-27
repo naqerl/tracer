@@ -136,9 +136,10 @@ type Service struct {
 	resolver       CollectorConfigResolver
 
 	mu             sync.Mutex
-	lastNotified   map[string]int64 // collector/resource -> last notify unix time
-	lastStatsAt    map[string]int64 // collector -> last stats sample unix time
-	downNotifiedAt map[string]int64 // collector/app -> start of the alerted down period
+	lastNotified   map[string]int64            // collector/resource -> last notify unix time
+	lastStatsAt    map[string]int64            // collector -> last stats sample unix time
+	downNotifiedAt map[string]int64            // collector/app -> start of the alerted down period
+	appDrops       map[string]map[string]int64 // collector -> app -> dropped unparseable lines
 }
 
 // New creates a new ingest service. A nil notifyChan or alertFormatter is
@@ -159,6 +160,7 @@ func New(dbManager DBManager, notifyChan chan<- notify.Notification, alertFormat
 		lastNotified:   make(map[string]int64),
 		lastStatsAt:    make(map[string]int64),
 		downNotifiedAt: make(map[string]int64),
+		appDrops:       make(map[string]map[string]int64),
 	}
 }
 
@@ -260,10 +262,28 @@ func (s *Service) SaveSystemStats(ctx context.Context, req SaveSystemStatsReques
 
 	s.mu.Lock()
 	s.lastStatsAt[req.CollectorName] = nowUnix
+	if len(req.Stats.AppDrops) > 0 {
+		apps := s.appDrops[req.CollectorName]
+		if apps == nil {
+			apps = make(map[string]int64)
+			s.appDrops[req.CollectorName] = apps
+		}
+		for app, drop := range req.Stats.AppDrops {
+			apps[app] += drop.DroppedLines
+		}
+	}
 	s.mu.Unlock()
 
 	s.checkResourceThresholds(req.CollectorName, req.Stats, nowUnix, rcfg)
 	return nil
+}
+
+// AppDroppedLines returns the unparseable lines dropped by an app since the
+// panel last started.
+func (s *Service) AppDroppedLines(collector, app string) int64 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.appDrops[collector][app]
 }
 
 func (s *Service) saveCPUPeriod(ctx context.Context, q *db.Queries, collectorName string, usagePercent float64, nowUnix int64, deltaPercent float64) error {
